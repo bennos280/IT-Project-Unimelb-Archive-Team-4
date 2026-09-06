@@ -1,0 +1,12 @@
+# The scans: 6.7 GB of PDFs, the largest 367 MB. GitHub rejects files over 100 MB.
+data/
+
+# Your local model/effort choice. Copy .env.example to .env.
+.env
+
+# Local tooling and scratch
+.venv/
+__pycache__/
+*.py[cod]
+tmp/
+.claude/
