@@ -1,0 +1,227 @@
+{
+  "archive_reference": "01822-1603",
+  "industry_of_head_code": "365",
+  "occupation_of_head_code": "2407",
+  "annotations": [
+    {
+      "raw": "2",
+      "location": "top left corner, handwritten inside a blue pencil circle"
+    },
+    {
+      "raw": "star-shaped red pencil mark",
+      "location": "top left corner beside the circled '2'"
+    },
+    {
+      "raw": "365",
+      "location": "right-hand blank area beside the grid"
+    },
+    {
+      "raw": "2407",
+      "location": "right-hand blank area, below '365'"
+    },
+    {
+      "raw": "120 77 72 269",
+      "location": "far right of the sheet, column of figures with a rule above the last"
+    },
+    {
+      "raw": "R",
+      "location": "large red pencil letter in the right-hand blank area below '2407'"
+    },
+    {
+      "raw": "Coded",
+      "location": "red pencil note written across the Craft row of the first resident column"
+    },
+    {
+      "raw": "S/o",
+      "location": "red pencil code at the left of the Number of Sleepouts line"
+    },
+    {
+      "raw": "V",
+      "location": "pencil letter above 'lumber room' on the Number of Sleepouts line"
+    },
+    {
+      "raw": "0",
+      "location": "pencil figure below the 'V' on the Number of Sleepouts line"
+    },
+    {
+      "raw": "B",
+      "location": "pencil letter immediately after the printed words 'Number of Sleepouts'"
+    },
+    {
+      "raw": "two round punch holes",
+      "location": "top edge of the sheet, left of centre and right of centre"
+    }
+  ],
+  "date_of_interview": "30/9/42",
+  "signature_of_investigator": "P. Counihan",
+  "address": "39 Bloomfield St.",
+  "municipality": "Fairfield",
+  "number_of_families_in_dwelling": "1",
+  "number": "1",
+  "type_of_dwelling": "D",
+  "structural_material": "W",
+  "number_of_storeys": "1",
+  "probable_age": "30 yrs.",
+  "yard_or_uncultivated_space": "Grow our veges.",
+  "cultivated_garden": "small lawn + hedge Planted onions lettuce - soil worked out",
+  "weekly_value_fruit_and_vegetables_grown": null,
+  "weekly_value_fruit_and_vegetables_sold": null,
+  "other_commercial_activities_on_premises": "2 fruit trees.",
+  "tenure": "T",
+  "weekly_rent_or_instalments": "£1. 0. 0.",
+  "furnished_or_unfurnished": null,
+  "length_of_residence": "8 yrs.",
+  "residents": [
+    {
+      "relationship": "Head",
+      "age": "64",
+      "earning_status": "B.",
+      "unearned_income_weekly_amount": "/",
+      "unearned_income_source": "/",
+      "industry": null,
+      "craft": "Carpenter.",
+      "regularity_of_work": "Casually (off sick at present. was at Tyrrell doing repairs for two people has a contract - formerly working for a builder in Ringwood in City.",
+      "employer": null,
+      "employers_address": null,
+      "weekly_cost_transport": null,
+      "residential_preference": null,
+      "earnings_last_week": "living on savings at present - for last month ordinarily averages about £6.0.0 a wk.",
+      "full_time_earnings_excluding_overtime": null,
+      "weekly_contribution_to_board": "\"",
+      "weekly_payments_to_relatives_living_elsewhere": "-",
+      "prewar_occupation": "Same",
+      "prewar_normal_weekly_earnings": "less than award.",
+      "prewar_place_of_work_if_outside_melbourne": "U. - for 4 or 5 yrs. in dep.",
+      "prewar_occupational_preference": "on sus for a while."
+    },
+    {
+      "relationship": "wife",
+      "age": "52",
+      "earning_status": "H.",
+      "unearned_income_weekly_amount": "/",
+      "unearned_income_source": "/",
+      "industry": null,
+      "craft": null,
+      "regularity_of_work": null,
+      "employer": null,
+      "employers_address": null,
+      "weekly_cost_transport": null,
+      "residential_preference": null,
+      "earnings_last_week": null,
+      "full_time_earnings_excluding_overtime": null,
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": "-",
+      "prewar_occupation": "Same",
+      "prewar_normal_weekly_earnings": null,
+      "prewar_place_of_work_if_outside_melbourne": "/",
+      "prewar_occupational_preference": null
+    },
+    {
+      "relationship": "daughter",
+      "age": "23",
+      "earning_status": "B.",
+      "unearned_income_weekly_amount": "£3-17-0.",
+      "unearned_income_source": "hus. allot",
+      "industry": null,
+      "craft": "Telephonist",
+      "regularity_of_work": "yes",
+      "employer": "P.M.G.",
+      "employers_address": "relieving at Heidelberg.",
+      "weekly_cost_transport": "5/3 (with concession).",
+      "residential_preference": "content",
+      "earnings_last_week": "£3-12-0",
+      "full_time_earnings_excluding_overtime": null,
+      "weekly_contribution_to_board": "£3-0-0.",
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": "Same",
+      "prewar_normal_weekly_earnings": "?",
+      "prewar_place_of_work_if_outside_melbourne": "/",
+      "prewar_occupational_preference": null
+    },
+    {
+      "relationship": "son in law",
+      "age": "28",
+      "earning_status": "M.",
+      "unearned_income_weekly_amount": "/",
+      "unearned_income_source": "/",
+      "industry": "A.I.F.",
+      "craft": "Sapper.",
+      "regularity_of_work": null,
+      "employer": "Somewhere in Aus.",
+      "employers_address": null,
+      "weekly_cost_transport": null,
+      "residential_preference": null,
+      "earnings_last_week": "£3-17-0",
+      "full_time_earnings_excluding_overtime": null,
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": "-",
+      "prewar_occupation": "Clerk in office",
+      "prewar_normal_weekly_earnings": "about £5.0.0",
+      "prewar_place_of_work_if_outside_melbourne": "formerly lived in Sth Yarra",
+      "prewar_occupational_preference": null
+    },
+    {
+      "relationship": "grandson",
+      "age": "1",
+      "earning_status": null,
+      "unearned_income_weekly_amount": null,
+      "unearned_income_source": null,
+      "industry": null,
+      "craft": null,
+      "regularity_of_work": null,
+      "employer": null,
+      "employers_address": null,
+      "weekly_cost_transport": null,
+      "residential_preference": null,
+      "earnings_last_week": null,
+      "full_time_earnings_excluding_overtime": null,
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": null,
+      "prewar_normal_weekly_earnings": null,
+      "prewar_place_of_work_if_outside_melbourne": null,
+      "prewar_occupational_preference": null
+    }
+  ],
+  "other_children": {
+    "died": [
+      "-",
+      "-",
+      "/",
+      "/"
+    ],
+    "living_elsewhere": [
+      "1",
+      "1",
+      "/",
+      "/"
+    ]
+  },
+  "rooms": {
+    "number_of_separate_bedrooms": "2",
+    "number_of_living_rooms": "2 (includes kitchen)",
+    "state_if_used_as_bedrooms": "+ a vestibule",
+    "rooms_not_in_daily_use": "-",
+    "sleepouts": "V lumber room"
+  },
+  "bath": {
+    "location": "Bathroom inside",
+    "shared": null,
+    "hot_water_service": "no."
+  },
+  "wc": {
+    "internal_or_external": "External",
+    "shared": "Sep."
+  },
+  "wash_house": "on back verandah attached.",
+  "kitchen": {
+    "shared": "-",
+    "ever_used_as_bedroom": "-",
+    "meals_can_be_taken_there": "Yes.",
+    "sink_and_water_tap": "Yes.",
+    "hot_water_service": "no gas laid in",
+    "cooking_facilities": "– elec. griller + fire stove (L)",
+    "food_storage": "Cabinet + ice chest.",
+    "facilities_for_cooking_and_water_supply_in_other_rooms": "-"
+  }
+}
