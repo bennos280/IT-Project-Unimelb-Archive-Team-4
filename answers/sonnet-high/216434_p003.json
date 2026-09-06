@@ -1,0 +1,24 @@
+{
+  "text": "Interviewed wife - friendly.\nRent low because tenants have been\nhere a long time\nWater pressure very fair\nWalls not done up since tenants came\nin - big front room - quite pleasantly\nfurnished\nBlock: 42' x 115'\ncultivation at back - not\nmuch in front. - gate needs mending\nalso new path needed at side",
+  "annotations": [
+    {
+      "raw": "word struck through before 'cultivation', hard to make out (looks like 'Stood' or 'Good')",
+      "location": "start of the 'cultivation at back' line"
+    },
+    {
+      "raw": "small hooked/tick pencil mark right after the word",
+      "location": "line ending 'here a long time'"
+    },
+    {
+      "raw": "small hooked/tick pencil mark right after the word",
+      "location": "line ending 'Water pressure very fair'"
+    },
+    {
+      "raw": "small hooked/tick pencil mark right after the word",
+      "location": "line 'Walls not done up since', mark after 'since'"
+    }
+  ],
+  "model": "claude-sonnet-5",
+  "effort": "high",
+  "seconds": 93.5
+}

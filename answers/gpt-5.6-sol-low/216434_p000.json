@@ -1,0 +1,97 @@
+{
+  "municipality": "12",
+  "number_of_dwelling": "2",
+  "number_of_household": "1",
+  "type_of_family": "3",
+  "total_resident_members": "4",
+  "number_under_5": "1",
+  "number_5_to_10": "0",
+  "number_over_10_m": "1",
+  "number_over_10_f": "2",
+  "military_service": "3",
+  "boarders": "0",
+  "participating_members": "4",
+  "adult_m_breadwinners": "0",
+  "adult_f_breadwinners": "1",
+  "juvenile_breadwinners_under_21": "0",
+  "children_under_14": "1",
+  "retired_and_indep_persons": "0",
+  "home_duties": "1",
+  "other": "1",
+  "normal_household_income": "994 (26.9)",
+  "weekly_rent": "20",
+  "total_available_income": "994 (24.4)",
+  "earnings_of_head": "808 (10.3)",
+  "heads_unearned_income": "200",
+  "main_source_heads_unearned_income": "01",
+  "subsidiary_source_heads_income": "0",
+  "industry_of_head": "26.3",
+  "occupation_of_head": "24.02",
+  "grade_of_occupation_of_head": "9",
+  "place_of_work": "99",
+  "age_of_head": "64",
+  "sex_of_head": "0",
+  "regularity_of_work": "9.0",
+  "prewar_occupation": "1",
+  "removal": "1",
+  "type_of_dwelling": "1",
+  "structural_material": "1",
+  "age_of_house": "30",
+  "garden": "2",
+  "state_of_repair": "1",
+  "tenure": "3",
+  "length_of_residence": "08",
+  "total_number_of_rooms": "6",
+  "number_of_bedrooms": "2",
+  "number_of_living_rooms": "1",
+  "whether_used_as_bedrooms": "0",
+  "rooms_not_in_daily_use": "0",
+  "number_of_sleepouts": "0",
+  "bathroom": "1",
+  "wc": "0",
+  "washhouse": "1",
+  "kitchen": "2",
+  "sink_and_water_service": "1",
+  "cooking_facilities": "1",
+  "food_storage": "1",
+  "rooms_shared": "0",
+  "persons_sharing": "0",
+  "children_other_than_those_at_home": "1",
+  "children_of_h_or_wife_living": "2",
+  "children_of_h_or_wife_dead": "0",
+  "children_of_h_or_wife_total": "2",
+  "annotations": [
+    {
+      "raw": "7",
+      "location": "bottom left, circled in blue pencil"
+    },
+    {
+      "raw": "B",
+      "location": "bottom left, red pencil"
+    },
+    {
+      "raw": "M",
+      "location": "bottom left, red pencil"
+    },
+    {
+      "raw": "1.00",
+      "location": "left column beside Other, red pencil"
+    },
+    {
+      "raw": "JI",
+      "location": "bottom left-centre, black pencil"
+    },
+    {
+      "raw": "2",
+      "location": "bottom centre, grey pencil"
+    },
+    {
+      "raw": "R",
+      "location": "bottom right, red pencil"
+    }
+  ],
+  "engine": "codex",
+  "model": "gpt-5.6-sol",
+  "effort": "low",
+  "seconds": 28.5
+}

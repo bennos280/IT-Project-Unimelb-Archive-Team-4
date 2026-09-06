@@ -1,0 +1,20 @@
+{
+  "text": "Interviewed wife + head. Wife apathetic, but head helpful in\nintervals of mowing lawn.\nHouse in fair external condition. Occupants did it up, then\nFrontage : 60 ft.  landlady raised rent from 18/- to 25/-\nDepth : 130 ft.",
+  "annotations": [
+    {
+      "raw": "/",
+      "location": "right margin, level with end of first line ('helpful in')"
+    },
+    {
+      "raw": "//",
+      "location": "right margin, level with 'Frontage' line, beside 'to 25/-'"
+    },
+    {
+      "raw": "/ /",
+      "location": "right margin, below the '//' mark, further down the page"
+    }
+  ],
+  "model": "claude-sonnet-5",
+  "effort": "high",
+  "seconds": 60.0
+}

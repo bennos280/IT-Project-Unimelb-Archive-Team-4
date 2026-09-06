@@ -1,0 +1,245 @@
+{
+  "address": "27 Bloomfield Ave",
+  "archive_reference": "60001",
+  "industry_of_head_code": "310",
+  "occupation_of_head_code": "1704",
+  "annotations": [
+    {
+      "raw": "?N or [",
+      "location": "top centre, red pencil above title"
+    },
+    {
+      "raw": "1",
+      "location": "top left, red pencil"
+    },
+    {
+      "raw": "X",
+      "location": "top left, red pencil crossed box"
+    },
+    {
+      "raw": "[?] [?]",
+      "location": "top left, pencil scribble right of X"
+    },
+    {
+      "raw": "fare: 11/-",
+      "location": "top centre-right, pencil (word struck through)"
+    },
+    {
+      "raw": "O/o",
+      "location": "top right, red pencil before 60001"
+    },
+    {
+      "raw": "66 x 220",
+      "location": "right of Structural Material"
+    },
+    {
+      "raw": "circle around 'Maribyrnong / 1-2 / Number' area",
+      "location": "blue pencil, left of form"
+    },
+    {
+      "raw": "*",
+      "location": "blue pencil, left of column 1 header row"
+    },
+    {
+      "raw": "2",
+      "location": "blue pencil, above column 2"
+    },
+    {
+      "raw": "3",
+      "location": "blue pencil, above column 3"
+    },
+    {
+      "raw": "4",
+      "location": "blue pencil, above column 4"
+    },
+    {
+      "raw": "5",
+      "location": "blue pencil, after 'None' in commercial activities"
+    },
+    {
+      "raw": "129",
+      "location": "right margin, blue pencil"
+    },
+    {
+      "raw": "N.H.I.",
+      "location": "right margin"
+    },
+    {
+      "raw": "70- / 87- / 10- / 32- / 339",
+      "location": "right margin column of figures"
+    },
+    {
+      "raw": "328",
+      "location": "right margin, blue pencil"
+    },
+    {
+      "raw": "4/rates",
+      "location": "right margin, pencil"
+    },
+    {
+      "raw": "circle around '3'",
+      "location": "Living Elsewhere, wife column"
+    },
+    {
+      "raw": "circle around 'Labourer'",
+      "location": "Craft, column 3"
+    },
+    {
+      "raw": "4-7- ?",
+      "location": "pencil right of 'Basic wage', column 4"
+    },
+    {
+      "raw": "[?]",
+      "location": "bottom left corner, pencil"
+    }
+  ],
+  "date_of_interview": "22/10/41",
+  "signature_of_investigator": "G. M. R[?]",
+  "municipality": "Maribyrnong",
+  "number_of_families_in_dwelling": "1 - 2",
+  "number": "1",
+  "type_of_dwelling": "D",
+  "structural_material": "W",
+  "number_of_storeys": "1",
+  "probable_age": "10 years",
+  "yard_or_uncultivated_space": "Yes",
+  "cultivated_garden": "Yes",
+  "weekly_value_fruit_and_vegetables_grown": "Neglig.",
+  "weekly_value_fruit_and_vegetables_sold": "Nil",
+  "other_commercial_activities_on_premises": "None",
+  "tenure": "O",
+  "weekly_rent_or_instalments": "/",
+  "furnished_or_unfurnished": null,
+  "length_of_residence": "10 years",
+  "residents": [
+    {
+      "relationship": "Husband",
+      "age": "49",
+      "earning_status": "B",
+      "unearned_income_weekly_amount": null,
+      "unearned_income_source": null,
+      "industry": "Abattoir",
+      "craft": "Slaughterman",
+      "regularity_of_work": "Reg",
+      "employer": "Nelson Bros",
+      "employers_address": "City Abattoirs",
+      "weekly_cost_transport": "4/-",
+      "residential_preference": "None",
+      "earnings_last_week": "£7 gross",
+      "full_time_earnings_excluding_overtime": "No overtime",
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": "None",
+      "prewar_occupation": null,
+      "prewar_normal_weekly_earnings": "Same",
+      "prewar_place_of_work_if_outside_melbourne": null,
+      "prewar_occupational_preference": null
+    },
+    {
+      "relationship": "Wife",
+      "age": "48",
+      "earning_status": "H",
+      "unearned_income_weekly_amount": null,
+      "unearned_income_source": null,
+      "industry": null,
+      "craft": null,
+      "regularity_of_work": null,
+      "employer": null,
+      "employers_address": null,
+      "weekly_cost_transport": null,
+      "residential_preference": null,
+      "earnings_last_week": null,
+      "full_time_earnings_excluding_overtime": null,
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": null,
+      "prewar_normal_weekly_earnings": null,
+      "prewar_place_of_work_if_outside_melbourne": null,
+      "prewar_occupational_preference": null
+    },
+    {
+      "relationship": "Husband's Daughter",
+      "age": "28",
+      "earning_status": "B",
+      "unearned_income_weekly_amount": null,
+      "unearned_income_source": null,
+      "industry": "Rubber Tyres",
+      "craft": "Labourer",
+      "regularity_of_work": "Reg.",
+      "employer": "Olympic Tyres",
+      "employers_address": "Footscray",
+      "weekly_cost_transport": "2/6",
+      "residential_preference": "None",
+      "earnings_last_week": "£3.10.6 gross",
+      "full_time_earnings_excluding_overtime": "little overtime",
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": "Has only started work recently",
+      "prewar_normal_weekly_earnings": null,
+      "prewar_place_of_work_if_outside_melbourne": null,
+      "prewar_occupational_preference": null
+    },
+    {
+      "relationship": "Her Husband",
+      "age": "32",
+      "earning_status": "B",
+      "unearned_income_weekly_amount": "10/-",
+      "unearned_income_source": "C.E.",
+      "industry": "Munitions",
+      "craft": "Labourer",
+      "regularity_of_work": "Reg.",
+      "employer": "Govt.",
+      "employers_address": "Footscray",
+      "weekly_cost_transport": "Car",
+      "residential_preference": "None",
+      "earnings_last_week": "Basic wage",
+      "full_time_earnings_excluding_overtime": "No overtime",
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": null,
+      "prewar_normal_weekly_earnings": "Same.",
+      "prewar_place_of_work_if_outside_melbourne": null,
+      "prewar_occupational_preference": null
+    }
+  ],
+  "other_children": {
+    "died": [
+      "0",
+      "0"
+    ],
+    "living_elsewhere": [
+      "2",
+      "3"
+    ]
+  },
+  "rooms": {
+    "number_of_separate_bedrooms": "3",
+    "number_of_living_rooms": "2",
+    "state_if_used_as_bedrooms": "Yes + vestibule",
+    "rooms_not_in_daily_use": "No.",
+    "sleepouts": "0"
+  },
+  "bath": {
+    "location": "Inside with laundry",
+    "shared": null,
+    "hot_water_service": "Copper used for bath."
+  },
+  "wc": {
+    "internal_or_external": "No sewerage yet",
+    "shared": null
+  },
+  "wash_house": "Fuel Copper",
+  "kitchen": {
+    "shared": "No",
+    "ever_used_as_bedroom": "No",
+    "meals_can_be_taken_there": "Yes",
+    "sink_and_water_tap": "Yes",
+    "hot_water_service": "No",
+    "cooking_facilities": "Gas",
+    "food_storage": "Ice chest Pantry",
+    "facilities_for_cooking_and_water_supply_in_other_rooms": "No"
+  },
+  "engine": "claude",
+  "model": "claude-opus-5",
+  "effort": "low",
+  "seconds": 31.3
+}

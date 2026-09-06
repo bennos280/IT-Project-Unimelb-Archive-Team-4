@@ -1,0 +1,13 @@
+{
+  "text": "Interviewed wife & head. Wife apathetic, but head helpful in\nintervals of mowing lawn.\nHouse in fair external condition. Occupants died it up. then\nFrontage : 60ft. landlady raised rent from 18/- to 25/-\nDepth : 130 ft.",
+  "annotations": [
+    {
+      "raw": "//",
+      "location": "right margin, upper area beside the \"18/- to 25/-\" line"
+    }
+  ],
+  "engine": "claude",
+  "model": "claude-opus-5",
+  "effort": "low",
+  "seconds": 10.2
+}
