@@ -1,0 +1,58 @@
+
+
+====OCR SPACE Engine2====
+https://ocr.space
+
+==Test1== (used test1small.jpg)
+well. Ao - do
+Дімід тот
+
+==Test2==
+Internened nife.
+well equipped home. Garden.
+Bench =
+42' × 110!
+TAEI
+
+==Test3==
+Internemed 3 sistero
+Ocasmalls a rom is
+weee fumished Lase
+Block - 55 '× 120!
+let far 8/- a wa.
+2 e deep mundano.
+Bregilla /
+
+==Test4==
+
+
+==
+
+Engine3
+
+==Test2==
+
+
+==Test3==
+Internewed 3 sisters.
+Occasumally a rom is let for 81- a wh.
+well fumisted house in old style-high ceilungs & deep undans.
+Bloch - 55'X 120!
+Breghlon /
+
+
+====Engine3 with cropped text====
+==Test1==
+Very big house in very food repair.
+Very well. furnished obviously
+well. to do home
+
+==Test2==
+Internewed wife.
+well equipped home. Garden.
+Bloch = 42' x 110'.
+
+==Test3==
+
+
+==Test4==
