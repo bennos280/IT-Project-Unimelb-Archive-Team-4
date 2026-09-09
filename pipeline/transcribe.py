@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PIPELINE = ROOT / "pipeline"
+TIMEOUT = 1800  # seconds one page may take before we give up on it
 
 
 def settings():
@@ -31,12 +32,21 @@ def schema_for(shape):
     return {"type": ["string", "null"]}
 
 
+def run_cli(command, label, **kwargs):
+    """subprocess.run for a transcription CLI. A hang exits with a message, not a traceback."""
+    try:
+        return subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=TIMEOUT, **kwargs)
+    except subprocess.TimeoutExpired:
+        sys.exit(f"{label} timed out after {TIMEOUT}s; no answer written")
+
+
 def run_claude(image, prompt, template, model, effort):
-    out = subprocess.run(
+    out = run_cli(
         ["claude", "-p", f"{prompt}\n\nThe image is at: {image}", "--model", model, "--effort", effort,
          "--allowedTools", "Read", "--output-format", "json",
          "--json-schema", json.dumps(schema_for(template))],
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800)
+        "claude")
     try:
         reply = json.loads(out.stdout)
     except ValueError:
@@ -53,11 +63,11 @@ def run_codex(image, prompt, template, model, effort):
     with tempfile.TemporaryDirectory() as work:
         schema, last = Path(work) / "schema.json", Path(work) / "last.txt"
         schema.write_text(json.dumps(schema_for(template)), encoding="utf-8")
-        out = subprocess.run(
+        out = run_cli(
             [settings()["CODEX"], "exec", "--ephemeral", "--ignore-user-config", "--skip-git-repo-check",
              "--sandbox", "read-only", "--model", model, "--config", f'model_reasoning_effort="{effort}"',
              "--image", str(image), "--output-schema", str(schema), "--output-last-message", str(last), prompt],
-            cwd=work, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1800)
+            "codex", cwd=work, env=env)
         if out.returncode != 0 or not last.exists():
             sys.exit(f"codex failed (exit {out.returncode}):\n{(out.stderr or out.stdout)[-600:]}")
         raw = last.read_text(encoding="utf-8").strip()
