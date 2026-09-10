@@ -1,0 +1,157 @@
+{
+  "address": "18, Andrews St.",
+  "annotations": [
+    {
+      "raw": "2",
+      "location": "top left corner, red pencil"
+    },
+    {
+      "raw": "272",
+      "location": "right margin, above 1443"
+    },
+    {
+      "raw": "1443",
+      "location": "right margin, below 272"
+    },
+    {
+      "raw": "Rates 4/-",
+      "location": "right margin, red pencil, beside 272"
+    },
+    {
+      "raw": "[?]",
+      "location": "right margin, blue pencil mark below 1443"
+    },
+    {
+      "raw": "Abt 40 feet",
+      "location": "top of form, above yard/uncultivated space question"
+    }
+  ],
+  "archive_reference": "02904-3255",
+  "bath": {
+    "location": "Inside",
+    "shared": "No",
+    "hot_water_service": "Gas heater"
+  },
+  "cultivated_garden": "Front + back",
+  "date_of_interview": "24.7.42.",
+  "furnished_or_unfurnished": "/",
+  "industry_of_head_code": "272",
+  "kitchen": {
+    "shared": "No",
+    "ever_used_as_bedroom": "No",
+    "meals_can_be_taken_there": "Yes",
+    "sink_and_water_tap": "Yes",
+    "hot_water_service": "No",
+    "cooking_facilities": "Gas",
+    "food_storage": "Linen Press, Cabinets",
+    "facilities_for_cooking_and_water_supply_in_other_rooms": "/"
+  },
+  "length_of_residence": "10 yrs",
+  "municipality": "Northcote",
+  "number": "1",
+  "number_of_families_in_dwelling": "1",
+  "number_of_storeys": "1",
+  "occupation_of_head_code": "1443",
+  "other_children": {
+    "died": [
+      "/"
+    ],
+    "living_elsewhere": [
+      "/"
+    ]
+  },
+  "other_commercial_activities_on_premises": "None",
+  "probable_age": "22 yrs",
+  "residents": [
+    {
+      "relationship": "Head",
+      "age": "40",
+      "earning_status": "B",
+      "unearned_income_weekly_amount": "/",
+      "unearned_income_source": "/",
+      "industry": null,
+      "craft": "Boot Clicker",
+      "regularity_of_work": "reg.",
+      "employer": null,
+      "employers_address": "Northcote",
+      "weekly_cost_transport": "Walks",
+      "residential_preference": "Content",
+      "earnings_last_week": "£6.odd",
+      "full_time_earnings_excluding_overtime": "Little overtime - Slipper factory.",
+      "weekly_contribution_to_board": "Whole amt",
+      "weekly_payments_to_relatives_living_elsewhere": "None",
+      "prewar_occupation": "Same",
+      "prewar_normal_weekly_earnings": "£5.4.0",
+      "prewar_place_of_work_if_outside_melbourne": null,
+      "prewar_occupational_preference": null
+    },
+    {
+      "relationship": "Wife",
+      "age": "39",
+      "earning_status": "H",
+      "unearned_income_weekly_amount": null,
+      "unearned_income_source": null,
+      "industry": null,
+      "craft": null,
+      "regularity_of_work": null,
+      "employer": null,
+      "employers_address": null,
+      "weekly_cost_transport": null,
+      "residential_preference": null,
+      "earnings_last_week": null,
+      "full_time_earnings_excluding_overtime": null,
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": null,
+      "prewar_normal_weekly_earnings": null,
+      "prewar_place_of_work_if_outside_melbourne": null,
+      "prewar_occupational_preference": null
+    },
+    {
+      "relationship": "Son",
+      "age": "11",
+      "earning_status": "S",
+      "unearned_income_weekly_amount": null,
+      "unearned_income_source": null,
+      "industry": null,
+      "craft": null,
+      "regularity_of_work": null,
+      "employer": null,
+      "employers_address": null,
+      "weekly_cost_transport": null,
+      "residential_preference": null,
+      "earnings_last_week": null,
+      "full_time_earnings_excluding_overtime": null,
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": null,
+      "prewar_normal_weekly_earnings": null,
+      "prewar_place_of_work_if_outside_melbourne": null,
+      "prewar_occupational_preference": null
+    }
+  ],
+  "rooms": {
+    "number_of_separate_bedrooms": "2",
+    "number_of_living_rooms": "2",
+    "state_if_used_as_bedrooms": "and Kitchen",
+    "rooms_not_in_daily_use": "None",
+    "sleepouts": "/"
+  },
+  "signature_of_investigator": "Fay Jackson",
+  "structural_material": "W",
+  "tenure": "P",
+  "type_of_dwelling": "D",
+  "wash_house": "Detached, outside, 6 yards",
+  "wc": {
+    "internal_or_external": "/",
+    "shared": "No"
+  },
+  "weekly_rent_or_instalments": "19/-",
+  "weekly_value_fruit_and_vegetables_grown": "Nil - rocky",
+  "weekly_value_fruit_and_vegetables_sold": null,
+  "yard_or_uncultivated_space": "No",
+  "engine": "claude",
+  "model": "claude-opus-5",
+  "effort": "low",
+  "seconds": 25.0
+}

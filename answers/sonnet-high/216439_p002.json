@@ -1,0 +1,116 @@
+{
+  "municipality": "18",
+  "number_of_dwelling": "1",
+  "number_of_household": "1",
+  "type_of_family": "2",
+  "total_resident_members": "3",
+  "number_under_5": "0",
+  "number_5_to_10": "0",
+  "number_over_10_m": "1",
+  "number_over_10_f": "2",
+  "military_service": "0",
+  "boarders": "0",
+  "participating_members": "3",
+  "adult_m_breadwinners": "1",
+  "adult_f_breadwinners": "1",
+  "juvenile_breadwinners_under_21": "0",
+  "children_under_14": "0",
+  "retired_and_indep_persons": "0",
+  "home_duties": "1",
+  "other": "0",
+  "normal_household_income": "192",
+  "weekly_rent": "25",
+  "total_available_income": "152",
+  "earnings_of_head": "137",
+  "heads_unearned_income": "00",
+  "main_source_heads_unearned_income": "0",
+  "subsidiary_source_heads_income": "0",
+  "industry_of_head": "193",
+  "occupation_of_head": "0765",
+  "grade_of_occupation_of_head": "2",
+  "place_of_work": "10",
+  "age_of_head": "42",
+  "sex_of_head": "0",
+  "regularity_of_work": "0",
+  "prewar_occupation": "2",
+  "removal": "2",
+  "type_of_dwelling": "1",
+  "structural_material": "1",
+  "age_of_house": "40",
+  "garden": "3",
+  "state_of_repair": "3",
+  "tenure": "3",
+  "length_of_residence": "01",
+  "total_number_of_rooms": "5",
+  "number_of_bedrooms": "3",
+  "number_of_living_rooms": "0",
+  "whether_used_as_bedrooms": "0",
+  "rooms_not_in_daily_use": "0",
+  "number_of_sleepouts": "0",
+  "bathroom": "4",
+  "wc": "0",
+  "washhouse": "1",
+  "kitchen": "2",
+  "sink_and_water_service": "5",
+  "cooking_facilities": "5",
+  "food_storage": "5",
+  "rooms_shared": "0",
+  "persons_sharing": "0",
+  "children_other_than_those_at_home": "0",
+  "children_of_h_or_wife_living": "0",
+  "children_of_h_or_wife_dead": "0",
+  "children_of_h_or_wife_total": "0",
+  "annotations": [
+    {
+      "raw": "Large blue pencil oval circling the 'Number of Dwelling', 'Number of Household', 'Type of Family', and 'Total No. Resident Members' rows and their values",
+      "location": "left column, rows 2-5"
+    },
+    {
+      "raw": "Red 'Y'",
+      "location": "bottom of left column, below 'Other' row"
+    },
+    {
+      "raw": "Red circled '8'",
+      "location": "bottom of left column, below 'Other' row"
+    },
+    {
+      "raw": "Two small pencil tick/check marks",
+      "location": "bottom of left column, below 'Other' row"
+    },
+    {
+      "raw": "Circled red '217' with a small faint '173' above it",
+      "location": "middle column, beside 'Normal Household I.' value"
+    },
+    {
+      "raw": "Circled red '137'",
+      "location": "middle column, beside 'Total Available I.' value"
+    },
+    {
+      "raw": "Circled red '162', partly struck through",
+      "location": "middle column, beside 'Earnings of Head' value"
+    },
+    {
+      "raw": "Small red stroke/mark immediately after the value",
+      "location": "middle column, 'State of Repair' row"
+    },
+    {
+      "raw": "Large red loop/hook mark bracketing the two rows",
+      "location": "right column, spanning 'Number of Living Rooms' and 'Rooms not in Daily Use' rows"
+    },
+    {
+      "raw": "Red circled '3' beside the value",
+      "location": "right column, 'Sink and Water Service' row"
+    },
+    {
+      "raw": "Large red vertical stroke spanning all three rows",
+      "location": "right column, 'Children of H. or wife: Living / Dead / Total' rows"
+    },
+    {
+      "raw": "Pencil text resembling 'M+A' or 'MtA', with '10' below it",
+      "location": "bottom right of page, below 'Total' row"
+    }
+  ],
+  "model": "claude-sonnet-5",
+  "effort": "high",
+  "seconds": 181.5
+}

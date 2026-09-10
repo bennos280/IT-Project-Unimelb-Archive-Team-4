@@ -1,0 +1,105 @@
+{
+  "adult_f_breadwinners": "0",
+  "adult_m_breadwinners": "2",
+  "age_of_head": "46",
+  "age_of_house": "20",
+  "annotations": [
+    {
+      "raw": "204 (211)",
+      "location": "Normal Household Income"
+    },
+    {
+      "raw": "151 (161)",
+      "location": "Total Available Income"
+    },
+    {
+      "raw": "092 (18)",
+      "location": "Earnings of Head"
+    },
+    {
+      "raw": "blue oval encircling Type of Family through Number over 10 F",
+      "location": "left column, Type of Family - Number over 10 F"
+    },
+    {
+      "raw": "red mark, looks like a check or bracket",
+      "location": "right margin near Number of Living Rooms / Whether used as Bedrooms"
+    },
+    {
+      "raw": "(3)",
+      "location": "Sink and Water Service"
+    },
+    {
+      "raw": "35",
+      "location": "below Sink and Water Service, near Cooking Facilities"
+    },
+    {
+      "raw": "9, 8 (circled), red \"8\", \"pc\", tally marks \"////\", \"+//\"",
+      "location": "bottom left corner"
+    },
+    {
+      "raw": "blue arrow/scribble",
+      "location": "bottom right corner near Total (Children of H. or wife)"
+    }
+  ],
+  "bathroom": "5",
+  "boarders": "0",
+  "children_of_h_or_wife_dead": "0",
+  "children_of_h_or_wife_living": "4",
+  "children_of_h_or_wife_total": "4",
+  "children_other_than_those_at_home": "3",
+  "children_under_14": "1",
+  "cooking_facilities": "3",
+  "earnings_of_head": "092",
+  "food_storage": "3",
+  "garden": "3",
+  "grade_of_occupation_of_head": "2",
+  "heads_unearned_income": "0.0",
+  "home_duties": "2",
+  "industry_of_head": "568",
+  "juvenile_breadwinners_under_21": "0",
+  "kitchen": "1",
+  "length_of_residence": "01",
+  "main_source_heads_unearned_income": "0",
+  "military_service": "0",
+  "municipality": "21",
+  "normal_household_income": "193",
+  "number_5_to_10": "0",
+  "number_of_bedrooms": "2",
+  "number_of_dwelling": "148",
+  "number_of_household": "1",
+  "number_of_living_rooms": "4",
+  "number_of_sleepouts": "3",
+  "number_over_10_f": "2",
+  "number_over_10_m": "2",
+  "number_under_5": "1",
+  "occupation_of_head": "3283",
+  "other": "0",
+  "participating_members": "5",
+  "persons_sharing": "0",
+  "place_of_work": "26",
+  "prewar_occupation": "1",
+  "regularity_of_work": "0",
+  "removal": "1",
+  "retired_and_indep_persons": "0",
+  "rooms_not_in_daily_use": "0",
+  "rooms_shared": "0",
+  "sex_of_head": "0",
+  "sink_and_water_service": "5",
+  "state_of_repair": "1",
+  "structural_material": "2",
+  "subsidiary_source_heads_income": "0",
+  "tenure": "3",
+  "total_available_income": "143",
+  "total_number_of_rooms": "7",
+  "total_resident_members": "5",
+  "type_of_dwelling": "1",
+  "type_of_family": "4",
+  "wc": "0",
+  "washhouse": "1",
+  "weekly_rent": "45",
+  "whether_used_as_bedrooms": "0",
+  "engine": "claude",
+  "model": "claude-sonnet-5",
+  "effort": "low",
+  "seconds": 54.4
+}

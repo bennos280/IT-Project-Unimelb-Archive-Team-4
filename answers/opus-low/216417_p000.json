@@ -1,0 +1,210 @@
+{
+  "archive_reference": "03570/3808",
+  "industry_of_head_code": "160",
+  "occupation_of_head_code": "27",
+  "annotations": [
+    {
+      "raw": "351",
+      "location": "top left corner, red pencil"
+    },
+    {
+      "raw": "H",
+      "location": "top left corner below 351, red pencil"
+    },
+    {
+      "raw": "O",
+      "location": "top left, blue pencil circle"
+    },
+    {
+      "raw": "324",
+      "location": "right margin, below Age row"
+    },
+    {
+      "raw": "2722",
+      "location": "right margin, below 324"
+    },
+    {
+      "raw": "187",
+      "location": "right margin, under 27 with a line above it"
+    },
+    {
+      "raw": "R",
+      "location": "far right margin, red pencil"
+    },
+    {
+      "raw": "[?]",
+      "location": "bottom left margin, red pencil marks beside Pre-War rows"
+    }
+  ],
+  "date_of_interview": "12/9/42.",
+  "signature_of_investigator": "P. Counihan",
+  "address": "5 Rachman Cres.",
+  "municipality": "Brunswick.",
+  "number_of_families_in_dwelling": "1",
+  "number": "1",
+  "type_of_dwelling": "D",
+  "structural_material": "B.",
+  "number_of_storeys": "1",
+  "probable_age": "14 yrs.",
+  "yard_or_uncultivated_space": null,
+  "cultivated_garden": "Lawn + geraniums",
+  "weekly_value_fruit_and_vegetables_grown": "A few",
+  "weekly_value_fruit_and_vegetables_sold": "in but soil poor",
+  "other_commercial_activities_on_premises": "/",
+  "tenure": "T.",
+  "weekly_rent_or_instalments": "£1.15.0.",
+  "furnished_or_unfurnished": null,
+  "length_of_residence": "2 yrs.",
+  "residents": [
+    {
+      "relationship": "Head",
+      "age": "47",
+      "earning_status": "B.",
+      "unearned_income_weekly_amount": "/",
+      "unearned_income_source": "/",
+      "industry": null,
+      "craft": "Commission driver",
+      "regularity_of_work": "Yes.",
+      "employer": "Gorham + Son.",
+      "employers_address": "F. Brunswick.",
+      "weekly_cost_transport": "By truck (kept at home).",
+      "residential_preference": "content",
+      "earnings_last_week": "£8.0.0 (net.)",
+      "full_time_earnings_excluding_overtime": "\" av.",
+      "weekly_contribution_to_board": "£3.10.0",
+      "weekly_payments_to_relatives_living_elsewhere": "—",
+      "prewar_occupation": "Dairy Farmer.",
+      "prewar_normal_weekly_earnings": "£5.0.0.",
+      "prewar_place_of_work_if_outside_melbourne": "/",
+      "prewar_occupational_preference": "/"
+    },
+    {
+      "relationship": "wife",
+      "age": "44",
+      "earning_status": "H",
+      "unearned_income_weekly_amount": "/",
+      "unearned_income_source": "/",
+      "industry": null,
+      "craft": null,
+      "regularity_of_work": null,
+      "employer": null,
+      "employers_address": null,
+      "weekly_cost_transport": null,
+      "residential_preference": "/",
+      "earnings_last_week": "wkly wage = £4.10.0",
+      "full_time_earnings_excluding_overtime": "wife given £3.10.0 nt",
+      "weekly_contribution_to_board": "1/2 this + 1/2 commission = £22 (9x a mth.)",
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": "Same.",
+      "prewar_normal_weekly_earnings": "/",
+      "prewar_place_of_work_if_outside_melbourne": "/",
+      "prewar_occupational_preference": "/"
+    },
+    {
+      "relationship": "son",
+      "age": "21.",
+      "earning_status": "M",
+      "unearned_income_weekly_amount": "/",
+      "unearned_income_source": "/",
+      "industry": "A.M.F.",
+      "craft": "private",
+      "regularity_of_work": null,
+      "employer": null,
+      "employers_address": "Queensland.",
+      "weekly_cost_transport": null,
+      "residential_preference": null,
+      "earnings_last_week": "nil.",
+      "full_time_earnings_excluding_overtime": null,
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": "Textile worker.",
+      "prewar_normal_weekly_earnings": "£2.10.0",
+      "prewar_place_of_work_if_outside_melbourne": "/",
+      "prewar_occupational_preference": "/"
+    },
+    {
+      "relationship": "daughter",
+      "age": "18",
+      "earning_status": "M.",
+      "unearned_income_weekly_amount": "/",
+      "unearned_income_source": "/",
+      "industry": "A.W.A.S.",
+      "craft": "private",
+      "regularity_of_work": null,
+      "employer": null,
+      "employers_address": "Toorak.",
+      "weekly_cost_transport": null,
+      "residential_preference": "/",
+      "earnings_last_week": "nil",
+      "full_time_earnings_excluding_overtime": null,
+      "weekly_contribution_to_board": null,
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": "Textile worker",
+      "prewar_normal_weekly_earnings": "£1.5.0.",
+      "prewar_place_of_work_if_outside_melbourne": "/",
+      "prewar_occupational_preference": "/"
+    },
+    {
+      "relationship": "daughter",
+      "age": "16.",
+      "earning_status": "B.",
+      "unearned_income_weekly_amount": "/",
+      "unearned_income_source": "/",
+      "industry": "Textile.",
+      "craft": "Cone-ing silk",
+      "regularity_of_work": "Yes.",
+      "employer": "Peerless Silk",
+      "employers_address": "Brunswick mill (nth)",
+      "weekly_cost_transport": "nil (bike)",
+      "residential_preference": null,
+      "earnings_last_week": "£1.7.6.",
+      "full_time_earnings_excluding_overtime": "—",
+      "weekly_contribution_to_board": "15/",
+      "weekly_payments_to_relatives_living_elsewhere": null,
+      "prewar_occupation": "School.",
+      "prewar_normal_weekly_earnings": "/",
+      "prewar_place_of_work_if_outside_melbourne": "/",
+      "prewar_occupational_preference": null
+    }
+  ],
+  "other_children": {
+    "died": [
+      "1",
+      "1"
+    ],
+    "living_elsewhere": [
+      "—"
+    ]
+  },
+  "rooms": {
+    "number_of_separate_bedrooms": "3.",
+    "number_of_living_rooms": "2 (includes kitchen)",
+    "state_if_used_as_bedrooms": null,
+    "rooms_not_in_daily_use": "2.",
+    "sleepouts": "Yes."
+  },
+  "bath": {
+    "location": "Bathroom inside",
+    "shared": null,
+    "hot_water_service": "chip h."
+  },
+  "wc": {
+    "internal_or_external": null,
+    "shared": "Sep."
+  },
+  "wash_house": "Sep.",
+  "kitchen": {
+    "shared": "—",
+    "ever_used_as_bedroom": "—",
+    "meals_can_be_taken_there": "Yes.",
+    "sink_and_water_tap": "& in alcove near kitchen",
+    "hot_water_service": null,
+    "cooking_facilities": "Gas (T) fue (L).",
+    "food_storage": "Pantry + Cabinet + coolgardie safe",
+    "facilities_for_cooking_and_water_supply_in_other_rooms": "—"
+  },
+  "engine": "claude",
+  "model": "claude-opus-5",
+  "effort": "low",
+  "seconds": 51.3
+}
