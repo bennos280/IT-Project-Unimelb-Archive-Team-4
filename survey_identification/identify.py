@@ -33,8 +33,22 @@ def find_images(folder: Path) -> list[Path]:
     )
 
 
+def _regular_dot_chain(centres: list[float]) -> int:
+    # Find repeated small marks with a nearly fixed horizontal gap.
+    longest = 0
+    for expected_gap in range(3, 11):
+        current = 1
+        for left, right in zip(centres, centres[1:]):
+            if abs((right - left) - expected_gap) <= 1:
+                current += 1
+            else:
+                current = 1
+            longest = max(longest, current)
+    return longest
+
+
 def _layout_features(image_path: Path) -> dict[str, float]:
-    # 测量页面的印刷版式，只用于内部分类 / Measure the printed layout for internal classification only
+    # Measure the printed layout for internal classification only
 
     try:
         with Image.open(image_path) as source:
@@ -59,19 +73,53 @@ def _layout_features(image_path: Path) -> dict[str, float]:
     row_counts = [0] * analysis_height
     column_counts = [0] * analysis_width
     third_counts = [0, 0, 0]
+    column_streaks = [0] * analysis_width
+    longest_vertical_run = 0
 
     for index, is_dark in enumerate(dark):
+        column = index % analysis_width
         if not is_dark:
+            column_streaks[column] = 0
             continue
         row, column = divmod(index, analysis_width)
         row_counts[row] += 1
         column_counts[column] += 1
         third_counts[min(2, column * 3 // analysis_width)] += 1
+        column_streaks[column] += 1
+        longest_vertical_run = max(longest_vertical_run, column_streaks[column])
 
     row_fractions = [count / analysis_width for count in row_counts]
     column_fractions = [count / analysis_height for count in column_counts]
     third_ink = [count / (total / 3) for count in third_counts]
     largest_third = max(third_ink, default=0.0)
+
+    dot_chains: list[int] = []
+    for row in range(analysis_height):
+        row_start = row * analysis_width
+        small_mark_centres: list[float] = []
+        mark_start: int | None = None
+
+        for column in range(analysis_width + 1):
+            is_dark = (
+                column < analysis_width
+                and dark[row_start + column]
+            )
+            if is_dark and mark_start is None:
+                mark_start = column
+            elif not is_dark and mark_start is not None:
+                mark_width = column - mark_start
+                if mark_width <= 4:
+                    small_mark_centres.append((mark_start + column - 1) / 2)
+                mark_start = None
+
+        dot_chains.append(_regular_dot_chain(small_mark_centres))
+
+    strongest_dot_rows = sorted(dot_chains, reverse=True)[:20]
+    dot_pattern_score = (
+        sum(strongest_dot_rows) / len(strongest_dot_rows)
+        if strongest_dot_rows
+        else 0.0
+    )
 
     return {
         "ink": sum(dark) / total,
@@ -79,6 +127,8 @@ def _layout_features(image_path: Path) -> dict[str, float]:
         "column_max": max(column_fractions, default=0.0),
         "long_rows": float(sum(value >= 0.30 for value in row_fractions)),
         "long_columns": float(sum(value >= 0.30 for value in column_fractions)),
+        "vertical_line_run": longest_vertical_run / analysis_height,
+        "dot_pattern_score": dot_pattern_score,
         "active_rows": sum(value >= 0.015 for value in row_fractions) / analysis_height,
         "column_balance": (
             min(third_ink, default=0.0) / largest_third if largest_third else 0.0
@@ -87,34 +137,24 @@ def _layout_features(image_path: Path) -> dict[str, float]:
 
 
 def _classify_layout(features: dict[str, float]) -> str:
-    # 使用已标注样本校准的版式规则区分三种页面 / Classify the three page types with layout rules calibrated on labelled samples
-    ink = features["ink"]
-    row_max = features["row_max"]
-    long_rows = features["long_rows"]
-    long_columns = features["long_columns"]
-    active_rows = features["active_rows"]
-    balance = features["column_balance"]
+    # Use strong template evidence before treating the page as free-form notes.
+    vertical_line_run = features["vertical_line_run"]
+    dot_pattern_score = features["dot_pattern_score"]
 
-    # 大多数 Page 1 有连续竖表格线 / Most Page 1 forms contain continuous vertical grid lines
-    if long_columns >= 1:
+    # Page 1 contains a continuous vertical line from the printed table.
+    if vertical_line_run >= 0.18:
         return "page_1"
 
-    # 极浅页面主要是 Page 2；窄行且分布均衡的例外是 Page 3 / Very faint pages are mainly Page 2; balanced narrow-line pages are Page 3
-    if ink <= 0.020:
-        if balance <= 0.62:
-            return "page_2"
-        return "page_3" if row_max <= 0.10 else "page_2"
+    # Page 3 contains many small marks arranged as regularly spaced dotted leaders.
+    if dot_pattern_score >= 12.0:
+        return "page_3"
 
-    # 没有长横线且墨迹集中于局部栏位时通常是 Page 3 / Without long horizontal lines, locally concentrated ink usually indicates Page 3
-    if balance <= 0.67:
-        return "page_3" if long_rows < 1 else "page_2"
-
-    # 版面覆盖较广的是弱表格 Page 1，其余为多栏 Page 3 / Broad coverage indicates a faint-grid Page 1; otherwise it is Page 3
-    return "page_1" if active_rows > 0.54 else "page_3"
+    # Without either fixed printed pattern, the page is treated as handwritten notes.
+    return "page_2"
 
 
 def identify_page(image_path: Path) -> dict[str, Any]:
-    # 只根据图片内容识别，不使用文件名或顺序 / Identify from image content without using its filename or order
+    # Identify from image content without using its filename or order
 
     features = _layout_features(image_path)
     return {
@@ -124,7 +164,7 @@ def identify_page(image_path: Path) -> dict[str, Any]:
 
 
 def create_record_sets(images: Iterable[Path]) -> list[list[Path]]:
-    # 遇到 Page 1 时开始新 bundle，顺序只用于确定边界 / Start a bundle at Page 1; order only sets boundaries
+    # Start a bundle at Page 1; order only sets boundaries
 
     ordered = sorted(images, key=natural_sort_key)
     groups: list[list[Path]] = []
@@ -150,7 +190,7 @@ def create_record_sets(images: Iterable[Path]) -> list[list[Path]]:
 
 
 def _identify_bundle_pages(images: list[Path]) -> list[dict[str, Any]]:
-    # 独立识别 bundle 中的每一页 / Identify every page in a bundle independently
+    # Identify every page in a bundle independently
 
     identified: list[dict[str, Any]] = []
     unreadable: dict[Path, str] = {}
@@ -184,7 +224,7 @@ def _safe_id(value: str) -> str:
 
 
 def process_area(folder: Path) -> list[dict[str, Any]]:
-    # 子文件夹可以表示一组；平铺图片则由 Page 1 分组 / A subfolder may define a set; Page 1 separates flat images
+    # A subfolder may define a set; Page 1 separates flat images
     survey_folders = sorted(
         (
             child

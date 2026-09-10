@@ -47,3 +47,21 @@ Additional records a page's special status without replacing a known page type. 
 This version currently processes split_boxhill_00/ and split_brighton_01/. It creates survey_output.json and copies the classified images into output/classified/main/, output/classified/notes/, output/classified/coded/ and output/classified/additional/.
 
 The images keep their original filenames. The JSON records each image's ID, source area, predicted page type, bundle ID, Additional status and exported location. It also records the total image count and page counts so the output can be checked for completeness.
+
+
+
+
+--------------------------------------------------------------------------------------------------
+
+
+# Identification method update
+
+The previous classifier mainly compared general layout measurements, including ink density, row and column distribution, and page balance. This sometimes caused dense Page 3 pages to be identified as Page 1, or handwritten Page 2 pages to be identified as Page 3.
+
+The updated method still uses Pillow and does not require OpenCV. It first checks for continuous table lines as the main Page 1 pattern. It then checks for repeated small marks with regular horizontal spacing, similar to dotted leaders, as the main Page 3 pattern. If neither fixed printed pattern is detected, the image is treated as the handwritten Page 2 format. OCR-based keyword identification may be added later after the team confirms which OCR model will be used.
+
+# Known exception: Box Hill pages 84–86
+
+Box Hill pages 1973-0002-00001-00001_00084.png to 1973-0002-00001-00001_00086.png appear consecutively in the original archive and are expected to belong to the same survey bundle. However, pages 84 and 85 use older or different printed layouts that do not match the standard Page 1 and Page 2 formats used by the other records. Page 86 still matches the usual dotted-list Page 3 format.
+
+For the current review, pages 84 and 85 should be treated as Additional pages instead of being forced into the standard Page 1 or Page 2 categories. They should still remain associated with page 86 as one bundle based on the original archive order. This exception is documented for later discussion and has not yet been added as a special rule in the classifier. The other pages reviewed in the current datasets are being identified correctly.
