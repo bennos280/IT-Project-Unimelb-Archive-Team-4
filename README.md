@@ -1,7 +1,8 @@
 # Prest survey digitisation (Team 4)
 
-Needs Python 3.12 and the Claude Code CLI signed in (`claude auth login`). Copy `.env.example` to `.env`.
+Needs Python 3.12, `pip install -r requirements.txt`, and the Claude Code CLI signed in (`claude auth login`). Copy `.env.example` to `.env`.
 
+    python pipeline/preprocess.py source --output source-pre        # optional: deskew, contrast, binarise; same filenames
     python pipeline/transcribe.py source/coded/216412_p003.jpg     # -> answers/<model>-<effort>/
     python pipeline/score.py --pages                               # answers vs truth
 

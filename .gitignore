@@ -10,3 +10,6 @@ __pycache__/
 *.py[cod]
 tmp/
 .claude/
+
+# Preprocessed copies of source/, rebuilt by pipeline/preprocess.py
+source-pre/
