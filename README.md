@@ -28,9 +28,11 @@ Score answers against the hand-typed truth:
 
 ## Tests
 
-    python pipeline/test_identify.py
-
-Every page in `source/<kind>/` must be identified as its folder.
+    tests/test_page_identification
+    test cases are in test_cases folder and contain pages grouped into 4 categories(coded, main, notes and other)
+    
+    to run just make sure to pip install pytest, to view pages resulting from output of pipeline/identify.py run "python -m pytest tests/test_page_identification/test_identify.py::test_<page_type>_pages"
+    output should be in the data folder
 
 ## Notes
 
