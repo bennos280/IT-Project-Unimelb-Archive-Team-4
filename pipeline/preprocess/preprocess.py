@@ -1,6 +1,6 @@
 """Crop and straighten survey cards, retaining colour by default.
 
-python pipeline/p.py source --output source-pre
+python pipeline/preprocess.py source --output source-pre
 
 optional enhancements:
 --greyscale converts to greyscale; --binarize converts to black and white.

@@ -8,7 +8,13 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .claude/
+<<<<<<< HEAD
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+=======
+
+# Preprocessed copies of source/, rebuilt by pipeline/preprocess.py
+source-pre/
+>>>>>>> c2b3445 (Fix preprocessing command example and update gitignore)
