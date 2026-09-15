@@ -14,6 +14,6 @@ Survey PDFs go in `data/` (not in git): https://archives.library.unimelb.edu.au/
     pip install -r requirements.txt
     python -m pytest tests
 
-`tests/page_identification/pages/<label>/` holds pages a perfect classifier would call `<label>`
+`tests/identify_page/pages/<label>/` holds pages a perfect classifier would call `<label>`
 
 `sources.csv` maps each image back to its page in the original test PDFs.
