@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +12,26 @@ from identify import process_dataset
 # Keep default paths relative to the folder containing main.py
 PROJECT_DIR = Path(__file__).resolve().parent
 INPUT_FOLDERS = [
-    PROJECT_DIR / "split_boxhill_00",
-    PROJECT_DIR / "split_brighton_01",
+    #PROJECT_DIR / "split_boxhill_00",
+    #PROJECT_DIR / "split_brighton_01",
+    #PROJECT_DIR / "split_bringhton_01_2",
+    #PROJECT_DIR / "split_brunswick_02",
+    #PROJECT_DIR / "split_brunswick_02_2",
+    #PROJECT_DIR / "split_brunswick_02_3",
+    #PROJECT_DIR / "split_essendon_08",
+    #PROJECT_DIR / "split_essendon_08_2",
+    #PROJECT_DIR / "split_essendon_08_3",
+    PROJECT_DIR / "split_canberwell_03",
+    #PROJECT_DIR / "split_canberwell_03_2",
+    #PROJECT_DIR / "split_caulfield_04",
+    #PROJECT_DIR / "split_chelsea_05",
+    #PROJECT_DIR / "split_coburg_06",
+    #PROJECT_DIR / "split_coburg_06_2",
+    #PROJECT_DIR / "split_coollingwood_07",
+    #PROJECT_DIR / "split_Prest survey- Fitzroy",
+    #PROJECT_DIR / "split_Prest survey- North Fitzroy",
+    #PROJECT_DIR / "split_Rise in income- Footscray",
+    #PROJECT_DIR / "split_hawthorn_11",
 ]
 OUTPUT_DIR = PROJECT_DIR / "output"
 
@@ -45,11 +62,6 @@ def safe_area_id(folder: Path) -> str:
 def process_area(folder: Path, classified_folder: Path) -> list[dict[str, Any]]:
     # Classify and bundle each area independently
     internal_result = process_dataset(folder)
-    source_by_name = {
-        image.name: image
-        for image in folder.rglob("*")
-        if image.is_file()
-    }
     area_id = safe_area_id(folder)
     results: list[dict[str, Any]] = []
     bundle_number = 0
@@ -73,7 +85,7 @@ def process_area(folder: Path, classified_folder: Path) -> list[dict[str, Any]]:
                 additional_reason = "before_first_page_1"
             elif predicted_page == "additional_page":
                 is_additional = True
-                additional_reason = "unclear_page_format"
+                additional_reason = page.get("classification_reason") or "unclear_page_format"
             else:
                 occurrence_count[predicted_page] += 1
                 if occurrence_count[predicted_page] > 1:
@@ -83,7 +95,7 @@ def process_area(folder: Path, classified_folder: Path) -> list[dict[str, Any]]:
             destination_folder = classified_folder / FOLDER_BY_PAGE[predicted_page]
             destination_folder.mkdir(parents=True, exist_ok=True)
             destination = destination_folder / filename
-            shutil.copy2(source_by_name[filename], destination)
+            shutil.copy2(Path(page["source_path"]), destination)
             exported_path = destination.relative_to(classified_folder.parent).as_posix()
 
             item = {
@@ -102,7 +114,7 @@ def process_area(folder: Path, classified_folder: Path) -> list[dict[str, Any]]:
 
 
 def run(input_folders: list[Path], output_folder: Path) -> Path:
-    # Create one JSON file and three classified image folders
+    # Create one JSON file and four classified image folders
     classified_folder = output_folder / "classified"
     if classified_folder.exists():
         shutil.rmtree(classified_folder)
@@ -111,8 +123,6 @@ def run(input_folders: list[Path], output_folder: Path) -> Path:
 
     all_images: list[dict[str, Any]] = []
     for folder in input_folders:
-        if not folder.exists() or not folder.is_dir():
-            raise ValueError(f"Input folder does not exist: {folder}")
         all_images.extend(process_area(folder, classified_folder))
 
     result = {
@@ -145,11 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
-    try:
-        output_path = run(args.input, args.output)
-    except (OSError, ValueError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
+    output_path = run(args.input, args.output)
 
     print(f"Survey JSON: {output_path.resolve()}")
     print(f"Classified images: {(args.output / 'classified').resolve()}")

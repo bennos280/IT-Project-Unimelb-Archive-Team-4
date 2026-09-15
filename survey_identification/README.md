@@ -65,3 +65,23 @@ The updated method still uses Pillow and does not require OpenCV. It first check
 Box Hill pages 1973-0002-00001-00001_00084.png to 1973-0002-00001-00001_00086.png appear consecutively in the original archive and are expected to belong to the same survey bundle. However, pages 84 and 85 use older or different printed layouts that do not match the standard Page 1 and Page 2 formats used by the other records. Page 86 still matches the usual dotted-list Page 3 format.
 
 For the current review, pages 84 and 85 should be treated as Additional pages instead of being forced into the standard Page 1 or Page 2 categories. They should still remain associated with page 86 as one bundle based on the original archive order. This exception is documented for later discussion and has not yet been added as a special rule in the classifier. The other pages reviewed in the current datasets are being identified correctly.
+
+
+
+
+
+
+
+
+----------------------------------------------------------------------------------------------------------------------------------------
+### Page identification and bundling
+
+The current implementation uses image features with Pillow and does not require an OCR model. Each image is classified independently. Page 1 is identified using table lines, Page 3 using dotted layout patterns, and Page 2 using handwriting-like strokes.
+
+Recent fixes improve the distinction between sparse handwritten notes and blank sheets. Handwriting detection uses a higher-resolution image and local contrast, with an additional rotated analysis for sideways notes. Filters reduce false detections caused by paper texture, irregular dotted bleed-through, small print fragments, punch holes, and creases near the paper edges.
+
+Images are processed in natural filename order within each scan folder. Each Page 1 starts a new bundle, which continues until the next Page 1. Blank and additional pages remain in the current bundle. Pages before the first Page 1 have no bundle ID. Repeated Page 2 or Page 3 pages keep their page type and bundle ID, with `is_additional` set to `true`.
+
+Run `python main.py` using the input folders configured in `INPUT_FOLDERS`. The output contains `survey_output.json` and four image folders: `main`, `notes`, `coded`, and `additional`. Original image filenames are preserved, and bundle IDs are recorded in JSON. `additional_count` includes both additional pages and repeated pages flagged within bundles.
+
+The latest changes were checked against six supplied scans and synthetic image and bundling tests. Classification remains heuristic, so these checks do not establish accuracy across the full dataset.
