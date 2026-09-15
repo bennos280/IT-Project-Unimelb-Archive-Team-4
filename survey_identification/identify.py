@@ -113,6 +113,7 @@ def _layout_features(image_path: Path) -> dict[str, float]:
     column_counts = [0] * analysis_width
     third_counts = [0, 0, 0]
     column_streaks = [0] * analysis_width
+    column_longest_runs = [0] * analysis_width
     longest_vertical_run = 0
 
     for index, is_dark in enumerate(dark):
@@ -125,12 +126,29 @@ def _layout_features(image_path: Path) -> dict[str, float]:
         column_counts[column] += 1
         third_counts[min(2, column * 3 // analysis_width)] += 1
         column_streaks[column] += 1
+        column_longest_runs[column] = max(
+            column_longest_runs[column], column_streaks[column]
+        )
         longest_vertical_run = max(longest_vertical_run, column_streaks[column])
 
     row_fractions = [count / analysis_width for count in row_counts]
     column_fractions = [count / analysis_height for count in column_counts]
     third_ink = [count / (total / 3) for count in third_counts]
     largest_third = max(third_ink, default=0.0)
+
+    long_column_mask = [
+        run / analysis_height >= 0.18 for run in column_longest_runs
+    ]
+    separate_long_columns = sum(
+        is_long and (column == 0 or not long_column_mask[column - 1])
+        for column, is_long in enumerate(long_column_mask)
+    )
+    centre_start = round(analysis_width * 0.45)
+    centre_end = round(analysis_width * 0.55)
+    centre_line_run = (
+        max(column_longest_runs[centre_start:centre_end], default=0)
+        / analysis_height
+    )
 
     dot_chains: list[int] = []
     for row in range(analysis_height):
@@ -171,6 +189,8 @@ def _layout_features(image_path: Path) -> dict[str, float]:
         "long_rows": float(sum(value >= 0.30 for value in row_fractions)),
         "long_columns": float(sum(value >= 0.30 for value in column_fractions)),
         "vertical_line_run": longest_vertical_run / analysis_height,
+        "centre_line_run": centre_line_run,
+        "separate_long_columns": float(separate_long_columns),
         "dot_pattern_score": dot_pattern_score,
         "dot_pattern_peak": float(max(dot_chains, default=0)),
         "strong_dot_rows": float(sum(value >= 10 for value in dot_chains)),
@@ -179,6 +199,13 @@ def _layout_features(image_path: Path) -> dict[str, float]:
             min(third_ink, default=0.0) / largest_third if largest_third else 0.0
         ),
     }
+
+
+def _looks_like_other_form(features: dict[str, float]) -> bool:
+    return (
+        features["centre_line_run"] >= 0.30
+        or features["separate_long_columns"] >= 6
+    )
 
 
 def _classify_layout(features: dict[str, float]) -> str:
@@ -212,6 +239,11 @@ def _classify_layout(features: dict[str, float]) -> str:
         and text_line_rows < 8
     )
     if portrait_cover or viewer_framed_cover or viewer_framed_blank:
+        return ADDITIONAL_PAGE
+
+    # Extra forms have either one long divider through the page centre or a
+    # much wider grid than Page 1. Check these before the general table rule.
+    if _looks_like_other_form(features):
         return ADDITIONAL_PAGE
 
     # Page 1 normally has a long vertical table line.  A scan can break that
@@ -402,7 +434,7 @@ def _handwriting_features(image_path: Path, sideways: bool = False) -> dict[str,
                    # Isolated crease runs at the rim are not writing. Apply
                    # this in either orientation, without cropping top notes.
                    and g[0] < w * .95 and g[2] > w * .05
-                   and g[1] < h * .95 and g[3] > h * .05
+                   and g[1] < h * .95 and g[3] > h * .015
                    # Fragmented reverse-side print can align like handwriting,
                    # but its remaining fragments are only a few pixels tall.
                    # Require character-sized components, not their combined box.
@@ -437,6 +469,11 @@ def identify_page(image_path: Path) -> dict[str, Any]:
     if is_cover:
         page_type = ADDITIONAL_PAGE
         reason = "cover_page"
+    elif _looks_like_other_form(features):
+        # Keep known extra-form layouts as additional; do not let detected
+        # handwriting on the form promote them to Page 2.
+        page_type = ADDITIONAL_PAGE
+        reason = "other_form"
     elif _looks_like_faint_showthrough(features):
         # Conservative blank-page patch: do not let pale reverse-side print
         # become Page 2 merely because the handwriting detector finds a few
