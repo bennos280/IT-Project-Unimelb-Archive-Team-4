@@ -5,11 +5,28 @@ on:
     branches: [main]
 jobs:
   tests:
+    name: Survey pipeline
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - name: Get project code
+        uses: actions/checkout@v4
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync
-      - run: uv run pytest -q -s
+      - name: Install dependencies
+        id: dependencies
+        run: uv sync
+      # Run every group even if another group fails, provided setup succeeded.
+      - name: Page identification
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: uv run pytest -q -s tests/test_identify.py
+      - name: PDF splitting
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: uv run pytest -q -s tests/test_split.py
+      - name: Retry and recovery
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: uv run pytest -q -s tests/test_run.py
+      - name: Transcription scoring
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: uv run pytest -q -s tests/test_transcribe.py

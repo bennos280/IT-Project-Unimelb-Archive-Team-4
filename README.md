@@ -24,7 +24,7 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 
 3. Set `DATA` in `.env` to your folder of survey PDFs ([the archive](https://archives.library.unimelb.edu.au/nodes/view/499420)). To use the default `DATA=data`, create a `data` folder inside the project and put your PDFs there.
 
-   Set `OUTPUT` to where pipeline results should be saved (default: `output`). Both `DATA` and `OUTPUT` accept paths relative to the project folder or absolute paths such as `D:/survey-results`. Results go under `<OUTPUT>/<name>/`; an existing manifest there causes the default run to skip that input. Choosing a new, empty output folder starts a fresh set of results.
+   Set `OUTPUT` to where pipeline results should be saved (default: `output`). Both `DATA` and `OUTPUT` accept paths relative to the project folder or absolute paths such as `D:/survey-results`. Results go under `<OUTPUT>/<name>/`; the default run skips inputs only when their requested steps are complete. Choosing a new, empty output folder starts a fresh set of results.
 
 4. Run the pipeline:
 
@@ -38,11 +38,15 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 
 | | |
 |---|---|
-| `uv run survey` | every PDF (or folder of page images) in DATA with no output yet -> `<OUTPUT>/<name>/manifest.json` + `review.json` |
+| `uv run survey` | new or unfinished PDFs (or folders of page images) in DATA -> `<OUTPUT>/<name>/manifest.json` + `review.json` |
 | `uv run survey x.pdf` | one PDF, or a folder of page images; `--transcribe` also transcribes (paid: needs the `claude` CLI signed in, or `codex` for gpt-* models) |
 | `uv run pytest` | 1,237 labelled pages, zero wrong answers required; 30 transcribed cards scored |
 | `uv run survey train` | refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`) |
 | `uv run survey transcribe <card>`, `uv run survey score --pages` | transcription leaderboard, `results/transcribe/` |
+
+If a run stops partway through, run the same command again. Splitting and identification run again for unfinished inputs. With `--transcribe`, saved page transcripts are reused when the image, page type, model, effort, prompt and template still match and the saved result is unchanged. Adding `--transcribe` also picks up inputs that have finished identification but have not finished transcription.
+
+If you replace a PDF that was already completed, pass its path explicitly to rerun it, for example `uv run survey data/x.pdf`. The generated page folder is replaced after the new PDF renders successfully, so pages from an older, longer PDF are removed.
 
 ## Add a step
 
