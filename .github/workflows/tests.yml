@@ -1,17 +1,15 @@
 name: Tests
-
 on:
   pull_request:
   push:
-    branches: ["main"]
-
+    branches: [main]
 jobs:
-  identify_page:
+  tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - run: python -m pytest tests/identify_page
+          enable-cache: true
+      - run: uv sync
+      - run: uv run pytest -q

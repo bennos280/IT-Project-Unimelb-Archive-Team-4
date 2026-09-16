@@ -1,19 +1,61 @@
 # Prest survey digitisation (Team 4)
 
-Needs Python 3.12 and the Claude Code CLI signed in (`claude auth login`). Copy `.env.example` to `.env`.
+1940s University of Melbourne social survey scans -> data. Each PDF page is labelled
+(main / notes / coded / blank, or **review** when the model isn't sure) and, optionally,
+transcribed to JSON by a vision model. Pages a human must check land in `review.json`.
 
-    python pipeline/transcribe.py source/coded/216412_p003.jpg     # -> answers/<model>-<effort>/
-    python pipeline/score.py --pages                               # answers vs truth
+## Setup
 
-Prompt = `prompt.txt` + the template for whichever folder the image is in. Tweak, rerun, compare.
-New answer key: copy the template to `truth/<kind>/<page>.json` and fill it in from the image.
-Survey PDFs go in `data/` (not in git): https://archives.library.unimelb.edu.au/nodes/view/499420
+1. Install **uv once** on your computer. On Windows:
 
-## Tests
+   ```powershell
+   winget install --id=astral-sh.uv -e
+   ```
 
-    pip install -r requirements.txt
-    python -m pytest tests
+   For Mac/Linux or other installation options, see the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
-`tests/identify_page/pages/<label>/` holds pages a perfect classifier would call `<label>`
+2. Open a **new terminal in the project folder** and copy the configuration:
 
-`sources.csv` maps each image back to its page in the original test PDFs.
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+   On Mac/Linux, use `cp .env.example .env`.
+
+3. Set `DATA` in `.env` to your folder of survey PDFs ([the archive](https://archives.library.unimelb.edu.au/nodes/view/499420)). To use the default `DATA=data`, create a `data` folder inside the project and put your PDFs there.
+
+   Set `OUTPUT` to where pipeline results should be saved (default: `output`). Both `DATA` and `OUTPUT` accept paths relative to the project folder or absolute paths such as `D:/survey-results`. Results go under `<OUTPUT>/<name>/`; an existing manifest there causes the default run to skip that input. Choosing a new, empty output folder starts a fresh set of results.
+
+4. Run the pipeline:
+
+   ```sh
+   uv run survey
+   ```
+
+   The first run automatically creates the Python environment and installs the required libraries; later runs reuse it. No separate `uv sync` step is needed. After setup, just run `uv run survey` from the project folder.
+
+## Commands
+
+| | |
+|---|---|
+| `uv run survey` | every PDF (or folder of page images) in DATA with no output yet -> `<OUTPUT>/<name>/manifest.json` + `review.json` |
+| `uv run survey x.pdf` | one PDF, or a folder of page images; `--transcribe` also transcribes (paid: needs the `claude` CLI signed in, or `codex` for gpt-* models) |
+| `uv run pytest` | 1,237 labelled pages, zero wrong answers required; 30 transcribed cards scored |
+| `uv run survey train` | refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`) |
+| `uv run survey transcribe <card>`, `uv run survey score --pages` | transcription leaderboard, `results/transcribe/` |
+
+## Add a step
+
+A step is one function in `pipeline/run.py` that reads and writes `run.pages`, plus one entry in `STEPS`:
+
+```python
+def step_thing(run):
+    for page in run.pages:
+        page["thing"] = ...
+        if unsure:
+            run.flag(page, "thing", "why")
+
+STEPS = {"split": step_split, "identify": step_identify, "thing": step_thing, "transcribe": step_transcribe}
+```
+
+Heavy code goes in `pipeline/thing/`, imported inside the function. Flagged pages land in `review.json`.
