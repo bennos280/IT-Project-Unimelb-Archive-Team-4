@@ -1,0 +1,6 @@
+* text=auto
+*.npy binary
+*.npz binary
+*.jpg binary
+*.png binary
+*.pdf binary
