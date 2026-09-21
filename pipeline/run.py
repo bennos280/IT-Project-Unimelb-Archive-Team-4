@@ -196,7 +196,8 @@ def run_steps(run: Run, steps: list[str]) -> None:
 def unprocessed(folder: Path, output: Path, steps: list[str] | None = None) -> list[Path]:
     """PDFs (or folders of images) in DATA whose requested steps have not all finished."""
     if steps is None:
-        steps = [s for s in STEPS if s != "transcribe"]
+        steps = ["split", "identify"]
+        
     if not folder.is_dir():
         sys.exit(f"DATA={folder} is not a folder; fix .env")
     candidates = sorted(p for p in folder.iterdir()
