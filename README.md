@@ -43,7 +43,8 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 | `uv run pytest` | 1,237 labelled pages, zero wrong answers required; 30 transcribed cards scored |
 | `uv run survey train` | refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`) |
 | `uv run survey transcribe <card>`, `uv run survey score --pages` | transcription leaderboard, `results/transcribe/` |
-
+| 'uv run survey data/x.pdf --preprocess'| preprocess | Identify pages, then crop, straighten and binarize eligible images|
+| 'uv run survey data/x.pdf --preprocess --transcribe'| Preprocess images, then transcribe them to JSON|
 If a run stops partway through, run the same command again. Splitting and identification run again for unfinished inputs. With `--transcribe`, saved page transcripts are reused when the image, page type, model, effort, prompt and template still match and the saved result is unchanged. Adding `--transcribe` also picks up inputs that have finished identification but have not finished transcription.
 
 If you replace a PDF that was already completed, pass its path explicitly to rerun it, for example `uv run survey data/x.pdf`. The generated page folder is replaced after the new PDF renders successfully, so pages from an older, longer PDF are removed.
@@ -59,7 +60,7 @@ def step_thing(run):
         if unsure:
             run.flag(page, "thing", "why")
 
-STEPS = {"split": step_split, "identify": step_identify, "thing": step_thing, "transcribe": step_transcribe}
+STEPS = {"split": step_split, "identify": step_identify,"preprocess": step_preprocess, "thing": step_thing, "transcribe": step_transcribe}
 ```
 
 Heavy code goes in `pipeline/thing/`, imported inside the function. Flagged pages land in `review.json`.

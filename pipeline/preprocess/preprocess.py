@@ -1,4 +1,4 @@
-"""Crop and straighten survey cards, retaining colour by default.
+"""Crop and straighten survey cards, binarise colour by default.
 
 python pipeline/preprocess.py source --output source-pre
 
@@ -22,7 +22,7 @@ SUPPORTED = {".png", ".jpg", ".jpeg", ".jfif", ".bmp", ".tif", ".tiff", ".webp"}
  
  
 def rectify_page(img):
-    """Conservatively detect a paper quadrilateral against a light background.
+    """Conservatively detect a paper quadrilateral against a light or dark background.
 
     Work at reduced resolution; transform the original only when four plausible
     corners and visible background margins support the crop.
@@ -31,7 +31,12 @@ def rectify_page(img):
     scale = min(1.0, 1400.0 / max(h, w))
     small = cv2.resize(img, (round(w * scale), round(h * scale)))
     grey = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-    mask = np.uint8(grey < 245) * 255
+    # Separate the light card from a dark scanner border when present.
+    border = np.concatenate([grey[0], grey[-1], grey[:, 0], grey[:, -1]])
+    if np.median(border) < 100:
+        _, mask = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    else:
+        mask = np.uint8(grey < 245) * 255
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     area = small.shape[0] * small.shape[1]
@@ -74,6 +79,55 @@ def rectify_page(img):
         return result, {"applied": True, "corners": pts.tolist(), "method": "paper_boundary"}
     return img, {"applied": False, "reason": "No reliable four-corner paper boundary"}
 
+def estimate_boundary_skew(small):
+    """Use long, agreeing edges on distinct sides of a scanned card.
+
+    Keep this separate from interior ruling: handwriting often has no long
+    straight baselines, while a clipped card can still expose several edges.
+    """
+    h, w = small.shape
+    edges = cv2.Canny(small, 30, 100)
+    lines = cv2.HoughLinesP(
+        edges, 1, np.pi / 1800, threshold=60,
+        minLineLength=max(30, min(h, w) // 2), maxLineGap=25,
+    )
+    if lines is None:
+        return None
+    records = []
+    for x1, y1, x2, y2 in np.asarray(lines).reshape(-1, 4):
+        dx, dy = x2 - x1, y2 - y1
+        angle = (math.degrees(math.atan2(dy, dx)) + 45) % 90 - 45
+        if abs(angle) > 7:
+            continue
+        side = None
+        if abs(dx) >= w * 0.4:
+            if max(y1, y2) < h * 0.1:
+                side = "top"
+            elif min(y1, y2) > h * 0.9:
+                side = "bottom"
+        elif abs(dy) >= h * 0.4:
+            if max(x1, x2) < w * 0.1:
+                side = "left"
+            elif min(x1, x2) > w * 0.9:
+                side = "right"
+        if side is not None:
+            records.append((side, angle, math.hypot(dx, dy)))
+    # Duplicate Hough detections of one edge must not create confidence.
+    by_side = {}
+    for side, angle, length in records:
+        if side not in by_side or length > by_side[side][1]:
+            by_side[side] = (angle, length)
+    if len(by_side) < 2:
+        return None
+    angles, weights = np.asarray(list(by_side.values())).T
+    if np.ptp(angles) > 0.6:
+        return None
+    angle = float(np.average(angles, weights=weights))
+    return angle, {"confident": True, "method": "card_edges",
+                   "side_count": len(by_side),
+                   "candidate_angle": round(angle, 3)}
+
+
 
 def estimate_skew_details(grey):
     """Estimate page skew from long lines with similar angles, ignoring image borders."""
@@ -84,6 +138,10 @@ def estimate_skew_details(grey):
         grey,
         (round(grey.shape[1] * scale), round(grey.shape[0] * scale)),
     )
+    boundary = estimate_boundary_skew(small)
+    if boundary is not None:
+        return boundary
+
 
     # Improve local contrast and detect edges.
     enhanced = cv2.createCLAHE(
@@ -200,7 +258,7 @@ def deskew(img, angle):
     return rotated
 
 
-def binarize(grey, block_frac=0.045, C=15):
+def binarize(grey, block_frac=0.045, C=20):
     """Apply adaptive thresholding to a greyscale image. 
     block_frac: Size of the nearby area used to judge each pixel.
     C: Higher values remove more noise but may erase faint writing.
@@ -213,7 +271,7 @@ def binarize(grey, block_frac=0.045, C=15):
     )
  
  
-def transform_array(img, do_deskew=True, keep_color=True, do_binarize=False, source_label="", adaptive_c=15, crop_page=True):
+def transform_array(img, do_deskew=True, keep_color=True, do_binarize=True, source_label="", adaptive_c=20, crop_page=True):
     """Crop and straighten, then optionally convert to greyscale or binary."""
 
     original_size = [img.shape[1], img.shape[0]]
@@ -239,10 +297,7 @@ def transform_array(img, do_deskew=True, keep_color=True, do_binarize=False, sou
         "source": source_label,
         "page_crop": crop_report,
         "deskew_detection": skew_report,
-        "needs_review": bool((crop_page and not crop_report["applied"]) or (do_deskew and not skew_report["confident"] and not crop_report["applied"])),
         "deskew_angle_degrees": round(angle, 3),
-        "original_working_size": original_size,
-        "output_size": [result.shape[1], result.shape[0]],
         "binarized": binarized,
     }
     return result, report
@@ -282,37 +337,21 @@ def process_image(source, destination, args):
     return report
  
  
-def main():
-    # Read the input path and processing options.
-    parser = argparse.ArgumentParser( description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,)
+def main(argv=None):
+    from pipeline.common import settings
+    from pipeline.preprocess.options import add_arguments, resolve_options
+
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("input", type=Path, help="One image or a folder of images")
-    parser.add_argument( "--output", type=Path,help="Folder to write results into (default: next to each source image)",
-    )
-    parser.add_argument("--no-deskew", action="store_true", help="Skip small-angle rotation correction",
-    )
-    modes = parser.add_mutually_exclusive_group()
-    modes.add_argument("--greyscale", action="store_true",
-                       help="Convert to greyscale after cropping and straightening")
-    modes.add_argument("--binarize", action="store_true",
-                       help="Convert to black and white after cropping and straightening")
-    parser.add_argument("--c", type=int, default=15,
-                        help="Binary threshold constant; higher values may erase faint writing (default: 15)")
-    parser.add_argument( "--no-crop", action="store_true", help="Skip automatic page-boundary crop and perspective correction",
-    )
-    args = parser.parse_args()
+    parser.add_argument("--output", type=Path, help="Folder to write results into")
+    add_arguments(parser)
+    args = parser.parse_args(argv)
+    try:
+        options = resolve_options(args, settings())
+    except ValueError as exc:
+        parser.error(str(exc))
+    vars(args).update(vars(options))
 
-    args = parser.parse_args()
-
-    if args.c is not None:
-        if args.greyscale:
-            parser.error(
-                "--c enables binarisation and cannot be combined with --greyscale"
-            )
-        args.binarize = True
-    else:
-        args.c = 15
-
- # Get the full input path and check it exists.
     source = args.input.resolve()
     if not source.exists():
         parser.error(f"Input does not exist: {source}")
