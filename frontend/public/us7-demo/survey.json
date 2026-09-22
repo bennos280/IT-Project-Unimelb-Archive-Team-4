@@ -1,0 +1,1303 @@
+{
+  "id": "216417",
+  "title": "Wilfred Prest Survey",
+  "pages": [
+    {
+      "id": "216412/p4",
+      "type": "main",
+      "imageUrl": "/us7-demo/216417_main.jpg",
+      "fields": [
+        {
+          "id": "address",
+          "label": "Address",
+          "group": "Address",
+          "value": "5 Raeburn Cres."
+        },
+        {
+          "id": "municipality",
+          "label": "Municipality",
+          "group": "Address",
+          "value": "Brunswick."
+        },
+        {
+          "id": "number_of_families_in_dwelling",
+          "label": "Number of families in dwelling",
+          "group": "Address",
+          "value": "1"
+        },
+        {
+          "id": "number",
+          "label": "Number",
+          "group": "Address",
+          "value": "1"
+        },
+        {
+          "id": "type_of_dwelling",
+          "label": "Type of dwelling",
+          "group": "Dwelling",
+          "value": "D"
+        },
+        {
+          "id": "structural_material",
+          "label": "Structural material",
+          "group": "Dwelling",
+          "value": "B."
+        },
+        {
+          "id": "number_of_storeys",
+          "label": "Number of storeys",
+          "group": "Dwelling",
+          "value": "1"
+        },
+        {
+          "id": "probable_age",
+          "label": "Probable age",
+          "group": "Dwelling",
+          "value": "14 yrs."
+        },
+        {
+          "id": "yard_or_uncultivated_space",
+          "label": "Yard or uncultivated space",
+          "group": "Yard and garden",
+          "value": null
+        },
+        {
+          "id": "cultivated_garden",
+          "label": "Cultivated garden",
+          "group": "Yard and garden",
+          "value": "lawn + flower beds"
+        },
+        {
+          "id": "weekly_value_fruit_and_vegetables_grown",
+          "label": "Weekly value fruit and vegetables grown",
+          "group": "Yard and garden",
+          "value": "A few"
+        },
+        {
+          "id": "weekly_value_fruit_and_vegetables_sold",
+          "label": "Weekly value fruit and vegetables sold",
+          "group": "Yard and garden",
+          "value": "no"
+        },
+        {
+          "id": "other_commercial_activities_on_premises",
+          "label": "Other commercial activities on premises",
+          "group": "Yard and garden",
+          "value": "[?]"
+        },
+        {
+          "id": "date_of_interview",
+          "label": "Date of interview",
+          "group": "Interview",
+          "value": "12/9/42."
+        },
+        {
+          "id": "signature_of_investigator",
+          "label": "Signature of investigator",
+          "group": "Interview",
+          "value": "P. Counihan"
+        },
+        {
+          "id": "tenure",
+          "label": "Tenure",
+          "group": "Tenure",
+          "value": "T."
+        },
+        {
+          "id": "weekly_rent_or_instalments",
+          "label": "Weekly rent or instalments",
+          "group": "Tenure",
+          "value": "£1.15.0."
+        },
+        {
+          "id": "furnished_or_unfurnished",
+          "label": "Furnished or unfurnished",
+          "group": "Tenure",
+          "value": "Unfurnished"
+        },
+        {
+          "id": "length_of_residence",
+          "label": "Length of residence",
+          "group": "Tenure",
+          "value": "2 yrs."
+        },
+        {
+          "id": "archive_reference",
+          "label": "Archive reference",
+          "group": "Archive and codes",
+          "value": "03570/3808"
+        },
+        {
+          "id": "industry_of_head_code",
+          "label": "Industry of head code",
+          "group": "Archive and codes",
+          "value": "324"
+        },
+        {
+          "id": "occupation_of_head_code",
+          "label": "Occupation of head code",
+          "group": "Archive and codes",
+          "value": "2722"
+        },
+        {
+          "id": "residents.0.relationship",
+          "label": "Relationship",
+          "group": "Residents 1",
+          "value": "Head"
+        },
+        {
+          "id": "residents.0.age",
+          "label": "Age",
+          "group": "Residents 1",
+          "value": "47"
+        },
+        {
+          "id": "residents.0.earning_status",
+          "label": "Earning status",
+          "group": "Residents 1",
+          "value": "B."
+        },
+        {
+          "id": "residents.0.unearned_income_weekly_amount",
+          "label": "Unearned income weekly amount",
+          "group": "Residents 1",
+          "value": null
+        },
+        {
+          "id": "residents.0.unearned_income_source",
+          "label": "Unearned income source",
+          "group": "Residents 1",
+          "value": null
+        },
+        {
+          "id": "residents.0.industry",
+          "label": "Industry",
+          "group": "Residents 1",
+          "value": null
+        },
+        {
+          "id": "residents.0.craft",
+          "label": "Craft",
+          "group": "Residents 1",
+          "value": "Commission driver"
+        },
+        {
+          "id": "residents.0.regularity_of_work",
+          "label": "Regularity of work",
+          "group": "Residents 1",
+          "value": "Yes."
+        },
+        {
+          "id": "residents.0.employer",
+          "label": "Employer",
+          "group": "Residents 1",
+          "value": "Goodman + Sons."
+        },
+        {
+          "id": "residents.0.employers_address",
+          "label": "Employers address",
+          "group": "Residents 1",
+          "value": "E. Brunswick."
+        },
+        {
+          "id": "residents.0.weekly_cost_transport",
+          "label": "Weekly cost transport",
+          "group": "Residents 1",
+          "value": "By truck (kept at home)."
+        },
+        {
+          "id": "residents.0.residential_preference",
+          "label": "Residential preference",
+          "group": "Residents 1",
+          "value": "convenient"
+        },
+        {
+          "id": "residents.0.earnings_last_week",
+          "label": "Earnings last week",
+          "group": "Residents 1",
+          "value": "£8.0.0 (net.)"
+        },
+        {
+          "id": "residents.0.full_time_earnings_excluding_overtime",
+          "label": "Full time earnings excluding overtime",
+          "group": "Residents 1",
+          "value": "\" av."
+        },
+        {
+          "id": "residents.0.weekly_contribution_to_board",
+          "label": "Weekly contribution to board",
+          "group": "Residents 1",
+          "value": "£3.10.0"
+        },
+        {
+          "id": "residents.0.weekly_payments_to_relatives_living_elsewhere",
+          "label": "Weekly payments to relatives living elsewhere",
+          "group": "Residents 1",
+          "value": "—"
+        },
+        {
+          "id": "residents.0.prewar_occupation",
+          "label": "Pre-war: occupation",
+          "group": "Residents 1",
+          "value": "Dairy Farmer."
+        },
+        {
+          "id": "residents.0.prewar_normal_weekly_earnings",
+          "label": "Pre-war: normal weekly earnings",
+          "group": "Residents 1",
+          "value": "£5.0.0"
+        },
+        {
+          "id": "residents.0.prewar_place_of_work_if_outside_melbourne",
+          "label": "Pre-war: place of work if outside melbourne",
+          "group": "Residents 1",
+          "value": "/"
+        },
+        {
+          "id": "residents.0.prewar_occupational_preference",
+          "label": "Pre-war: occupational preference",
+          "group": "Residents 1",
+          "value": "/"
+        },
+        {
+          "id": "residents.1.relationship",
+          "label": "Relationship",
+          "group": "Residents 2",
+          "value": "wife"
+        },
+        {
+          "id": "residents.1.age",
+          "label": "Age",
+          "group": "Residents 2",
+          "value": "44"
+        },
+        {
+          "id": "residents.1.earning_status",
+          "label": "Earning status",
+          "group": "Residents 2",
+          "value": "H"
+        },
+        {
+          "id": "residents.1.unearned_income_weekly_amount",
+          "label": "Unearned income weekly amount",
+          "group": "Residents 2",
+          "value": null
+        },
+        {
+          "id": "residents.1.unearned_income_source",
+          "label": "Unearned income source",
+          "group": "Residents 2",
+          "value": null
+        },
+        {
+          "id": "residents.1.industry",
+          "label": "Industry",
+          "group": "Residents 2",
+          "value": null
+        },
+        {
+          "id": "residents.1.craft",
+          "label": "Craft",
+          "group": "Residents 2",
+          "value": null
+        },
+        {
+          "id": "residents.1.regularity_of_work",
+          "label": "Regularity of work",
+          "group": "Residents 2",
+          "value": null
+        },
+        {
+          "id": "residents.1.employer",
+          "label": "Employer",
+          "group": "Residents 2",
+          "value": null
+        },
+        {
+          "id": "residents.1.employers_address",
+          "label": "Employers address",
+          "group": "Residents 2",
+          "value": null
+        },
+        {
+          "id": "residents.1.weekly_cost_transport",
+          "label": "Weekly cost transport",
+          "group": "Residents 2",
+          "value": null
+        },
+        {
+          "id": "residents.1.residential_preference",
+          "label": "Residential preference",
+          "group": "Residents 2",
+          "value": "—"
+        },
+        {
+          "id": "residents.1.earnings_last_week",
+          "label": "Earnings last week",
+          "group": "Residents 2",
+          "value": "1 wk's wages £4.12.0."
+        },
+        {
+          "id": "residents.1.full_time_earnings_excluding_overtime",
+          "label": "Full time earnings excluding overtime",
+          "group": "Residents 2",
+          "value": "wkly gives £3.10.0 M"
+        },
+        {
+          "id": "residents.1.weekly_contribution_to_board",
+          "label": "Weekly contribution to board",
+          "group": "Residents 2",
+          "value": "1 [?] + 2 [?] = £22 (pm?)"
+        },
+        {
+          "id": "residents.1.weekly_payments_to_relatives_living_elsewhere",
+          "label": "Weekly payments to relatives living elsewhere",
+          "group": "Residents 2",
+          "value": null
+        },
+        {
+          "id": "residents.1.prewar_occupation",
+          "label": "Pre-war: occupation",
+          "group": "Residents 2",
+          "value": "Same."
+        },
+        {
+          "id": "residents.1.prewar_normal_weekly_earnings",
+          "label": "Pre-war: normal weekly earnings",
+          "group": "Residents 2",
+          "value": "/"
+        },
+        {
+          "id": "residents.1.prewar_place_of_work_if_outside_melbourne",
+          "label": "Pre-war: place of work if outside melbourne",
+          "group": "Residents 2",
+          "value": "/"
+        },
+        {
+          "id": "residents.1.prewar_occupational_preference",
+          "label": "Pre-war: occupational preference",
+          "group": "Residents 2",
+          "value": "/"
+        },
+        {
+          "id": "residents.2.relationship",
+          "label": "Relationship",
+          "group": "Residents 3",
+          "value": "son"
+        },
+        {
+          "id": "residents.2.age",
+          "label": "Age",
+          "group": "Residents 3",
+          "value": "21."
+        },
+        {
+          "id": "residents.2.earning_status",
+          "label": "Earning status",
+          "group": "Residents 3",
+          "value": "M."
+        },
+        {
+          "id": "residents.2.unearned_income_weekly_amount",
+          "label": "Unearned income weekly amount",
+          "group": "Residents 3",
+          "value": null
+        },
+        {
+          "id": "residents.2.unearned_income_source",
+          "label": "Unearned income source",
+          "group": "Residents 3",
+          "value": null
+        },
+        {
+          "id": "residents.2.industry",
+          "label": "Industry",
+          "group": "Residents 3",
+          "value": "A.M.F."
+        },
+        {
+          "id": "residents.2.craft",
+          "label": "Craft",
+          "group": "Residents 3",
+          "value": "private"
+        },
+        {
+          "id": "residents.2.regularity_of_work",
+          "label": "Regularity of work",
+          "group": "Residents 3",
+          "value": null
+        },
+        {
+          "id": "residents.2.employer",
+          "label": "Employer",
+          "group": "Residents 3",
+          "value": null
+        },
+        {
+          "id": "residents.2.employers_address",
+          "label": "Employers address",
+          "group": "Residents 3",
+          "value": "Queensland."
+        },
+        {
+          "id": "residents.2.weekly_cost_transport",
+          "label": "Weekly cost transport",
+          "group": "Residents 3",
+          "value": null
+        },
+        {
+          "id": "residents.2.residential_preference",
+          "label": "Residential preference",
+          "group": "Residents 3",
+          "value": "—"
+        },
+        {
+          "id": "residents.2.earnings_last_week",
+          "label": "Earnings last week",
+          "group": "Residents 3",
+          "value": "nil"
+        },
+        {
+          "id": "residents.2.full_time_earnings_excluding_overtime",
+          "label": "Full time earnings excluding overtime",
+          "group": "Residents 3",
+          "value": null
+        },
+        {
+          "id": "residents.2.weekly_contribution_to_board",
+          "label": "Weekly contribution to board",
+          "group": "Residents 3",
+          "value": null
+        },
+        {
+          "id": "residents.2.weekly_payments_to_relatives_living_elsewhere",
+          "label": "Weekly payments to relatives living elsewhere",
+          "group": "Residents 3",
+          "value": null
+        },
+        {
+          "id": "residents.2.prewar_occupation",
+          "label": "Pre-war: occupation",
+          "group": "Residents 3",
+          "value": "Textile worker."
+        },
+        {
+          "id": "residents.2.prewar_normal_weekly_earnings",
+          "label": "Pre-war: normal weekly earnings",
+          "group": "Residents 3",
+          "value": "£2.10.0"
+        },
+        {
+          "id": "residents.2.prewar_place_of_work_if_outside_melbourne",
+          "label": "Pre-war: place of work if outside melbourne",
+          "group": "Residents 3",
+          "value": "/"
+        },
+        {
+          "id": "residents.2.prewar_occupational_preference",
+          "label": "Pre-war: occupational preference",
+          "group": "Residents 3",
+          "value": "/"
+        },
+        {
+          "id": "residents.3.relationship",
+          "label": "Relationship",
+          "group": "Residents 4",
+          "value": "daughter"
+        },
+        {
+          "id": "residents.3.age",
+          "label": "Age",
+          "group": "Residents 4",
+          "value": "18"
+        },
+        {
+          "id": "residents.3.earning_status",
+          "label": "Earning status",
+          "group": "Residents 4",
+          "value": "M."
+        },
+        {
+          "id": "residents.3.unearned_income_weekly_amount",
+          "label": "Unearned income weekly amount",
+          "group": "Residents 4",
+          "value": null
+        },
+        {
+          "id": "residents.3.unearned_income_source",
+          "label": "Unearned income source",
+          "group": "Residents 4",
+          "value": null
+        },
+        {
+          "id": "residents.3.industry",
+          "label": "Industry",
+          "group": "Residents 4",
+          "value": "A.W.A.S."
+        },
+        {
+          "id": "residents.3.craft",
+          "label": "Craft",
+          "group": "Residents 4",
+          "value": "private"
+        },
+        {
+          "id": "residents.3.regularity_of_work",
+          "label": "Regularity of work",
+          "group": "Residents 4",
+          "value": null
+        },
+        {
+          "id": "residents.3.employer",
+          "label": "Employer",
+          "group": "Residents 4",
+          "value": null
+        },
+        {
+          "id": "residents.3.employers_address",
+          "label": "Employers address",
+          "group": "Residents 4",
+          "value": "Toorak."
+        },
+        {
+          "id": "residents.3.weekly_cost_transport",
+          "label": "Weekly cost transport",
+          "group": "Residents 4",
+          "value": null
+        },
+        {
+          "id": "residents.3.residential_preference",
+          "label": "Residential preference",
+          "group": "Residents 4",
+          "value": "→"
+        },
+        {
+          "id": "residents.3.earnings_last_week",
+          "label": "Earnings last week",
+          "group": "Residents 4",
+          "value": "[?]"
+        },
+        {
+          "id": "residents.3.full_time_earnings_excluding_overtime",
+          "label": "Full time earnings excluding overtime",
+          "group": "Residents 4",
+          "value": null
+        },
+        {
+          "id": "residents.3.weekly_contribution_to_board",
+          "label": "Weekly contribution to board",
+          "group": "Residents 4",
+          "value": null
+        },
+        {
+          "id": "residents.3.weekly_payments_to_relatives_living_elsewhere",
+          "label": "Weekly payments to relatives living elsewhere",
+          "group": "Residents 4",
+          "value": null
+        },
+        {
+          "id": "residents.3.prewar_occupation",
+          "label": "Pre-war: occupation",
+          "group": "Residents 4",
+          "value": "Textile worker."
+        },
+        {
+          "id": "residents.3.prewar_normal_weekly_earnings",
+          "label": "Pre-war: normal weekly earnings",
+          "group": "Residents 4",
+          "value": "£1.15.0"
+        },
+        {
+          "id": "residents.3.prewar_place_of_work_if_outside_melbourne",
+          "label": "Pre-war: place of work if outside melbourne",
+          "group": "Residents 4",
+          "value": "/"
+        },
+        {
+          "id": "residents.3.prewar_occupational_preference",
+          "label": "Pre-war: occupational preference",
+          "group": "Residents 4",
+          "value": "/"
+        },
+        {
+          "id": "residents.4.relationship",
+          "label": "Relationship",
+          "group": "Residents 5",
+          "value": "daughter son"
+        },
+        {
+          "id": "residents.4.age",
+          "label": "Age",
+          "group": "Residents 5",
+          "value": "16."
+        },
+        {
+          "id": "residents.4.earning_status",
+          "label": "Earning status",
+          "group": "Residents 5",
+          "value": "B."
+        },
+        {
+          "id": "residents.4.unearned_income_weekly_amount",
+          "label": "Unearned income weekly amount",
+          "group": "Residents 5",
+          "value": null
+        },
+        {
+          "id": "residents.4.unearned_income_source",
+          "label": "Unearned income source",
+          "group": "Residents 5",
+          "value": null
+        },
+        {
+          "id": "residents.4.industry",
+          "label": "Industry",
+          "group": "Residents 5",
+          "value": "Textile."
+        },
+        {
+          "id": "residents.4.craft",
+          "label": "Craft",
+          "group": "Residents 5",
+          "value": "Coming [?]"
+        },
+        {
+          "id": "residents.4.regularity_of_work",
+          "label": "Regularity of work",
+          "group": "Residents 5",
+          "value": "yes."
+        },
+        {
+          "id": "residents.4.employer",
+          "label": "Employer",
+          "group": "Residents 5",
+          "value": "Peebles [?]"
+        },
+        {
+          "id": "residents.4.employers_address",
+          "label": "Employers address",
+          "group": "Residents 5",
+          "value": "Brunswick mill (bike)"
+        },
+        {
+          "id": "residents.4.weekly_cost_transport",
+          "label": "Weekly cost transport",
+          "group": "Residents 5",
+          "value": "nil (bike)"
+        },
+        {
+          "id": "residents.4.residential_preference",
+          "label": "Residential preference",
+          "group": "Residents 5",
+          "value": null
+        },
+        {
+          "id": "residents.4.earnings_last_week",
+          "label": "Earnings last week",
+          "group": "Residents 5",
+          "value": "£1.7.6."
+        },
+        {
+          "id": "residents.4.full_time_earnings_excluding_overtime",
+          "label": "Full time earnings excluding overtime",
+          "group": "Residents 5",
+          "value": "-"
+        },
+        {
+          "id": "residents.4.weekly_contribution_to_board",
+          "label": "Weekly contribution to board",
+          "group": "Residents 5",
+          "value": "15/."
+        },
+        {
+          "id": "residents.4.weekly_payments_to_relatives_living_elsewhere",
+          "label": "Weekly payments to relatives living elsewhere",
+          "group": "Residents 5",
+          "value": "-"
+        },
+        {
+          "id": "residents.4.prewar_occupation",
+          "label": "Pre-war: occupation",
+          "group": "Residents 5",
+          "value": "School."
+        },
+        {
+          "id": "residents.4.prewar_normal_weekly_earnings",
+          "label": "Pre-war: normal weekly earnings",
+          "group": "Residents 5",
+          "value": null
+        },
+        {
+          "id": "residents.4.prewar_place_of_work_if_outside_melbourne",
+          "label": "Pre-war: place of work if outside melbourne",
+          "group": "Residents 5",
+          "value": "/"
+        },
+        {
+          "id": "residents.4.prewar_occupational_preference",
+          "label": "Pre-war: occupational preference",
+          "group": "Residents 5",
+          "value": null
+        },
+        {
+          "id": "other_children.died.0",
+          "label": "Other children: died",
+          "group": "Residents 1",
+          "value": "1"
+        },
+        {
+          "id": "other_children.died.1",
+          "label": "Other children: died",
+          "group": "Residents 2",
+          "value": "1"
+        },
+        {
+          "id": "other_children.living_elsewhere.0",
+          "label": "Other children: living elsewhere",
+          "group": "Residents 1",
+          "value": "-"
+        },
+        {
+          "id": "other_children.living_elsewhere.1",
+          "label": "Other children: living elsewhere",
+          "group": "Residents 2",
+          "value": "-"
+        },
+        {
+          "id": "rooms.number_of_separate_bedrooms",
+          "label": "Number of separate bedrooms",
+          "group": "Rooms",
+          "value": "3."
+        },
+        {
+          "id": "rooms.number_of_living_rooms",
+          "label": "Number of living rooms",
+          "group": "Rooms",
+          "value": "2 (includes kitchen)"
+        },
+        {
+          "id": "rooms.state_if_used_as_bedrooms",
+          "label": "State if used as bedrooms",
+          "group": "Rooms",
+          "value": null
+        },
+        {
+          "id": "rooms.rooms_not_in_daily_use",
+          "label": "Rooms not in daily use",
+          "group": "Rooms",
+          "value": "2."
+        },
+        {
+          "id": "rooms.sleepouts",
+          "label": "Sleepouts",
+          "group": "Rooms",
+          "value": "B yes."
+        },
+        {
+          "id": "bath.location",
+          "label": "Location",
+          "group": "Bath",
+          "value": "Bathroom inside."
+        },
+        {
+          "id": "bath.shared",
+          "label": "Shared",
+          "group": "Bath",
+          "value": null
+        },
+        {
+          "id": "bath.hot_water_service",
+          "label": "Hot water service",
+          "group": "Bath",
+          "value": "chip h."
+        },
+        {
+          "id": "wc.internal_or_external",
+          "label": "Internal or external",
+          "group": "Wc",
+          "value": "External"
+        },
+        {
+          "id": "wc.shared",
+          "label": "Shared",
+          "group": "Wc",
+          "value": "Sep."
+        },
+        {
+          "id": "wash_house",
+          "label": "Wash house",
+          "group": "Wash house",
+          "value": "Sep."
+        },
+        {
+          "id": "kitchen.shared",
+          "label": "Shared",
+          "group": "Kitchen",
+          "value": "—"
+        },
+        {
+          "id": "kitchen.ever_used_as_bedroom",
+          "label": "Ever used as bedroom",
+          "group": "Kitchen",
+          "value": "—"
+        },
+        {
+          "id": "kitchen.meals_can_be_taken_there",
+          "label": "Meals can be taken there",
+          "group": "Kitchen",
+          "value": "Yes."
+        },
+        {
+          "id": "kitchen.sink_and_water_tap",
+          "label": "Sink and water tap",
+          "group": "Kitchen",
+          "value": "X in alcove near kitchen"
+        },
+        {
+          "id": "kitchen.hot_water_service",
+          "label": "Hot water service",
+          "group": "Kitchen",
+          "value": null
+        },
+        {
+          "id": "kitchen.cooking_facilities",
+          "label": "Cooking facilities",
+          "group": "Kitchen",
+          "value": "Gas (T), fire (L)."
+        },
+        {
+          "id": "kitchen.food_storage",
+          "label": "Food storage",
+          "group": "Kitchen",
+          "value": "Pantry + Cabinet + coolgardie safe."
+        },
+        {
+          "id": "kitchen.facilities_for_cooking_and_water_supply_in_other_rooms",
+          "label": "Facilities for cooking and water supply in other rooms",
+          "group": "Kitchen",
+          "value": null
+        }
+      ],
+      "flags": [
+        {
+          "id": "uncertain-other_commercial_activities_on_premises",
+          "fieldId": "other_commercial_activities_on_premises",
+          "kind": "uncertain",
+          "reason": "The extraction contains [?], indicating unreadable text. Compare this value with the original scan."
+        },
+        {
+          "id": "uncertain-residents.1.weekly_contribution_to_board",
+          "fieldId": "residents.1.weekly_contribution_to_board",
+          "kind": "uncertain",
+          "reason": "The extraction contains [?], indicating unreadable text. Compare this value with the original scan."
+        },
+        {
+          "id": "uncertain-residents.3.earnings_last_week",
+          "fieldId": "residents.3.earnings_last_week",
+          "kind": "uncertain",
+          "reason": "The extraction contains [?], indicating unreadable text. Compare this value with the original scan."
+        },
+        {
+          "id": "uncertain-residents.4.craft",
+          "fieldId": "residents.4.craft",
+          "kind": "uncertain",
+          "reason": "The extraction contains [?], indicating unreadable text. Compare this value with the original scan."
+        },
+        {
+          "id": "uncertain-residents.4.employer",
+          "fieldId": "residents.4.employer",
+          "kind": "uncertain",
+          "reason": "The extraction contains [?], indicating unreadable text. Compare this value with the original scan."
+        }
+      ]
+    },
+    {
+      "id": "216417_p001",
+      "type": "notes",
+      "imageUrl": "/us7-demo/216417_notes.jpg",
+      "fields": [
+        {
+          "id": "text",
+          "label": "Notes",
+          "group": "Survey details",
+          "value": "Interviewed wife + head.\n:- very friendly.\nHouse not done up since tenants\ncame in:   in good order.\nSome cultivation.\nBlock = 50' x 130'   ( narrows slightly\n                            at back).\nGarage + drive."
+        }
+      ],
+      "flags": []
+    },
+    {
+      "id": "216417_p002",
+      "type": "coded",
+      "imageUrl": "/us7-demo/216417_coded.jpg",
+      "fields": [
+        {
+          "id": "municipality",
+          "label": "Municipality",
+          "group": "Left column",
+          "value": "02"
+        },
+        {
+          "id": "number_of_dwelling",
+          "label": "Number of dwelling",
+          "group": "Left column",
+          "value": "352"
+        },
+        {
+          "id": "number_of_household",
+          "label": "Number of household",
+          "group": "Left column",
+          "value": "1"
+        },
+        {
+          "id": "type_of_family",
+          "label": "Type of family",
+          "group": "Left column",
+          "value": "1"
+        },
+        {
+          "id": "total_resident_members",
+          "label": "Total resident members",
+          "group": "Left column",
+          "value": "2"
+        },
+        {
+          "id": "number_under_5",
+          "label": "Number under 5",
+          "group": "Left column",
+          "value": "0"
+        },
+        {
+          "id": "number_5_to_10",
+          "label": "Number 5 to 10",
+          "group": "Left column",
+          "value": "0"
+        },
+        {
+          "id": "number_over_10_m",
+          "label": "Number over 10 m",
+          "group": "Left column",
+          "value": "1"
+        },
+        {
+          "id": "number_over_10_f",
+          "label": "Number over 10 f",
+          "group": "Left column",
+          "value": "1"
+        },
+        {
+          "id": "military_service",
+          "label": "Military service",
+          "group": "Left column",
+          "value": "0"
+        },
+        {
+          "id": "boarders",
+          "label": "Boarders",
+          "group": "Left column",
+          "value": "0"
+        },
+        {
+          "id": "participating_members",
+          "label": "Participating members",
+          "group": "Left column",
+          "value": "2"
+        },
+        {
+          "id": "adult_m_breadwinners",
+          "label": "Adult m breadwinners",
+          "group": "Left column",
+          "value": "1"
+        },
+        {
+          "id": "adult_f_breadwinners",
+          "label": "Adult f breadwinners",
+          "group": "Left column",
+          "value": "0"
+        },
+        {
+          "id": "juvenile_breadwinners_under_21",
+          "label": "Juvenile breadwinners under 21",
+          "group": "Left column",
+          "value": "0"
+        },
+        {
+          "id": "children_under_14",
+          "label": "Children under 14",
+          "group": "Left column",
+          "value": "0"
+        },
+        {
+          "id": "retired_and_indep_persons",
+          "label": "Retired and indep persons",
+          "group": "Left column",
+          "value": "0"
+        },
+        {
+          "id": "home_duties",
+          "label": "Home duties",
+          "group": "Left column",
+          "value": "1"
+        },
+        {
+          "id": "other",
+          "label": "Other",
+          "group": "Left column",
+          "value": "0"
+        },
+        {
+          "id": "normal_household_income",
+          "label": "Normal household income",
+          "group": "Left column",
+          "value": "101"
+        },
+        {
+          "id": "weekly_rent",
+          "label": "Weekly rent",
+          "group": "Left column",
+          "value": "20"
+        },
+        {
+          "id": "total_available_income",
+          "label": "Total available income",
+          "group": "Left column",
+          "value": "081"
+        },
+        {
+          "id": "earnings_of_head",
+          "label": "Earnings of head",
+          "group": "Middle column",
+          "value": "101"
+        },
+        {
+          "id": "heads_unearned_income",
+          "label": "Heads unearned income",
+          "group": "Middle column",
+          "value": "00"
+        },
+        {
+          "id": "main_source_heads_unearned_income",
+          "label": "Main source heads unearned income",
+          "group": "Middle column",
+          "value": "0"
+        },
+        {
+          "id": "subsidiary_source_heads_income",
+          "label": "Subsidiary source heads income",
+          "group": "Middle column",
+          "value": "0"
+        },
+        {
+          "id": "industry_of_head",
+          "label": "Industry of head",
+          "group": "Middle column",
+          "value": "4161"
+        },
+        {
+          "id": "occupation_of_head",
+          "label": "Occupation of head",
+          "group": "Middle column",
+          "value": "25.99"
+        },
+        {
+          "id": "grade_of_occupation_of_head",
+          "label": "Grade of occupation of head",
+          "group": "Middle column",
+          "value": "2"
+        },
+        {
+          "id": "place_of_work",
+          "label": "Place of work",
+          "group": "Middle column",
+          "value": "18"
+        },
+        {
+          "id": "age_of_head",
+          "label": "Age of head",
+          "group": "Middle column",
+          "value": "45"
+        },
+        {
+          "id": "sex_of_head",
+          "label": "Sex of head",
+          "group": "Middle column",
+          "value": "0"
+        },
+        {
+          "id": "regularity_of_work",
+          "label": "Regularity of work",
+          "group": "Middle column",
+          "value": "0"
+        },
+        {
+          "id": "prewar_occupation",
+          "label": "Pre-war: occupation",
+          "group": "Middle column",
+          "value": "6"
+        },
+        {
+          "id": "removal",
+          "label": "Removal",
+          "group": "Middle column",
+          "value": "1"
+        },
+        {
+          "id": "type_of_dwelling",
+          "label": "Type of dwelling",
+          "group": "Middle column",
+          "value": "1"
+        },
+        {
+          "id": "structural_material",
+          "label": "Structural material",
+          "group": "Middle column",
+          "value": "1"
+        },
+        {
+          "id": "age_of_house",
+          "label": "Age of house",
+          "group": "Middle column",
+          "value": "10"
+        },
+        {
+          "id": "garden",
+          "label": "Garden",
+          "group": "Middle column",
+          "value": "3"
+        },
+        {
+          "id": "state_of_repair",
+          "label": "State of repair",
+          "group": "Middle column",
+          "value": "1"
+        },
+        {
+          "id": "tenure",
+          "label": "Tenure",
+          "group": "Middle column",
+          "value": "3"
+        },
+        {
+          "id": "length_of_residence",
+          "label": "Length of residence",
+          "group": "Middle column",
+          "value": "06"
+        },
+        {
+          "id": "total_number_of_rooms",
+          "label": "Total number of rooms",
+          "group": "Middle column",
+          "value": "5"
+        },
+        {
+          "id": "number_of_bedrooms",
+          "label": "Number of bedrooms",
+          "group": "Middle column",
+          "value": "3"
+        },
+        {
+          "id": "number_of_living_rooms",
+          "label": "Number of living rooms",
+          "group": "Right column",
+          "value": "1"
+        },
+        {
+          "id": "whether_used_as_bedrooms",
+          "label": "Whether used as bedrooms",
+          "group": "Right column",
+          "value": "0"
+        },
+        {
+          "id": "rooms_not_in_daily_use",
+          "label": "Rooms not in daily use",
+          "group": "Right column",
+          "value": "2"
+        },
+        {
+          "id": "number_of_sleepouts",
+          "label": "Number of sleepouts",
+          "group": "Right column",
+          "value": "0"
+        },
+        {
+          "id": "bathroom",
+          "label": "Bathroom",
+          "group": "Right column",
+          "value": "4"
+        },
+        {
+          "id": "wc",
+          "label": "Wc",
+          "group": "Right column",
+          "value": "0"
+        },
+        {
+          "id": "washhouse",
+          "label": "Washhouse",
+          "group": "Right column",
+          "value": "1"
+        },
+        {
+          "id": "kitchen",
+          "label": "Kitchen",
+          "group": "Right column",
+          "value": "2"
+        },
+        {
+          "id": "sink_and_water_service",
+          "label": "Sink and water service",
+          "group": "Right column",
+          "value": "2"
+        },
+        {
+          "id": "cooking_facilities",
+          "label": "Cooking facilities",
+          "group": "Right column",
+          "value": "1"
+        },
+        {
+          "id": "food_storage",
+          "label": "Food storage",
+          "group": "Right column",
+          "value": "1"
+        },
+        {
+          "id": "rooms_shared",
+          "label": "Rooms shared",
+          "group": "Right column",
+          "value": "0"
+        },
+        {
+          "id": "persons_sharing",
+          "label": "Persons sharing",
+          "group": "Right column",
+          "value": "0"
+        },
+        {
+          "id": "children_other_than_those_at_home",
+          "label": "Children other than those at home",
+          "group": "Right column",
+          "value": "0"
+        },
+        {
+          "id": "children_of_h_or_wife_living",
+          "label": "Children of h or wife living",
+          "group": "Right column",
+          "value": "0"
+        },
+        {
+          "id": "children_of_h_or_wife_dead",
+          "label": "Children of h or wife dead",
+          "group": "Right column",
+          "value": "0"
+        },
+        {
+          "id": "children_of_h_or_wife_total",
+          "label": "Children of h or wife total",
+          "group": "Right column",
+          "value": "0"
+        }
+      ],
+      "flags": []
+    }
+  ]
+}
