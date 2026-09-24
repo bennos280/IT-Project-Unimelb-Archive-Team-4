@@ -36,15 +36,17 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 
 ## Commands
 
-| | |
-|---|---|
-| `uv run survey` | new or unfinished PDFs (or folders of page images) in DATA -> `<OUTPUT>/<name>/manifest.json` + `review.json` |
-| `uv run survey x.pdf` | one PDF, or a folder of page images; `--transcribe` also transcribes (paid: needs the `claude` CLI signed in, or `codex` for gpt-* models) |
-| `uv run pytest` | 1,237 labelled pages, zero wrong answers required; 30 transcribed cards scored |
-| `uv run survey train` | refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`) |
-| `uv run survey transcribe <card>`, `uv run survey score --pages` | transcription leaderboard, `results/transcribe/` |
-| 'uv run survey data/x.pdf --preprocess'| preprocess | Identify pages, then crop, straighten and binarize eligible images|
-| 'uv run survey data/x.pdf --preprocess --transcribe'| Preprocess images, then transcribe them to JSON|
+| Command                                                          | Description                                                                                                                                                                                                    |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uv run survey`                                                  | Process new or unfinished PDFs (or folders of page images) in `DATA` → `<OUTPUT>/<name>/manifest.json` + `review.json`                                                                                         |
+| `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes (paid: needs the `claude` CLI signed in, or `codex` for gpt-\* models)                                                             |
+| `uv run pytest`                                                  | Run tests on 1,237 labelled pages, with zero wrong answers required; 30 transcribed cards are also scored                                                                                                      |
+| `uv run survey train`                                            | Refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`)                                                                                                        |
+| `uv run survey transcribe <card>`, `uv run survey score --pages` | Run transcription/scoring and view the transcription leaderboard in `results/transcribe/`                                                                                                                      |
+| `uv run survey data/x.pdf --preprocess`                          | Identify pages, then crop, straighten, and binarize eligible page images                                                                                                                                       |
+| `uv run survey data/x.pdf --preprocess --transcribe`             | Identify and preprocess eligible page images, then transcribe them to JSON                                                                                                                                     |
+| ↳ Optional enhancements                                          | `--greyscale` converts to greyscale; `--binarize` converts to black and white; `--no-deskew` skips deskewing; `--no-crop` skips cropping; `--c <num>` adjusts the adaptive threshold constant (e.g. `--c 12`). |
+
 If a run stops partway through, run the same command again. Splitting and identification run again for unfinished inputs. With `--transcribe`, saved page transcripts are reused when the image, page type, model, effort, prompt and template still match and the saved result is unchanged. Adding `--transcribe` also picks up inputs that have finished identification but have not finished transcription.
 
 If you replace a PDF that was already completed, pass its path explicitly to rerun it, for example `uv run survey data/x.pdf`. The generated page folder is replaced after the new PDF renders successfully, so pages from an older, longer PDF are removed.

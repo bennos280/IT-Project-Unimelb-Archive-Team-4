@@ -1,4 +1,4 @@
-"""The `survey` command: split -> preprocess -> identify -> transcribe on each PDF. A step is one function on run.pages."""
+"""The `survey` command: split ->  identify -> preprocess -> transcribe on each PDF. A step is one function on run.pages."""
 import argparse
 import hashlib
 import json
