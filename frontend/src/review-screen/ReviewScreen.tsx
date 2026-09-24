@@ -1,3 +1,4 @@
+import ExportDialog from "../export/ExportDialog";
 // Main review screen: field table on the left, scan viewer on the right.
 
 import React, { useState } from "react";
@@ -6,7 +7,6 @@ import {
   ChevronRight,
   Search,
   TriangleAlert,
-  Download,
   Pencil,
 } from "lucide-react";
 import ImageViewer from "./ImageViewer";
@@ -54,7 +54,6 @@ export default function ReviewScreen({
     reviewAll,
     savePage,
     navigate,
-    download,
     visible,
     groups,
   } = session;
@@ -283,9 +282,12 @@ export default function ReviewScreen({
                     </button>
                   </nav>
                 </div>
-                <button onClick={download}>
-                  <Download size={16} /> Export{" "}
-                </button>
+                <ExportDialog
+                  surveyId={survey.id}
+                  hasDrafts={Object.values(session.reviews).some((fields) =>
+                    Object.values(fields).some((review) => !review.savedAt),
+                  )}
+                />
               </div>
               <ImageViewer
                 key={page.id}

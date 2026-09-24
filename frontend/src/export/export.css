@@ -1,0 +1,185 @@
+/* Styles the export dialog, including scope options, form fields, buttons, and success or error messages. */
+
+.export-dialog {
+  width: min(510px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  padding: 0;
+  border: 1px solid #777;
+  border-radius: 5px;
+  background: white;
+  color: #151515;
+  box-shadow: 0 12px 48px #0004;
+}
+.export-dialog::backdrop {
+  background: #0008;
+}
+.export-body {
+  padding: 24px 30px 20px;
+}
+.export-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.export-heading h2 {
+  font-size: 28px;
+  margin: 0;
+  letter-spacing: -0.7px;
+}
+.export-close {
+  background: none;
+  border: 0;
+  padding: 6px;
+}
+#export-description {
+  color: #777b8c;
+  margin: 8px 0 24px;
+  font-size: 16px;
+}
+.export-choices {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.export-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 24px 0 0;
+  cursor: pointer;
+}
+.export-option:first-of-type {
+  margin-top: 0;
+}
+.export-option input {
+  margin: 2px 0 0;
+  width: 22px;
+  height: 22px;
+  accent-color: #222;
+  flex-shrink: 0;
+}
+.export-option strong {
+  display: block;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.export-option small,
+.export-input small {
+  display: block;
+  color: #747887;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+.export-input {
+  display: block;
+  margin: 14px 0 0 38px;
+  font-size: 13px;
+  color: #404454;
+}
+.export-input input {
+  display: block;
+  width: 100%;
+  border: 1px solid #858896;
+  border-radius: 3px;
+  padding: 10px 12px;
+  margin: 5px 0;
+  font-size: 15px;
+}
+.export-input input:disabled {
+  background: #f1f1f4;
+  border-color: #ddd;
+}
+.export-policy,
+.export-notice {
+  background: #f6f6f8;
+  border-radius: 4px;
+  padding: 12px;
+  margin: 22px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.export-policy span {
+  font-weight: 600;
+}
+.export-policy p {
+  margin: 5px 0 0;
+  color: #565b69;
+}
+.export-draft {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.export-draft svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.export-footnote {
+  color: #777b88;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 12px 0 0;
+}
+.export-footer {
+  border-top: 1px solid #ddd;
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.export-footer button {
+  padding: 10px 24px;
+  font-size: 15px;
+}
+.export-submit:not(:disabled) {
+  background: #222;
+  color: white;
+  border-color: #222;
+}
+.export-submit:disabled {
+  background: #dedee3;
+}
+.export-error,
+.export-success {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.export-error {
+  background: #fff1ee;
+  color: #922a1b;
+}
+.export-success {
+  background: #eef7f0;
+  color: #235b36;
+  display: flex;
+  gap: 9px;
+}
+.export-success svg {
+  flex-shrink: 0;
+}
+.export-error p,
+.export-success p {
+  margin: 4px 0 0;
+}
+.export-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+@media (max-width: 480px) {
+  .export-body {
+    padding: 20px;
+  }
+  .export-input {
+    margin-left: 0;
+  }
+}
