@@ -1,3 +1,4 @@
+"""Integration tests, testing the pipeline's resume/retry/caching correctness"""
 """Retry unfinished work without skipping surveys or repeating saved transcription calls."""
 import json
 from pathlib import Path

@@ -1,3 +1,4 @@
+"""Integration test for pipeline/identify"""
 """Every labelled page under tests/identify/pages: zero wrong answers, at least MIN_COVERAGE answered."""
 from pipeline.identify.identify import MIN_COVERAGE, held_out, labelled_pages, model, score, stored
 
@@ -5,6 +6,7 @@ PATHS, TRUTH = labelled_pages()
 X = stored(PATHS)
 
 
+# helper function that verifies card category chosen by model with actual category
 def check(labels, name):
     result = score(labels, TRUTH, PATHS)
     correct = result.answered - len(result.wrong)
