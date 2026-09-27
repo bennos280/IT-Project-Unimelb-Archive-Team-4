@@ -1,4 +1,4 @@
-"""Unit tests for pipeline/identify/"""
+"""Unit tests for mainly pipeline/identify/identify.py"""
 
 from pathlib import Path
 
@@ -44,7 +44,7 @@ def test_abstaining_is_never_counted_as_wrong():
     assert result.coverage == 0.0
     assert len(result.review) == 3
 
-def test_answering_a_foreign_card_is_always_wrong():
+def test_answering_a_other_card_is_always_wrong():
     paths = pages(2)
 
     result = score(["main", REVIEW], ["other", "other"], paths)
@@ -94,7 +94,7 @@ def test_summary_lists_the_headline_numbers_and_every_mistake():
     assert text.startswith("held-out: 1/3 answered = 33.3%, 1 wrong")
     assert "WRONG  page0.jpg: said main, truth notes" in text
     assert "REVIEW page1.jpg (truth coded)" in text
-    assert "page2.jpg" not in text        # abstaining on a foreign card is correct
+    assert "page2.jpg" not in text        # abstaining on a other card is correct
 
 
 # ---------------------------------------------------------------- labelled_pages()
