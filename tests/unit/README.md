@@ -3,7 +3,7 @@
 **150 tests. Runs in ~16s.**
 
 ```bash
-pytest tests-v2/unit
+uv run pytest tests/unit
 ```
 
 ## `test_preprocess.py` — 25 tests

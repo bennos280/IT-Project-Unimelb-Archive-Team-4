@@ -10,7 +10,7 @@ from here directly.
 **56 test cases ~140s**
 
 ```bash
-pytest tests-v2/integration
+uv run pytest tests/integration
 ```
 
 ## `test_split.py` — 6 tests
