@@ -105,7 +105,7 @@ Unit tests for `.env` configuration parsing and page-image discovery in `pipelin
 | `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images. |
 
 
-## `test_run.py` — 27 tests
+## `test_transcribe_run.py` — 27 tests
 
 unit tests for `pipeline.transcribe.run`, covering schema generation, CLI handling, Claude/Codex engine behaviour, engine selection, response processing, and transcription metadata.
 
@@ -139,3 +139,36 @@ unit tests for `pipeline.transcribe.run`, covering schema generation, CLI handli
 | `test_transcribe_leaves_ordinary_text_untouched` | Leaves normal text and invalid JSON-looking text unchanged when the notes JSON-unwrapping repair does not apply. |
 | `test_transcribe_sends_the_template_inside_the_prompt` | Includes the page template alongside `prompt.txt` in the model prompt and passes the same template to the transcription engine. |
 | `test_transcribe_defaults_model_and_effort_from_env` | When model and effort are omitted, uses the corresponding `MODEL` and `EFFORT` values from the environment configuration. |
+
+
+## `test_transcribe_score.py` — 31 tests
+
+unit tests for `pipeline.transcribe.score`, covering JSON flattening, value normalisation, scorable fields, page-level scoring, invented values, character similarity, and leaderboard reporting.
+
+| Test | What it checks |
+|---|---|
+| `test_flatten_turns_nested_objects_into_dotted_paths` | Flattens nested objects into dotted paths so individual fields can be compared separately. |
+| `test_flatten_indexes_list_items_by_position` | Flattens list items using positional paths such as `notes[0]` and `notes[1]`. |
+| `test_flatten_handles_lists_of_objects` | Correctly combines list indexing and nested object paths, such as `annotations[0].raw`. |
+| `test_flatten_keeps_none_and_empty_values` | Preserves `None` and empty-string values so blank fields can be distinguished from missing fields and invented values can be detected. |
+| `test_flatten_of_a_bare_value_uses_an_empty_key` | Handles a scalar at the top level by representing it with an empty key rather than raising an error. |
+| `test_norm_treats_these_as_the_same_answer` | Treats differences in case, surrounding whitespace, repeated spaces, newlines, and `None` versus an empty string as equivalent. |
+| `test_norm_keeps_punctuation_because_it_carries_meaning` | Preserves meaningful punctuation so values such as `30/-` versus `30/` and `St.` versus `St` remain different. |
+| `test_norm_converts_non_strings_before_comparing` | Converts non-string values such as numbers and booleans to strings before comparison. |
+| `test_provenance_stamps_are_not_graded` | Excludes engine, model, effort, seconds, and other provenance stamps from scoring. |
+| `test_annotation_paths_are_excluded_from_grading` | Excludes fields under `annotations[...]` from grading while still grading normal fields containing the word "annotation". |
+| `test_ordinary_card_fields_are_graded` | Confirms ordinary card fields and nested household fields are included in scoring. |
+| `test_score_page_counts_exact_matches_as_hits` | Counts fields whose normalised answers exactly match the truth as hits. |
+| `test_score_page_lists_the_fields_that_were_missed` | Records the paths of fields where the transcription does not match the truth. |
+| `test_score_page_only_grades_fields_the_card_actually_has` | Excludes blank truth fields from the graded total while tracking them separately as blanks. |
+| `test_score_page_reports_invented_values_for_blank_fields` | Detects and records values supplied by the model for fields that were blank on the original card. |
+| `test_score_page_does_not_count_a_blank_answer_as_invented` | Confirms that correctly leaving a blank field blank is not treated as an invented value. |
+| `test_score_page_treats_a_missing_field_as_a_miss_not_a_crash` | Treats an omitted answer field as a miss rather than raising an exception. |
+| `test_score_page_character_similarity_rewards_near_misses` | Records character-level similarity so exact matches, near-misses, and substantially different answers can be distinguished. |
+| `test_score_page_ignores_stamps_and_annotations_end_to_end` | Verifies end-to-end that provenance stamps and annotation fields do not affect the graded totals while timing information is retained. |
+| `test_score_page_grades_nested_structures_field_by_field` | Scores nested objects field by field, allowing partial credit when some nested fields are correct. |
+| `test_score_page_of_an_empty_key_is_zero_not_an_error` | Handles a truth record with no gradeable fields by returning zero totals without dividing or crashing. |
+| `test_main_exits_when_there_are_no_results_yet` | When no transcription results exist, exits with a clear message explaining that results must be generated first. |
+| `test_main_prints_a_row_per_model_and_page_kind` | Prints a leaderboard row for each model and page type with the correct exact-match percentage and hit/total fraction. |
+| `test_main_counts_pages_with_no_answer_as_missing` | Counts truth pages without corresponding model answers as missing rather than silently excluding them from the results. |
+| `test_main_skips_a_kind_with_no_answers_at_all` | Omits page types that the model never attempted instead of displaying them as zero-score results. |
