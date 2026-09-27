@@ -71,3 +71,21 @@ Unit tests for the classifier, prediction safety gates, model persistence, thres
 | `test_fit_trains_the_head_only_on_known_labels` | other cards are not added as a predictable class; instead, they are returned as `REVIEW`. |
 | `test_cross_validate_scores_every_row_including_others` | Cross-validation produces scores for every row, including other cards, while known separable pages receive their correct labels. |
 | `test_regularisation_constant_is_the_documented_value` | The configured model constants remain fixed at the documented values for regularisation, KNN neighbours, distance margin, supported labels, and `REVIEW`. |
+
+
+## `test_common.py` — 12 tests
+
+Unit tests for `.env` configuration parsing and page-image discovery in `pipeline/common.py`, including required settings, defaults, comment handling, duplicate keys, supported image formats, and directory traversal behaviour.
+
+| Test | What it checks |
+|---|---|
+| `test_settings_reads_keys_and_defaults_output` | Reads the required `DATA`, `MODEL`, and `EFFORT` settings from `.env` and uses `"output"` as the default when `OUTPUT` is not provided. |
+| `test_settings_strips_comments_whitespace_and_bom` | Removes surrounding whitespace, ignores comments and lines without `=`, and handles a UTF-8 BOM when reading `.env` files. |
+| `test_settings_keeps_hash_when_not_preceded_by_space` | Preserves `#` characters inside values when they are not preceded by a space, rather than treating them as comments. |
+| `test_settings_exits_when_env_file_is_missing` | Raises `SystemExit` with a clear message when the `.env` file does not exist. |
+| `test_settings_exits_when_a_required_key_is_missing` | Verifies that each required setting (`DATA`, `MODEL`, and `EFFORT`) causes `SystemExit` when it is missing.(runs 3 times) |
+| `test_settings_treats_an_empty_value_as_missing` | Treats a required setting with an empty value, such as `DATA=`, as missing and exits with an appropriate error. |
+| `test_settings_last_duplicate_key_wins` | Confirms that when the same `.env` key appears multiple times, the final value overwrites the earlier value. |
+| `test_find_images_returns_only_supported_suffixes_sorted` | Finds only `.jpg`, `.jpeg`, and `.png` files and returns them in sorted order. |
+| `test_find_images_is_not_recursive_and_ignores_subfolders` | Only searches the specified directory and ignores images located inside subdirectories. |
+| `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images. |
