@@ -18,15 +18,9 @@ jobs:
         id: dependencies
         run: uv sync
       # Run every group even if another group fails, provided setup succeeded.
-      - name: Page identification
+      - name: Unit tests
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
-        run: uv run pytest -q -s tests/test_identify.py
-      - name: PDF splitting
+        run: uv run pytest -q -s tests/unit
+      - name: Integration tests
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
-        run: uv run pytest -q -s tests/test_split.py
-      - name: Retry and recovery
-        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
-        run: uv run pytest -q -s tests/test_run.py
-      - name: Transcription scoring
-        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
-        run: uv run pytest -q -s tests/test_transcribe.py
+        run: uv run pytest -q -s tests/integration

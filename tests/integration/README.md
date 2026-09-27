@@ -7,7 +7,7 @@ Fixture data (`identify/`, `preprocess/`, `transcribe/`) lives alongside the tes
 in this folder, and `pipeline.identify.identify` / `pipeline.transcribe.score` read it
 from here directly.
 
-**56 test cases across 5 files**
+**56 test cases ~140s**
 
 ```bash
 pytest tests-v2/integration

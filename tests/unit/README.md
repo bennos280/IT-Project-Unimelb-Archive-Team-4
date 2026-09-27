@@ -1,10 +1,6 @@
 # Unit tests
 
-Pure functions and CLI/config option resolution, exercised directly — no orchestrator,
-no fixture images, no disk I/O beyond argparse. Every image is generated in-memory
-with numpy/cv2; nothing here reads a file.
-
-**9 tests. Runs in ~3s.**
+**150 tests. Runs in ~16s.**
 
 ```bash
 pytest tests-v2/unit
