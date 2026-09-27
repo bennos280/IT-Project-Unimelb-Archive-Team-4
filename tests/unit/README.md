@@ -10,7 +10,7 @@ with numpy/cv2; nothing here reads a file.
 pytest tests-v2/unit
 ```
 
-## `test_preprocess.py` — 23 tests
+## `test_preprocess.py` — 25 tests
 
 preprocessing steps tests and CLI/config option handling for `pipeline.preprocess`.
 
@@ -103,3 +103,39 @@ Unit tests for `.env` configuration parsing and page-image discovery in `pipelin
 | `test_find_images_returns_only_supported_suffixes_sorted` | Finds only `.jpg`, `.jpeg`, and `.png` files and returns them in sorted order. |
 | `test_find_images_is_not_recursive_and_ignores_subfolders` | Only searches the specified directory and ignores images located inside subdirectories. |
 | `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images. |
+
+
+## `test_run.py` — 27 tests
+
+unit tests for `pipeline.transcribe.run`, covering schema generation, CLI handling, Claude/Codex engine behaviour, engine selection, response processing, and transcription metadata.
+
+| Test | What it checks |
+|---|---|
+| `test_schemafor_turns_a_flat_template_into_an_object_schema` | Converts a flat template into an object schema where every field is required and accepts strings or null, with no additional properties. |
+| `test_schemafor_preserves_key_order` | Preserves the original template key order in the schema's required fields. |
+| `test_schemafor_handles_lists_by_describing_their_first_item` | Converts template lists into arrays whose item schema matches the first example element. |
+| `test_schemafor_handles_an_empty_list_without_crashing` | Handles an empty template list without raising an `IndexError`, falling back to string-or-null items. |
+| `test_schemafor_recurses_through_nested_structures` | Correctly builds schemas for nested objects and lists at multiple levels. |
+| `test_schemafor_maps_every_scalar_to_string_or_null` | Maps every scalar template value, including `None`, strings, numbers, and booleans, to a string-or-null schema. |
+| `test_schema_for_output_is_json_serialisable` | Ensures the generated schema can be serialised with `json.dumps()` before being passed to the CLI. |
+| `test_run_cli_turns_a_hang_into_a_readable_exit` | Converts a CLI timeout into a readable exit message instead of exposing a raw `TimeoutExpired` traceback. |
+| `test_run_cli_explains_a_missing_cli_instead_of_crashing` | Converts a missing Claude/Codex executable into a clear "CLI not found" message. |
+| `test_run_cli_passes_capture_and_timeout_settings_through` | Verifies subprocess output capture, timeout, replacement-character decoding, working directory, and command arguments are passed correctly. |
+| `test_run_claude_returns_the_structured_output_and_model_name` | Parses a successful Claude response and returns both the structured answer and the actual model version reported by the CLI. |
+| `test_run_claude_builds_the_command_with_the_image_path_and_schema` | Builds the Claude command with the image path, selected model and effort, Read permission, and JSON schema arguments. |
+| `test_run_claude_exits_when_the_reply_is_not_json` | Rejects non-JSON CLI output and exits with a useful message containing the raw response. |
+| `test_run_claude_exits_when_the_reply_is_an_error_or_incomplete` | Rejects both explicit Claude errors and valid JSON responses missing `structured_output`. |
+| `test_run_codex_reads_the_answer_from_the_output_file` | Reads and parses the JSON answer written by Codex to its `--output-last-message` file and returns the requested model name. |
+| `test_run_codex_extracts_json_surrounded_by_chatter` | Extracts valid JSON from Codex output even when explanatory text appears before or after the JSON object. |
+| `test_run_codex_runs_read_only_and_ephemeral` | Verifies Codex uses an ephemeral session, ignores user configuration, runs with a read-only sandbox, and receives the image path. |
+| `test_run_codex_exits_on_a_bad_exit_code_or_a_missing_answer_file` | Rejects either a non-zero Codex exit code or a missing output file instead of treating the result as a valid empty transcription. |
+| `test_run_codex_exits_when_the_answer_file_holds_no_json` | Rejects an output file containing prose without a JSON object and exits with a clear message. |
+| `test_transcribe_picks_the_engine_from_the_model_name` | Selects Codex for `gpt-*` models and Claude for documented non-GPT models, recording the selected engine in the result. |
+| `test_transcribe_honours_an_explicit_engine_override` | An explicit `engine="claude"` override takes precedence over the automatic engine selected from the model name. |
+| `test_transcribe_rejects_an_unknown_engine` | Rejects an invalid engine name immediately and reports that the valid choices are Claude or Codex. |
+| `test_transcribe_stamps_every_answer_with_provenance` | Adds engine, actual model version, effort, and elapsed seconds to every transcription result. |
+| `test_transcribe_falls_back_to_the_requested_model_name` | Uses the requested model name when the selected engine does not report an actual model version. |
+| `test_transcribe_unwraps_a_notes_answer_returned_as_a_json_string` | Repairs notes responses where the complete transcription object has incorrectly been returned as a JSON string inside the `text` field. |
+| `test_transcribe_leaves_ordinary_text_untouched` | Leaves normal text and invalid JSON-looking text unchanged when the notes JSON-unwrapping repair does not apply. |
+| `test_transcribe_sends_the_template_inside_the_prompt` | Includes the page template alongside `prompt.txt` in the model prompt and passes the same template to the transcription engine. |
+| `test_transcribe_defaults_model_and_effort_from_env` | When model and effort are omitted, uses the corresponding `MODEL` and `EFFORT` values from the environment configuration. |
