@@ -10,9 +10,9 @@ with numpy/cv2; nothing here reads a file.
 pytest tests-v2/unit
 ```
 
-## `test_preprocess.py` — 9 tests
+## `test_preprocess.py` — 23 tests
 
-Skew estimation and CLI/config option handling for `pipeline.preprocess`.
+preprocessing steps tests and CLI/config option handling for `pipeline.preprocess`.
 
 | Test  | What it checks |
 |---|---|
@@ -22,6 +22,20 @@ Skew estimation and CLI/config option handling for `pipeline.preprocess`.
 | `test_boundary_skew_rejects_disagreeing_edges`  | Two edges at conflicting angles return `None` rather than an unreliable average. |
 | `test_defaults_and_cli_overrides`  | Precedence order: defaults < config values < command-line flags. |
 | `test_invalid_cli_options`  | A bad number and conflicting colour modes both exit with argparse code 2. |
+| `test_single_image_without_output_writes_beside_the_source` | Without `--output`, the preprocessed image is written beside the source with a `_preprocessed` suffix, while the original remains unchanged. |
+| `test_single_image_with_output_keeps_the_original_filename` | With `--output`, the processed image keeps its original filename rather than adding the `_preprocessed` suffix. |
+| `test_report_records_the_settings_that_were_actually_used` | The JSON report correctly records the selected grayscale, binarize, colour, crop, deskew, and adaptive-C settings, along with the report schema version and page mode. |
+| `test_a_non_image_file_is_a_usage_error` | Unsupported single-file extensions such as `.txt`, `.pdf`, and `.zip` raise an argparse usage error with exit code 2. |
+| `test_a_missing_input_path_is_a_usage_error` | A nonexistent input path is rejected as a usage error with exit code 2 before processing starts. |
+| `test_folder_mode_processes_every_image_including_subfolders` | Folder input recursively processes images in subfolders and preserves the input directory structure in the output directory. |
+| `test_folder_mode_ignores_files_it_has_already_produced` | Files ending in `_preprocessed` are skipped so previously generated outputs are not processed again. |
+| `test_folder_mode_ignores_unsupported_file_types` | Unsupported files such as `.txt` and `.pdf` inside a folder are quietly ignored while supported images are processed. |
+| `test_folder_with_no_supported_images_is_a_usage_error` | An empty or image-free folder raises a usage error with exit code 2 instead of producing an empty report. |
+| `test_output_folder_inside_the_input_folder_is_rejected` | An output directory that is the input folder or nested inside it is rejected with exit code 2 to prevent outputs from being processed as new inputs. |
+| `test_an_existing_report_stops_the_run_before_any_processing` | An existing preprocessing report prevents the run from overwriting it and ensures no output image is created. |
+| `test_one_bad_image_does_not_stop_the_others_but_changes_the_exit_code` | A failed image does not stop the remaining images from processing; the failure is recorded in the report and the command returns exit code 1. |
+| `test_invalid_config_value_becomes_a_usage_error` | An invalid `PREPROCESS_*` configuration value is converted into an argparse usage error with exit code 2 rather than producing a traceback. |
+| `test_progress_lines_name_each_file_and_its_detected_skew` | Console progress output names each processed file, shows its mode and detected skew, and includes the final report location. |
 
 ## `test_identify.py` — 15 tests
 
