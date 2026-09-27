@@ -174,6 +174,23 @@ def test_stored_loads_fingerprints_by_image_content_not_filename(tmp_path, monke
     assert X.dtype == np.float32           # widened from the float16 on disk
     np.testing.assert_allclose(X[0], X[1])
 
+def test_stored_computes_and_saves_missing_fingerprints(tmp_path, monkeypatch):
+    """compute=True fills in any missing fingerprint by calling fingerprint() and saving it."""
+    store = tmp_path / "store"
+    monkeypatch.setattr(identify, "STORE", store)
+    monkeypatch.setattr(identify, "fingerprint", lambda paths: np.array([[1.0, 2.0, 3.0]] * len(paths), np.float32))
+
+    page = tmp_path / "new.jpg"
+    page.write_bytes(b"brand new page")
+
+    X = stored([page], compute=True)
+
+    assert X.shape == (1, 3)
+    np.testing.assert_allclose(X[0], [1.0, 2.0, 3.0])
+    saved_files = list(store.glob("*.npy"))
+    assert len(saved_files) == 1
+    assert np.load(saved_files[0]).dtype == np.float16   # saved compressed, widened back on load
+
 
 # ---------------------------------------------------------------- identify_pages()
 def test_identify_pages_on_an_empty_list_does_not_load_the_model():

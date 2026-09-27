@@ -55,6 +55,7 @@ Unit tests for scoring, bookkeeping, fingerprint storage, page identification, a
 | `test_labelled_pages_is_deterministic_in_order` | `labelled_pages()` consistently returns pages in sorted order so page paths and their truth labels remain aligned. |
 | `test_stored_tells_you_to_train_when_a_fingerprint_is_missing` | A missing fingerprint raises `FileNotFoundError` with a message identifying the missing pages and the required training command. |
 | `test_stored_loads_fingerprints_by_image_content_not_filename` | Fingerprints are retrieved using image content hashes rather than filenames, with cached `float16` values converted to `float32`. |
+|`test_stored_computes_and_saves_missing_fingerprints`| Missing fingerprint and compute=True then it should  correctly compute and save it |
 | `test_identify_pages_on_an_empty_list_does_not_load_the_model` | An empty page list immediately returns an empty result without attempting to load the model. |
 | `test_identify_pages_returns_plain_python_types` | Identification results use ordinary Python `str` and `float` values that can be serialized with `json.dumps`, rather than NumPy scalar types. |
 | `test_min_coverage_is_the_documented_threshold` | `MIN_COVERAGE` remains fixed at 0.5 and the supported label set remains exactly `blank`, `coded`, `main`, and `notes`. |
@@ -172,3 +173,14 @@ unit tests for `pipeline.transcribe.score`, covering JSON flattening, value norm
 | `test_main_prints_a_row_per_model_and_page_kind` | Prints a leaderboard row for each model and page type with the correct exact-match percentage and hit/total fraction. |
 | `test_main_counts_pages_with_no_answer_as_missing` | Counts truth pages without corresponding model answers as missing rather than silently excluding them from the results. |
 | `test_main_skips_a_kind_with_no_answers_at_all` | Omits page types that the model never attempted instead of displaying them as zero-score results. |
+
+
+## `test_identify_fingerprint.py` — 3 tests
+
+Unit tests for `pipeline.identify.fingerprint`, covering empty input, view construction, and quadrant cropping. The CLIP encoder (`_clip`) is mocked throughout, so these run in milliseconds with no model loaded.
+
+| Test | What it checks |
+|---|---|
+| `test_fingerprint_empty_list` | An empty input returns a `(0, 0)` array, and the CLIP encoder is never called. |
+| `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP. |
+| `test_fingerprint_crops_correct_quadrants` | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
