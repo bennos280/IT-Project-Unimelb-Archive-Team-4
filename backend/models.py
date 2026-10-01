@@ -43,6 +43,14 @@ class Field(Base):
     decoded_value = Column(Text, nullable=True)
     flag_type = Column(String, ForeignKey("flags.flag_type"), nullable=True)
 
+class ResidentField(Base):
+    __tablename__ = "resident_fields"
+    page_id = Column(String, primary_key=True)
+    resident_no = Column(Integer, primary_key=True)
+    resident_field_title = Column(String, primary_key=True)
+    text_raw = Column(String, nullable=True)
+    flag_type = Column(String, nullable=True)
+
 class Reviewer(Base):
     __tablename__ = "reviewers"
     reviewer_id = Column(Integer, primary_key=True)

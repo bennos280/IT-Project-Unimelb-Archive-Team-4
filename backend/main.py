@@ -26,6 +26,25 @@ def get_db():
         db.close()
 
 #Pydantic models
+"""
+class Field(BaseModel):
+    id: str #field_title
+    label: str #field title prettier
+    group: str #???
+    value: str #raw
+
+class Page(BaseModel):
+    id: str
+    type: str
+    imageUrl: str
+    fields: list[Field]
+
+class SurveyResponse(BaseModel):
+    id: str
+    title: str
+    pages: list[Page]
+"""
+
 # (incoming JSON data looks like this)
 class CreateReviewerRequest(BaseModel):
     id: int
@@ -43,10 +62,81 @@ class SaveReviewsRequest(BaseModel):
     revisions: Dict[str, int] #(pageid, revision_no)
 
 #return a survey
-@app.get("/survey")
+@app.get("/survey/{survey_id}")
 def get_survey(id: str, db: Session = Depends(get_db)):
+    #check if survey exists
+    survey = db.query(models.Survey).filter(models.Survey.survey_id == id).first()
+    if not survey:
+        raise HTTPException(status_code=404, detail="Survey not found")
 
-    return "to do"
+    #select pages belonging to survey
+    pages = db.query(models.Page).filter(models.Page.survey_id == id).all()
+
+    #list of pages to be returned
+    pages_list = []
+    for p in pages:
+        #list of fields to be returned per page
+        fields_list = []
+
+        #fill in fields list
+        fields = db.query(models.Field).filter(models.Field.page_id == p.page_id).all()
+        for f in fields:
+            f_split = f.field_title.rsplit('.',1)
+            label = None
+            group = None #right now this only works for 1 nested layer
+            if len(f_split) > 1:
+                label = f_split[1].replace('_', ' ').capitalize()
+                group = f_split[0].replace('_', ' ').capitalize()
+            else:
+                label = f.field_title.replace('_', ' ').capitalize()
+            fields_list.append({
+                "id": f.field_title,
+                "label": label,
+                "group": group,
+                "value": f.text_raw,
+            })
+
+        resident_fields = db.query(models.ResidentField).filter(models.ResidentField.page_id == p.page_id).all()
+        for rf in resident_fields:
+            # "residents.0.relationship"
+            fields_list.append({
+                "id": "residents." + f"{rf.resident_no}" + rf.resident_field_title,
+                "label": rf.resident_field_title.replace('_', ' ').capitalize(),
+                "group": "wip",
+                "value": rf.text_raw,
+            })
+
+        children = db.query(models.OtherChild).filter(models.OtherChild.page_id == p.page_id).all()
+        for c in children:
+            # "other_children.died.0"
+            fields_list.append({
+                "id": "other_children." + c.residence + f"{c.child_no}",
+                "label": "Other children: " + c.residence,
+                "group": "wip",
+                "value": c.text_raw,
+            })
+            
+        annotations = db.query(models.Annotation).filter(models.Annotation.page_id == p.page_id).all()
+        for a in annotations:
+            # "annotation.0"
+            fields_list.append({
+                "id": "annotation." + f"{a.annotation_no}",
+                "label": "Annotation",
+                "group": "wip",
+                "value": a.text_raw,
+            })
+
+        #give fields list to page, put page in page list
+        pages_list.append({
+            "id": p.page_id,
+            "type": p.category,
+            "imageUrl": p.import_path,
+            "fields": fields_list,
+        })
+
+    #return everything together
+    return {"id":id, "title":"Wilfred Prest Survey", "pages":pages_list}
+
 
 #returns list of (reviewer_id, name)
 @app.get("/reviewers")
@@ -120,7 +210,7 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                 # 1. "kitchen.food_storage"
                 # 2. "residents.0.relationship"
                 # 3. "other_children.died.0"
-                # 4. "annotation.0" (presumably not 100% sure)
+                # 4. "annotation.0"
 
                 raw = None #the original unedited text
 
@@ -133,17 +223,17 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                     raw = db.query(models.ResidentField.text_raw).filter(models.ResidentField.field_title == e.field_title, 
                                                                          models.ResidentField.page_id == e.page_id,
                                                                          models.ResidentField.resident_no == e.resident_no).scalar()
-                    final_field_id = "residents." + "{e.resident_no}" + e.field_title
+                    final_field_id = "residents." + f"{e.resident_no}" + e.field_title
                 elif e.child_no:
                     child = db.query(models.OtherChild).filter(models.OtherChild.child_no == e.child_no, 
                                                                  models.OtherChild.page_id == e.page_id).first()
                     raw = child.text_raw
                     residence = child.residence
-                    final_field_id = "other_children." + residence + "{e.child_no}"
+                    final_field_id = "other_children." + residence + f"{e.child_no}"
                 elif e.annotation_no:
                     raw = db.query(models.Field.text_raw).filter(models.Annotation.annotation_no == e.annotation_no, 
                                                                  models.Annotation.page_id == e.page_id).scalar()
-                    final_field_id = "annotations." + "{e.annotation_no}"
+                    final_field_id = "annotations." + f"{e.annotation_no}"
 
                 print(page_id + final_field_id)
                 #fill in review entry
