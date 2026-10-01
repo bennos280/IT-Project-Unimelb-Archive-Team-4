@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Dict, Any
 import models
 import database
+from UI_groupings import groupings_main, groupings_coded
 from datetime import datetime, timezone
 
 app = FastAPI()
@@ -81,14 +82,29 @@ def get_survey(id: str, db: Session = Depends(get_db)):
         #fill in fields list
         fields = db.query(models.Field).filter(models.Field.page_id == p.page_id).all()
         for f in fields:
+            label = None #nice version of field id
+            group = None #a purely UI thing
+            #look up in groupings dict
+            #OR superfield if nested (right now this only works for 1 nested layer)
+            #OR if not a regular field, also grouped differently (not in this loop)
+
             f_split = f.field_title.rsplit('.',1)
-            label = None
-            group = None #right now this only works for 1 nested layer
             if len(f_split) > 1:
+                #if field was nested
                 label = f_split[1].replace('_', ' ').capitalize()
                 group = f_split[0].replace('_', ' ').capitalize()
             else:
+                #not nested
                 label = f.field_title.replace('_', ' ').capitalize()
+                if (p.category == "coded"):
+                    group = groupings_coded[f.field_title]
+                else:
+                    #technically groupings main contains like a single entry for the notes category
+                    group = groupings_main[f.field_title]
+                #if it wasn't in the dict
+                if not group:
+                    group = "Miscellaneous"
+
             fields_list.append({
                 "id": f.field_title,
                 "label": label,
@@ -100,9 +116,9 @@ def get_survey(id: str, db: Session = Depends(get_db)):
         for rf in resident_fields:
             # "residents.0.relationship"
             fields_list.append({
-                "id": "residents." + f"{rf.resident_no}" + rf.resident_field_title,
+                "id": "residents." + f"{rf.resident_no}" + "." + rf.resident_field_title,
                 "label": rf.resident_field_title.replace('_', ' ').capitalize(),
-                "group": "wip",
+                "group": "Resident " + f"{rf.resident_no}",
                 "value": rf.text_raw,
             })
 
@@ -112,7 +128,7 @@ def get_survey(id: str, db: Session = Depends(get_db)):
             fields_list.append({
                 "id": "other_children." + c.residence + f"{c.child_no}",
                 "label": "Other children: " + c.residence,
-                "group": "wip",
+                "group": "Other Children",
                 "value": c.text_raw,
             })
             
@@ -121,8 +137,8 @@ def get_survey(id: str, db: Session = Depends(get_db)):
             # "annotation.0"
             fields_list.append({
                 "id": "annotation." + f"{a.annotation_no}",
-                "label": "Annotation",
-                "group": "wip",
+                "label": "Annotations",
+                "group": "Annotations",
                 "value": a.text_raw,
             })
 
