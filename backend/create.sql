@@ -21,6 +21,7 @@ CREATE TABLE pages (
     model TEXT,
     effort TEXT,
     runtime NUMERIC,
+    revision_no INTEGER DEFAULT 0,
     survey_id TEXT REFERENCES surveys(survey_id) ON DELETE CASCADE,
     bundle_id TEXT NOT NULL REFERENCES bundles(bundle_id) ON DELETE CASCADE,
     category TEXT NOT NULL REFERENCES categories(category)
@@ -74,10 +75,15 @@ CREATE TABLE resident_fields(
 
 CREATE TABLE flags (flag_type TEXT PRIMARY KEY);
 
+CREATE TABLE reviewers (
+    reviewer_id INTEGER PRIMARY KEY,
+    name TEXT UNIQUE
+);
+
 CREATE TABLE edits (
     edit_id INTEGER PRIMARY KEY,
     edit_text TEXT,
-    user TEXT,
+    reviewer_id INTEGER,
     time NUMERIC,
     page_id TEXT NOT NULL,
     field_title TEXT,
@@ -85,14 +91,15 @@ CREATE TABLE edits (
     resident_no INTEGER,
     child_no INTEGER,
     annotation_no INTEGER,
+    CONSTRAINT fk_reviewer FOREIGN KEY(reviewer_id) REFERENCES reviewers(reviewer_id),
     CONSTRAINT fk_field FOREIGN KEY (page_id, field_title) REFERENCES fields(page_id, field_title) ON DELETE CASCADE,
     CONSTRAINT fk_resident_field FOREIGN KEY (page_id, resident_field_title, resident_no) REFERENCES resident_fields(page_id, resident_field_title, resident_no) ON DELETE CASCADE,
     CONSTRAINT fk_child FOREIGN KEY (page_id, child_no) REFERENCES other_children(page_id, child_no) ON DELETE CASCADE,
     CONSTRAINT fk_annotation FOREIGN KEY (page_id, annotation_no) REFERENCES annotations(page_id, annotation_no) ON DELETE CASCADE,
-    CONSTRAINT uq_field UNIQUE (page_id, field_title),
-    CONSTRAINT uq_resident_field UNIQUE (page_id, resident_field_title, resident_no),
-    CONSTRAINT uq_child UNIQUE (page_id, annotation_no),
-    CONSTRAINT uq_annotation UNIQUE (page_id, child_no),
+--    CONSTRAINT uq_field UNIQUE (page_id, field_title),
+--    CONSTRAINT uq_resident_field UNIQUE (page_id, resident_field_title, resident_no),
+--    CONSTRAINT uq_child UNIQUE (page_id, annotation_no),
+--    CONSTRAINT uq_annotation UNIQUE (page_id, child_no),
     CONSTRAINT exclusivity
         CHECK (
             (

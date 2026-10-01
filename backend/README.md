@@ -5,8 +5,10 @@ wilfprestsurvey.db|the database
 create.sql|contains sql commands to create all db tables
 drop.sql|contains sql commands to drop all db tables
 loader.py|
-models.py|
-main.py|
+main.py|contains backend api functions to store/retrieve data from db 
+database.py| db connection and engine setup
+models.py| sqlalchemy classes to correspond to db tables
+
 
 ## Database schema
 Follows the schema in this diagram
@@ -31,9 +33,14 @@ Call the functions from loader.py:
 
 ## Run backend server
 Install libraries:
-`pip install fastapi uvicorn sqlalchemy pydantic`
+```bash
+pip install fastapi uvicorn sqlalchemy pydantic
+```
 Run server:
-`uvicorn main:app --reload`
+```bash
+cd backend
+uvicorn main:app --reload
+```
 
 ## Acknowledgments
-main.py, models.py, database.py created with use of generative AI
+sections of main.py, models.py, database.py created with use of generative AI

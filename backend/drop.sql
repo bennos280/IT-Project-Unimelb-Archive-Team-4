@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS edits;
+DROP TABLE IF EXISTS reviewers;
 DROP TABLE IF EXISTS flags;
 DROP TABLE IF EXISTS resident_fields;
 DROP TABLE IF EXISTS residents;

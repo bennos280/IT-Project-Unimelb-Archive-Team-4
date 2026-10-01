@@ -71,8 +71,8 @@ def dump_into_db(manifest_path):
     for mkey, mval in data.items():
         if mkey == M_PAGES:
             for p in mval:
-                page = None
-                img = None
+                page = None #path of page json
+                img = None #path of image
                 categ = None
 
                 for key, value in p.items():
@@ -90,7 +90,11 @@ def dump_into_db(manifest_path):
                 if page is not None and img is not None and categ is not None and bundle_id is not None:
                     insert_page(page, img, categ, "idk", bundle_id, con)
                 else:
-                    print("Incomplete page info from manifest.")
+                    print("Incomplete page info cannot insert page.")
+                    #print(page) right now a blank page isn't being inserted into db bc this is null
+                    #print(img)
+                    #print(categ)
+                    #print(bundle_id)
     con.close()
 
 
@@ -206,9 +210,6 @@ def insert_field(page_id, title:str, raw, con, coded:bool):
                     poss_vals = cfield["possible_values"]
                     if poss_vals != "N/A":
                         for num, text in poss_vals.items():
-                            print("num " + num)
-                            print("text " + text)
-                            print("raw" + raw)
                             if (int(raw) == int(num)) or (len(num.split("-")) > 1 and num.split("-")[0] <= int(raw) and num.split[1] >= int(raw)):
                                 decoded = text
 
@@ -217,3 +218,7 @@ def insert_field(page_id, title:str, raw, con, coded:bool):
             INSERT INTO fields(page_id, field_title, text_raw, decoded_value)
             VALUES(?, ?, ?, ?);
         """, (page_id, title, raw, decoded))
+
+
+reset_db()
+dump_into_db("/Users/adelinetan/projects/comp30022/IT-Project-Unimelb-Archive-Team-4/output/test/manifest.json")
