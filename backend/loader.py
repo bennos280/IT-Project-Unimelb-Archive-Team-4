@@ -2,6 +2,7 @@ import json
 import sqlite3
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 DB = "wilfprestsurvey.db"
 CODED_DICT = "../data_dict.json" #location of dict relative to this file
@@ -29,6 +30,7 @@ CHILD_ELSEWHERE = "living_elsewhere"
 #name of folders
 #.../output/bundle_id/pages/whatever_00001.png 
 load_dotenv()
+os.getenv('OUTPUT') #!!!!!!!!!!fix this 
 DIR_OUTPUT = os.getenv("OUTPUT").rpartition("/")[2] #partition for absolute path
 DIR_PAGES = "pages"
 
@@ -219,6 +221,14 @@ def insert_field(page_id, title:str, raw, con, coded:bool):
             VALUES(?, ?, ?, ?);
         """, (page_id, title, raw, decoded))
 
+def main():
+    print('???')
+    reset_db()
+    print(DIR_OUTPUT.glob)
+    for file_path in DIR_OUTPUT.rglob('*manifest.json'):
+        print(file_path)
+        if file_path.is_file():
+            print(str(file_path))
+            dump_into_db(str(file_path))
 
-reset_db()
-dump_into_db("/Users/adelinetan/projects/comp30022/IT-Project-Unimelb-Archive-Team-4/output/test/manifest.json")
+main()

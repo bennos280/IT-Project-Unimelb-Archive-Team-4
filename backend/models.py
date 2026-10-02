@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, Numeric, LargeBinary, ForeignKey, DateTime
-from database import Base
+from backend.database import Base
 
 
 class Bundle(Base):
@@ -43,6 +43,11 @@ class Field(Base):
     decoded_value = Column(Text, nullable=True)
     flag_type = Column(String, ForeignKey("flags.flag_type"), nullable=True)
 
+class Resident(Base):
+    __tablename__ = "resident"
+    page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True, nullable=False)
+    resident_no = Column(Integer, nullable=False)
+
 class ResidentField(Base):
     __tablename__ = "resident_fields"
     page_id = Column(String, primary_key=True)
@@ -54,7 +59,7 @@ class ResidentField(Base):
 class Reviewer(Base):
     __tablename__ = "reviewers"
     reviewer_id = Column(Integer, primary_key=True)
-    name = Column(String, unique=True)
+    name = Column(String)
 
 class Edit(Base):
     __tablename__ = "edits"

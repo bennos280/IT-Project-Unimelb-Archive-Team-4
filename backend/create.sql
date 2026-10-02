@@ -77,7 +77,7 @@ CREATE TABLE flags (flag_type TEXT PRIMARY KEY);
 
 CREATE TABLE reviewers (
     reviewer_id INTEGER PRIMARY KEY,
-    name TEXT UNIQUE
+    name TEXT
 );
 
 CREATE TABLE edits (

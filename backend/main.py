@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Dict, Any
-import models
-import database
-from UI_groupings import groupings_main, groupings_coded
+from backend import models
+from backend import database
+from backend.UI_groupings import groupings_main, groupings_coded
 from datetime import datetime, timezone
 
 app = FastAPI()
@@ -27,25 +27,6 @@ def get_db():
         db.close()
 
 #Pydantic models
-"""
-class Field(BaseModel):
-    id: str #field_title
-    label: str #field title prettier
-    group: str #???
-    value: str #raw
-
-class Page(BaseModel):
-    id: str
-    type: str
-    imageUrl: str
-    fields: list[Field]
-
-class SurveyResponse(BaseModel):
-    id: str
-    title: str
-    pages: list[Page]
-"""
-
 # (incoming JSON data looks like this)
 class CreateReviewerRequest(BaseModel):
     id: int
@@ -64,14 +45,14 @@ class SaveReviewsRequest(BaseModel):
 
 #return a survey
 @app.get("/survey/{survey_id}")
-def get_survey(id: str, db: Session = Depends(get_db)):
+def get_survey(survey_id: str, db: Session = Depends(get_db)):
     #check if survey exists
-    survey = db.query(models.Survey).filter(models.Survey.survey_id == id).first()
+    survey = db.query(models.Survey).filter(models.Survey.survey_id == survey_id).first()
     if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
 
     #select pages belonging to survey
-    pages = db.query(models.Page).filter(models.Page.survey_id == id).all()
+    pages = db.query(models.Page).filter(models.Page.survey_id == survey_id).all()
 
     #list of pages to be returned
     pages_list = []
@@ -97,13 +78,10 @@ def get_survey(id: str, db: Session = Depends(get_db)):
                 #not nested
                 label = f.field_title.replace('_', ' ').capitalize()
                 if (p.category == "coded"):
-                    group = groupings_coded[f.field_title]
+                    group = groupings_coded.get(f.field_title, "Miscellaneous")
                 else:
                     #technically groupings main contains like a single entry for the notes category
-                    group = groupings_main[f.field_title]
-                #if it wasn't in the dict
-                if not group:
-                    group = "Miscellaneous"
+                    group = groupings_main.get(f.field_title, "Miscellaneous")
 
             fields_list.append({
                 "id": f.field_title,
@@ -151,7 +129,7 @@ def get_survey(id: str, db: Session = Depends(get_db)):
         })
 
     #return everything together
-    return {"id":id, "title":"Wilfred Prest Survey", "pages":pages_list}
+    return {"id":survey_id, "title":"Wilfred Prest Survey", "pages":pages_list}
 
 
 #returns list of (reviewer_id, name)
@@ -288,7 +266,9 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
 
     #get new revision no
     if payload.revisions:
-        new_rev = payload.revisions[page_id]
+        new_rev = payload.revisions.get(page_id)
+        if not new_rev:
+            raise HTTPException(status_code=400, detail="Page not in revisions.")
 
     if curr_rev < new_rev:
         #update revision number in db
