@@ -36,13 +36,16 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 
 ## Commands
 
-| | |
-|---|---|
-| `uv run survey` | new or unfinished PDFs (or folders of page images) in DATA -> `<OUTPUT>/<name>/manifest.json` + `review.json` |
-| `uv run survey x.pdf` | one PDF, or a folder of page images; `--transcribe` also transcribes (paid: needs the `claude` CLI signed in, or `codex` for gpt-* models) |
-| `uv run pytest` | 1,237 labelled pages, zero wrong answers required; 30 transcribed cards scored |
-| `uv run survey train` | refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`) |
-| `uv run survey transcribe <card>`, `uv run survey score --pages` | transcription leaderboard, `results/transcribe/` |
+| Command                                                          | Description                                                                                                                                                                                                    |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uv run survey`                                                  | Process new or unfinished PDFs (or folders of page images) in `DATA` → `<OUTPUT>/<name>/manifest.json` + `review.json`                                                                                         |
+| `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes (paid: needs the `claude` CLI signed in, or `codex` for gpt-\* models)                                                             |
+| `uv run pytest`                                                  | Run all tests (see `tests/README.md` for more info) scored                                                                                                      |
+| `uv run survey train`                                            | Refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`)                                                                                                        |
+| `uv run survey transcribe <card>`, `uv run survey score --pages` | Run transcription/scoring and view the transcription leaderboard in `results/transcribe/`                                                                                                                      |
+| `uv run survey data/x.pdf --preprocess`                          | Identify pages, then crop, straighten, and binarize eligible page images                                                                                                                                       |
+| `uv run survey data/x.pdf --preprocess --transcribe`             | Identify and preprocess eligible page images, then transcribe them to JSON                                                                                                                                     |
+| ↳ Optional enhancements                                          | `--greyscale` converts to greyscale; `--binarize` converts to black and white; `--no-deskew` skips deskewing; `--no-crop` skips cropping; `--c <num>` adjusts the adaptive threshold constant (e.g. `--c 12`). |
 
 If a run stops partway through, run the same command again. Splitting and identification run again for unfinished inputs. With `--transcribe`, saved page transcripts are reused when the image, page type, model, effort, prompt and template still match and the saved result is unchanged. Adding `--transcribe` also picks up inputs that have finished identification but have not finished transcription.
 
@@ -59,7 +62,7 @@ def step_thing(run):
         if unsure:
             run.flag(page, "thing", "why")
 
-STEPS = {"split": step_split, "identify": step_identify, "thing": step_thing, "transcribe": step_transcribe}
+STEPS = {"split": step_split, "identify": step_identify,"preprocess": step_preprocess, "thing": step_thing, "transcribe": step_transcribe}
 ```
 
 Heavy code goes in `pipeline/thing/`, imported inside the function. Flagged pages land in `review.json`.

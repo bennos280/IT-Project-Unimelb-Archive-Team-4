@@ -1,3 +1,4 @@
+"""Integration tests, testing the pipeline's resume/retry/caching correctness"""
 """Retry unfinished work without skipping surveys or repeating saved transcription calls."""
 import json
 from pathlib import Path
@@ -65,7 +66,7 @@ def test_transcription_is_selected_only_when_requested(survey, monkeypatch):
     assert run.main([]) == 0
     assert calls == []
     assert run.unprocessed(source.parent, output) == []
-    assert run.unprocessed(source.parent, output, list(run.STEPS)) == [source]
+    assert run.unprocessed( source.parent, output, ["split", "identify", "transcribe"]) == [source]
     assert run.main(["--transcribe"]) == 0
     assert calls == ["page1.png", "page2.png"]
     assert run.main(["--transcribe"]) == 0
@@ -118,7 +119,8 @@ def test_interrupted_transcription_reuses_saved_pages(survey, monkeypatch):
     assert run.main(["--transcribe"]) == 0
     assert calls == ["page1.png", "page2.png", "page2.png"]
     assert (output / source.stem / "transcribe" / "page1.json").read_bytes() == saved
-    assert run.completed(output / source.stem, list(run.STEPS))
+    assert run.completed(output / source.stem, ["split", "identify", "transcribe"],
+)
 
 
 @pytest.mark.parametrize("changed", ["image", "label", "model", "effort", "prompt", "template",
