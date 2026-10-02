@@ -75,3 +75,12 @@ No test doubles — real committed model outputs, real scorer.
 | Test | What it checks |
 |---|---|
 | `test_results_score` | Every committed model output under `results/transcribe/` is scored against its truth file in `transcribe/truth/`, asserting `0 <= hits <= total`. Also asserts truth files were found at all, so an empty glob fails loudly instead of vacuously passing. |
+
+## `test_group.py` — 2 tests
+
+Pages → surveys (`step_group`), from stored transcriptions: no model calls.
+
+| Test | What it checks |
+|---|---|
+| `test_cards_join_the_main_form_with_their_number` | On a made-up bundle, each coded card joins the main form with its dwelling number (before or after it, or misfiled far away), second main sheets and flats (24A, 24B) stay separate surveys, and unreadable or reused numbers are flagged. |
+| `test_real_bundles_group_like_ash` | 19 real bundles (`group/`, Opus 5.5 transcriptions + Ash's hand grouping of 589 surveys): at least `BASELINE` surveys match Ash exactly, and every one that does not is flagged for a human. |
