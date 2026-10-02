@@ -1,7 +1,8 @@
-"""The `survey` command: split ->  identify -> preprocess -> transcribe on each PDF. A step is one function on run.pages."""
+"""The `survey` command: split ->  identify -> preprocess -> transcribe -> group on each PDF. A step is one function on run.pages."""
 import argparse
 import hashlib
 import json
+import re
 import sys
 import tempfile
 import time
@@ -170,7 +171,69 @@ def step_transcribe(run: Run) -> None:
             run.save()
 
 
-STEPS = {"split": step_split, "identify": step_identify, "preprocess": step_preprocess, "transcribe": step_transcribe}
+def step_group(run: Run) -> None:
+    """Pages -> surveys. A main form starts a survey and the pages after it join it, except coded cards; a main form
+    with no new dwelling number, not straight after a coded card, is a second sheet of the same survey. A flat
+    letter is part of the number (24A is not 24B). A coded card joins the survey before or after it whose main form
+    has its dwelling number, else the only survey anywhere with that number that no neighbouring card matched,
+    else the neighbour no card matched, else the side most matched cards joined."""
+    surveys, cards, last = [], [], None
+    for i, page in enumerate(run.pages):
+        page["survey"], found = None, set()
+        if page.get("transcript"):
+            answer = json.loads((run.out / page["transcript"]).read_text(encoding="utf-8"))
+            text = str(answer.get("number_of_dwelling") or "")
+            found = {n.lstrip("0") + flat.upper() for n, flat in re.findall(r"(\d+)\s*([A-Za-z]?)(?![A-Za-z])", text)} - {""}
+        if page["label"] == "coded":
+            cards.append((i, page, found))
+        elif page["label"] == "main" and (not surveys or last == "coded" or not found <= surveys[-1]["main"]):
+            surveys.append({"start": i, "pages": [page], "main": set(found), "card": set()})
+        elif surveys:
+            surveys[-1]["pages"].append(page)
+            if page["label"] == "main":
+                surveys[-1]["main"] |= found
+        if page["label"] != "blank":
+            last = page["label"]
+    beside = {}  # card index -> (index of the first survey after it, index of the one neighbour matching it or None)
+    for i, _, found in cards:
+        k = sum(s["start"] < i for s in surveys)
+        match = [j for j in (k - 1, k) if 0 <= j < len(surveys) and found & surveys[j]["main"]]
+        beside[i] = (k, match[0] if len(match) == 1 else None)
+    matched = [(k, j) for k, j in beside.values() if j is not None]
+    after = sum(j == k for k, j in matched) * 2 > len(matched)
+    claimed = {j for _, j in matched}
+    for i, page, found in cards:
+        k, j = beside[i]
+        if j is None and surveys:
+            far = [n for n, s in enumerate(surveys) if found & s["main"] and n not in claimed]
+            free = [n for n in (k - 1, k) if 0 <= n < len(surveys) and n not in claimed]
+            j = far[0] if len(far) == 1 else free[0] if len(free) == 1 else min(k, len(surveys) - 1) if after else max(k - 1, 0)
+        if j is not None:
+            surveys[j]["pages"].append(page)
+            surveys[j]["card"] |= found
+    taken = set()
+    for s in surveys:
+        coded = sum(p["label"] == "coded" for p in s["pages"])
+        number = max(sorted(s["main"] & s["card"] or s["card"] or s["main"]), key=len, default="")
+        name = f"{run.input.stem}-{number}"
+        problems = [f"{coded} coded cards"] if coded != 1 else []
+        if coded and number and not s["main"] & s["card"]:
+            problems.append("its main form and coded card do not show the same dwelling number")
+        if not number or name in taken:
+            problems.append(f"dwelling number {number} is also used by an earlier survey in this bundle" if number
+                            else "no dwelling number")
+            name = Path(s["pages"][0]["file"]).stem
+        taken.add(name)
+        for p in s["pages"]:
+            p["survey"] = name
+        if problems:
+            run.flag(s["pages"][0], "group", f"survey {name}: " + "; ".join(problems))
+    loose = [p for p in run.pages if p["survey"] is None and p["label"] != "blank"]
+    if loose:
+        run.flag(loose[0], "group", f"{len(loose)} page(s) before the first main form belong to no survey")
+
+
+STEPS = {"split": step_split, "identify": step_identify, "preprocess": step_preprocess, "transcribe": step_transcribe, "group": step_group}
 
 
 def run_steps(run: Run, steps: list[str]) -> None:
@@ -253,7 +316,7 @@ def main(argv=None) -> int:
 
     output = (ROOT / config["OUTPUT"]).resolve()
     steps = [s for s in STEPS if (s != "preprocess" or opts.preprocess) 
-             and (s != "transcribe" or opts.transcribe)]
+             and (s not in ("transcribe", "group") or opts.transcribe)]  # group reads the transcripts
     inputs = opts.inputs or unprocessed(ROOT / config["DATA"], output, steps)
     if missing := [p for p in inputs if not p.exists()]:
         sys.exit(f"not found: {missing[0]}")
