@@ -2,10 +2,10 @@
 | | |
 |---|---|
 wilfprestsurvey.db|the database
-create.sql|contains sql commands to create all db tables
-drop.sql|contains sql commands to drop all db tables
-loader.py|wip
-main.py|contains backend api functions to store/retrieve data from db 
+create.sql|Contains sql commands to create all db tables
+drop.sql|Contains sql commands to drop all db tables
+loader.py|Imports transcribed data in output folder into database. If there is no database file it will create one automatically. (currently every time you run this file it will reset db to match only what is in output folder.)
+main.py|Contains backend api functions to store/retrieve data from db 
 database.py| db connection and engine setup
 models.py| sqlalchemy classes to correspond to db tables
 UI_groupings.py|stores dictionaries, used in main.py
@@ -58,8 +58,9 @@ get_reviewers return value eg.
 
 
 ## Import data into database
+From root:
 ```bash
-wip
+uv run --env-file .env backend/loader.py
 ```
 
 ## Run backend server

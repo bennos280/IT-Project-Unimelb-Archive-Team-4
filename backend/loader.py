@@ -1,11 +1,11 @@
 import json
 import sqlite3
 import os
-from dotenv import load_dotenv
 from pathlib import Path
 
-DB = "wilfprestsurvey.db"
-CODED_DICT = "../data_dict.json" #location of dict relative to this file
+ROOT = Path(__file__).resolve().parents[1]
+DB = (ROOT / "backend/wilfprestsurvey.db").resolve()
+DATA_DICT = (ROOT / "data_dict.json").resolve()
 CODED_CAT = "coded"
 
 #keys in manifest json
@@ -27,42 +27,55 @@ OTHER_CHILDREN = "other_children"
 CHILD_DIED = "died"
 CHILD_ELSEWHERE = "living_elsewhere"
 
-#name of folders
-#.../output/bundle_id/pages/whatever_00001.png 
-load_dotenv()
-os.getenv('OUTPUT') #!!!!!!!!!!fix this 
-DIR_OUTPUT = os.getenv("OUTPUT").rpartition("/")[2] #partition for absolute path
-DIR_PAGES = "pages"
+#clears database, reads everything in output folder and inserts into db
+def insert_outputs():
+    #clear database
+    reset_db()
 
-#deletes everything, remakes new empty tables
+    #get folder of output
+    output = Path(os.getenv('OUTPUT'))
+    output_dir = (ROOT / output).resolve()
+
+    #import all runs in output to database
+    files = output_dir.rglob('*manifest.json')
+    for f in files:
+        insert_bundle(f)
+
+#if database file doesn't exist, creates database
+#if it does exist, deletes everything, remakes new empty tables
 def reset_db():
     con = sqlite3.connect(DB, autocommit=True)
     cur = con.cursor()
 
-    with open('create.sql', 'r', encoding='utf-8') as f:
+    #get create and drop sql commands
+    create_fp = Path(__file__).parent / "create.sql"
+    drop_fp = Path(__file__).parent / "drop.sql"
+    with open(create_fp, 'r', encoding='utf-8') as f:
         create = f.read()
-    with open('drop.sql', 'r', encoding='utf-8') as f:
+    with open(drop_fp, 'r', encoding='utf-8') as f:
         drop = f.read()
 
+    #execute commands
     cur.executescript(drop)
     cur.execute("PRAGMA foreign_keys = ON;")
     cur.executescript(create)
     con.close()
 
 #insert all pages from a manifest.json into db
-def dump_into_db(manifest_path):
+def insert_bundle(manifest:Path):
     con = sqlite3.connect(DB, autocommit=True)
     cur = con.cursor()
     cur.execute("PRAGMA foreign_keys = ON;")
 
-    with open(manifest_path, 'r', encoding='utf-8') as file:
+    with open(manifest, 'r', encoding='utf-8') as file:
         data = json.load(file)
     
     #insert bundle
     bundle_id = None
     if data.get(M_PAGES):
-        #.../output/bundle_id/pages/whatever_00001.png
-        bundle_id = data[M_PAGES][0][M_PAGE_PATH].rsplit(DIR_OUTPUT + "/", 1)[1].split("/")[0]
+        #splice out 'bundle_id' from
+        #.../data/bundle_id.pdf"
+        bundle_id = data[M_INPUT].rsplit("/",1)[1].split(".")[0]
         cur.execute("""INSERT OR IGNORE INTO bundles(bundle_id, source_pdf) 
             VALUES(?, ?)""", (bundle_id, data[M_INPUT]))
     else:
@@ -73,38 +86,61 @@ def dump_into_db(manifest_path):
     for mkey, mval in data.items():
         if mkey == M_PAGES:
             for p in mval:
-                page = None #path of page json
-                img = None #path of image
+                page_fp = None #path of page json
+                img_fp = None #path of image
                 categ = None
+                blank = False
 
                 for key, value in p.items():
                     if key == M_PAGE_LABEL:
+                        if value == "blank":
+                            blank = True
                         categ = value
                     elif key == M_PAGE_PATH:
-                        img = value
-                    elif key == M_PAGE_TRANSCRIPT and img is not None:
+                        img_fp = value
+                    elif key == M_PAGE_TRANSCRIPT and img_fp is not None:
                         #.../output/bundle_id/pages/whatever_00001.png
                         #transcribe/whatever_00001.json
-                        page = img.rsplit(DIR_PAGES + "/", 1)[0] + value
+                        page_fp = img_fp.rsplit("pages/", 1)[0] + value
                     else:
                         pass
-                    
-                if page is not None and img is not None and categ is not None and bundle_id is not None:
-                    insert_page(page, img, categ, "idk", bundle_id, con)
+
+                if blank and img_fp is not None and bundle_id is not None:
+                    insert_blank_page(img_fp, "survey_id", bundle_id, con)
+                elif page_fp is not None and img_fp is not None and categ is not None and bundle_id is not None:
+                    insert_page(page_fp, img_fp, categ, "survey_id", bundle_id, con)
                 else:
-                    print("Incomplete page info cannot insert page.")
-                    #print(page) right now a blank page isn't being inserted into db bc this is null
-                    #print(img)
-                    #print(categ)
-                    #print(bundle_id)
+                    print(f"Incomplete page info cannot insert page.")
     con.close()
 
+def insert_blank_page(img_fp:str, survey_id:str, bundle_id:str, con):
+    #.../pages/page_id.png
+    page_id = img_fp.rsplit("/", 1)[1].split(".")[0]
+
+    cur = con.cursor()
+    cur.execute("PRAGMA foreign_keys = ON;")
+
+    #insert survey if not already in db
+    cur.execute("INSERT OR IGNORE INTO surveys(survey_id, bundle_id) VALUES(?, ?)", (survey_id, bundle_id))
+    #insert page category if not already in db
+    cur.execute("INSERT OR IGNORE INTO categories VALUES('blank')")
+
+    #insert page
+    res = cur.execute("SELECT page_id FROM pages WHERE page_id=?", (page_id,))
+    if res.fetchone() is not None:
+        print(f"page {page_id} already in database!")
+        return
+    else:
+        cur.execute("""
+            INSERT INTO pages(page_id, import_path, survey_id, bundle_id, category)
+            VALUES(?, ?, ?, ?, ?);
+        """, (page_id, img_fp, survey_id, bundle_id, 'blank'))
 
 #insert a single page into db
 #will ignore if pageid is already in db
 #if coded page, decoded values are pulled from the data_dict.json and put into database
-def insert_page(page_p:str, src_img_p:str, category:str, survey_id:str, bundle_id:str, con):
-    page_id = page_p.rsplit("/", 1)[1].split(".")[0]
+def insert_page(page_fp:str, img_fp:str, category:str, survey_id:str, bundle_id:str, con):
+    page_id = page_fp.rsplit("/", 1)[1].split(".")[0]
 
     cur = con.cursor()
     cur.execute("PRAGMA foreign_keys = ON;")
@@ -123,11 +159,11 @@ def insert_page(page_p:str, src_img_p:str, category:str, survey_id:str, bundle_i
         cur.execute("""
             INSERT INTO pages(page_id, import_path, survey_id, bundle_id, category)
             VALUES(?, ?, ?, ?, ?);
-        """, (page_id, src_img_p, survey_id, bundle_id, category))
+        """, (page_id, img_fp, survey_id, bundle_id, category))
 
     #do flags first!!
 
-    with open(page_p, 'r', encoding='utf-8') as file:
+    with open(page_fp, 'r', encoding='utf-8') as file:
         data = json.load(file)
 
     #insert page data abt the ai model and runtime stuff
@@ -190,7 +226,6 @@ def insert_page(page_p:str, src_img_p:str, category:str, survey_id:str, bundle_i
             insert_field(page_id, f"{key}", value, con, category==CODED_CAT)
 
 #if a field is nested, recursively joins titles together with . (eg kitchen.shared)
-#
 def insert_field(page_id, title:str, raw, con, coded:bool):
     cur = con.cursor()
 
@@ -204,7 +239,7 @@ def insert_field(page_id, title:str, raw, con, coded:bool):
         decoded = None
         #get decoded value if page is coded, otherwise just leave as None
         if coded and raw is not None:
-             with open(CODED_DICT, 'r', encoding='utf-8') as file:
+            with open(DATA_DICT, 'r', encoding='utf-8') as file:
                 coded_dict = json.load(file)
 
                 cfield = coded_dict["pages"]["3"]["fields"].get(title)
@@ -221,14 +256,5 @@ def insert_field(page_id, title:str, raw, con, coded:bool):
             VALUES(?, ?, ?, ?);
         """, (page_id, title, raw, decoded))
 
-def main():
-    print('???')
-    reset_db()
-    print(DIR_OUTPUT.glob)
-    for file_path in DIR_OUTPUT.rglob('*manifest.json'):
-        print(file_path)
-        if file_path.is_file():
-            print(str(file_path))
-            dump_into_db(str(file_path))
 
-main()
+insert_outputs()
