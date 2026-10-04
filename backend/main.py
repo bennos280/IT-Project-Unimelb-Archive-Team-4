@@ -176,7 +176,13 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
 
     if page_ids:
         #select all edits of these page_ids
-        edits = db.query(models.Edit).filter(models.Edit.page_id.in_(page_ids)).all()
+        #order now so later when looping through page_edits 
+        # will update reviews_dict entry with same field_title key to latest edit
+        edits = (db.query(models.Edit)
+                 .filter(models.Edit.page_id.in_(page_ids))
+                 .order_by(models.Edit.time.asc())
+                 .all()
+        )
         
         for page_id in page_ids:
             #get edits that belong to this page
@@ -189,8 +195,6 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                 revisions_dict[page_id] = rev_no
             #setup empty entry to reviews dict
             reviews_dict[page_id] = {}
-
-            # WIP HOW do i know this returns the llllllatest edit on a field???
 
             for e in page_edits:
                 #An edit can be on either:
@@ -229,7 +233,6 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                                                                  models.Annotation.page_id == e.page_id).scalar()
                     final_field_id = "annotations." + f"{e.annotation_no}"
 
-                print(page_id + final_field_id)
                 #fill in review entry
                 if raw and final_field_id:
                     reviews_dict[page_id][final_field_id] = {

@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from datetime import datetime, timezone, timedelta
 
 from backend import database
 from backend import models
@@ -63,7 +64,6 @@ def test_get_survey_success(client, db_session):
     field = models.Field(field_title="field", page_id="12345_00001", text_raw="raw")
     resident = models.Resident(page_id="12345_00001", resident_no=20)
     resident_field = models.ResidentField(page_id="12345_00001", resident_no=20, resident_field_title="relationship", text_raw="Head")
-    
     db_session.add_all([survey, page, field, resident, resident_field])
     db_session.commit()
 
@@ -110,13 +110,33 @@ def test_get_reviews_empty_survey(client):
     assert response.status_code == 200
     assert response.json() == {"reviews": {}, "revisions": {}}
 
+def test_get_reviews_latest(client, db_session):
+    # insert 3 edits at different times on same field
+    survey = models.Survey(survey_id="12345", bundle_id="6789")
+    page = models.Page(page_id="12345_00001", survey_id="12345", category="main", import_path="img.png", revision_no=0, bundle_id="6789")
+    field = models.Field(field_title="field", page_id="12345_00001", text_raw="raw")
+    edit1 = models.Edit(edit_id=0, edit_text="old", page_id="12345_00001", 
+                        field_title="field", time=datetime.now(timezone.utc))
+    edit2 = models.Edit(edit_id=1, edit_text="newer", page_id="12345_00001", 
+                        field_title="field", time=datetime.now(timezone.utc)+timedelta(days=1))
+    edit2 = models.Edit(edit_id=2, edit_text="newest", page_id="12345_00001", 
+                            field_title="field", time=datetime.now(timezone.utc)+timedelta(days=2))
+    db_session.add_all([survey, page, field, edit1, edit2])
+    db_session.commit()
+
+    response = client.get("/reviews/12345")
+    assert response.status_code == 200
+    assert response.json()["reviews"]["12345_00001"]["field"]["value"] == "newest"
+
+
 #------------------------------------------------- save_reviews()
 
 #CHANGED - lookup by dict key to new_rev = payload.revisions.get(page_id), and check if new_rev is null after
 def test_save_reviews_outdated_revision(client, db_session):
     survey = models.Survey(survey_id="12345", bundle_id="6789")
     #revision no is 5
-    page = models.Page(page_id="12345_00001", survey_id="12345", category="main", import_path="img.png", revision_no=5, bundle_id="6789")
+    page = models.Page(page_id="12345_00001", survey_id="12345", category="main", 
+                       import_path="img.png", revision_no=5, bundle_id="6789")
     db_session.add_all([survey, page])
     db_session.commit()
 
@@ -143,7 +163,8 @@ def test_save_reviews_outdated_revision(client, db_session):
 
 def test_save_reviews_success(client, db_session):
     survey = models.Survey(survey_id="12345", bundle_id="6789")
-    page = models.Page(page_id="12345_00001", survey_id="12345", category="main", import_path="img.png", revision_no=0, bundle_id="6789")
+    page = models.Page(page_id="12345_00001", survey_id="12345", category="main", 
+                       import_path="img.png", revision_no=0, bundle_id="6789")
     db_session.add_all([survey, page])
     db_session.commit()
 

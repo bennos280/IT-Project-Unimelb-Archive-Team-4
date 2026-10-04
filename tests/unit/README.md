@@ -190,5 +190,6 @@ Unit tests for `pipeline.identify.fingerprint`, covering empty input, view const
 |`test_create_reviewer_success`|Successfully saves a reviewer into database.|
 |`test_create_reviewer_empty_name`|Returns HTTP 404 if requested reviewer to save has no name given.|
 |`test_get_reviews_empty_survey`|Returns empty list without crashing if there is no review data in database.
+|`test_get_reviews_latest`|Returns latest review if there is more than one on the same field.|
 |`test_save_reviews_outdated_revision`|Rejects request to save an outdated review on a page.|
 |`test_save_reviews_success`|Successfully saves a review into database.|
