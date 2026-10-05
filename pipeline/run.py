@@ -1,4 +1,4 @@
-"""The `survey` command: split ->  identify -> preprocess -> transcribe -> group on each PDF. A step is one function on run.pages."""
+"""The `survey` command: split ->  identify -> preprocess -> transcribe -> group -> validate on each PDF. A step is one function on run.pages."""
 import argparse
 import hashlib
 import json
@@ -233,7 +233,13 @@ def step_group(run: Run) -> None:
         run.flag(loose[0], "group", f"{len(loose)} page(s) before the first main form belong to no survey")
 
 
-STEPS = {"split": step_split, "identify": step_identify, "preprocess": step_preprocess, "transcribe": step_transcribe, "group": step_group}
+def step_validate(run: Run) -> None:
+    """US6: compare grouped page transcripts and publish field review flags."""
+    from pipeline.us6.pipeline_step import step_validate as validate
+    validate(run)
+
+
+STEPS = {"split": step_split, "identify": step_identify, "preprocess": step_preprocess, "transcribe": step_transcribe, "group": step_group, "validate": step_validate}
 
 
 def run_steps(run: Run, steps: list[str]) -> None:
@@ -283,11 +289,14 @@ def main(argv=None) -> int:
     if args[:1] == ["transcribe"]:
         from pipeline.transcribe.run import main as transcribe
         return transcribe(args[1:])
+    if args[:1] == ["validate"]:
+        from pipeline.us6.pipeline_step import main as validate
+        return validate(args[1:])
     if args[:1] == ["score"]:
         from pipeline.transcribe.score import main as score
         return score(show_pages="--pages" in args)
 
-    parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train | transcribe <card> | score [--pages]")
+    parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train | transcribe <card> | validate <manifest.json> | score [--pages]")
     parser.add_argument("inputs", nargs="*", type=Path, help="PDFs or folders of page images; default: unprocessed PDFs in DATA")
     parser.add_argument("--transcribe", action="store_true", help="also transcribe (paid)")
     parser.add_argument("--preprocess",action="store_true", help="Crop, straighten, and binarize images before transcription",)
@@ -316,7 +325,7 @@ def main(argv=None) -> int:
 
     output = (ROOT / config["OUTPUT"]).resolve()
     steps = [s for s in STEPS if (s != "preprocess" or opts.preprocess) 
-             and (s not in ("transcribe", "group") or opts.transcribe)]  # group reads the transcripts
+             and (s not in ("transcribe", "group", "validate") or opts.transcribe)]  # group reads the transcripts
     inputs = opts.inputs or unprocessed(ROOT / config["DATA"], output, steps)
     if missing := [p for p in inputs if not p.exists()]:
         sys.exit(f"not found: {missing[0]}")
