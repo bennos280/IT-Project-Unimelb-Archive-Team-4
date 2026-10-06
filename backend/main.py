@@ -33,7 +33,7 @@ class CreateReviewerRequest(BaseModel):
     name: str
 
 class Review(BaseModel):
-    value: str
+    value: str | None
     original: str | None
     reviewer: str
     reviewerId: int
