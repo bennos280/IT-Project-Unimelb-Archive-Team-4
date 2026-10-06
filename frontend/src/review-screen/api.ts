@@ -56,7 +56,7 @@ type SurveyResponse = {
   }>;
 };
 
-// Send a request and display errors returned by FastAPI.
+// Send a request and display errors into message the review screen can display
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, options);
 
@@ -88,7 +88,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-// Load extracted fields and adapt flags for US7.
+// Load extracted fields and adapt flags and image fallbacks, then validate the response
 export async function getSurvey(id: string, signal?: AbortSignal) {
   const data = await request<SurveyResponse>(
     `/survey/${encodeURIComponent(id)}`,
@@ -119,7 +119,7 @@ export async function getSurvey(id: string, signal?: AbortSignal) {
   return parseSurvey(data, id);
 }
 
-// Convert US8's reviewer_id into US7's id.
+// Load reviewers and map the backend reviewer id to frontend id
 export async function getReviewers(): Promise<Reviewer[]> {
   const people = await request<BackendReviewer[]>("/reviewers");
 
@@ -129,6 +129,7 @@ export async function getReviewers(): Promise<Reviewer[]> {
   }));
 }
 
+// Trim the name, reuse an existing reviewer or create one through US8.
 export async function createReviewer(name: string): Promise<Reviewer> {
   const clean = name.trim();
 
@@ -160,12 +161,12 @@ export async function createReviewer(name: string): Promise<Reviewer> {
   };
 }
 
-// Load the latest saved corrections and page revisions.
+// Load the latest saved corrections and page revisions numbers for a survey
 export async function getReviews(id: string): Promise<Stored> {
   return request<Stored>(`/reviews/${encodeURIComponent(id)}`);
 }
 
-// Save changed fields from one page.
+// Validate pending reviews and submit one page with its proposed next revision
 export async function saveReviews(
   id: string,
   pageId: string,

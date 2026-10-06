@@ -13,6 +13,8 @@ import ImageViewer from "./ImageViewer";
 import type { useReviewSession } from "./useReviewSession";
 import { pageNames as names } from "./model";
 import "./review.css";
+
+// Render extracted fields and the scan, wiring reviewer controls and dialogs to session actions.
 export default function ReviewScreen({
   session,
 }: {

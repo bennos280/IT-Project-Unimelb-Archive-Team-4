@@ -412,10 +412,10 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       height: 0.0889849321729593,
     },
     "kitchen.facilities_for_cooking_and_water_supply_in_other_rooms": {
-      x: 0.7799024374691131,
-      y: 0.8685190147935265,
-      width: 0.21414250685488379,
-      height: 0.096045277121465261,
+      x: 0.779902,
+      y: 0.868519,
+      width: 0.214143,
+      height: 0.096045,
     },
     "residents.1.unearned_income_source": {
       x: 0.2600750848889668,

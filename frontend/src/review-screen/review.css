@@ -1,3 +1,4 @@
+/* Two-column layout for extracted fields and the source scan. */
 .review-grid {
   display: grid;
   grid-template-columns: 46% 54%;
@@ -35,6 +36,7 @@
   white-space: nowrap;
   font-size: 11px;
 }
+/* Field search and flag-filter controls. */
 .filters {
   display: flex;
   gap: 15px;
@@ -66,6 +68,7 @@
   color: #888;
   margin: 8px 0 20px;
 }
+/* Scrollable area containing the field table. */
 .field-scroll {
   overflow: auto;
   flex: 1;
@@ -189,6 +192,7 @@ thead th:nth-child(4) {
   padding: 10px 0;
   border-top: 1px solid #eee;
 }
+/* Source scan panel and its controls. */
 .source {
   min-width: 0;
   min-height: 0;
@@ -235,6 +239,7 @@ thead th:nth-child(4) {
   flex: 1;
   min-height: 0;
 }
+/* Scrollable image area used for zooming and drag panning. */
 .image-viewport {
   flex: 1;
   min-height: 180px;
@@ -260,6 +265,7 @@ thead th:nth-child(4) {
   padding: 20px;
   overflow: auto;
 }
+/* Zoom, fit and fullscreen toolbar. */
 .image-tools {
   border: 1px solid #ccc;
   border-radius: 4px;
@@ -299,6 +305,7 @@ thead th:nth-child(4) {
   margin-left: auto;
   white-space: nowrap;
 }
+/* Reviewer selection and page review/save actions. */
 .reviewer-controls {
   display: flex;
   align-items: flex-end;
@@ -344,6 +351,7 @@ thead th:nth-child(4) {
 .reviewer-controls select:disabled {
   opacity: 0.65;
 }
+/* Adjust the layout for medium-width screens. */
 @media (max-width: 1150px) {
   .image-tools {
     gap: 5px;
@@ -376,7 +384,9 @@ thead th:nth-child(4) {
     padding-left: 8px !important;
   }
 }
+/* Stack and resize controls for narrow screens. */
 @media (max-width: 760px) {
+  /* Header containing the survey title and supporting text. */
   .topbar {
     padding: 12px 15px;
   }
@@ -431,6 +441,7 @@ thead th:nth-child(4) {
     margin-bottom: 7px;
   }
 }
+/* Column proportions and text layout for notes pages. */
 .notes-table thead th:nth-child(1) {
   width: 13%;
 }
@@ -475,6 +486,7 @@ thead th:nth-child(4) {
   padding: 7px;
   font-size: 12px;
 }
+/* Modal styling shared by editing and unsaved-navigation dialogs. */
 .edit-dialog {
   width: min(520px, calc(100vw - 32px));
   border: 1px solid #aaa;
@@ -607,9 +619,44 @@ thead {
   }
 }
 
-.scan-stage{position:relative;flex-shrink:0;line-height:0}
-.source-highlight{position:absolute;border:3px solid #ca7700;background:#ffbf0024;pointer-events:none;box-sizing:border-box;box-shadow:0 0 0 1px #fff9}
-.field{cursor:pointer}.field.selected-field td{background:#fff3d4}
-.locate-field{background:none;border:0;padding:0;font:inherit;color:inherit;text-align:left;display:inline;cursor:pointer}
-.locate-field:hover{text-decoration:underline;background:none}
-.locate-status{font-size:11px;color:#72571d;margin:7px 0 0;min-height:14px;line-height:1.4}
+/* Position the field highlight relative to the scaled image. */
+.scan-stage {
+  position: relative;
+  flex-shrink: 0;
+  line-height: 0;
+}
+.source-highlight {
+  position: absolute;
+  border: 3px solid #ca7700;
+  background: #ffbf0024;
+  pointer-events: none;
+  box-sizing: border-box;
+  box-shadow: 0 0 0 1px #fff9;
+}
+.field {
+  cursor: pointer;
+}
+.field.selected-field td {
+  background: #fff3d4;
+}
+.locate-field {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  display: inline;
+  cursor: pointer;
+}
+.locate-field:hover {
+  text-decoration: underline;
+  background: none;
+}
+.locate-status {
+  font-size: 11px;
+  color: #72571d;
+  margin: 7px 0 0;
+  min-height: 14px;
+  line-height: 1.4;
+}

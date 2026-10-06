@@ -1,11 +1,26 @@
+// Defines the three possible survey card/page types shown in the review screen.
 export type PageType = "main" | "notes" | "coded";
+
+// Represents a validation flag attached to a particular extracted field.
+// Flags are used to tell the reviewer why a field may need attention.
+// TODO: flag kinds and reason format with the backend contract.
 export type Flag = {
   id: string;
   fieldId: string;
   kind: "inconsistency" | "gibberish" | "uncertain";
   reason: string;
 };
-export type SourceRegion = { x: number; y: number; width: number; height: number };
+
+// Stores a field region as fractions of the full image dimensions (0–1).
+// The current viewer reads shared regions from fieldLocations.ts.
+export type SourceRegion = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+// Represents one extracted survey field shown in the review panel.
 export type Field = {
   sourceRegion?: SourceRegion;
   id: string;
@@ -13,6 +28,9 @@ export type Field = {
   group: string;
   value: string | null;
 };
+
+// Represents one page of a survey, including its source image,
+// extracted fields, and any validation flags.
 export type SurveyPage = {
   id: string;
   type: PageType;
@@ -20,11 +38,15 @@ export type SurveyPage = {
   fields: Field[];
   flags: Flag[];
 };
+
+// Represents the complete survey loaded by the review screen.
 export type Survey = {
   id: string;
   title: string;
   pages: SurveyPage[];
 };
+
+// Validate survey identity, pages, unique field IDs and flags before rendering backend data.
 export function parseSurvey(input: unknown, expectedId: string): Survey {
   const s = input as Survey;
   if (
@@ -73,6 +95,8 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
   }
   return s;
 }
+
+// Maps internal page types to headings displayed in the UI.
 export const pageNames = {
   main: "Main page",
   notes: "Notes page",

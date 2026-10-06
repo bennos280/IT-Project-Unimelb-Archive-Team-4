@@ -3,13 +3,17 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "lint": "npm --prefix ../frontend run lint",
+    "build": "npm --prefix ../frontend run build",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:integration": "uv run --with httpx2 python integration/ui-reviewscreen/us7-8-check.py"
+    "test:integration": "uv run --with httpx2 python integration/ui-reviewscreen/us7-8-check.py",
+    "test:all": "npm run lint && npm run build && npm run test:unit && npm run test:e2e && npm run test:integration"
   },
   "devDependencies": {
-    "vitest": "^5.0.3",
-    "@playwright/test": "^1.63.0"
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24.19.1",
+    "vitest": "^5.0.3"
   }
 }

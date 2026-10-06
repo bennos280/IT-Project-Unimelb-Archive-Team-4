@@ -1,3 +1,9 @@
+Currently UI uses us7-demo.sqlite using seed_demo.py, which survey `216417` and its main, notes, and coded pages. It refuses to overwrite an existing database.
+
+Skip seeding if you already have a populated demo database. The database connection in `backend/database.py` must point to that file.
+
+The seed stores image paths, not image files. Keep the corresponding demo scans in `frontend/public/us7-demo/`.
+
 # US7 — Survey Review Screen
 
 US7 provides a review interface for comparing extracted survey data with the original scanned card. Reviewers can inspect flagged values, make corrections, and record which fields they have checked.
@@ -16,25 +22,13 @@ US7 provides a review interface for comparing extracted survey data with the ori
 
 ## First-time setup
 
-Requirements: Python 3.12 or newer, uv, npm, and a Node.js version compatible with the project's Vite version.
+Requirements: Python 3.12 or newer, uv, npm, and a Node.js version compatible with the project's Vite version(i.e. Node.js 24.x )
 
 From the repository root:
 
 ```sh
 uv sync
 ```
-
-If `backend/us7-demo.sqlite` does not already exist, create the demo database:
-
-```sh
-uv run python backend/seed_demo.py
-```
-
-The seed creates survey `216417` and its main, notes, and coded pages. It refuses to overwrite an existing database.
-
-Skip seeding if you already have a populated demo database. The database connection in `backend/database.py` must point to that file.
-
-The seed stores image paths, not image files. Keep the corresponding demo scans in `frontend/public/us7-demo/`.
 
 ## Run locally
 
@@ -104,7 +98,7 @@ Scans with different cropping, rotation, or layouts may require different mappin
 
 ## Data and storage
 
-The current adapter loads survey data from database.
+The frontend loads survey data from the SQLite database through the US8 API.
 
 Each page includes its ID, page type, image URL, labelled fields, and flags. Reviewer names and saved corrections are loaded from the backend.
 
@@ -124,8 +118,6 @@ npm run build
 ```
 
 Lint checks code rules. The build checks TypeScript and produces website files in `dist`.
-
-The Vitest, Playwright, and integration tests prepared in the separate `US7-8-connect` project have not yet been incorporated into this branch.
 
 ## Manual testing
 
