@@ -245,18 +245,18 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                     raw = db.query(models.Field.text_raw).filter(models.Field.field_title == e.field_title, 
                                                                  models.Field.page_id == e.page_id).scalar()
                     final_field_id = e.field_title
-                elif e.resident_no and e.resident_field_title:
+                elif (e.resident_no is not None  and e.resident_field_title is not None):
                     raw = db.query(models.ResidentField.text_raw).filter(models.ResidentField.resident_field_title == e.resident_field_title, 
                                                                          models.ResidentField.page_id == e.page_id,
                                                                          models.ResidentField.resident_no == e.resident_no).scalar()
-                    final_field_id = "residents." + f"{e.resident_no}" + "." + e.resident_field_title
-                elif e.child_no:
+                    final_field_id = (f"residents.{e.resident_no}.{e.resident_field_title}")
+                elif e.child_no is not None:
                     child = db.query(models.OtherChild).filter(models.OtherChild.child_no == e.child_no, 
                                                                  models.OtherChild.page_id == e.page_id).first()
                     raw = child.text_raw
                     residence = child.residence
-                    final_field_id = "other_children." + residence + f"{e.child_no}"
-                elif e.annotation_no:
+                    final_field_id = f"other_children.{child.residence}.{e.child_no}"
+                elif e.annotation_no is not None:
                     raw = db.query(models.Annotation.text_raw).filter(models.Annotation.annotation_no == e.annotation_no, 
                                                                  models.Annotation.page_id == e.page_id).scalar()
                     final_field_id = "annotations." + f"{e.annotation_no}"
