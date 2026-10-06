@@ -1,9 +1,6 @@
 # the scans (6.7 GB): DATA in .env
 data/
-# what `survey` writes
-# the scans (6.7 GB): DATA in .env
-data/
-# what `survey` writes
+#what the 'survey' writes
 output/
 .env
 .venv/
@@ -18,3 +15,24 @@ Thumbs.db
 
 # Preprocessed copies of source/, rebuilt by pipeline/preprocess.py
 source-pre/
+
+# Frontend dependencies and build output
+node_modules/
+dist/
+
+# Local US7 demo databases and SQLite sidecar files
+backend/us7-demo*.sqlite
+backend/us7-demo*.sqlite-*
+
+# Frontend test output
+frontend/playwright-report/
+frontend/test-results/
+frontend/coverage/
+frontend/tests/integration/report.json
+
+
+# Shared US7 test outputs
+tests/playwright-report/
+tests/test-results/
+tests/coverage/
+tests/integration/ui-reviewscreen/report.json

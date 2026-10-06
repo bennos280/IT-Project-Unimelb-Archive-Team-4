@@ -279,29 +279,31 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.08676745903011368,
       height: 0.030673053245474036,
     },
+
+    // TODO: DIscuss children part relating to db
     "other_children.died.0": {
-      x: 0.17354008662261475,
-      y: 0.3782785537504364,
-      width: 0.08484431791914424,
-      height: 0.03321890507331304,
+      x: 0.17354,
+      y: 0.378279,
+      width: 0.084844,
+      height: 0.033219,
     },
     "other_children.died.1": {
-      x: 0.2581056758038547,
-      y: 0.37878877612089173,
-      width: 0.08476616676497312,
-      height: 0.033920533888584126,
+      x: 0.258106,
+      y: 0.378789,
+      width: 0.084766,
+      height: 0.033921,
     },
-    "other_children.living_elsewhere.0": {
-      x: 0.17309160485979372,
-      y: 0.4077450158346217,
-      width: 0.08793972634268041,
-      height: 0.03426068213555433,
+    "other_children.living_elsewhere.2": {
+      x: 0.173092,
+      y: 0.407745,
+      width: 0.08794,
+      height: 0.034261,
     },
-    "other_children.living_elsewhere.1": {
-      x: 0.2558224166653382,
-      y: 0.4058742004762855,
-      width: 0.08807554121698097,
-      height: 0.03428717707346268,
+    "other_children.living_elsewhere.3": {
+      x: 0.255822,
+      y: 0.405874,
+      width: 0.088076,
+      height: 0.034287,
     },
     "rooms.number_of_separate_bedrooms": {
       x: 0.5952380477928869,
@@ -412,10 +414,10 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       height: 0.0889849321729593,
     },
     "kitchen.facilities_for_cooking_and_water_supply_in_other_rooms": {
-      x: 0.7799024374691131,
-      y: 0.8685190147935265,
-      width: 0.21414250685488379,
-      height: 0.096045277121465261,
+      x: 0.779902,
+      y: 0.868519,
+      width: 0.214143,
+      height: 0.096045,
     },
     "residents.1.unearned_income_source": {
       x: 0.2600750848889668,

@@ -4,6 +4,8 @@ import type { SurveyPage } from "./model";
 import { pageNames as names } from "./model";
 import { fieldLocations } from "./fieldLocations";
 
+// Render the source scan with zoom, drag-to-pan, fit, fullscreen and a mapped-field overlay.
+
 export default function ImageViewer({
   page,
   selection,
@@ -20,6 +22,7 @@ export default function ImageViewer({
   const region = selectedField
     ? fieldLocations[page.type][selectedField.id]
     : undefined;
+  // Zoom first, then centre the selected region after the resized image has rendered.
   useEffect(() => {
     if (!selection || !region || !loaded || page.type === "notes") return;
     let second = 0;
@@ -51,9 +54,11 @@ export default function ImageViewer({
     left: number;
     top: number;
   } | null>(null);
+  // Increment zoom within the supported 1–300 percent range.
   const change = (delta: number) => {
     setZoom((z) => Math.max(1, Math.min(300, z + delta)));
   };
+  // Calculate a scale that fits the full image inside the viewport, accounting for borders and padding.
   function fitToPage() {
     const container = viewport.current;
     const scan = image.current;
@@ -89,10 +94,12 @@ export default function ImageViewer({
         tabIndex={0}
         aria-label="Survey scan. Use arrow keys to pan and plus or minus to zoom."
         onKeyDown={(e) => {
+          // Handle keyboard zoom while the viewport has focus.
           if (e.key === "+" || e.key === "=") change(25);
           if (e.key === "-") change(-25);
         }}
         onPointerDown={(e) => {
+          // Record the pointer and scroll origin so dragging pans the image.
           if (e.button !== 0) return;
           const el = e.currentTarget;
           drag.current = {
@@ -104,6 +111,7 @@ export default function ImageViewer({
           el.setPointerCapture(e.pointerId);
         }}
         onPointerMove={(e) => {
+          // Apply the drag displacement to the viewport scroll position.
           if (!drag.current) return;
           e.currentTarget.scrollLeft =
             drag.current.left - e.clientX + drag.current.x;
@@ -167,6 +175,7 @@ export default function ImageViewer({
           </button>
           <button
             onClick={() => {
+              // Reset to the viewer-width baseline and return to the image origin.
               setZoom(100);
               viewport.current?.scrollTo(0, 0);
             }}
@@ -179,6 +188,7 @@ export default function ImageViewer({
           <button
             aria-label="Fullscreen scan"
             onClick={() => {
+              // Toggle fullscreen for the scan viewport.
               if (document.fullscreenElement) void document.exitFullscreen();
               else void viewport.current?.requestFullscreen();
             }}

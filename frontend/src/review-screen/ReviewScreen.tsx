@@ -13,6 +13,8 @@ import ImageViewer from "./ImageViewer";
 import type { useReviewSession } from "./useReviewSession";
 import { pageNames as names } from "./model";
 import "./review.css";
+
+// Render extracted fields and the scan, wiring reviewer controls and dialogs to session actions.
 export default function ReviewScreen({
   session,
 }: {
@@ -54,6 +56,10 @@ export default function ReviewScreen({
     reviewAll,
     savePage,
     navigate,
+    navigationDialog,
+    stayOnPage,
+    saveAndContinue,
+    discardAndContinue,
     visible,
     groups,
   } = session;
@@ -265,7 +271,7 @@ export default function ReviewScreen({
                   <nav className="pager" aria-label="Survey pages">
                     <button
                       aria-label="Previous page"
-                      disabled={index === 0}
+                      disabled={saving || index === 0}
                       onClick={() => navigate(index - 1)}
                     >
                       <ChevronLeft size={18} />
@@ -275,7 +281,7 @@ export default function ReviewScreen({
                     </span>
                     <button
                       aria-label="Next page"
-                      disabled={index === survey.pages.length - 1}
+                      disabled={saving || index === survey.pages.length - 1}
                       onClick={() => navigate(index + 1)}
                     >
                       <ChevronRight size={18} />
@@ -367,6 +373,37 @@ export default function ReviewScreen({
           </div>
         )}
       </main>
+      <dialog
+        ref={navigationDialog}
+        className="edit-dialog"
+        aria-labelledby="unsaved-reviews-heading"
+        onCancel={(event) => {
+          event.preventDefault();
+          stayOnPage();
+        }}
+      >
+        <h2 id="unsaved-reviews-heading">Save your reviews before leaving?</h2>
+        <p>
+          This page has unsaved reviews. Save them or discard them before
+          continuing.
+        </p>
+        <p>
+          Discarding restores the last saved values. Previously saved reviews
+          are kept.
+        </p>
+        <div className="dialog-actions">
+          <button autoFocus disabled={saving} onClick={stayOnPage}>
+            Stay here
+          </button>
+          <button disabled={saving} onClick={discardAndContinue}>
+            Discard reviews and continue
+          </button>
+          <button disabled={saving || !reviewer} onClick={saveAndContinue}>
+            {saving ? "Saving…" : "Save and continue"}
+          </button>
+        </div>
+        <p role="status">{message}</p>
+      </dialog>
       <dialog
         ref={editor}
         className="edit-dialog"
