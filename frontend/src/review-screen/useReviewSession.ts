@@ -8,6 +8,7 @@ import {
   type Reviewer,
 } from "./api";
 import type { Survey, Field } from "./model";
+import { orderFields } from "./fieldOrder";
 type Edit = {
   value: string | null;
   original: string | null;
@@ -273,11 +274,12 @@ export function useReviewSession() {
   }
 
   // Filter by extraction flags and the original field text, label and group.
+  const displayFields = page ? orderFields(page.fields, page.type) : [];
   const visible =
-    page?.fields.filter(
+    displayFields.filter(
       (f) =>
         (filter === "all" ||
-          page.flags.some((flag) => flag.fieldId === f.id)) &&
+          page?.flags.some((flag) => flag.fieldId === f.id)) &&
         `${f.label} ${f.value ?? ""} ${f.group}`
           .toLowerCase()
           .includes(query.toLowerCase()),
