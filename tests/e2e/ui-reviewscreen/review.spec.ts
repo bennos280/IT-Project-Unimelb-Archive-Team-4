@@ -2,6 +2,8 @@
 import { test as base, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import type { Survey } from "../../../frontend/src/review-screen/model";
+
+// Defines the saved review returned by mock API.
 type SavedReview = {
   value: string | null;
   original: string | null;
@@ -9,6 +11,9 @@ type SavedReview = {
   reviewerId: number;
   savedAt: string;
 };
+
+// Stores each test's simulated failures, successful save count,
+// saved reviews, and page revisions.
 type State = {
   failLoad: boolean;
   failSave: boolean;
@@ -22,6 +27,9 @@ const demo: Survey = JSON.parse(
     "utf8",
   ),
 );
+
+// Creates a fresh mock API for each test so reviews and reviewers
+// are isolated and API requests never reach the real backend.
 const test = base.extend<{ api: State }>({
   api: async ({ page }, use) => {
     const state: State = {
@@ -77,21 +85,30 @@ const test = base.extend<{ api: State }>({
     await use(state);
   },
 });
+
+// Finds the Address row using its edit button.
 const address = (page: Page) =>
   page.locator("tr.field").filter({
     has: page.getByRole("button", { name: "Edit Address", exact: true }),
   });
+
+// Opens Address, enters a value, and applies an unsaved review.
+// The caller must select a reviewer first.
 async function edit(page: Page, value: string) {
   await page.getByRole("button", { name: "Edit Address", exact: true }).click();
   await page.getByLabel("Reviewed value", { exact: true }).fill(value);
   await page.getByRole("button", { name: "Apply review", exact: true }).click();
 }
+
+// Opens the demo survey and waits for the review screen before each test.
 test.beforeEach(async ({ page, api }) => {
   expect(api.saves).toBe(0);
   await page.goto(`/?survey=${demo.id}`);
   await expect(address(page)).toBeVisible();
 });
 
+// Checks page navigation, matching field counts and scan URLs, successful
+// image loading, and disabled navigation buttons at the first and last pages.
 test("Next/Previous show matching page data and image", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Previous page", exact: true }),
@@ -129,6 +146,8 @@ test("Next/Previous show matching page data and image", async ({ page }) => {
   );
 });
 
+// Checks that Address remains visible when searched, an unmatched search
+// shows an empty state, and Clear filters restores every field.
 test("Search and Clear filters return expected rows", async ({ page }) => {
   await page.getByRole("textbox", { name: "Search fields" }).fill("Address");
   await expect(address(page)).toBeVisible();
@@ -142,6 +161,8 @@ test("Search and Clear filters return expected rows", async ({ page }) => {
   );
 });
 
+// Checks that the flag filter shows only flagged fields and expanding
+// the first flag displays its explanation from the fixture.
 test("Flag filter and disclosure show the reason", async ({ page }) => {
   await page
     .getByRole("combobox", { name: "Filter fields" })
@@ -156,6 +177,8 @@ test("Flag filter and disclosure show the reason", async ({ page }) => {
   );
 });
 
+// Checks the zoom buttons change the displayed percentage and Fit to Page
+// fits the complete scan inside the viewer without significant overflow.
 test("Zoom and Fit to Page change the image scale", async ({ page }) => {
   await page.getByRole("button", { name: "Zoom in", exact: true }).click();
   await expect(page.locator(".zoom output")).toHaveText("125%");
@@ -176,6 +199,8 @@ test("Zoom and Fit to Page change the image scale", async ({ page }) => {
     .toBe(true);
 });
 
+// Checks that selecting Address shows its named highlight and zooms to 200%.
+// This does not check whether the highlight's coordinates are correct.
 test("Clicking Address highlights its scan area", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Fit to Page" })).toBeEnabled();
   await address(page).locator(".locate-field").click();
@@ -186,6 +211,8 @@ test("Clicking Address highlights its scan area", async ({ page }) => {
   await expect(page.locator(".zoom output")).toHaveText("200%");
 });
 
+// Checks that applying a review requires a reviewer and cancelling the
+// editor leaves the original value unchanged without saving.
 test("Cancel discards draft text and reviewer is required", async ({
   page,
   api,
@@ -206,6 +233,8 @@ test("Cancel discards draft text and reviewer is required", async ({
   expect(api.saves).toBe(0);
 });
 
+// Checks that Apply creates an unsaved review, Save stores it in the mock
+// API with revision 1, and refreshing reloads the saved correction.
 test("Apply creates draft; Save persists and reload restores it", async ({
   page,
   api,
@@ -227,6 +256,8 @@ test("Apply creates draft; Save persists and reload restores it", async ({
   await expect(address(page)).toContainText("Reviewed by: Test reviewer");
 });
 
+// Checks that a rejected save displays the API error and retains the
+// correction as unsaved so the reviewer does not lose their work.
 test("Rejected save displays reason and retains unsaved correction", async ({
   page,
   api,
@@ -247,6 +278,8 @@ test("Rejected save displays reason and retains unsaved correction", async ({
   expect(api.saves).toBe(0);
 });
 
+// Checks that reviewing all fields preserves an existing correction
+// and saving stores a review for every field on the current page.
 test("Review all preserves correction and saves all fields", async ({
   page,
   api,
@@ -273,6 +306,8 @@ test("Review all preserves correction and saves all fields", async ({
   );
 });
 
+// Checks that a failed survey load displays an error and Try again
+// restores the screen once the mock API succeeds.
 test("Try again recovers from a failed survey request", async ({
   page,
   api,
@@ -287,6 +322,7 @@ test("Try again recovers from a failed survey request", async ({
   await expect(address(page)).toBeVisible();
 });
 
+// Checks that adding a reviewer makes their name the selected reviewer.
 test("Add reviewer makes the new reviewer selectable", async ({ page }) => {
   await page.getByRole("button", { name: "Add reviewer", exact: true }).click();
   await page
@@ -306,6 +342,8 @@ const leaveDialog = (page: Page) =>
   });
 
 test.describe("Unsaved navigation", () => {
+  // Checks that Stay here and Escape dismiss the navigation warning
+  // while retaining the unsaved correction without saving it.
   test("Stay here and Escape retain the unsaved review", async ({
     page,
     api,
@@ -334,6 +372,9 @@ test.describe("Unsaved navigation", () => {
     await expect(leaveDialog(page)).not.toBeVisible();
     await expect(address(page)).toContainText("Pending address");
   });
+
+  // Checks that Save and continue saves the correction and opens the next
+  // page, then shows the saved correction when the reviewer returns.
 
   test("Save and continue saves before switching pages", async ({
     page,
@@ -369,6 +410,8 @@ test.describe("Unsaved navigation", () => {
     await expect(address(page)).toContainText("Reviewed by:");
   });
 
+  // Checks that discarding a newer unsaved correction restores the earlier
+  // saved correction and does not create an additional save.
   test("Discard restores the previous saved correction", async ({
     page,
     api,
@@ -410,6 +453,8 @@ test.describe("Unsaved navigation", () => {
     expect(api.saves).toBe(1);
   });
 
+  // Checks that a failed Save and continue keeps the warning and current
+  // page open, displays the error, and preserves the unsaved correction.
   test("Failed save keeps the current page and unsaved review", async ({
     page,
     api,
@@ -443,6 +488,8 @@ test.describe("Unsaved navigation", () => {
     expect(api.saves).toBe(0);
   });
 
+  // Checks that leaving the website with an unsaved review triggers the
+  // browser's native beforeunload warning; the test accepts that warning.
   test("Leaving the website warns about unsaved reviews", async ({ page }) => {
     await page
       .getByLabel("Reviewer name", { exact: true })
