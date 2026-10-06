@@ -107,7 +107,10 @@ export async function getSurvey(id: string, signal?: AbortSignal) {
 
       // Allows data to load while image serving is not connected.
       // This does not convert a filesystem path into a working URL.
-      if (typeof page.imageUrl !== "string" || page.imageUrl.trim() === "") {
+      if (
+        typeof page.imageUrl !== "string" ||
+        !/^(https?:\/\/|\/[^/])/.test(page.imageUrl)
+      ) {
         page.imageUrl = "/image-not-connected";
       }
     }
@@ -188,19 +191,17 @@ export async function saveReviews(
     const person = people.find((item) => item.id === edit.reviewerId);
 
     if (!field) {
-      throw new Error(`Could not find field "${fieldId}" on this page.`);
+      throw new Error(
+        `Could not save: field "${fieldId}" was not found on this page.`,
+      );
     }
 
     if (!person) {
-      throw new Error("Select a reviewer registered in US8.");
+      throw new Error("Unknown reviewer. Select a reviewer registered in US8.");
     }
 
-    // Your colleague's current Review.value accepts strings only.
-    if (edit.value === null) {
-      throw new Error(
-        `Cannot save "${field.label}" as blank yet: US8 does not accept null corrections. Your changes remain unsaved.`,
-      );
-    }
+    // Preserve null values when sending reviews to US8.
+    // If the backend rejects the save, the UI keeps the changes unsaved.
 
     pageReviews[fieldId] = {
       value: edit.value,

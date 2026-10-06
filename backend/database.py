@@ -3,7 +3,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import event
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./wilfprestsurvey.db"
+#SQLALCHEMY_DATABASE_URL = "sqlite:///./wilfprestsurvey.db
+
+#adding this part below for testing/demo purposes
+from pathlib import Path
+
+DB_PATH = Path(__file__).resolve().parent / "us7-demo.sqlite"
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}

@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:unit": "npm --prefix ../tests run test:unit",
+    "test:e2e": "npm --prefix ../tests run test:e2e",
+    "test:e2e:ui": "npm --prefix ../tests run test:e2e:ui",
+    "test:integration": "npm --prefix ../tests run test:integration"
   },
   "dependencies": {
     "lucide-react": "^1.47.0",
