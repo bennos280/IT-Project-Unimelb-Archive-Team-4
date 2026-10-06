@@ -11,8 +11,8 @@ from pipeline.common import IMAGES, ROOT
 from pipeline.identify.fingerprint import CODE_HASH, fingerprint
 from pipeline.identify.model import LABELS, REVIEW, WEIGHTS, Model
 
-PAGES = ROOT / "tests" / "identify" / "pages"                       # labelled pages: pages/<label>/.../x.jpg
-STORE = ROOT / "tests" / "identify" / "fingerprints" / CODE_HASH    # their fingerprints, committed, one file per image
+PAGES = ROOT / "tests" / "integration" / "identify" / "pages"        # labelled pages: pages/<label>/.../x.jpg
+STORE = ROOT / "tests" / "integration" / "identify" / "fingerprints" / CODE_HASH    # their fingerprints, committed, one file per image
 MIN_COVERAGE = 0.5
 
 

@@ -1,9 +1,6 @@
 # the scans (6.7 GB): DATA in .env
 data/
-# what `survey` writes
-# the scans (6.7 GB): DATA in .env
-data/
-# what `survey` writes
+#what the 'survey' writes
 output/
 .env
 .venv/
