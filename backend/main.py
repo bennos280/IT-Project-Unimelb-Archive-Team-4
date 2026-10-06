@@ -34,7 +34,7 @@ class CreateReviewerRequest(BaseModel):
 
 class Review(BaseModel):
     value: str
-    original: str
+    original: str | None
     reviewer: str
     reviewerId: int
     savedAt: str
@@ -57,8 +57,9 @@ def get_survey(survey_id: str, db: Session = Depends(get_db)):
     #list of pages to be returned
     pages_list = []
     for p in pages:
-        #list of fields to be returned per page
+        #list of fields and flags to be returned per page
         fields_list = []
+        flags_list = []
 
         #fill in fields list
         fields = db.query(models.Field).filter(models.Field.page_id == p.page_id).all()
@@ -90,35 +91,61 @@ def get_survey(survey_id: str, db: Session = Depends(get_db)):
                 "value": f.text_raw,
             })
 
+            if f.flag_type:
+                flags_list.append({
+                    "fieldId": f.field_title,
+                    "kind": f.flag_type
+                })
+
         resident_fields = db.query(models.ResidentField).filter(models.ResidentField.page_id == p.page_id).all()
         for rf in resident_fields:
             # "residents.0.relationship"
+            id = "residents." + f"{rf.resident_no}" + "." + rf.resident_field_title
             fields_list.append({
-                "id": "residents." + f"{rf.resident_no}" + "." + rf.resident_field_title,
+                "id": id,
                 "label": rf.resident_field_title.replace('_', ' ').capitalize(),
                 "group": "Resident " + f"{rf.resident_no}",
                 "value": rf.text_raw,
             })
 
+            if rf.flag_type:
+                flags_list.append({
+                    "fieldId": id,
+                    "kind": rf.flag_type
+                })
+
         children = db.query(models.OtherChild).filter(models.OtherChild.page_id == p.page_id).all()
         for c in children:
             # "other_children.died.0"
+            id = "other_children." + c.residence + "." + f"{c.child_no}"
             fields_list.append({
-                "id": "other_children." + c.residence + f"{c.child_no}",
+                "id": id,
                 "label": "Other children: " + c.residence,
                 "group": "Other Children",
                 "value": c.text_raw,
             })
+
+            if f.flag_type:
+                flags_list.append({
+                    "fieldId": id,
+                    "kind": f.flag_type
+                })
             
         annotations = db.query(models.Annotation).filter(models.Annotation.page_id == p.page_id).all()
         for a in annotations:
             # "annotation.0"
+            id = "annotation." + f"{a.annotation_no}"
             fields_list.append({
-                "id": "annotation." + f"{a.annotation_no}",
+                "id": id,
                 "label": "Annotations",
                 "group": "Annotations",
                 "value": a.text_raw,
             })
+            if f.flag_type:
+                flags_list.append({
+                    "fieldId": id,
+                    "kind": f.flag_type
+                })
 
         #give fields list to page, put page in page list
         pages_list.append({
@@ -126,6 +153,7 @@ def get_survey(survey_id: str, db: Session = Depends(get_db)):
             "type": p.category,
             "imageUrl": p.import_path,
             "fields": fields_list,
+            "flags": flags_list,
         })
 
     #return everything together
@@ -150,10 +178,10 @@ def create_reviewer(payload: CreateReviewerRequest, db: Session = Depends(get_db
     id = payload.id
 
     #check if reviewer already exists
-    if db.query(models.Edit).filter(models.Reviewer.reviewer_id == id).first():
+    if db.query(models.Reviewer).filter(models.Reviewer.reviewer_id == id).first():
         raise HTTPException(status_code=400, detail="Reviewer id already exists.")
 
-    if db.query(models.Edit).filter(models.Reviewer.name == clean_name).first():
+    if db.query(models.Reviewer).filter(models.Reviewer.name == clean_name).first():
         raise HTTPException(status_code=400, detail="Reviewer name not unique.")
 
     #insert into db
@@ -218,10 +246,10 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                                                                  models.Field.page_id == e.page_id).scalar()
                     final_field_id = e.field_title
                 elif e.resident_no and e.resident_field_title:
-                    raw = db.query(models.ResidentField.text_raw).filter(models.ResidentField.field_title == e.field_title, 
+                    raw = db.query(models.ResidentField.text_raw).filter(models.ResidentField.resident_field_title == e.resident_field_title, 
                                                                          models.ResidentField.page_id == e.page_id,
                                                                          models.ResidentField.resident_no == e.resident_no).scalar()
-                    final_field_id = "residents." + f"{e.resident_no}" + e.field_title
+                    final_field_id = "residents." + f"{e.resident_no}" + "." + e.resident_field_title
                 elif e.child_no:
                     child = db.query(models.OtherChild).filter(models.OtherChild.child_no == e.child_no, 
                                                                  models.OtherChild.page_id == e.page_id).first()
@@ -229,12 +257,12 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                     residence = child.residence
                     final_field_id = "other_children." + residence + f"{e.child_no}"
                 elif e.annotation_no:
-                    raw = db.query(models.Field.text_raw).filter(models.Annotation.annotation_no == e.annotation_no, 
+                    raw = db.query(models.Annotation.text_raw).filter(models.Annotation.annotation_no == e.annotation_no, 
                                                                  models.Annotation.page_id == e.page_id).scalar()
                     final_field_id = "annotations." + f"{e.annotation_no}"
 
                 #fill in review entry
-                if raw and final_field_id:
+                if final_field_id:
                     reviews_dict[page_id][final_field_id] = {
                         "value": e.edit_text,
                         "original": raw,
@@ -252,7 +280,7 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
     
 #inserts edit into db
 @app.post("/reviews/{survey_id}")
-def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depends(get_db)):
+def save_reviews(payload: SaveReviewsRequest, db: Session = Depends(get_db)):
     if not payload.reviews:
         raise HTTPException(status_code=400, detail="No reviews given.")
 
@@ -262,6 +290,9 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
         raise HTTPException(status_code=400, detail="Page does not exist.")
     #get page from db
     page = db.query(models.Page).filter(models.Page.page_id == page_id).first()
+
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found in database, cannot save review.")
 
     #--UPDATE REVISION NO--#
     #get current revision no
@@ -273,13 +304,15 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
         if not new_rev:
             raise HTTPException(status_code=400, detail="Page not in revisions.")
 
-    if curr_rev < new_rev:
+    if curr_rev + 1 == new_rev:
         #update revision number in db
         page.revision_no = new_rev
     else:
-        #if revision outdated, reject the save
-        raise HTTPException(status_code=400, detail="Revision number is outdated.")
-
+        if curr_rev >= new_rev:
+            #if revision outdated, reject the save
+            raise HTTPException(status_code=400, detail="Revision number is outdated.")
+        else:
+            raise HTTPException(status_code=400, detail="Revision number greater than 1+ previous revision.")
     
     #--INSERT EDITS AND REVIEWERS--#
     #get current time
@@ -290,13 +323,13 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
     for field_title, review in reviews.items():
         ft_split = field_title.split(".")
 
+        #check if reviewer exists in db
+        existing_reviewer = db.query(models.Reviewer).filter(models.Reviewer.reviewer_id == review.reviewerId).first()
+        if not (existing_reviewer):
+            raise HTTPException(status_code=400, detail="Reviewer does not exist in database.")
+
         #make a new edit row
         edit_to_insert = models.Edit()
-
-        #make and fill in a reviewer row
-        reviewer_to_insert = models.Reviewer()
-        reviewer_to_insert.name = review.reviewer
-        reviewer_to_insert.reviewer_id = review.reviewerId
 
         #fill in edit row
         if ft_split[0] == "residents":
@@ -317,7 +350,7 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
 
             # "other_children.died.0"
             edit_to_insert.child_no = ft_split[2]
-        elif ft_split[0] == "annotations":
+        elif ft_split[0] == "annotation":
             edit_to_insert.reviewer_id = review.reviewerId
             edit_to_insert.edit_text = review.value
             edit_to_insert.time = timestamp
@@ -331,12 +364,7 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
             edit_to_insert.time = timestamp
             edit_to_insert.page_id = page_id
             edit_to_insert.field_title = field_title
-
-        #add reviewer if not already in there
-        existing_reviewer = db.query(models.Reviewer).filter(models.Reviewer.reviewer_id == reviewer_to_insert.reviewer_id).first()
-        if not (existing_reviewer):
-            db.add(reviewer_to_insert)
-
+        
         #add edit
         db.add(edit_to_insert)
 

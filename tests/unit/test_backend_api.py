@@ -161,7 +161,36 @@ def test_save_reviews_outdated_revision(client, db_session):
     assert response.status_code == 400
     assert response.json() == {"detail": "Revision number is outdated."}
 
-def test_save_reviews_success(client, db_session):
+def test_save_reviews_missing_revision(client, db_session):
+    survey = models.Survey(survey_id="12345", bundle_id="6789")
+    #revision no is 5
+    page = models.Page(page_id="12345_00001", survey_id="12345", category="main", 
+                       import_path="img.png", revision_no=5, bundle_id="6789")
+    db_session.add_all([survey, page])
+    db_session.commit()
+
+    payload = {
+        "reviews": {
+            "12345_00001": {
+                "kitchen.food_storage": {
+                    "value": "Updated value",
+                    "original": "Bread",
+                    "reviewer": "Alice",
+                    "reviewerId": 1,
+                    "savedAt": "2026-06-01T00:00:00Z"
+                }
+            }
+        },
+        "revisions": {
+            "12345_00001": 7  #5+2 = 7
+        }
+    }
+
+    response = client.post("/reviews/12345_00001", json=payload)
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Revision number greater than 1+ previous revision."}
+
+def test_save_reviews_no_reviewer(client, db_session):
     survey = models.Survey(survey_id="12345", bundle_id="6789")
     page = models.Page(page_id="12345_00001", survey_id="12345", category="main", 
                        import_path="img.png", revision_no=0, bundle_id="6789")
@@ -186,6 +215,36 @@ def test_save_reviews_success(client, db_session):
     }
 
     response = client.post("/reviews/12345_00001", json=payload)
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Reviewer does not exist in database."}
+
+def test_save_reviews_success(client, db_session):
+    survey = models.Survey(survey_id="12345", bundle_id="6789")
+    page = models.Page(page_id="12345_00001", survey_id="12345", category="main", 
+                       import_path="img.png", revision_no=0, bundle_id="6789")
+    reviewer = models.Reviewer(reviewer_id="1", name="Alice")
+    db_session.add_all([survey, page, reviewer])
+    db_session.commit()
+
+    payload = {
+        "reviews": {
+            "12345_00001": {
+                "kitchen.food_storage": {
+                    "value": "Updated value",
+                    "original": "Bread",
+                    "reviewer": "Alice",
+                    "reviewerId": 1,
+                    "savedAt": "2026-06-01T00:00:00Z"
+                }
+            }
+        },
+        "revisions": {
+            "12345_00001": 1
+        }
+    }
+
+    response = client.post("/reviews/12345_00001", json=payload)
+    print(response.json())
     assert response.status_code == 250 or response.status_code == 200
     data = response.json()
     assert data["revision"] == 1
