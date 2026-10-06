@@ -17,7 +17,10 @@ type State = {
   revisions: Record<string, number>;
 };
 const demo: Survey = JSON.parse(
-  readFileSync(new URL("../../../frontend/public/us7-demo/survey.json", import.meta.url), "utf8"),
+  readFileSync(
+    new URL("../../../frontend/public/us7-demo/survey.json", import.meta.url),
+    "utf8",
+  ),
 );
 const test = base.extend<{ api: State }>({
   api: async ({ page }, use) => {
@@ -75,11 +78,9 @@ const test = base.extend<{ api: State }>({
   },
 });
 const address = (page: Page) =>
-  page
-    .locator("tr.field")
-    .filter({
-      has: page.getByRole("button", { name: "Edit Address", exact: true }),
-    });
+  page.locator("tr.field").filter({
+    has: page.getByRole("button", { name: "Edit Address", exact: true }),
+  });
 async function edit(page: Page, value: string) {
   await page.getByRole("button", { name: "Edit Address", exact: true }).click();
   await page.getByLabel("Reviewed value", { exact: true }).fill(value);
@@ -295,4 +296,170 @@ test("Add reviewer makes the new reviewer selectable", async ({ page }) => {
   await expect(
     page.getByRole("combobox", { name: "Reviewer name", exact: true }),
   ).toHaveValue("New test reviewer");
+});
+
+// Tests pending reviews before page navigation.
+// Uses the mocked API: no real database writes.
+const leaveDialog = (page: Page) =>
+  page.getByRole("dialog", {
+    name: "Save your reviews before leaving?",
+  });
+
+test.describe("Unsaved navigation", () => {
+  test("Stay here and Escape retain the unsaved review", async ({
+    page,
+    api,
+  }) => {
+    await page
+      .getByLabel("Reviewer name", { exact: true })
+      .selectOption("Test reviewer");
+
+    await edit(page, "Pending address");
+    await page.getByLabel("Next page", { exact: true }).click();
+
+    await expect(leaveDialog(page)).toBeVisible();
+
+    await leaveDialog(page).getByRole("button", { name: "Stay here" }).click();
+
+    await expect(leaveDialog(page)).not.toBeVisible();
+    await expect(address(page)).toContainText("Pending address");
+    await expect(address(page)).toContainText("Unsaved by:");
+    expect(api.saves).toBe(0);
+
+    // Escape should also close the warning without losing changes.
+    await page.getByLabel("Next page", { exact: true }).click();
+    await expect(leaveDialog(page)).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await expect(leaveDialog(page)).not.toBeVisible();
+    await expect(address(page)).toContainText("Pending address");
+  });
+
+  test("Save and continue saves before switching pages", async ({
+    page,
+    api,
+  }) => {
+    await page
+      .getByLabel("Reviewer name", { exact: true })
+      .selectOption("Test reviewer");
+
+    await edit(page, "Saved before leaving");
+    await page.getByLabel("Next page", { exact: true }).click();
+
+    await leaveDialog(page)
+      .getByRole("button", { name: "Save and continue" })
+      .click();
+
+    await expect(leaveDialog(page)).not.toBeVisible();
+    await expect(page.locator(".page-heading h2")).toContainText(
+      demo.pages[1].id,
+    );
+
+    expect(api.saves).toBe(1);
+    expect(api.reviews[demo.pages[0].id].address.value).toBe(
+      "Saved before leaving",
+    );
+
+    // Returning to the page should show the saved correction.
+    await page.getByLabel("Previous page", { exact: true }).click();
+
+    await expect(address(page).locator(".value")).toHaveText(
+      "Saved before leaving",
+    );
+    await expect(address(page)).toContainText("Reviewed by:");
+  });
+
+  test("Discard restores the previous saved correction", async ({
+    page,
+    api,
+  }) => {
+    await page
+      .getByLabel("Reviewer name", { exact: true })
+      .selectOption("Test reviewer");
+
+    // Save a correction first.
+    await edit(page, "Saved address");
+    await page
+      .getByRole("button", {
+        name: "Save Page Transcript",
+        exact: true,
+      })
+      .click();
+
+    await expect(address(page)).toContainText("Reviewed by:");
+
+    // Make another correction without saving it.
+    await edit(page, "Discard this change");
+    await page.getByLabel("Next page", { exact: true }).click();
+
+    await leaveDialog(page)
+      .getByRole("button", {
+        name: "Discard reviews and continue",
+      })
+      .click();
+
+    await expect(page.locator(".page-heading h2")).toContainText(
+      demo.pages[1].id,
+    );
+
+    await page.getByLabel("Previous page", { exact: true }).click();
+
+    // Discard must preserve the earlier saved correction.
+    await expect(address(page).locator(".value")).toHaveText("Saved address");
+    await expect(address(page)).toContainText("Reviewed by:");
+    expect(api.saves).toBe(1);
+  });
+
+  test("Failed save keeps the current page and unsaved review", async ({
+    page,
+    api,
+  }) => {
+    api.failSave = true;
+
+    await page
+      .getByLabel("Reviewer name", { exact: true })
+      .selectOption("Test reviewer");
+
+    await edit(page, "Keep this draft");
+    await page.getByLabel("Next page", { exact: true }).click();
+
+    await leaveDialog(page)
+      .getByRole("button", { name: "Save and continue" })
+      .click();
+
+    await expect(leaveDialog(page)).toBeVisible();
+    await expect(leaveDialog(page).getByRole("status")).toContainText(
+      "Page changed",
+    );
+
+    await expect(page.locator(".page-heading h2")).toContainText(
+      demo.pages[0].id,
+    );
+
+    await leaveDialog(page).getByRole("button", { name: "Stay here" }).click();
+
+    await expect(address(page).locator(".value")).toHaveText("Keep this draft");
+    await expect(address(page)).toContainText("Unsaved by:");
+    expect(api.saves).toBe(0);
+  });
+
+  test("Leaving the website warns about unsaved reviews", async ({ page }) => {
+    await page
+      .getByLabel("Reviewer name", { exact: true })
+      .selectOption("Test reviewer");
+
+    await edit(page, "Unsaved departure");
+
+    // Register the listener before navigating away.
+    const dialogPromise = page.waitForEvent("dialog");
+    const navigationPromise = page.goto("about:blank");
+
+    const dialog = await dialogPromise;
+    const dialogType = dialog.type();
+
+    await dialog.accept();
+    await navigationPromise;
+
+    expect(dialogType).toBe("beforeunload");
+  });
 });

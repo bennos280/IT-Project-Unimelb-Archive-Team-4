@@ -28,6 +28,9 @@ export function useReviewSession() {
   const [revisions, setRevisions] = useState<Record<string, number>>({}),
     [saving, setSaving] = useState(false);
   const editor = useRef<HTMLDialogElement>(null);
+  const navigationDialog = useRef<HTMLDialogElement>(null);
+  const savedReviews = useRef<Reviews>({});
+  const [pendingPage, setPendingPage] = useState<number | null>(null);
   const [survey, setSurvey] = useState<Survey | null>(null),
     [error, setError] = useState(""),
     [attempt, setAttempt] = useState(0),
@@ -47,6 +50,7 @@ export function useReviewSession() {
       .then(([data, saved, people]) => {
         setSurvey(data);
         setReviews(saved.reviews);
+        savedReviews.current = saved.reviews;
         setRevisions(saved.revisions);
         setReviewers(people);
       })
@@ -134,7 +138,7 @@ export function useReviewSession() {
     );
   }
   async function savePage() {
-    if (!page || !reviewer || saving) return;
+    if (!page || !reviewer || saving) return false;
     const pageId = page.id;
     const changed = Object.fromEntries(
       Object.entries(pageReviews)
@@ -149,6 +153,15 @@ export function useReviewSession() {
         revisions[pageId] || 0,
         changed,
       );
+      savedReviews.current = {
+        ...savedReviews.current,
+        [pageId]: Object.fromEntries(
+          Object.entries(pageReviews).map(([id, edit]) => [
+            id,
+            changed[id] ? { ...edit, savedAt: result.savedAt } : edit,
+          ]),
+        ),
+      };
       setRevisions((r) => ({ ...r, [pageId]: result.revision }));
       setReviews((r) => ({
         ...r,
@@ -159,22 +172,59 @@ export function useReviewSession() {
           ]),
         ),
       }));
-      setMessage("Page transcript saved in this browser.");
+      setMessage("Page transcript saved.");
+      return true;
     } catch (e) {
       setMessage(
         e instanceof Error
           ? e.message
           : "Could not save. Your changes remain unsaved.",
       );
+      return false;
     } finally {
       setSaving(false);
     }
   }
-  function navigate(i: number) {
+  function changePage(i: number) {
     setIndex(i);
     setQuery("");
     setFilter("all");
     setMessage("");
+  }
+  function navigate(i: number) {
+    if (saving || !survey || i < 0 || i >= survey.pages.length || i === index)
+      return;
+    if (Object.values(pageReviews).some((review) => !review.savedAt)) {
+      setPendingPage(i);
+      setMessage("");
+      navigationDialog.current?.showModal();
+      return;
+    }
+    changePage(i);
+  }
+  function stayOnPage() {
+    if (saving) return;
+    navigationDialog.current?.close();
+    setPendingPage(null);
+  }
+  async function saveAndContinue() {
+    if (pendingPage === null || saving) return;
+    const destination = pendingPage;
+    if (await savePage()) {
+      navigationDialog.current?.close();
+      setPendingPage(null);
+      changePage(destination);
+    }
+  }
+  function discardAndContinue() {
+    if (pendingPage === null || !page || saving) return;
+    setReviews((current) => ({
+      ...current,
+      [page.id]: savedReviews.current[page.id] || {},
+    }));
+    navigationDialog.current?.close();
+    changePage(pendingPage);
+    setPendingPage(null);
   }
   function download() {
     if (!survey) return;
@@ -235,6 +285,10 @@ export function useReviewSession() {
     reviewAll,
     savePage,
     navigate,
+    navigationDialog,
+    stayOnPage,
+    saveAndContinue,
+    discardAndContinue,
     download,
     visible,
     groups,
