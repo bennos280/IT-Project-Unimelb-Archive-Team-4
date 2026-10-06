@@ -1,6 +1,18 @@
-// Frontend-only adapter. Replace these functions with API requests later.
+// Connects the US7 review screen to the US8 backend.
 import { parseSurvey } from "./model";
-export type Reviewer = { id: number; name: string };
+
+const API_BASE = "/api";
+
+export type Reviewer = {
+  id: number;
+  name: string;
+};
+
+type BackendReviewer = {
+  reviewer_id: number;
+  name: string;
+};
+
 type Review = {
   value: string | null;
   original: string | null;
@@ -8,71 +20,209 @@ type Review = {
   reviewerId: number;
   savedAt: string;
 };
+
 type Stored = {
   reviews: Record<string, Record<string, Review>>;
   revisions: Record<string, number>;
 };
-const key = (id: string) => `us7-standalone:${id}`;
+
+type Changes = Record<
+  string,
+  {
+    value: string | null;
+    reviewerId: number;
+  }
+>;
+
+type SaveResult = {
+  revision: number;
+  savedAt: string;
+};
+
+type SurveyResponse = {
+  id: string;
+  title: string;
+  pages: Array<{
+    id: string;
+    type: string;
+    imageUrl?: string | null;
+    fields: unknown[];
+    flags?: Array<{
+      id?: string;
+      fieldId: string;
+      kind: string;
+      reason?: string;
+    }> | null;
+  }>;
+};
+
+// Send a request and display errors returned by FastAPI.
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, options);
+
+  if (!response.ok) {
+    let message = `Request failed (${response.status}).`;
+
+    try {
+      const body = await response.json();
+
+      if (typeof body.detail === "string") {
+        message = body.detail;
+      } else if (Array.isArray(body.detail)) {
+        message = body.detail
+          .map(
+            (error: { loc?: Array<string | number>; msg?: string }) =>
+              `${error.loc?.join(".") || "Request"}: ${
+                error.msg || "Invalid value"
+              }`,
+          )
+          .join("; ");
+      }
+    } catch {
+      // Keep the default message if the response is not JSON.
+    }
+
+    throw new Error(message);
+  }
+
+  return (await response.json()) as T;
+}
+
+// Load extracted fields and adapt flags for US7.
 export async function getSurvey(id: string, signal?: AbortSignal) {
-  const response = await fetch("/us7-demo/survey.json", { signal });
-  if (!response.ok)
-    throw new Error("Copy public/us7-demo into your frontend/public folder.");
-  return parseSurvey(await response.json(), id);
+  const data = await request<SurveyResponse>(
+    `/survey/${encodeURIComponent(id)}`,
+    { signal },
+  );
+
+  if (Array.isArray(data?.pages)) {
+    for (const page of data.pages) {
+      page.flags = (page.flags ?? []).map((flag, index) => ({
+        ...flag,
+        id: flag.id || `${page.id}:${flag.fieldId}:${index}`,
+        reason:
+          flag.reason ||
+          "Flagged by extraction; no detailed reason was supplied by US8.",
+      }));
+
+      // Allows data to load while image serving is not connected.
+      // This does not convert a filesystem path into a working URL.
+      if (typeof page.imageUrl !== "string" || page.imageUrl.trim() === "") {
+        page.imageUrl = "/image-not-connected";
+      }
+    }
+  }
+
+  return parseSurvey(data, id);
 }
+
+// Convert US8's reviewer_id into US7's id.
 export async function getReviewers(): Promise<Reviewer[]> {
-  return JSON.parse(localStorage.getItem("us7-standalone-reviewers") || "[]");
+  const people = await request<BackendReviewer[]>("/reviewers");
+
+  return people.map((person) => ({
+    id: person.reviewer_id,
+    name: person.name,
+  }));
 }
+
 export async function createReviewer(name: string): Promise<Reviewer> {
-  const people = await getReviewers();
   const clean = name.trim();
-  if (!clean) throw new Error("Enter a reviewer name.");
-  const existing = people.find((p) => p.name === clean);
-  if (existing) return existing;
-  const person = {
-    id: Math.max(0, ...people.map((p) => p.id)) + 1,
-    name: clean,
+
+  if (!clean) {
+    throw new Error("Enter a reviewer name.");
+  }
+
+  const people = await getReviewers();
+  const existing = people.find((person) => person.name === clean);
+
+  if (existing) {
+    return existing;
+  }
+
+  // The current US8 endpoint expects the frontend to supply an ID.
+  const id = Math.max(0, ...people.map((person) => person.id)) + 1;
+
+  const person = await request<BackendReviewer>("/reviewers", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ id, name: clean }),
+  });
+
+  return {
+    id: person.reviewer_id,
+    name: person.name,
   };
-  localStorage.setItem(
-    "us7-standalone-reviewers",
-    JSON.stringify([...people, person]),
-  );
-  return person;
 }
+
+// Load the latest saved corrections and page revisions.
 export async function getReviews(id: string): Promise<Stored> {
-  return JSON.parse(
-    localStorage.getItem(key(id)) || '{"reviews":{},"revisions":{}}',
-  );
+  return request<Stored>(`/reviews/${encodeURIComponent(id)}`);
 }
+
+// Save changed fields from one page.
 export async function saveReviews(
   id: string,
   pageId: string,
   revision: number,
-  changes: Record<string, { value: string | null; reviewerId: number }>,
-) {
-  const data = await getReviews(id);
-  if ((data.revisions[pageId] || 0) !== revision)
-    throw new Error(
-      "This page changed in another tab. Export your draft, then reload.",
-    );
-  const survey = await getSurvey(id);
-  const page = survey.pages.find((p) => p.id === pageId);
-  if (!page) throw new Error("Page not found.");
-  const people = await getReviewers();
-  const savedAt = new Date().toISOString();
-  const saved = { ...data.reviews[pageId] };
+  changes: Changes,
+): Promise<SaveResult> {
+  if (Object.keys(changes).length === 0) {
+    throw new Error("There are no unsaved reviews on this page.");
+  }
+
+  const [survey, people] = await Promise.all([getSurvey(id), getReviewers()]);
+
+  const page = survey.pages.find((item) => item.id === pageId);
+
+  if (!page) {
+    throw new Error("Page not found.");
+  }
+
+  const pageReviews: Record<string, Review> = {};
+
   for (const [fieldId, edit] of Object.entries(changes)) {
-    const field = page.fields.find((f) => f.id === fieldId);
-    const person = people.find((p) => p.id === edit.reviewerId);
-    if (!field || !person) throw new Error("Unknown field or reviewer.");
-    saved[fieldId] = {
-      ...edit,
+    const field = page.fields.find((item) => item.id === fieldId);
+    const person = people.find((item) => item.id === edit.reviewerId);
+
+    if (!field) {
+      throw new Error(`Could not find field "${fieldId}" on this page.`);
+    }
+
+    if (!person) {
+      throw new Error("Select a reviewer registered in US8.");
+    }
+
+    // Your colleague's current Review.value accepts strings only.
+    if (edit.value === null) {
+      throw new Error(
+        `Cannot save "${field.label}" as blank yet: US8 does not accept null corrections. Your changes remain unsaved.`,
+      );
+    }
+
+    pageReviews[fieldId] = {
+      value: edit.value,
       original: field.value,
       reviewer: person.name,
-      savedAt,
+      reviewerId: person.id,
+      savedAt: "", // US8 generates the saved timestamp.
     };
   }
-  data.reviews[pageId] = saved;
-  data.revisions[pageId] = revision + 1;
-  localStorage.setItem(key(id), JSON.stringify(data));
-  return { revision: revision + 1, savedAt };
+
+  return request<SaveResult>(`/reviews/${encodeURIComponent(id)}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      reviews: {
+        [pageId]: pageReviews,
+      },
+      revisions: {
+        [pageId]: revision + 1,
+      },
+    }),
+  });
 }
