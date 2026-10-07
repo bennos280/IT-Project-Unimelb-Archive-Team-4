@@ -273,601 +273,601 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.20516694830142357,
       height: 0.09296045,
     },
-    "residents.1.relationship": {
+    "residents.0.relationship": {
       x: 0.16887013482599755,
       y: 0.29167010841105184,
       width: 0.09054922762996381,
       height: 0.0325067562091666,
     },
-    "residents.1.age": {
+    "residents.0.age": {
       x: 0.17044673316966635,
       y: 0.3221359751383971,
       width: 0.08769157307624864,
       height: 0.035127027642012865,
     },
-    "residents.1.earning_status": {
+    "residents.0.earning_status": {
       x: 0.1702156423862966,
       y: 0.35194258546955265,
       width: 0.08980177878254075,
       height: 0.03486129900004986,
     },
-    "residents.1.unearned_income_weekly_amount": {
+    "residents.0.unearned_income_weekly_amount": {
       x: 0.17213205813897878,
       y: 0.43773762647436537,
       width: 0.08674367118876439,
       height: 0.03503142182746494,
     },
-    "residents.1.unearned_income_source": {
+    "residents.0.unearned_income_source": {
       x: 0.17213205813897878,
       y: 0.4685435927447509,
       width: 0.08552382819349905,
       height: 0.031858312085432106,
     },
-    "residents.1.industry": {
+    "residents.0.industry": {
       x: 0.17213205813897878,
       y: 0.4949911904331455,
       width: 0.08546261497871796,
       height: 0.03565332230936108,
     },
-    "residents.1.craft": {
+    "residents.0.craft": {
       x: 0.17213205813897878,
       y: 0.5242238736534337,
       width: 0.08546261497871796,
       height: 0.03226235988853432,
     },
-    "residents.1.regularity_of_work": {
+    "residents.0.regularity_of_work": {
       x: 0.17213205813897878,
       y: 0.5544132968742207,
       width: 0.08765769719746849,
       height: 0.02730332573811789,
     },
-    "residents.1.employer": {
+    "residents.0.employer": {
       x: 0.17213205813897878,
       y: 0.5849382247144781,
       width: 0.08743003136507838,
       height: 0.03066243578873873,
     },
-    "residents.1.employers_address": {
+    "residents.0.employers_address": {
       x: 0.1746736208531939,
       y: 0.6124534780060845,
       width: 0.0849020439111097,
       height: 0.033059545814423164,
     },
-    "residents.1.weekly_cost_transport": {
+    "residents.0.weekly_cost_transport": {
       x: 0.1728795692582378,
       y: 0.6405805820158595,
       width: 0.08863959950740488,
       height: 0.03110895341878217,
     },
-    "residents.1.residential_preference": {
+    "residents.0.residential_preference": {
       x: 0.17543476950453538,
       y: 0.6702385479527205,
       width: 0.08080075852077986,
       height: 0.027935794972819394,
     },
-    "residents.1.earnings_last_week": {
+    "residents.0.earnings_last_week": {
       x: 0.17077291304659728,
       y: 0.6955380966036606,
       width: 0.08628497684484052,
       height: 0.03536626134606757,
     },
-    "residents.1.full_time_earnings_excluding_overtime": {
+    "residents.0.full_time_earnings_excluding_overtime": {
       x: 0.17489107410448118,
       y: 0.7288527536033116,
       width: 0.08612182463453905,
       height: 0.04230774026233097,
     },
-    "residents.1.weekly_contribution_to_board": {
+    "residents.0.weekly_contribution_to_board": {
       x: 0.17268926652744346,
       y: 0.770905285272555,
       width: 0.08881296429880917,
       height: 0.0308963120604957,
     },
-    "residents.1.weekly_payments_to_relatives_living_elsewhere": {
+    "residents.0.weekly_payments_to_relatives_living_elsewhere": {
       x: 0.172825205945416,
       y: 0.8022002877038552,
       width: 0.08765769719746849,
       height: 0.040989519693531484,
     },
-    "residents.1.prewar_occupation": {
+    "residents.0.prewar_occupation": {
       x: 0.1721864214518006,
       y: 0.8485473371028877,
       width: 0.08842893388624082,
       height: 0.032958533863647665,
     },
-    "residents.1.prewar_normal_weekly_earnings": {
+    "residents.0.prewar_normal_weekly_earnings": {
       x: 0.172825205945416,
       y: 0.8757391308413546,
       width: 0.08731102988649586,
       height: 0.029333597763203767,
     },
-    "residents.1.prewar_place_of_work_if_outside_melbourne": {
+    "residents.0.prewar_place_of_work_if_outside_melbourne": {
       x: 0.17370865648264758,
       y: 0.9002520136152811,
       width: 0.0876101215147699,
       height: 0.05196514512991868,
     },
-    "residents.1.prewar_occupational_preference": {
+    "residents.0.prewar_occupational_preference": {
       x: 0.17226793528511533,
       y: 0.9427312891189965,
       width: 0.0899308682985541,
       height: 0.035982755691736146,
     },
-    "residents.2.relationship": {
+    "residents.1.relationship": {
       x: 0.25483565715219436,
       y: 0.29167010841105184,
       width: 0.09054922762996381,
       height: 0.0325067562091666,
     },
-    "residents.2.age": {
+    "residents.1.age": {
       x: 0.25641225549586316,
       y: 0.3221359751383971,
       width: 0.08769157307624864,
       height: 0.0325067562091666,
     },
-    "residents.2.earning_status": {
+    "residents.1.earning_status": {
       x: 0.2561811647124934,
       y: 0.35194258546955265,
       width: 0.08980177878254075,
       height: 0.0325067562091666,
     },
-    "residents.2.unearned_income_weekly_amount": {
+    "residents.1.unearned_income_weekly_amount": {
       x: 0.2580975804651756,
       y: 0.43773762647436537,
       width: 0.08674367118876439,
       height: 0.0325067562091666,
     },
-    "residents.2.unearned_income_source": {
+    "residents.1.unearned_income_source": {
       x: 0.2580975804651756,
       y: 0.4685435927447509,
       width: 0.08552382819349905,
       height: 0.031858312085432106,
     },
-    "residents.2.industry": {
+    "residents.1.industry": {
       x: 0.2580975804651756,
       y: 0.4949911904331455,
       width: 0.08546261497871796,
       height: 0.0325067562091666,
     },
-    "residents.2.craft": {
+    "residents.1.craft": {
       x: 0.2580975804651756,
       y: 0.5242238736534337,
       width: 0.08546261497871796,
       height: 0.0325067562091666,
     },
-    "residents.2.regularity_of_work": {
+    "residents.1.regularity_of_work": {
       x: 0.2580975804651756,
       y: 0.5544132968742207,
       width: 0.08765769719746849,
       height: 0.0325067562091666,
     },
-    "residents.2.employer": {
+    "residents.1.employer": {
       x: 0.2580975804651756,
       y: 0.5849382247144781,
       width: 0.08743003136507838,
       height: 0.0325067562091666,
     },
-    "residents.2.employers_address": {
+    "residents.1.employers_address": {
       x: 0.2580975804651756,
       y: 0.6124534780060845,
       width: 0.0849020439111097,
       height: 0.033059545814423164,
     },
-    "residents.2.weekly_cost_transport": {
+    "residents.1.weekly_cost_transport": {
       x: 0.2580975804651756,
       y: 0.6405805820158595,
       width: 0.08863959950740488,
       height: 0.03110895341878217,
     },
-    "residents.2.residential_preference": {
+    "residents.1.residential_preference": {
       x: 0.2580975804651756,
       y: 0.6702385479527205,
       width: 0.08080075852077986,
       height: 0.027935794972819394,
     },
-    "residents.2.earnings_last_week": {
+    "residents.1.earnings_last_week": {
       x: 0.2580975804651756,
       y: 0.6955380966036606,
       width: 0.08628497684484052,
       height: 0.03536626134606757,
     },
-    "residents.2.full_time_earnings_excluding_overtime": {
+    "residents.1.full_time_earnings_excluding_overtime": {
       x: 0.2580975804651756,
       y: 0.7288527536033116,
       width: 0.08612182463453905,
       height: 0.04230774026233097,
     },
-    "residents.2.weekly_contribution_to_board": {
+    "residents.1.weekly_contribution_to_board": {
       x: 0.2580975804651756,
       y: 0.770905285272555,
       width: 0.08881296429880917,
       height: 0.0308963120604957,
     },
-    "residents.2.weekly_payments_to_relatives_living_elsewhere": {
+    "residents.1.weekly_payments_to_relatives_living_elsewhere": {
       x: 0.2580975804651756,
       y: 0.8022002877038552,
       width: 0.08765769719746849,
       height: 0.040989519693531484,
     },
-    "residents.2.prewar_occupation": {
+    "residents.1.prewar_occupation": {
       x: 0.2580975804651756,
       y: 0.8485473371028877,
       width: 0.08842893388624082,
       height: 0.032958533863647665,
     },
-    "residents.2.prewar_normal_weekly_earnings": {
+    "residents.1.prewar_normal_weekly_earnings": {
       x: 0.2580975804651756,
       y: 0.8757391308413546,
       width: 0.08731102988649586,
       height: 0.029333597763203767,
     },
-    "residents.2.prewar_place_of_work_if_outside_melbourne": {
+    "residents.1.prewar_place_of_work_if_outside_melbourne": {
       x: 0.2580975804651756,
       y: 0.9002520136152811,
       width: 0.0876101215147699,
       height: 0.05196514512991868,
     },
-    "residents.2.prewar_occupational_preference": {
+    "residents.1.prewar_occupational_preference": {
       x: 0.2580975804651756,
       y: 0.9427312891189965,
       width: 0.0899308682985541,
       height: 0.035982755691736146,
     },
-    "residents.3.relationship": {
+    "residents.2.relationship": {
       x: 0.34211947424636135,
       y: 0.29167010841105184,
       width: 0.0879308682985541,
       height: 0.0325067562091666,
     },
-    "residents.3.age": {
+    "residents.2.age": {
       x: 0.34211947424636135,
       y: 0.3221359751383971,
       width: 0.0879308682985541,
       height: 0.035127027642012865,
     },
-    "residents.3.earning_status": {
+    "residents.2.earning_status": {
       x: 0.34211947424636135,
       y: 0.35194258546955265,
       width: 0.0879308682985541,
       height: 0.03486129900004986,
     },
-    "residents.3.unearned_income_weekly_amount": {
+    "residents.2.unearned_income_weekly_amount": {
       x: 0.34211947424636135,
       y: 0.43773762647436537,
       width: 0.0879308682985541,
       height: 0.03503142182746494,
     },
-    "residents.3.unearned_income_source": {
+    "residents.2.unearned_income_source": {
       x: 0.34211947424636135,
       y: 0.4685435927447509,
       width: 0.0879308682985541,
       height: 0.031858312085432106,
     },
-    "residents.3.industry": {
+    "residents.2.industry": {
       x: 0.34211947424636135,
       y: 0.4949911904331455,
       width: 0.0879308682985541,
       height: 0.03565332230936108,
     },
-    "residents.3.craft": {
+    "residents.2.craft": {
       x: 0.34211947424636135,
       y: 0.5242238736534337,
       width: 0.0879308682985541,
       height: 0.03226235988853432,
     },
-    "residents.3.regularity_of_work": {
+    "residents.2.regularity_of_work": {
       x: 0.34211947424636135,
       y: 0.5544132968742207,
       width: 0.0879308682985541,
       height: 0.02730332573811789,
     },
-    "residents.3.employer": {
+    "residents.2.employer": {
       x: 0.34211947424636135,
       y: 0.5849382247144781,
       width: 0.0879308682985541,
       height: 0.03066243578873873,
     },
-    "residents.3.employers_address": {
+    "residents.2.employers_address": {
       x: 0.34211947424636135,
       y: 0.6124534780060845,
       width: 0.0879308682985541,
       height: 0.033059545814423164,
     },
-    "residents.3.weekly_cost_transport": {
+    "residents.2.weekly_cost_transport": {
       x: 0.34211947424636135,
       y: 0.6405805820158595,
       width: 0.0879308682985541,
       height: 0.03110895341878217,
     },
-    "residents.3.residential_preference": {
+    "residents.2.residential_preference": {
       x: 0.34211947424636135,
       y: 0.6702385479527205,
       width: 0.0879308682985541,
       height: 0.027935794972819394,
     },
-    "residents.3.earnings_last_week": {
+    "residents.2.earnings_last_week": {
       x: 0.34211947424636135,
       y: 0.6955380966036606,
       width: 0.0879308682985541,
       height: 0.03536626134606757,
     },
-    "residents.3.full_time_earnings_excluding_overtime": {
+    "residents.2.full_time_earnings_excluding_overtime": {
       x: 0.34211947424636135,
       y: 0.7288527536033116,
       width: 0.0879308682985541,
       height: 0.04230774026233097,
     },
-    "residents.3.weekly_contribution_to_board": {
+    "residents.2.weekly_contribution_to_board": {
       x: 0.34211947424636135,
       y: 0.770905285272555,
       width: 0.0879308682985541,
       height: 0.0308963120604957,
     },
-    "residents.3.weekly_payments_to_relatives_living_elsewhere": {
+    "residents.2.weekly_payments_to_relatives_living_elsewhere": {
       x: 0.34211947424636135,
       y: 0.8022002877038552,
       width: 0.0879308682985541,
       height: 0.040989519693531484,
     },
-    "residents.3.prewar_occupation": {
+    "residents.2.prewar_occupation": {
       x: 0.34211947424636135,
       y: 0.8385473371028877,
       width: 0.0879308682985541,
       height: 0.03397533863647665,
     },
-    "residents.3.prewar_normal_weekly_earnings": {
+    "residents.2.prewar_normal_weekly_earnings": {
       x: 0.34211947424636135,
       y: 0.8757391308413546,
       width: 0.08731102988649586,
       height: 0.029333597763203767,
     },
-    "residents.3.prewar_place_of_work_if_outside_melbourne": {
+    "residents.2.prewar_place_of_work_if_outside_melbourne": {
       x: 0.34211947424636135,
       y: 0.9002520136152811,
       width: 0.0876101215147699,
       height: 0.05196514512991868,
     },
-    "residents.3.prewar_occupational_preference": {
+    "residents.2.prewar_occupational_preference": {
       x: 0.34211947424636135,
       y: 0.9427312891189965,
       width: 0.0899308682985541,
       height: 0.035982755691736146,
     },
-    "residents.4.relationship": {
+    "residents.3.relationship": {
       x: 0.428741439565432,
       y: 0.29167010841105184,
       width: 0.08554922762996381,
       height: 0.0325067562091666,
     },
-    "residents.4.age": {
+    "residents.3.age": {
       x: 0.428741439565432,
       y: 0.3221359751383971,
       width: 0.08554922762996381,
       height: 0.035127027642012865,
     },
-    "residents.4.earning_status": {
+    "residents.3.earning_status": {
       x: 0.428741439565432,
       y: 0.35194258546955265,
       width: 0.08554922762996381,
       height: 0.03486129900004986,
     },
-    "residents.4.unearned_income_weekly_amount": {
+    "residents.3.unearned_income_weekly_amount": {
       x: 0.428741439565432,
       y: 0.43773762647436537,
       width: 0.08554922762996381,
       height: 0.03503142182746494,
     },
-    "residents.4.unearned_income_source": {
+    "residents.3.unearned_income_source": {
       x: 0.428741439565432,
       y: 0.4685435927447509,
       width: 0.08554922762996381,
       height: 0.031858312085432106,
     },
-    "residents.4.industry": {
+    "residents.3.industry": {
       x: 0.428741439565432,
       y: 0.4949911904331455,
       width: 0.08554922762996381,
       height: 0.03565332230936108,
     },
-    "residents.4.craft": {
+    "residents.3.craft": {
       x: 0.428741439565432,
       y: 0.5242238736534337,
       width: 0.08554922762996381,
       height: 0.03226235988853432,
     },
-    "residents.4.regularity_of_work": {
+    "residents.3.regularity_of_work": {
       x: 0.428741439565432,
       y: 0.5544132968742207,
       width: 0.08554922762996381,
       height: 0.02730332573811789,
     },
-    "residents.4.employer": {
+    "residents.3.employer": {
       x: 0.428741439565432,
       y: 0.5849382247144781,
       width: 0.08554922762996381,
       height: 0.03066243578873873,
     },
-    "residents.4.employers_address": {
+    "residents.3.employers_address": {
       x: 0.428741439565432,
       y: 0.6124534780060845,
       width: 0.08554922762996381,
       height: 0.033059545814423164,
     },
-    "residents.4.weekly_cost_transport": {
+    "residents.3.weekly_cost_transport": {
       x: 0.428741439565432,
       y: 0.6405805820158595,
       width: 0.08863959950740488,
       height: 0.03110895341878217,
     },
-    "residents.4.residential_preference": {
+    "residents.3.residential_preference": {
       x: 0.428741439565432,
       y: 0.6702385479527205,
       width: 0.08080075852077986,
       height: 0.027935794972819394,
     },
-    "residents.4.earnings_last_week": {
+    "residents.3.earnings_last_week": {
       x: 0.428741439565432,
       y: 0.6955380966036606,
       width: 0.08628497684484052,
       height: 0.03536626134606757,
     },
-    "residents.4.full_time_earnings_excluding_overtime": {
+    "residents.3.full_time_earnings_excluding_overtime": {
       x: 0.428741439565432,
       y: 0.7288527536033116,
       width: 0.08612182463453905,
       height: 0.04230774026233097,
     },
-    "residents.4.weekly_contribution_to_board": {
+    "residents.3.weekly_contribution_to_board": {
       x: 0.428741439565432,
       y: 0.770905285272555,
       width: 0.08881296429880917,
       height: 0.0308963120604957,
     },
-    "residents.4.weekly_payments_to_relatives_living_elsewhere": {
+    "residents.3.weekly_payments_to_relatives_living_elsewhere": {
       x: 0.428741439565432,
       y: 0.8022002877038552,
       width: 0.08765769719746849,
       height: 0.040989519693531484,
     },
-    "residents.4.prewar_occupation": {
+    "residents.3.prewar_occupation": {
       x: 0.428741439565432,
       y: 0.8424473371028877,
       width: 0.0872893388624082,
       height: 0.032958533863647665,
     },
-    "residents.4.prewar_normal_weekly_earnings": {
+    "residents.3.prewar_normal_weekly_earnings": {
       x: 0.428741439565432,
       y: 0.8757391308413546,
       width: 0.08731102988649586,
       height: 0.029333597763203767,
     },
-    "residents.4.prewar_place_of_work_if_outside_melbourne": {
+    "residents.3.prewar_place_of_work_if_outside_melbourne": {
       x: 0.426741439565432,
       y: 0.9002520136152811,
       width: 0.0876101215147699,
       height: 0.05196514512991868,
     },
-    "residents.4.prewar_occupational_preference": {
+    "residents.3.prewar_occupational_preference": {
       x: 0.426741439565432,
       y: 0.9427312891189965,
       width: 0.0899308682985541,
       height: 0.035982755691736146,
     },
-    "residents.5.relationship": {
+    "residents.4.relationship": {
       x: 0.5153688136667252,
       y: 0.29167010841105184,
       width: 0.09054922762996381,
       height: 0.0325067562091666,
     },
-    "residents.5.age": {
+    "residents.4.age": {
       x: 0.516945412010394,
       y: 0.3221359751383971,
       width: 0.08769157307624864,
       height: 0.035127027642012865,
     },
-    "residents.5.earning_status": {
+    "residents.4.earning_status": {
       x: 0.5167143212270242,
       y: 0.35194258546955265,
       width: 0.08980177878254075,
       height: 0.03486129900004986,
     },
-    "residents.5.unearned_income_weekly_amount": {
+    "residents.4.unearned_income_weekly_amount": {
       x: 0.5186307369797064,
       y: 0.43773762647436537,
       width: 0.08674367118876439,
       height: 0.03503142182746494,
     },
-    "residents.5.unearned_income_source": {
+    "residents.4.unearned_income_source": {
       x: 0.5186307369797064,
       y: 0.4685435927447509,
       width: 0.08552382819349905,
       height: 0.031858312085432106,
     },
-    "residents.5.industry": {
+    "residents.4.industry": {
       x: 0.5186307369797064,
       y: 0.4949911904331455,
       width: 0.08546261497871796,
       height: 0.03565332230936108,
     },
-    "residents.5.craft": {
+    "residents.4.craft": {
       x: 0.5186307369797064,
       y: 0.5242238736534337,
       width: 0.08546261497871796,
       height: 0.03226235988853432,
     },
-    "residents.5.regularity_of_work": {
+    "residents.4.regularity_of_work": {
       x: 0.5186307369797064,
       y: 0.5544132968742207,
       width: 0.08765769719746849,
       height: 0.02730332573811789,
     },
-    "residents.5.employer": {
+    "residents.4.employer": {
       x: 0.5186307369797064,
       y: 0.5849382247144781,
       width: 0.08743003136507838,
       height: 0.03066243578873873,
     },
-    "residents.5.employers_address": {
+    "residents.4.employers_address": {
       x: 0.5211722996939215,
       y: 0.6124534780060845,
       width: 0.0849020439111097,
       height: 0.033059545814423164,
     },
-    "residents.5.weekly_cost_transport": {
+    "residents.4.weekly_cost_transport": {
       x: 0.5193782480989654,
       y: 0.6405805820158595,
       width: 0.08863959950740488,
       height: 0.03110895341878217,
     },
-    "residents.5.residential_preference": {
+    "residents.4.residential_preference": {
       x: 0.521933448345263,
       y: 0.6702385479527205,
       width: 0.08080075852077986,
       height: 0.027935794972819394,
     },
-    "residents.5.earnings_last_week": {
+    "residents.4.earnings_last_week": {
       x: 0.5172715918873249,
       y: 0.6955380966036606,
       width: 0.08628497684484052,
       height: 0.03536626134606757,
     },
-    "residents.5.full_time_earnings_excluding_overtime": {
+    "residents.4.full_time_earnings_excluding_overtime": {
       x: 0.5213897529452087,
       y: 0.7288527536033116,
       width: 0.08612182463453905,
       height: 0.04230774026233097,
     },
-    "residents.5.weekly_contribution_to_board": {
+    "residents.4.weekly_contribution_to_board": {
       x: 0.519187945368171,
       y: 0.770905285272555,
       width: 0.08881296429880917,
       height: 0.0308963120604957,
     },
-    "residents.5.weekly_payments_to_relatives_living_elsewhere": {
+    "residents.4.weekly_payments_to_relatives_living_elsewhere": {
       x: 0.5193238847861437,
       y: 0.8022002877038552,
       width: 0.08765769719746849,
       height: 0.040989519693531484,
     },
-    "residents.5.prewar_occupation": {
+    "residents.4.prewar_occupation": {
       x: 0.5186851002925282,
       y: 0.8485473371028877,
       width: 0.08842893388624082,
       height: 0.032958533863647665,
     },
-    "residents.5.prewar_normal_weekly_earnings": {
+    "residents.4.prewar_normal_weekly_earnings": {
       x: 0.5193238847861437,
       y: 0.8757391308413546,
       width: 0.08731102988649586,
       height: 0.029333597763203767,
     },
-    "residents.5.prewar_place_of_work_if_outside_melbourne": {
+    "residents.4.prewar_place_of_work_if_outside_melbourne": {
       x: 0.5202073353233752,
       y: 0.9002520136152811,
       width: 0.0876101215147699,
       height: 0.05196514512991868,
     },
-    "residents.5.prewar_occupational_preference": {
+    "residents.4.prewar_occupational_preference": {
       x: 0.5187666141258429,
       y: 0.9427312891189965,
       width: 0.0899308682985541,

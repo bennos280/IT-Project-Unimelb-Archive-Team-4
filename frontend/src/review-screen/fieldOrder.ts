@@ -245,7 +245,8 @@ export function orderFields(fields: Field[], type: PageType): Field[] {
       return {
         field: {
           ...field,
-          group: `Resident ${residentNumber}`,
+          // Display numbering starts at 1; retain the original US8 field ID.
+          group: `Resident ${residentNumber + 1}`,
           label: index < 0 ? field.label : residentFields[index][1],
         },
         section: 6,

@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Search,
@@ -20,6 +21,10 @@ export default function ReviewScreen({
 }: {
   session: ReturnType<typeof useReviewSession>;
 }) {
+  const [collapsedGroups, setCollapsedGroups] = useState<
+    Record<string, boolean>
+  >({});
+  const [statusFilter, setStatusFilter] = useState("all");
   const [selection, setSelection] = useState<{
     pageId: string;
     fieldId: string;
@@ -61,9 +66,21 @@ export default function ReviewScreen({
     saveAndContinue,
     discardAndContinue,
     download,
-    visible,
-    groups,
+    visible: matchingFields,
   } = session;
+  // Filter by the same saved/draft status shown in each row.
+  const visible = matchingFields.filter((field) => {
+    const review = pageReviews[field.id];
+    const status = review
+      ? review.savedAt
+        ? "Reviewed"
+        : "Unsaved"
+      : field.value === null || field.value === ""
+        ? "Blank"
+        : "Transcribed";
+    return statusFilter === "all" || statusFilter === status;
+  });
+  const groups = [...new Set(visible.map((field) => field.group))];
   return (
     <>
       <header className="topbar">
@@ -109,14 +126,6 @@ export default function ReviewScreen({
                 */}
               </div>
               <div className="filters">
-                <select
-                  aria-label="Filter fields"
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                >
-                  <option value="all">Flag: All</option>
-                  <option value="flagged">Flag: Needs checking</option>
-                </select>
                 <label className="search">
                   <Search size={15} />
                   <input
@@ -135,6 +144,7 @@ export default function ReviewScreen({
                       onClick={() => {
                         setQuery("");
                         setFilter("all");
+                        setStatusFilter("all");
                       }}
                     >
                       Clear filters
@@ -150,118 +160,182 @@ export default function ReviewScreen({
                       <tr>
                         <th>Sub-field</th>
                         <th>Value</th>
-                        <th>Flag</th>
-                        <th>Status</th>
+                        <th>
+                          <select
+                            className="flag-filter"
+                            aria-label="Filter fields"
+                            value={filter}
+                            onChange={(e) => setFilter(e.target.value)}
+                          >
+                            <option value="all">Flag</option>
+                            <option value="flagged">Needs checking</option>
+                          </select>
+                        </th>
+                        <th>
+                          <select
+                            className="status-filter"
+                            aria-label="Filter by review status"
+                            value={statusFilter}
+                            onChange={(event) =>
+                              setStatusFilter(event.target.value)
+                            }
+                          >
+                            <option value="all">Status</option>
+                            {[
+                              "Reviewed",
+                              "Unsaved",
+                              "Blank",
+                              "Transcribed",
+                            ].map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+                        </th>
                       </tr>
                     </thead>
                     {groups.map((group) => (
                       <tbody key={group}>
                         <tr className="group-row">
-                          <th colSpan={4}>{group}</th>
+                          <th colSpan={4}>
+                            <button
+                              className="group-toggle"
+                              aria-expanded={
+                                !collapsedGroups[
+                                  JSON.stringify([survey.id, page.id, group])
+                                ]
+                              }
+                              onClick={() => {
+                                const key = JSON.stringify([
+                                  survey.id,
+                                  page.id,
+                                  group,
+                                ]);
+                                setCollapsedGroups((current) => ({
+                                  ...current,
+                                  [key]: !current[key],
+                                }));
+                              }}
+                            >
+                              {collapsedGroups[
+                                JSON.stringify([survey.id, page.id, group])
+                              ] ? (
+                                <ChevronRight size={16} aria-hidden="true" />
+                              ) : (
+                                <ChevronDown size={16} aria-hidden="true" />
+                              )}
+                              {group}
+                            </button>
+                          </th>
                         </tr>
-                        {visible
-                          .filter((f) => f.group === group)
-                          .map((field) => {
-                            const flags = page.flags.filter(
-                              (f) => f.fieldId === field.id,
-                            );
-                            return (
-                              <React.Fragment key={field.id}>
-                                <tr
-                                  className={`field ${flags.length ? "flagged" : ""} ${selection?.pageId === page.id && selection.fieldId === field.id ? "selected-field" : ""}`}
-                                  onClick={() =>
-                                    setSelection({
-                                      pageId: page.id,
-                                      fieldId: field.id,
-                                      token: Date.now(),
-                                    })
-                                  }
-                                >
-                                  <td className="field-label">
-                                    <button
-                                      className="locate-field"
-                                      aria-label={`Locate ${field.group}: ${field.label} in image`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelection({
-                                          pageId: page.id,
-                                          fieldId: field.id,
-                                          token: Date.now(),
-                                        });
-                                      }}
-                                    >
-                                      {field.label}
-                                    </button>
-                                  </td>
-                                  <td>
-                                    <div className="value-cell">
-                                      <span
-                                        className={
-                                          page.type === "notes"
-                                            ? "notes-value"
-                                            : "value"
-                                        }
-                                      >
-                                        {(pageReviews[field.id]
-                                          ? pageReviews[field.id].value
-                                          : field.value) || "–"}
-                                      </span>
+                        {!collapsedGroups[
+                          JSON.stringify([survey.id, page.id, group])
+                        ] &&
+                          visible
+                            .filter((f) => f.group === group)
+                            .map((field) => {
+                              const flags = page.flags.filter(
+                                (f) => f.fieldId === field.id,
+                              );
+                              return (
+                                <React.Fragment key={field.id}>
+                                  <tr
+                                    className={`field ${flags.length ? "flagged" : ""} ${selection?.pageId === page.id && selection.fieldId === field.id ? "selected-field" : ""}`}
+                                    onClick={() =>
+                                      setSelection({
+                                        pageId: page.id,
+                                        fieldId: field.id,
+                                        token: Date.now(),
+                                      })
+                                    }
+                                  >
+                                    <td className="field-label">
                                       <button
-                                        className="edit-button"
-                                        disabled={saving}
-                                        onClick={() => beginEdit(field)}
-                                        aria-label={`Edit ${field.label}`}
-                                        title="Edit or review this field"
+                                        className="locate-field"
+                                        aria-label={`Locate ${field.group}: ${field.label} in image`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelection({
+                                            pageId: page.id,
+                                            fieldId: field.id,
+                                            token: Date.now(),
+                                          });
+                                        }}
                                       >
-                                        <Pencil size={15} />
+                                        {field.label}
                                       </button>
-                                    </div>
-                                  </td>
-                                  <td>
-                                    {flags.length ? (
-                                      <details className="flag-details">
-                                        <summary>
-                                          <TriangleAlert size={18} />
-                                          <span>
-                                            Needs
-                                            <br />
-                                            checking
-                                          </span>
-                                        </summary>
-                                        {flags.map((flag) => (
-                                          <div
-                                            className="flag-reason"
-                                            key={flag.id}
-                                          >
-                                            <strong>
-                                              {flag.kind === "gibberish"
-                                                ? "Possible gibberish"
-                                                : flag.kind === "inconsistency"
-                                                  ? "Internal inconsistency"
-                                                  : "Uncertain extraction"}
-                                            </strong>
-                                            <p>{flag.reason}</p>
-                                          </div>
-                                        ))}
-                                      </details>
-                                    ) : (
-                                      "—"
-                                    )}
-                                  </td>
-                                  <td>
-                                    <span className="field-status">
-                                      {pageReviews[field.id]
-                                        ? `${pageReviews[field.id].savedAt ? "Reviewed" : "Unsaved"} by: ${pageReviews[field.id].reviewer}`
-                                        : field.value === null ||
-                                            field.value === ""
-                                          ? "Blank"
-                                          : "Transcribed"}
-                                    </span>
-                                  </td>
-                                </tr>
-                              </React.Fragment>
-                            );
-                          })}
+                                    </td>
+                                    <td>
+                                      <div className="value-cell">
+                                        <span
+                                          className={
+                                            page.type === "notes"
+                                              ? "notes-value"
+                                              : "value"
+                                          }
+                                        >
+                                          {(pageReviews[field.id]
+                                            ? pageReviews[field.id].value
+                                            : field.value) || "–"}
+                                        </span>
+                                        <button
+                                          className="edit-button"
+                                          disabled={saving}
+                                          onClick={() => beginEdit(field)}
+                                          aria-label={`Edit ${field.label}`}
+                                          title="Edit or review this field"
+                                        >
+                                          <Pencil size={15} />
+                                        </button>
+                                      </div>
+                                    </td>
+                                    <td>
+                                      {flags.length ? (
+                                        <details className="flag-details">
+                                          <summary>
+                                            <TriangleAlert size={18} />
+                                            <span>
+                                              Needs
+                                              <br />
+                                              checking
+                                            </span>
+                                          </summary>
+                                          {flags.map((flag) => (
+                                            <div
+                                              className="flag-reason"
+                                              key={flag.id}
+                                            >
+                                              <strong>
+                                                {flag.kind === "gibberish"
+                                                  ? "Possible gibberish"
+                                                  : flag.kind ===
+                                                      "inconsistency"
+                                                    ? "Internal inconsistency"
+                                                    : "Uncertain extraction"}
+                                              </strong>
+                                              <p>{flag.reason}</p>
+                                            </div>
+                                          ))}
+                                        </details>
+                                      ) : (
+                                        "—"
+                                      )}
+                                    </td>
+                                    <td>
+                                      <span className="field-status">
+                                        {pageReviews[field.id]
+                                          ? `${pageReviews[field.id].savedAt ? "Reviewed" : "Unsaved"} by: ${pageReviews[field.id].reviewer}`
+                                          : field.value === null ||
+                                              field.value === ""
+                                            ? "Blank"
+                                            : "Transcribed"}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                </React.Fragment>
+                              );
+                            })}
                       </tbody>
                     ))}
                   </table>
