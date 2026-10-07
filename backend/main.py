@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import inspect, text
 from pydantic import BaseModel
 from typing import Dict, Any
 from backend import models
@@ -52,6 +53,15 @@ def get_survey(survey_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Survey not found")
 
     #select pages belonging to survey
+    flag_reasons = {}
+    if inspect(db.connection()).has_table("flag_reasons"):
+        rows = db.execute(text(
+            "SELECT d.page_id, d.field_id, d.flag_type, d.reason "
+            "FROM flag_reasons d JOIN pages p ON p.page_id = d.page_id "
+            "WHERE p.survey_id = :survey_id"
+        ), {"survey_id": survey_id})
+        flag_reasons = {(row.page_id, row.field_id, row.flag_type): row.reason for row in rows}
+
     pages = db.query(models.Page).filter(models.Page.survey_id == survey_id).all()
 
     #list of pages to be returned
@@ -148,6 +158,11 @@ def get_survey(survey_id: str, db: Session = Depends(get_db)):
                 })
 
         #give fields list to page, put page in page list
+        for flag in flags_list:
+            reason = flag_reasons.get((p.page_id, flag["fieldId"], flag["kind"]))
+            if reason:
+                flag["reason"] = reason
+
         pages_list.append({
             "id": p.page_id,
             "type": p.category,
@@ -250,7 +265,7 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                                                                          models.ResidentField.page_id == e.page_id,
                                                                          models.ResidentField.resident_no == e.resident_no).scalar()
                     final_field_id = "residents." + f"{e.resident_no}" + "." + e.resident_field_title
-                elif e.child_no:
+                elif e.child_no is not None:
                     child = db.query(models.OtherChild).filter(models.OtherChild.child_no == e.child_no, 
                                                                  models.OtherChild.page_id == e.page_id).first()
                     raw = child.text_raw

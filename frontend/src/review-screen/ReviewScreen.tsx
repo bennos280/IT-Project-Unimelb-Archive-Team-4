@@ -14,6 +14,7 @@ import ImageViewer from "./ImageViewer";
 import type { useReviewSession } from "./useReviewSession";
 import { pageNames as names } from "./model";
 import "./review.css";
+import { flagCategories, flagLabels } from "./flags";
 
 // Render extracted fields and the scan, wiring reviewer controls and dialogs to session actions.
 export default function ReviewScreen({
@@ -168,7 +169,10 @@ export default function ReviewScreen({
                             onChange={(e) => setFilter(e.target.value)}
                           >
                             <option value="all">Flag</option>
-                            <option value="flagged">Needs checking</option>
+                            <option value="flagged">All flagged fields</option>
+                            {Object.entries(flagCategories).map(([value, label]) => (
+                              <option key={value} value={value}>{label}</option>
+                            ))}
                           </select>
                         </th>
                         <th>
@@ -296,9 +300,7 @@ export default function ReviewScreen({
                                           <summary>
                                             <TriangleAlert size={18} />
                                             <span>
-                                              Needs
-                                              <br />
-                                              checking
+                                              {[...new Set(flags.map((flag) => flagLabels[flag.kind]))].join(", ")}
                                             </span>
                                           </summary>
                                           {flags.map((flag) => (
@@ -307,12 +309,7 @@ export default function ReviewScreen({
                                               key={flag.id}
                                             >
                                               <strong>
-                                                {flag.kind === "gibberish"
-                                                  ? "Possible gibberish"
-                                                  : flag.kind ===
-                                                      "inconsistency"
-                                                    ? "Internal inconsistency"
-                                                    : "Uncertain extraction"}
+                                                {flagLabels[flag.kind]}
                                               </strong>
                                               <p>{flag.reason}</p>
                                             </div>
@@ -494,6 +491,13 @@ export default function ReviewScreen({
           }}
         >
           <h2>Edit field</h2>
+          {/* Explain each flag on the selected field before the reviewer edits it. */}
+          {page?.flags.filter((flag) => flag.fieldId === editing?.id).map((flag) => (
+            <div className="flag-reason" key={flag.id}>
+              <strong>{flagLabels[flag.kind]}</strong>
+              <p>{flag.reason}</p>
+            </div>
+          ))}
           <p className="edit-context">
             {page && names[page.type]} · {editing?.label}
           </p>

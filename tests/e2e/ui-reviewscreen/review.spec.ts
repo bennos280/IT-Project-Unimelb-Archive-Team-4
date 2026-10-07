@@ -1,6 +1,5 @@
 // Real browser interactions with an isolated, per-test API fixture.
 import { test as base, expect, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
 import type { Survey } from "../../../frontend/src/review-screen/model";
 
 // Defines the saved review returned by mock API.
@@ -21,12 +20,48 @@ type State = {
   reviews: Record<string, Record<string, SavedReview>>;
   revisions: Record<string, number>;
 };
-const demo: Survey = JSON.parse(
-  readFileSync(
-    new URL("../../../frontend/public/us7-demo/survey.json", import.meta.url),
-    "utf8",
-  ),
-);
+// Small sample survey for browser tests; no demo JSON or database is needed.
+const demo: Survey = {
+  id: "test-survey",
+  title: "Test survey",
+  pages: [
+    {
+      id: "test-bundle/p0",
+      type: "main",
+      imageUrl: "/test-images/main.jpg",
+      fields: [
+        { id: "address", label: "Address", group: "Address", value: "10 Sample Street" },
+        { id: "municipality", label: "Municipality", group: "Address", value: null },
+      ],
+      flags: [
+        {
+          id: "address-uncertain",
+          fieldId: "address",
+          kind: "uncertain",
+          reason: "The handwriting needs checking.",
+        },
+      ],
+    },
+    {
+      id: "test-bundle/p1",
+      type: "notes",
+      imageUrl: "/test-images/notes.jpg",
+      fields: [
+        { id: "text", label: "Notes", group: "Notes", value: "Interview notes." },
+      ],
+      flags: [],
+    },
+    {
+      id: "test-bundle/p2",
+      type: "coded",
+      imageUrl: "/test-images/coded.jpg",
+      fields: [
+        { id: "number_of_dwelling", label: "Number of dwelling", group: "Left column", value: "12" },
+      ],
+      flags: [],
+    },
+  ],
+};
 
 // Creates a fresh mock API for each test so reviews and reviewers
 // are isolated and API requests never reach the real backend.
@@ -40,6 +75,11 @@ const test = base.extend<{ api: State }>({
       revisions: {},
     };
     const people = [{ reviewer_id: 1, name: "Test reviewer" }];
+    // Serve a predictable image so viewer tests do not depend on demo scan files.
+    await page.route("**/test-images/*.jpg", (route) => route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="white"/></svg>',
+    }));
     await page.route("**/api/**", async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
