@@ -36,3 +36,6 @@ tests/playwright-report/
 tests/test-results/
 tests/coverage/
 tests/integration/ui-reviewscreen/report.json
+
+# US8 database
+backend/wilfprestsurvey.db

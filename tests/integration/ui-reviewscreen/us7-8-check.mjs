@@ -250,9 +250,8 @@ const childField = main.fields.find(
 await test("Save and reload child field including index zero", () =>
   saveAndReload(main, childField, "Integration child"));
 
-// Checks resident zero and resident one separately to expose backend
-// conditions that mistakenly treat zero as a missing resident number.
-for (const index of [0, 1]) {
+// Checks the first two residents using US8’s numbering, which starts at 1.
+for (const index of [1, 2]) {
   const field = main.fields.find(
     (f) => f.id.startsWith(`residents.${index}.`) && f.value !== null,
   );

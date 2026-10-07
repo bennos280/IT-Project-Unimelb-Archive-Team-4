@@ -24,14 +24,14 @@ export default function ProgressDashboard() {
     async function refresh() {
       const request = ++latest;
       try {
-        //todo Currently connects survey 216417; real bundle discovery is still to be added.
+        //todo Currently connects survey 216417_1 in bundle 216417; real bundle discovery is still to be added.
         const [survey, saved] = await Promise.all([
-          getSurvey("216417"),
-          getReviews("216417"),
+          getSurvey("216417_1"),
+          getReviews("216417_1"),
         ]);
         if (!active || request !== latest) return;
         // A page counts as reviewed only when every field has a saved review.
-        setBundles([bundleFromSurvey(survey, saved.reviews)]);
+        setBundles([bundleFromSurvey(survey, saved.reviews, "216417")]);
         setError("");
       } catch (cause) {
         if (!active || request !== latest) return;
@@ -126,7 +126,7 @@ export default function ProgressDashboard() {
           </div>
           {/* Reuse US12 export; Import stays plain text for now. */}
           <div className="progress-actions">
-            <ExportDialog surveyId="216417" hasDrafts={false} />
+            <ExportDialog surveyId="216417_1" hasDrafts={false} />
             <span className="progress-import-label">Import</span>
           </div>
         </div>

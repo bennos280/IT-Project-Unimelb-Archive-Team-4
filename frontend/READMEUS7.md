@@ -49,7 +49,7 @@ npm run dev -- --port 5174 --strictPort
 Open:
 
 ```text
-http://localhost:5174/
+http://localhost:5174/survey=216417_1
 ```
 
 Keep both terminals running while using the app.

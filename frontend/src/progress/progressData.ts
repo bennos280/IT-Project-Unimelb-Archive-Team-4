@@ -19,10 +19,11 @@ export type Bundle = { id: string; pages: ProgressPage[] };
 export function bundleFromSurvey(
   survey: Survey,
   reviews: SavedReviews,
+  bundleId: string,
 ): Bundle {
   const categories = { main: "Main page", notes: "Notes", coded: "Coded" };
   return {
-    id: survey.id,
+    id: bundleId,
     pages: survey.pages.map((page, index) => ({
       id: page.id,
       label: `Pg ${index + 1}`,

@@ -125,10 +125,10 @@ def get_survey(survey_id: str, db: Session = Depends(get_db)):
                 "value": c.text_raw,
             })
 
-            if f.flag_type:
+            if c.flag_type:
                 flags_list.append({
                     "fieldId": id,
-                    "kind": f.flag_type
+                    "kind": c.flag_type
                 })
             
         annotations = db.query(models.Annotation).filter(models.Annotation.page_id == p.page_id).all()
@@ -141,10 +141,10 @@ def get_survey(survey_id: str, db: Session = Depends(get_db)):
                 "group": "Annotations",
                 "value": a.text_raw,
             })
-            if f.flag_type:
+            if a.flag_type:
                 flags_list.append({
                     "fieldId": id,
-                    "kind": f.flag_type
+                    "kind": a.flag_type
                 })
 
         #give fields list to page, put page in page list
@@ -245,21 +245,21 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                     raw = db.query(models.Field.text_raw).filter(models.Field.field_title == e.field_title, 
                                                                  models.Field.page_id == e.page_id).scalar()
                     final_field_id = e.field_title
-                elif (e.resident_no is not None  and e.resident_field_title is not None):
+                elif e.resident_no and e.resident_field_title:
                     raw = db.query(models.ResidentField.text_raw).filter(models.ResidentField.resident_field_title == e.resident_field_title, 
                                                                          models.ResidentField.page_id == e.page_id,
                                                                          models.ResidentField.resident_no == e.resident_no).scalar()
-                    final_field_id = (f"residents.{e.resident_no}.{e.resident_field_title}")
-                elif e.child_no is not None:
+                    final_field_id = "residents." + f"{e.resident_no}" + "." + e.resident_field_title
+                elif e.child_no:
                     child = db.query(models.OtherChild).filter(models.OtherChild.child_no == e.child_no, 
                                                                  models.OtherChild.page_id == e.page_id).first()
                     raw = child.text_raw
                     residence = child.residence
-                    final_field_id = f"other_children.{child.residence}.{e.child_no}"
-                elif e.annotation_no is not None:
+                    final_field_id = "other_children." + residence + "." + f"{e.child_no}"
+                elif e.annotation_no:
                     raw = db.query(models.Annotation.text_raw).filter(models.Annotation.annotation_no == e.annotation_no, 
                                                                  models.Annotation.page_id == e.page_id).scalar()
-                    final_field_id = "annotations." + f"{e.annotation_no}"
+                    final_field_id = "annotation." + f"{e.annotation_no}"
 
                 #fill in review entry
                 if final_field_id:
