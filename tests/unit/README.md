@@ -1,6 +1,6 @@
 # Unit tests
 
-**150 tests. Runs in ~16s.**
+**158 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
@@ -180,3 +180,18 @@ Unit tests for `pipeline.identify.fingerprint`, covering empty input, view const
 | `test_fingerprint_empty_list` | An empty input returns a `(0, 0)` array, and the CLIP encoder is never called. |
 | `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP. |
 | `test_fingerprint_crops_correct_quadrants` | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
+
+## `test_backend_api.py` — 11 tests
+|Test|What it checks|
+|---|---|
+|`test_get_survey_not_found`|Returns HTTP 404 if requested survey id is not in database.|
+|`test_get_survey_success`|After seeding database with sample survey, successfully returns data from the requested survey.|
+|`test_get_reviewers_empty`|Returns empty list without crashing if there are no reviewers in database.|
+|`test_create_reviewer_success`|Successfully saves a reviewer into database.|
+|`test_create_reviewer_empty_name`|Returns HTTP 404 if requested reviewer to save has no name given.|
+|`test_get_reviews_empty_survey`|Returns empty list without crashing if there is no review data in database.
+|`test_get_reviews_latest`|Returns latest review if there is more than one on the same field.|
+|`test_save_reviews_outdated_revision`|Rejects request to save an outdated review on a page.|
+|`test_save_reviews_missing_revision`|Rejects request to save a review with revision no >1 than current revision no of the page.|
+|`test_save_reviews_no_reviewer`|Rejects request to save a review if reviewer is not in database.|
+|`test_save_reviews_success`|Successfully saves a review into database.|
