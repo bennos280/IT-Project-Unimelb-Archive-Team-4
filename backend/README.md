@@ -16,6 +16,9 @@ UI_groupings.py|stores dictionaries, used in main.py
 Follows the schema in this diagram
 https://drive.google.com/file/d/1lI1dQj07qq2964taoN52lEnq9KpuVIVU/view?usp=sharing
 
+NOTES:
+- A child in other_children is identified by (page_no, child_no). child_no doesn't correspond to column that the child is in, it is just an identifier, so child_no is different for each field on a given page.
+
 ### API (main.py)
 get_survey return value eg.
 ```

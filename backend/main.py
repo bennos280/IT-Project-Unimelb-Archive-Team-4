@@ -125,10 +125,10 @@ def get_survey(survey_id: str, db: Session = Depends(get_db)):
                 "value": c.text_raw,
             })
 
-            if f.flag_type:
+            if c.flag_type:
                 flags_list.append({
                     "fieldId": id,
-                    "kind": f.flag_type
+                    "kind": c.flag_type
                 })
             
         annotations = db.query(models.Annotation).filter(models.Annotation.page_id == p.page_id).all()
@@ -141,10 +141,10 @@ def get_survey(survey_id: str, db: Session = Depends(get_db)):
                 "group": "Annotations",
                 "value": a.text_raw,
             })
-            if f.flag_type:
+            if a.flag_type:
                 flags_list.append({
                     "fieldId": id,
-                    "kind": f.flag_type
+                    "kind": a.flag_type
                 })
 
         #give fields list to page, put page in page list
@@ -255,11 +255,11 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                                                                  models.OtherChild.page_id == e.page_id).first()
                     raw = child.text_raw
                     residence = child.residence
-                    final_field_id = "other_children." + residence + f"{e.child_no}"
+                    final_field_id = "other_children." + residence + "." + f"{e.child_no}"
                 elif e.annotation_no:
                     raw = db.query(models.Annotation.text_raw).filter(models.Annotation.annotation_no == e.annotation_no, 
                                                                  models.Annotation.page_id == e.page_id).scalar()
-                    final_field_id = "annotations." + f"{e.annotation_no}"
+                    final_field_id = "annotation." + f"{e.annotation_no}"
 
                 #fill in review entry
                 if final_field_id:
