@@ -245,9 +245,7 @@ export function orderFields(fields: Field[], type: PageType): Field[] {
       return {
         field: {
           ...field,
-          // Backend resident 0 is displayed as Resident 1.
-          // The original field ID stays unchanged for saving and highlighting.
-          group: `Resident ${residentNumber + 1}`,
+          group: `Resident ${residentNumber}`,
           label: index < 0 ? field.label : residentFields[index][1],
         },
         section: 6,
@@ -261,7 +259,14 @@ export function orderFields(fields: Field[], type: PageType): Field[] {
 
     if (child) {
       return {
-        field: { ...field, group: "Other children" },
+        field: {
+          ...field,
+          group: "Other children of head",
+          label:
+            child[1] === "died"
+              ? "Other children: Died"
+              : "Other children: Living elsewhere",
+        },
         section: 6,
         position: child[1] === "died" ? 0 : 1,
         person: Number.MAX_SAFE_INTEGER,

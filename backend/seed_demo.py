@@ -12,7 +12,7 @@ def main():
         connection.executescript((folder / 'seed_demo.sql').read_text())
         if connection.execute('PRAGMA foreign_key_check').fetchall():
             raise RuntimeError('Seed contains invalid references.')
-        print(f'Created {target}; open US7 with ?survey=216417')
+        print(f'Created {target}; open US7 with ?survey=216417_1')
     finally:
         connection.close()
 

@@ -41,10 +41,12 @@ export function useReviewSession() {
     [query, setQuery] = useState(""),
     [filter, setFilter] = useState("all");
   const surveyId =
-    new URLSearchParams(location.search).get("survey") || "216417";
+    new URLSearchParams(location.search).get("survey")?.trim() ?? "";
 
   // Reload when the survey or retry counter changes; ignore results after cleanup.
   useEffect(() => {
+    if (!surveyId) return;
+
     const controller = new AbortController();
     Promise.all([
       getSurvey(surveyId, controller.signal),

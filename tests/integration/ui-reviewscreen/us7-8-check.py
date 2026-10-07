@@ -8,13 +8,14 @@ import subprocess
 import sys
 import tempfile
 
+# NOTE Since no aggreed apon name for survey_id, bundleNum_SurveyNum was used temporarily
 # Reads optional frontend, backend, fixture, and report locations.
 parser = argparse.ArgumentParser(description=__doc__)
 root = Path(__file__).resolve().parents[3]
 parser.add_argument('--frontend', type=Path, default=root / 'frontend')
 parser.add_argument('--backend', type=Path, default=root / 'backend')
 parser.add_argument('--seed', type=Path, help='Standalone SQL seed containing schema and records')
-parser.add_argument('--survey', default='216417', help='Survey ID in the SQL seed')
+parser.add_argument('--survey', default='216417_1', help='Survey ID in the SQL seed')
 parser.add_argument('--report', type=Path, help='Optional output report path')
 args = parser.parse_args()
 args.frontend = args.frontend.resolve()

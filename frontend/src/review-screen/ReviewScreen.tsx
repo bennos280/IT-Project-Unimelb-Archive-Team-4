@@ -73,7 +73,11 @@ export default function ReviewScreen({
         </div>
       </header>
       <main>
-        {error ? (
+        {!session.surveyId ? (
+          <div className="empty" role="status">
+            Select a survey to review.
+          </div>
+        ) : error ? (
           <div className="empty" role="alert">
             {error}
             <button onClick={() => setAttempt((a) => a + 1)}>Try again</button>
@@ -87,7 +91,7 @@ export default function ReviewScreen({
             <section className="extracted">
               <div className="page-heading">
                 <h2>
-                  Page {page.id} · {names[page.type]}
+                  {page.id} · {names[page.type]}
                 </h2>
                 <span className="review-progress">
                   {page.fields.length
@@ -98,9 +102,11 @@ export default function ReviewScreen({
                     : 0}
                   % reviewed
                 </span>
-                <button disabled title="Requires a US8 update endpoint">
+                {/* TODO:support page-category changes
+                <button disabled title="Change page category not implemented yet">
                   Change page category
                 </button>
+                */}
               </div>
               <div className="filters">
                 <select
