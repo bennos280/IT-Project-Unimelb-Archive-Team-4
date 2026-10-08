@@ -285,7 +285,7 @@ export function useReviewSession() {
     displayFields.filter(
       (f) =>
         (filter === "all" ||
-          page?.flags.some((flag) => flag.fieldId === f.id)) &&
+          page?.flags.some((flag) => flag.fieldId === f.id && (filter === "flagged" || flag.kind === filter))) &&
         `${f.label} ${f.value ?? ""} ${f.group}`
           .toLowerCase()
           .includes(query.toLowerCase()),

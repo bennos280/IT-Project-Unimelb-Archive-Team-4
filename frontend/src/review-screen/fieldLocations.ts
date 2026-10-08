@@ -611,7 +611,7 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
     },
     "residents.2.prewar_occupation": {
       x: 0.3421194742463614,
-      y: 0.838547337102888,
+      y: 0.8385473371028876,
       width: 0.0879308682985541,
       height: 0.03397533863647665,
     },

@@ -7,7 +7,7 @@ export type PageType = "main" | "notes" | "coded";
 export type Flag = {
   id: string;
   fieldId: string;
-  kind: "inconsistency" | "gibberish" | "uncertain";
+  kind: "inconsistency" | "gibberish" | "uncertain" | "between_page_mismatch" | "total_mismatch" | "count_exceeds_total";
   reason: string;
 };
 
@@ -89,7 +89,7 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
         !f.id ||
         !fields.has(f.fieldId) ||
         typeof f.reason !== "string" ||
-        !["inconsistency", "gibberish", "uncertain"].includes(f.kind)
+        !["inconsistency", "gibberish", "uncertain", "between_page_mismatch", "total_mismatch", "count_exceeds_total"].includes(f.kind)
       )
         throw new Error("Flag does not match a field on this page.");
   }

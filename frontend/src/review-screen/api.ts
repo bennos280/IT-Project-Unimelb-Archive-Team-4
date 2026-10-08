@@ -100,9 +100,7 @@ export async function getSurvey(id: string, signal?: AbortSignal) {
       page.flags = (page.flags ?? []).map((flag, index) => ({
         ...flag,
         id: flag.id || `${page.id}:${flag.fieldId}:${index}`,
-        reason:
-          flag.reason ||
-          "Flagged by extraction; no detailed reason was supplied by US8.",
+        reason: flag.reason?.trim() || "No reason was supplied for this flag.",
       }));
 
       // Allows data to load while image serving is not connected.
@@ -209,7 +207,7 @@ export async function saveReviews(
       original: field.value,
       reviewer: person.name,
       reviewerId: person.id,
-      savedAt: "", // US8 generates the saved timestamp.
+      savedAt: "",
     };
   }
 

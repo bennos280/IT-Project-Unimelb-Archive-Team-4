@@ -1,6 +1,5 @@
 // Tests the real US7 API adapter using mocked fetch responses.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
 import {
   getSurvey,
   getReviewers,
@@ -10,15 +9,49 @@ import {
 } from "../../../frontend/src/review-screen/api";
 import type { Survey } from "../../../frontend/src/review-screen/model";
 
-// Loads a fresh copy of the demo survey so changes in one test
-// do not affect the data used by another test.
-const demo = (): Survey =>
-  JSON.parse(
-    readFileSync(
-      new URL("../../../frontend/public/us7-demo/survey.json", import.meta.url),
-      "utf8",
-    ),
-  );
+// Creates fresh sample API data for each test, including all three page types.
+// Unit tests mock responses; SQL seed/database behaviour belongs in integration tests.
+const sampleSurvey = (): Survey => ({
+  id: "test-survey",
+  title: "Test survey",
+  pages: [
+    {
+      id: "test-bundle/p0",
+      type: "main",
+      imageUrl: "/test-images/main.jpg",
+      fields: [
+        { id: "address", label: "Address", group: "Address", value: "10 Sample Street" },
+        { id: "municipality", label: "Municipality", group: "Address", value: null },
+      ],
+      flags: [
+        {
+          id: "address-uncertain",
+          fieldId: "address",
+          kind: "uncertain",
+          reason: "The handwriting needs checking.",
+        },
+      ],
+    },
+    {
+      id: "test-bundle/p1",
+      type: "notes",
+      imageUrl: "/test-images/notes.jpg",
+      fields: [
+        { id: "text", label: "Notes", group: "Notes", value: "Interview notes." },
+      ],
+      flags: [],
+    },
+    {
+      id: "test-bundle/p2",
+      type: "coded",
+      imageUrl: "/test-images/coded.jpg",
+      fields: [
+        { id: "number_of_dwelling", label: "Number of dwelling", group: "Left column", value: "12" },
+      ],
+      flags: [],
+    },
+  ],
+});
 const fetchMock = vi.fn<typeof fetch>();
 
 // Creates a JSON response with a successful or error HTTP status.
@@ -38,7 +71,7 @@ describe("getSurvey", () => {
   // Checks the requested URL and abort signal, and confirms that valid
   // main, notes, and coded page data is returned unchanged.
   it("requests the selected survey and preserves main/notes/coded data", async () => {
-    const source = demo();
+    const source = sampleSurvey();
     fetchMock.mockResolvedValueOnce(json(source));
     const signal = new AbortController().signal;
 
@@ -51,7 +84,7 @@ describe("getSurvey", () => {
   // Checks that missing flags become an empty list and an unavailable
   // image path gets a placeholder without changing extracted values.
   it("fills missing flags and unavailable image paths without changing field values", async () => {
-    const source = demo();
+    const source = sampleSurvey();
     const response = {
       ...source,
       pages: source.pages.map(({ flags: _flags, ...page }) => ({
@@ -72,14 +105,14 @@ describe("getSurvey", () => {
 
   // Checks that data belonging to a different survey is rejected.
   it("rejects data for a different survey", async () => {
-    fetchMock.mockResolvedValueOnce(json(demo()));
+    fetchMock.mockResolvedValueOnce(json(sampleSurvey()));
 
     await expect(getSurvey("another-survey")).rejects.toThrow(/another survey/);
   });
 
   // Checks that two pages cannot share the same ID in a survey response.
   it("rejects duplicate page IDs", async () => {
-    const source = demo();
+    const source = sampleSurvey();
     source.pages[1].id = source.pages[0].id;
     fetchMock.mockResolvedValueOnce(json(source));
 
@@ -151,7 +184,7 @@ describe("saveReviews", () => {
   // Supplies a survey, a registered reviewer, and a successful save
   // response for the tests below.
   function arrange() {
-    const source = demo();
+    const source = sampleSurvey();
 
     fetchMock.mockImplementation(async (url, options) => {
       if (String(url).includes("/survey/")) return json(source);

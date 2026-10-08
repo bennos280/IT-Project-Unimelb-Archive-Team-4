@@ -42,10 +42,12 @@ export default function ProgressDashboard() {
     }
     void refresh();
     window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", refresh);
     // Remove the focus listener when this effect is replaced or the dashboard closes.
     return () => {
       active = false;
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("pageshow", refresh);
     };
   }, [attempt]);
   // A null selection displays all bundles; a selected ID displays that bundle’s pages.

@@ -30,7 +30,12 @@ export function bundleFromSurvey(
       category: categories[page.type],
       surveyId: survey.id,
       reviewPageId: page.id,
-      flagCount: page.flags.length,
+      // Count unresolved fields, not individual flags; saved reviews resolve the count.
+      flagCount: new Set(
+        page.flags
+          .filter((flag) => !reviews[page.id]?.[flag.fieldId]?.savedAt)
+          .map((flag) => flag.fieldId),
+      ).size,
       status:
         page.fields.length === 0
           ? "Awaiting transcription"
