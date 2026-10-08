@@ -100,7 +100,7 @@ export async function getSurvey(id: string, signal?: AbortSignal) {
       page.flags = (page.flags ?? []).map((flag, index) => ({
         ...flag,
         id: flag.id || `${page.id}:${flag.fieldId}:${index}`,
-        reason: flag.reason || fallbackFlagReason(flag.kind, flag.fieldId),
+        reason: flag.reason?.trim() || "No reason was supplied for this flag.",
       }));
 
       // Allows data to load while image serving is not connected.
