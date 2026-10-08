@@ -243,10 +243,6 @@ export default function ExportDialog({
                     }}
                     placeholder="Enter survey ID"
                   />
-                  <small>
-                    Enter the ID of a survey stored in US8. Bundle export is not
-                    available yet.
-                  </small>
                 </label>
               )}
             </fieldset>

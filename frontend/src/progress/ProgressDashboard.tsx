@@ -1,6 +1,6 @@
 // Bundle overview and page list
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Search, Upload } from "lucide-react";
 import ExportDialog from "../export/ExportDialog";
 import {
   counts,
@@ -126,10 +126,10 @@ export default function ProgressDashboard() {
                 : `Track review progress across ${(bundles ?? []).length} bundles`}
             </p>
           </div>
-          {/* Reuse US12 export; Import stays plain text for now. */}
+          {/* Reuse US12 export and open the import screen. */}
           <div className="progress-actions">
             <ExportDialog surveyId="216417_1" hasDrafts={false} />
-            <span className="progress-import-label">Import</span>
+            <button type="button" onClick={() => { window.location.href = "/?view=import"; }}><Upload size={16} /> Import</button>
           </div>
         </div>
         {/* Display loading failures and allow retry; previously loaded data stays visible. */}
@@ -194,10 +194,6 @@ export default function ProgressDashboard() {
                 <button onClick={openTranscription}>Transcribe bundle</button>
               )}
             </div>
-            <p className="progress-help">
-              Ready to review means transcription is complete and human review
-              is still pending.
-            </p>
             {/* The same table shows bundle summaries or individual page details. */}
             <div className="progress-table-wrap">
               <table className="progress-table">

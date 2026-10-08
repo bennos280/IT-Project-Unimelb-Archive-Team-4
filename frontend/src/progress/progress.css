@@ -345,10 +345,3 @@
   }
 }
 
-/* Import is a text placeholder */
-.progress-import-label {
-  align-self: center;
-  padding: 10px 17px;
-  color: #777;
-  font-size: 14px;
-}
