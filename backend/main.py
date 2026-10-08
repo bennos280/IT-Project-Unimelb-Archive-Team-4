@@ -260,7 +260,7 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                     raw = db.query(models.Field.text_raw).filter(models.Field.field_title == e.field_title, 
                                                                  models.Field.page_id == e.page_id).scalar()
                     final_field_id = e.field_title
-                elif e.resident_no and e.resident_field_title:
+                elif e.resident_no is not None and e.resident_field_title:
                     raw = db.query(models.ResidentField.text_raw).filter(models.ResidentField.resident_field_title == e.resident_field_title, 
                                                                          models.ResidentField.page_id == e.page_id,
                                                                          models.ResidentField.resident_no == e.resident_no).scalar()
@@ -271,7 +271,7 @@ def get_reviews(survey_id: str, db: Session = Depends(get_db)):
                     raw = child.text_raw
                     residence = child.residence
                     final_field_id = "other_children." + residence + "." + f"{e.child_no}"
-                elif e.annotation_no:
+                elif e.annotation_no is not None:
                     raw = db.query(models.Annotation.text_raw).filter(models.Annotation.annotation_no == e.annotation_no, 
                                                                  models.Annotation.page_id == e.page_id).scalar()
                     final_field_id = "annotation." + f"{e.annotation_no}"
