@@ -39,8 +39,8 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 | Command                                                          | Description                                                                                                                                                                                                    |
 | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `uv run survey`                                                  | Process new or unfinished PDFs (or folders of page images) in `DATA` → `<OUTPUT>/<name>/manifest.json` + `review.json`                                                                                         |
-| `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI signed in, or `codex` for gpt-\* models)                                                             |
-| `uv run pytest`                                                  | Run all tests (see `tests/README.md` for more info) scored                                                                                                      |
+| `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI signed in, or `codex` for gpt-\* models)            |
+| `uv run pytest`                                                  | Run all tests (see `tests/README.md` for more info) scored                                                                                                                                                     |
 | `uv run survey train`                                            | Refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`)                                                                                                        |
 | `uv run survey transcribe <card>`, `uv run survey score --pages` | Run transcription/scoring and view the transcription leaderboard in `results/transcribe/`                                                                                                                      |
 | `uv run survey data/x.pdf --preprocess`                          | Identify pages, then crop, straighten, and binarize eligible page images                                                                                                                                       |
@@ -66,3 +66,31 @@ STEPS = {"split": step_split, "identify": step_identify,"preprocess": step_prepr
 ```
 
 Heavy code goes in `pipeline/thing/`, imported inside the function. Flagged pages land in `review.json`.
+
+## UI Setup
+
+1. Install **Node.js 24.x** (includes npm), alongside the Python setup above.
+
+2. If the demo database does not already exist, create it from the project folder:
+
+   ```sh
+   uv run python backend/seed_demo.py
+   ```
+
+3. Start the backend from the project folder:
+
+   ```sh
+   uv run uvicorn backend.main:app --reload --port 8000
+   ```
+
+4. In a second terminal, open the project folder and start the frontend:
+
+   ```sh
+   cd frontend
+   npm ci
+   npm run dev -- --port 5174 --strictPort
+   ```
+
+5. Open [the demo survey](http://localhost:5174/?survey=216417_1).
+
+Keep both terminals running while using the app.
