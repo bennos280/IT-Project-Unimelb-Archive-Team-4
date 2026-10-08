@@ -54,7 +54,7 @@ export default function ExportDialog({
   }
 
   /**
-   * Loads the survey and its saved reviews, builds the export object,
+   * Requests the export JSON prepared by the backend,
    * and downloads the result as a JSON file.
    */
   async function exportFile() {
@@ -250,7 +250,7 @@ export default function ExportDialog({
             {/* Explain why unsupported export scopes cannot yet be used. */}
             {scope !== "survey" ? (
               <p className="export-notice" role="status">
-                US8 needs an export endpoint for{" "}
+                Export is not yet available for{" "}
                 {scope === "all" ? "the full archive" : "a bundle"}. Individual
                 survey export is available.
               </p>

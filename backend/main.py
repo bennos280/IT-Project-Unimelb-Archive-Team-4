@@ -386,3 +386,39 @@ def save_reviews(payload: SaveReviewsRequest, db: Session = Depends(get_db)):
     db.commit()
 
     return {"revision": new_rev, "savedAt": str(timestamp)}
+
+@app.get("/export")
+def export_survey(survey_id: str, db: Session = Depends(get_db)):
+    survey_id = survey_id.strip()
+    if not survey_id:
+        raise HTTPException(status_code=400, detail="Enter a survey ID.")
+    survey = get_survey(survey_id, db)
+    reviews = get_reviews(survey_id, db)["reviews"]
+    pages = []
+    for page in survey["pages"]:
+        fields = []
+        for field in page["fields"]:
+            saved = reviews.get(page["id"], {}).get(field["id"])
+            reviewed = bool(saved and saved.get("savedAt"))
+            fields.append({
+                **field,
+                "value": saved["value"] if reviewed else field["value"],
+                "status": "Reviewed" if reviewed else "ToBeReviewed",
+            })
+        pages.append({
+            "pageId": page["id"],
+            "label": page["type"],
+            "sourceImage": page["imageUrl"],
+            "status": "Reviewed" if fields and all(
+                field["status"] == "Reviewed" for field in fields
+            ) else "ToBeReviewed",
+            "fields": fields,
+            "flags": page["flags"],
+        })
+    return {"surveys": [{
+        "surveyId": survey_id,
+        "status": "Reviewed" if pages and all(
+            page["status"] == "Reviewed" for page in pages
+        ) else "ToBeReviewed",
+        "pages": pages,
+    }]}

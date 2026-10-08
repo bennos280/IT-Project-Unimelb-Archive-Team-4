@@ -57,7 +57,10 @@ type SurveyResponse = {
 };
 
 // Send a request and display errors into message the review screen can display
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, options);
 
   if (!response.ok) {

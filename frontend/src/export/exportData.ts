@@ -1,6 +1,5 @@
 // Builds export records using saved corrections while preserving source references and review statuses.
 // TODO: Update the survey JSON structure to match the agreed Archives layout.
-// TODO: Add bundle JSON export using the agreed structure and US8 bundle data.
 import type { Survey } from "../review-screen/model";
 
 // Represents a previously saved review value for a survey field.
@@ -76,3 +75,25 @@ export function buildSurveyExport(survey: Survey, reviews: SavedReviews) {
     pages,
   };
 }
+
+// Response from GET /export; the backend selects the latest saved values.
+export type SurveyExport = {
+  surveys: Array<{
+    surveyId: string;
+    status: "Reviewed" | "ToBeReviewed";
+    pages: Array<{
+      pageId: string;
+      label: string;
+      sourceImage: string;
+      status: "Reviewed" | "ToBeReviewed";
+      fields: Array<{
+        id: string;
+        label: string;
+        group: string;
+        value: string | null;
+        status: "Reviewed" | "ToBeReviewed";
+      }>;
+      flags: Array<{ fieldId: string; kind: string; reason?: string }>;
+    }>;
+  }>;
+};

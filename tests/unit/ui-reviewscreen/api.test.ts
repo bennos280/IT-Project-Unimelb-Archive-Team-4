@@ -20,8 +20,18 @@ const sampleSurvey = (): Survey => ({
       type: "main",
       imageUrl: "/test-images/main.jpg",
       fields: [
-        { id: "address", label: "Address", group: "Address", value: "10 Sample Street" },
-        { id: "municipality", label: "Municipality", group: "Address", value: null },
+        {
+          id: "address",
+          label: "Address",
+          group: "Address",
+          value: "10 Sample Street",
+        },
+        {
+          id: "municipality",
+          label: "Municipality",
+          group: "Address",
+          value: null,
+        },
       ],
       flags: [
         {
@@ -37,7 +47,12 @@ const sampleSurvey = (): Survey => ({
       type: "notes",
       imageUrl: "/test-images/notes.jpg",
       fields: [
-        { id: "text", label: "Notes", group: "Notes", value: "Interview notes." },
+        {
+          id: "text",
+          label: "Notes",
+          group: "Notes",
+          value: "Interview notes.",
+        },
       ],
       flags: [],
     },
@@ -46,7 +61,12 @@ const sampleSurvey = (): Survey => ({
       type: "coded",
       imageUrl: "/test-images/coded.jpg",
       fields: [
-        { id: "number_of_dwelling", label: "Number of dwelling", group: "Left column", value: "12" },
+        {
+          id: "number_of_dwelling",
+          label: "Number of dwelling",
+          group: "Left column",
+          value: "12",
+        },
       ],
       flags: [],
     },

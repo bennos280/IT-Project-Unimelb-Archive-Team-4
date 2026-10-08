@@ -1,18 +1,24 @@
 // Exercises the export dialog and downloaded JSON with an isolated API.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-const demo = JSON.parse(
-  readFileSync(
-    new URL("../../../frontend/public/us7-demo/survey.json", import.meta.url),
-    "utf8",
-  ),
-);
+const demo = {
+  id: "export-test", title: "Export test", pages: [{
+    id: "page0", type: "main", imageUrl: "/scan.png", flags: [],
+    fields: [{ id: "address", label: "Address", group: "Address", value: "Original" }],
+  }],
+};
+const exported = { surveys: [{ surveyId: demo.id, status: "Reviewed", pages: [{
+  pageId: "page0", label: "main", sourceImage: "scans/original.png", status: "Reviewed",
+  flags: [], fields: [{ id: "address", label: "Address", group: "Address",
+    value: "Saved address", status: "Reviewed" }],
+}] }] };
 
 test("downloads backend correction instead of an unsaved on-screen edit", async ({
   page,
 }) => {
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url()).pathname;
+    if (url === "/api/export") return route.fulfill({ json: exported });
     if (url.startsWith("/api/survey/")) return route.fulfill({ json: demo });
     if (url === "/api/reviewers")
       return route.fulfill({ json: [{ reviewer_id: 1, name: "Reviewer" }] });
@@ -61,15 +67,16 @@ test("shows backend export failure and permits retry", async ({ page }) => {
     const url = new URL(route.request().url()).pathname;
     if (url.startsWith("/api/survey/")) return route.fulfill({ json: demo });
     if (url === "/api/reviewers") return route.fulfill({ json: [] });
-    return fail
-      ? route.fulfill({ status: 500, json: { detail: "Reviews unavailable" } })
-      : route.fulfill({ json: { reviews: {}, revisions: {} } });
+    if (url === "/api/export") return fail
+      ? route.fulfill({ status: 500, json: { detail: "Export unavailable" } })
+      : route.fulfill({ json: exported });
+    return route.fulfill({ json: { reviews: {}, revisions: {} } });
   });
   await page.goto(`/?survey=${demo.id}`);
   await page.getByRole("button", { name: "Export", exact: true }).click();
   fail = true;
   await page.getByRole("button", { name: "Export JSON", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("Reviews unavailable");
+  await expect(page.getByRole("alert")).toContainText("Export unavailable");
   fail = false;
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export JSON", exact: true }).click();

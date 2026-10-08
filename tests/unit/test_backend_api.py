@@ -249,3 +249,56 @@ def test_save_reviews_success(client, db_session):
     data = response.json()
     assert data["revision"] == 1
     assert "savedAt" in data
+
+@pytest.mark.parametrize("value", ["Correction", "", "/", "[?]", None])
+def test_export_uses_latest_saved_values(client, db_session, value):
+    now = datetime.now(timezone.utc)
+    db_session.add_all([
+        models.Survey(survey_id="export-test", bundle_id="bundle"),
+        models.Page(page_id="p0", survey_id="export-test", bundle_id="bundle",
+                    category="main", import_path="scans/original.png"),
+        models.Field(page_id="p0", field_title="address", text_raw="Model"),
+        models.Field(page_id="p0", field_title="unreviewed", text_raw="[?]"),
+        models.ResidentField(page_id="p0", resident_no=0,
+                             resident_field_title="relationship", text_raw="Head"),
+        models.OtherChild(page_id="p0", child_no=0, residence="away", text_raw="Child"),
+        models.Annotation(page_id="p0", annotation_no=0, text_raw="Raw note"),
+        models.Edit(page_id="p0", field_title="address", edit_text="Old", time=now),
+        models.Edit(page_id="p0", field_title="address", edit_text=value,
+                    time=now + timedelta(seconds=1)),
+        models.Edit(page_id="p0", resident_no=0, resident_field_title="relationship",
+                    edit_text="Wife", time=now),
+        models.Edit(page_id="p0", child_no=0, edit_text="Saved child", time=now),
+        models.Edit(page_id="p0", annotation_no=0, edit_text="Saved note", time=now),
+    ])
+    db_session.commit()
+    response = client.get("/export", params={"survey_id": "export-test"})
+    assert response.status_code == 200
+    record = response.json()["surveys"][0]
+    assert record["surveyId"] == "export-test"
+    assert record["status"] == "ToBeReviewed"
+    page = record["pages"][0]
+    assert page["sourceImage"] == "scans/original.png"
+    assert page["pageId"] == "p0" and page["label"] == "main"
+    fields = {field["id"]: field for field in page["fields"]}
+    assert fields["address"]["value"] == value
+    assert fields["unreviewed"]["value"] == "[?]"
+    assert fields["unreviewed"]["status"] == "ToBeReviewed"
+    saved = client.get("/reviews/export-test").json()["reviews"]["p0"]
+    for key in ["address", "residents.0.relationship", "other_children.away.0", "annotation.0"]:
+        assert fields[key]["value"] == saved[key]["value"]
+        assert fields[key]["status"] == "Reviewed"
+
+
+def test_export_rejects_missing_or_unknown_id(client):
+    assert client.get("/export").status_code == 422
+    assert client.get("/export", params={"survey_id": " "}).status_code == 400
+    assert client.get("/export", params={"survey_id": "unknown"}).status_code == 404
+
+
+def test_export_empty_survey_is_not_reviewed(client, db_session):
+    db_session.add(models.Survey(survey_id="empty", bundle_id="bundle"))
+    db_session.commit()
+    record = client.get("/export?survey_id=empty").json()["surveys"][0]
+    assert record["status"] == "ToBeReviewed"
+    assert record["pages"] == []
