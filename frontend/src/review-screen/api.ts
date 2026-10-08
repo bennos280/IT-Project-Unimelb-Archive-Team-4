@@ -104,7 +104,6 @@ export async function getSurvey(id: string, signal?: AbortSignal) {
       }));
 
       // Allows data to load while image serving is not connected.
-      // This does not convert a filesystem path into a working URL.
       if (
         typeof page.imageUrl !== "string" ||
         !/^(https?:\/\/|\/[^/])/.test(page.imageUrl)
