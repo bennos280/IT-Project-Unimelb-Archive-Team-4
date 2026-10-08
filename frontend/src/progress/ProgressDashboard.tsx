@@ -59,17 +59,22 @@ export default function ProgressDashboard() {
   const [pageNumber, setPageNumber] = useState(0);
 
   const dialog = useRef<HTMLDialogElement>(null);
+  const [transcriptionModel, setTranscriptionModel] = useState("sonnet");
+  const [customModel, setCustomModel] = useState("");
   const bundle = (bundles ?? []).find((b) => b.id === bundleId);
 
   // Summary cards cover the selected bundle or all loaded pages, regardless of filters.
   const totals = counts(
     bundle ? bundle.pages : (bundles ?? []).flatMap((b) => b.pages),
   );
-  // Keep matching bundle numbers with at least one page in the selected status.
+  // Reviewed requires every page; other statuses match bundles with pending pages.
   const matchingBundles = (bundles ?? []).filter(
     (b) =>
       b.id.includes(query.trim()) &&
-      (status === "All" || b.pages.some((p) => p.status === status)),
+      (status === "All" ||
+        (status === "Reviewed"
+          ? b.pages.length > 0 && b.pages.every((p) => p.status === "Reviewed")
+          : b.pages.some((p) => p.status === status))),
   );
   // Search page labels, IDs, and categories, then apply the status filter.
   const matchingPages =
@@ -129,7 +134,14 @@ export default function ProgressDashboard() {
           {/* Reuse US12 export and open the import screen. */}
           <div className="progress-actions">
             <ExportDialog surveyId="216417_1" hasDrafts={false} />
-            <button type="button" onClick={() => { window.location.href = "/?view=import"; }}><Upload size={16} /> Import</button>
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = "/?view=import";
+              }}
+            >
+              <Upload size={16} /> Import
+            </button>
           </div>
         </div>
         {/* Display loading failures and allow retry; previously loaded data stays visible. */}
@@ -362,10 +374,38 @@ export default function ProgressDashboard() {
         aria-labelledby="progress-dialog-title"
       >
         <h2 id="progress-dialog-title">Transcribe scans</h2>
-        <p>Transcription has not been added yet.</p>
+        <p>Choose the model to transcribe your scans.</p>
+        <label className="transcription-model">
+          Transcription model
+          <select
+            autoFocus
+            value={transcriptionModel}
+            onChange={(event) => setTranscriptionModel(event.target.value)}
+          >
+            <option value="sonnet">Claude Sonnet</option>
+            <option value="opus">Claude Opus</option>
+            <option value="haiku">Claude Haiku</option>
+            <option value="custom">Custom model</option>
+          </select>
+        </label>
+        {transcriptionModel === "custom" && (
+          <label className="transcription-model">
+            Model name
+            <input
+              value={customModel}
+              placeholder="Enter the configured model name"
+              onChange={(event) => setCustomModel(event.target.value)}
+            />
+          </label>
+        )}
+        {/* Pass the selected model to the job endpoint when US8 provides it. */}
+        <p id="transcription-availability">
+          Starting transcription is not available yet.
+        </p>
         <div className="progress-dialog-actions">
-          <button autoFocus onClick={() => dialog.current?.close()}>
-            Close
+          <button onClick={() => dialog.current?.close()}>Cancel</button>
+          <button disabled aria-describedby="transcription-availability">
+            Start transcription
           </button>
         </div>
       </dialog>
