@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from pipeline import run
-from pipeline.identify import identify
-from pipeline.transcribe import run as transcription
+from backend.pipeline import run
+from backend.pipeline.identify import identify
+from backend.pipeline.transcribe import transcribe as transcription
 
 
 def labels(images):

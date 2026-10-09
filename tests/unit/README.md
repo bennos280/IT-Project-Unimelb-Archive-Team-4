@@ -8,7 +8,7 @@ uv run pytest tests/unit
 
 ## `test_preprocess.py` — 25 tests
 
-preprocessing steps tests and CLI/config option handling for `pipeline.preprocess`.
+preprocessing steps tests and CLI/config option handling for `backend.pipeline.preprocess`.
 
 | Test  | What it checks |
 |---|---|
@@ -35,7 +35,7 @@ preprocessing steps tests and CLI/config option handling for `pipeline.preproces
 
 ## `test_identify.py` — 15 tests
 
-Unit tests for scoring, bookkeeping, fingerprint storage, page identification, and model-result handling in `pipeline.identify`.
+Unit tests for scoring, bookkeeping, fingerprint storage, page identification, and model-result handling in `backend.pipeline.identify`.
 
 | Test | What it checks |
 |---|---|
@@ -59,7 +59,7 @@ Unit tests for scoring, bookkeeping, fingerprint storage, page identification, a
 
 ## `test_model.py` — 19 tests
 
-Unit tests for the classifier, prediction safety gates, model persistence, threshold selection, fitting, and cross-validation in `pipeline.identify.model`.
+Unit tests for the classifier, prediction safety gates, model persistence, threshold selection, fitting, and cross-validation in `backend.pipeline.identify.classifier`.
 
 | Test | What it checks |
 |---|---|
@@ -86,7 +86,7 @@ Unit tests for the classifier, prediction safety gates, model persistence, thres
 
 ## `test_common.py` — 12 tests
 
-Unit tests for `.env` configuration parsing and page-image discovery in `pipeline/common.py`, including required settings, defaults, comment handling, duplicate keys, supported image formats, and directory traversal behaviour.
+Unit tests for `.env` configuration parsing and page-image discovery in `backend/common.py`, including required settings, defaults, comment handling, duplicate keys, supported image formats, and directory traversal behaviour.
 
 | Test | What it checks |
 |---|---|
@@ -102,9 +102,9 @@ Unit tests for `.env` configuration parsing and page-image discovery in `pipelin
 | `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images. |
 
 
-## `test_transcribe_run.py` — 27 tests
+## `test_transcribe.py` — 27 tests
 
-unit tests for `pipeline.transcribe.run`, covering schema generation, CLI handling, Claude/Codex engine behaviour, engine selection, response processing, and transcription metadata.
+unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generation, CLI handling, Claude/Codex engine behaviour, engine selection, response processing, and transcription metadata.
 
 | Test | What it checks |
 |---|---|
@@ -140,7 +140,7 @@ unit tests for `pipeline.transcribe.run`, covering schema generation, CLI handli
 
 ## `test_transcribe_score.py` — 31 tests
 
-unit tests for `pipeline.transcribe.score`, covering JSON flattening, value normalisation, scorable fields, page-level scoring, invented values, character similarity, and leaderboard reporting.
+unit tests for `backend.pipeline.transcribe.score`, covering JSON flattening, value normalisation, scorable fields, page-level scoring, invented values, character similarity, and leaderboard reporting.
 
 | Test | What it checks |
 |---|---|
@@ -173,7 +173,7 @@ unit tests for `pipeline.transcribe.score`, covering JSON flattening, value norm
 
 ## `test_identify_fingerprint.py` — 3 tests
 
-Unit tests for `pipeline.identify.fingerprint`, covering empty input, view construction, and quadrant cropping. The CLIP encoder (`_clip`) is mocked throughout, so these run in milliseconds with no model loaded.
+Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, view construction, and quadrant cropping. The CLIP encoder (`_clip`) is mocked throughout, so these run in milliseconds with no model loaded.
 
 | Test | What it checks |
 |---|---|

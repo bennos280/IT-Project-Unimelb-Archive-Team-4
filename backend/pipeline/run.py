@@ -10,9 +10,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 
-from pipeline.common import ROOT, find_images, settings
-from pipeline.identify.model import REVIEW
-from pipeline.preprocess.options import add_arguments, resolve_options
+from backend.common import ROOT, find_images, settings
+from backend.pipeline.identify.classifier import REVIEW
+from backend.pipeline.preprocess.options import add_arguments, resolve_options
 
 
 @dataclass
@@ -101,7 +101,7 @@ def step_split(run: Run) -> None:
 
 def step_identify(run: Run) -> None:
     """Each page -> label main / notes / coded / blank, or review when the model isn't sure."""
-    from pipeline.identify.identify import identify_pages
+    from backend.pipeline.identify.identify import identify_pages
     images = find_images(run.images or run.input)
     run.pages = [{"file": p.name, "path": str(p)} for p in images]
     for page, r in zip(run.pages, identify_pages(images)):
@@ -112,7 +112,7 @@ def step_identify(run: Run) -> None:
 def step_preprocess(run: Run) -> None:
     """Prepare page images for transcription, keeping originals unchanged."""
     import cv2
-    from pipeline.preprocess.preprocess import process_image
+    from backend.pipeline.preprocess.preprocess import process_image
 
     folder = run.out / "preprocessed"
     folder.mkdir(parents=True, exist_ok=True)
@@ -150,7 +150,7 @@ def step_preprocess(run: Run) -> None:
 
 def step_transcribe(run: Run) -> None:
     """Each labelled page -> out/transcribe/<file>.json via the model in .env. Paid: only with --transcribe."""
-    from pipeline.transcribe.run import HERE, transcribe
+    from backend.pipeline.transcribe.transcribe import HERE, transcribe
     config = settings()
     folder = run.out / "transcribe"
     folder.mkdir(parents=True, exist_ok=True)
@@ -275,16 +275,16 @@ def unprocessed(folder: Path, output: Path, steps: list[str] | None = None) -> l
 def main(argv=None) -> int:
     args = sys.argv[1:] if argv is None else list(argv)
     if args[:1] == ["train"]:
-        from pipeline.identify.identify import train
+        from backend.pipeline.identify.identify import train
         return train()
     if args[:1] == ["preprocess"]:
-        from pipeline.preprocess.preprocess import main as preprocess
+        from backend.pipeline.preprocess.preprocess import main as preprocess
         return preprocess(args[1:])
     if args[:1] == ["transcribe"]:
-        from pipeline.transcribe.run import main as transcribe
+        from backend.pipeline.transcribe.transcribe import main as transcribe
         return transcribe(args[1:])
     if args[:1] == ["score"]:
-        from pipeline.transcribe.score import main as score
+        from backend.pipeline.transcribe.score import main as score
         return score(show_pages="--pages" in args)
 
     parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train | transcribe <card> | score [--pages]")

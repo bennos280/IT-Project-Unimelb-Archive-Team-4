@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, Numeric, LargeBinary, ForeignKey, DateTime
-from backend.database import Base
+from backend.db.database import Base
 
 
 class Bundle(Base):

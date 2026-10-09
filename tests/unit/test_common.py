@@ -1,8 +1,8 @@
-"""Unit tests for pipeline/common.py: reading .env settings and finding page images."""
+"""Unit tests for backend/common.py: reading .env settings and finding page images."""
 
 import pytest
 
-from pipeline import common
+from backend import common
 
 
 def write_env(folder, text):

@@ -53,7 +53,7 @@ If you replace a PDF that was already completed, pass its path explicitly to rer
 
 ## Add a step
 
-A step is one function in `pipeline/run.py` that reads and writes `run.pages`, plus one entry in `STEPS`:
+A step is one function in `backend/pipeline/run.py` that reads and writes `run.pages`, plus one entry in `STEPS`:
 
 ```python
 def step_thing(run):
@@ -65,4 +65,4 @@ def step_thing(run):
 STEPS = {"split": step_split, "identify": step_identify,"preprocess": step_preprocess, "thing": step_thing, "transcribe": step_transcribe}
 ```
 
-Heavy code goes in `pipeline/thing/`, imported inside the function. Flagged pages land in `review.json`.
+Heavy code goes in `backend/pipeline/thing/`, imported inside the function. Flagged pages land in `review.json`.
