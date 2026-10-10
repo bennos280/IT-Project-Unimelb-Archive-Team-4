@@ -1,20 +1,35 @@
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import event
+from pathlib import Path
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./wilfprestsurvey.db"
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import MetaData, create_engine, event
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+from backend.common import ROOT
 
-#turn foreign keys on
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+#the db file, wherever the server is started from
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{Path(__file__).parent / 'wilfprestsurvey.db'}"
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+#an engine for a SQLite db: foreign keys checked, and a 15 s wait so the API and the worker can use it at once
+def make_engine(url):
+    engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 15})
+    #not WAL: every saved change is in the db file itself
+    event.listen(engine, "connect", lambda con, _: con.executescript("PRAGMA foreign_keys=ON; PRAGMA journal_mode=DELETE"))
+    return engine
+
+engine = make_engine(SQLALCHEMY_DATABASE_URL)
+SessionLocal = sessionmaker(autoflush=False, bind=engine)
+#named constraints, so migrations can find them again
+Base = declarative_base(metadata=MetaData(naming_convention={
+    "pk": "pk_%(table_name)s", "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s", "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ix": "ix_%(table_name)s_%(column_0_name)s"}))
+
+def alembic_config(url=SQLALCHEMY_DATABASE_URL):
+    config = Config(ROOT / "alembic.ini")
+    config.set_main_option("sqlalchemy.url", url)
+    return config
+
+#creates or updates the db's tables to match the migrations; existing rows are kept
+def migrate(url=SQLALCHEMY_DATABASE_URL):
+    command.upgrade(alembic_config(url), "head")

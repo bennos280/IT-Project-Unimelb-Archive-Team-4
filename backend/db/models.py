@@ -1,91 +1,167 @@
-from sqlalchemy import Column, Integer, String, Text, Numeric, LargeBinary, ForeignKey, DateTime
+from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, ForeignKey, ForeignKeyConstraint, Integer, Numeric, String,
+                        Text, false, func)
 from backend.db.database import Base
-
 
 class Bundle(Base):
     __tablename__ = "bundles"
     bundle_id = Column(String, primary_key=True)
     source_pdf = Column(String, nullable=False)
-    import_status = Column(Integer, nullable=False, default=0)
 
 class Survey(Base):
     __tablename__ = "surveys"
     survey_id = Column(String, primary_key=True)
     bundle_id = Column(String, ForeignKey("bundles.bundle_id", ondelete="CASCADE"), nullable=False)
 
-class Category(Base):
-    __tablename__ = "categories"
-    category = Column(String, primary_key=True)
+#the kinds of page; the four built in (main, notes, coded, other) can't be removed, others are added from the review screen
+class PageType(Base):
+    __tablename__ = "page_types"
+    name = Column(String, primary_key=True)
+    built_in = Column(Boolean, nullable=False, default=False, server_default=false())
+    reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #None: built in
+    created_at = Column(DateTime, nullable=True, server_default=func.now()) #UTC
 
 class Page(Base):
     __tablename__ = "pages"
     page_id = Column(String, primary_key=True)
     import_path = Column(String, nullable=False)
-    img = Column(LargeBinary, nullable=True)
-    engine = Column(String, nullable=True)
+    provider = Column(String, nullable=True) #claude or codex
     model = Column(String, nullable=True)
     effort = Column(String, nullable=True)
     runtime = Column(Numeric, nullable=True)
-    revision_no = Column(Integer, default=0)
+    revision_no = Column(Integer, default=0, server_default="0")
+    checked_revision = Column(Integer, nullable=True) #the revision a reviewer last saved: checked while it is still revision_no
     survey_id = Column(String, ForeignKey("surveys.survey_id", ondelete="CASCADE"), nullable=True)
     bundle_id = Column(String, ForeignKey("bundles.bundle_id", ondelete="CASCADE"), nullable=False)
-    category = Column(String, ForeignKey("categories.category"), nullable=False)
-
-class Flag(Base):
-    __tablename__ = "flags"
-    flag_type = Column(String, primary_key=True)
+    category = Column(String, ForeignKey("page_types.name"), nullable=False)
+    #the prompt and template that read the page; None: read before versions, or from files matching no version
+    prompt_version_id = Column(Integer, ForeignKey("instruction_versions.version_id"), nullable=True)
+    template_version_id = Column(Integer, ForeignKey("instruction_versions.version_id"), nullable=True)
 
 class Field(Base):
     __tablename__ = "fields"
-    page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True, nullable=False)
-    field_title = Column(String, primary_key=True, nullable=False)
+    page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True)
+    field_title = Column(String, primary_key=True)
     text_raw = Column(Text, nullable=True)
     decoded_value = Column(Text, nullable=True)
-    flag_type = Column(String, ForeignKey("flags.flag_type"), nullable=True)
 
+#something for the reviewer to check on a field
+class Flag(Base):
+    __tablename__ = "flags"
+    __table_args__ = (
+        ForeignKeyConstraint(["page_id", "field_title"], ["fields.page_id", "fields.field_title"], ondelete="CASCADE"),
+        CheckConstraint("kind IN ('inconsistency', 'gibberish', 'uncertain')", name="kind"),
+    )
+    flag_id = Column(Integer, primary_key=True, autoincrement=True)
+    page_id = Column(String, nullable=False)
+    field_title = Column(String, nullable=False)
+    kind = Column(String, nullable=False)
+    reason = Column(Text, nullable=False)
+
+#residents, children and annotations are numbered from 0 in page order
 class Resident(Base):
-    __tablename__ = "resident"
-    page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True, nullable=False)
-    resident_no = Column(Integer, nullable=False)
+    __tablename__ = "residents"
+    page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True)
+    resident_no = Column(Integer, primary_key=True)
 
 class ResidentField(Base):
     __tablename__ = "resident_fields"
+    __table_args__ = (ForeignKeyConstraint(["page_id", "resident_no"], ["residents.page_id", "residents.resident_no"],
+                                           ondelete="CASCADE"),)
     page_id = Column(String, primary_key=True)
     resident_no = Column(Integer, primary_key=True)
     resident_field_title = Column(String, primary_key=True)
     text_raw = Column(String, nullable=True)
-    flag_type = Column(String, nullable=True)
 
 class Reviewer(Base):
     __tablename__ = "reviewers"
     reviewer_id = Column(Integer, primary_key=True)
     name = Column(String)
 
+#every saved version of the transcription prompt (kind "prompt") and of each page type's template; the newest is used
+class InstructionVersion(Base):
+    __tablename__ = "instruction_versions"
+    version_id = Column(Integer, primary_key=True, autoincrement=True)
+    kind = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    sha256 = Column(String, nullable=False) #of the body as UTF-8, as the pipeline's reuse check hashes it
+    reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #None: version 1, from the files
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=True, server_default=func.now()) #UTC
+
+#work queued by the API for backend/worker.py, oldest first: a bundle's pipeline run, one page read again as a page type,
+#or training page sorting
+class Job(Base):
+    __tablename__ = "jobs"
+    __table_args__ = (CheckConstraint("status IN ('waiting', 'running', 'done', 'failed')", name="status"),
+                      CheckConstraint("kind IN ('bundle', 'page', 'train')", name="kind"))
+    job_id = Column(Integer, primary_key=True, autoincrement=True)
+    kind = Column(String, nullable=False, default="bundle", server_default="bundle")
+    pdf = Column(String, nullable=True) #a bundle job's PDF
+    page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), nullable=True) #a page job's page...
+    page_type = Column(String, ForeignKey("page_types.name"), nullable=True) #...and the type to read it as
+    reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #who asked for a page or training job
+    status = Column(String, nullable=False, default="waiting", server_default="waiting")
+    step = Column(String, nullable=True) #step the worker is on
+    done_pages = Column(Integer, nullable=False, default=0, server_default="0")
+    total_pages = Column(Integer, nullable=False, default=0, server_default="0")
+    error = Column(Text, nullable=True)
+    updated_at = Column(DateTime, nullable=True, server_default=func.now(), onupdate=func.now()) #UTC, set on every change
+
+#page sorting retrained from the review screen; new bundles are sorted by the active one, or the shipped model if none is
+class SortingModel(Base):
+    __tablename__ = "sorting_models"
+    model_id = Column(Integer, primary_key=True, autoincrement=True)
+    path = Column(String, nullable=True) #its weights; None: it failed the check, so it wasn't kept
+    page_types = Column(Text, nullable=False) #what it sorts into, comma-separated
+    pages = Column(Integer, nullable=False) #the check: each page sorted by a model that never saw it...
+    answered = Column(Integer, nullable=False) #...how many it answered (the rest go to review)...
+    wrong = Column(Integer, nullable=False) #...and how many of those wrongly
+    passed = Column(Boolean, nullable=False) #no wrong answers, and enough answered
+    active = Column(Boolean, nullable=False, default=False, server_default=false())
+    note = Column(Text, nullable=True) #page types left out for too few confirmed pages
+    reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True)
+    created_at = Column(DateTime, nullable=True, server_default=func.now()) #UTC
+
 class Edit(Base):
     __tablename__ = "edits"
+    __table_args__ = (
+        ForeignKeyConstraint(["page_id", "field_title"], ["fields.page_id", "fields.field_title"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["page_id", "resident_field_title", "resident_no"],
+                             ["resident_fields.page_id", "resident_fields.resident_field_title", "resident_fields.resident_no"],
+                             ondelete="CASCADE"),
+        ForeignKeyConstraint(["page_id", "child_residence", "child_no"],
+                             ["other_children.page_id", "other_children.residence", "other_children.child_no"],
+                             ondelete="CASCADE"),
+        ForeignKeyConstraint(["page_id", "annotation_no"], ["annotations.page_id", "annotations.annotation_no"],
+                             ondelete="CASCADE"),
+        #an edit targets exactly one of: field, resident field, child, annotation
+        CheckConstraint("(field_title IS NOT NULL) + (resident_field_title IS NOT NULL) + (child_no IS NOT NULL)"
+                        " + (annotation_no IS NOT NULL) = 1 AND (resident_field_title IS NULL) = (resident_no IS NULL)"
+                        " AND (child_residence IS NULL) = (child_no IS NULL)",
+                        name="exclusivity"),
+    )
     edit_id = Column(Integer, primary_key=True, autoincrement=True)
     edit_text = Column(Text, nullable=True)
-    reviewer_id = Column(Integer, nullable=True)
+    reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True)
     time = Column(DateTime, nullable=True)
     page_id = Column(String, nullable=False)
     field_title = Column(String, nullable=True)
     resident_field_title = Column(String, nullable=True)
     resident_no = Column(Integer, nullable=True)
+    child_residence = Column(String, nullable=True)
     child_no = Column(Integer, nullable=True)
     annotation_no = Column(Integer, nullable=True)
 
 class OtherChild(Base):
     __tablename__ = "other_children"
-    page_id = Column(String, primary_key=True)
+    page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True)
+    residence = Column(String, primary_key=True) #died or living_elsewhere
     child_no = Column(Integer, primary_key=True)
-    residence = Column(String)
     text_raw = Column(String)
-    flag_type = Column(String)
 
 class Annotation(Base):
     __tablename__ = "annotations"
-    page_id = Column(String, primary_key=True)
+    page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True)
     annotation_no = Column(Integer, primary_key=True)
     text_raw = Column(String, nullable=True)
     location = Column(String, nullable=True)
-    flag_type = Column(String)

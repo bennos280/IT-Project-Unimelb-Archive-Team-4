@@ -1,260 +1,135 @@
+"""A finished pipeline run (output/<bundle>/manifest.json) into the database: uv run python -m backend.db.loader"""
 import json
-import sqlite3
-import os
+from functools import cache
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-DB = (ROOT / "backend/db/wilfprestsurvey.db").resolve()
-DATA_DICT = (ROOT / "backend/db/data_dict.json").resolve()
-CODED_CAT = "coded"
+from backend.db import database
+from backend.common import ROOT, settings
 
-#keys in manifest json
-M_INPUT = "input"
-M_PAGES = "pages"
-M_PAGE_PATH = "path"
-M_PAGE_LABEL = "label"
-M_PAGE_TRANSCRIPT = "transcript"
-#keys in page json
-ENGINE = "engine"
-MODEL = "model"
-EFFORT = "effort"
-SECONDS = "seconds"
-RESIDENTS = "residents"
-ANNOTATIONS = "annotations"
-ANN_RAW = "raw"
-ANN_LOCATION = "location"
-OTHER_CHILDREN = "other_children"
-CHILD_DIED = "died"
-CHILD_ELSEWHERE = "living_elsewhere"
+CODED_DICT = Path(__file__).parent / "data_dict.json"
+OTHER_CAT = "other" #a page identify wasn't sure about
+META = ("provider", "model", "effort", "seconds") #how a page was read
 
-#clears database, reads everything in output folder and inserts into db
-def insert_outputs():
-    #clear database
-    reset_db()
-
-    #get folder of output
-    output = Path(os.getenv('OUTPUT'))
-    output_dir = (ROOT / output).resolve()
-
-    #import all runs in output to database
-    files = output_dir.rglob('*manifest.json')
-    for f in files:
-        insert_bundle(f)
-
-#if database file doesn't exist, creates database
-#if it does exist, deletes everything, remakes new empty tables
-def reset_db():
-    con = sqlite3.connect(DB, autocommit=True)
-    cur = con.cursor()
-
-    #get create and drop sql commands
-    create_fp = Path(__file__).parent / "create.sql"
-    drop_fp = Path(__file__).parent / "drop.sql"
-    with open(create_fp, 'r', encoding='utf-8') as f:
-        create = f.read()
-    with open(drop_fp, 'r', encoding='utf-8') as f:
-        drop = f.read()
-
-    #execute commands
-    cur.executescript(drop)
-    cur.execute("PRAGMA foreign_keys = ON;")
-    cur.executescript(create)
-    con.close()
-
-#insert all pages from a manifest.json into db
-def insert_bundle(manifest:Path):
-    con = sqlite3.connect(DB, autocommit=True)
-    cur = con.cursor()
-    cur.execute("PRAGMA foreign_keys = ON;")
-
-    with open(manifest, 'r', encoding='utf-8') as file:
-        data = json.load(file)
-    
-    #insert bundle
-    bundle_id = None
-    if data.get(M_PAGES):
-        #splice out 'bundle_id' from
-        #.../data/bundle_id.pdf"
-        bundle_id = data[M_INPUT].rsplit("/",1)[1].split(".")[0]
-        cur.execute("""INSERT OR IGNORE INTO bundles(bundle_id, source_pdf) 
-            VALUES(?, ?)""", (bundle_id, data[M_INPUT]))
-    else:
+#a run's pages into the db, all or nothing
+def dump_into_db(manifest_path):
+    data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    if not data.get("pages"):
         print("Bundle has no pages.")
         return
-    
-    #insert pages
-    for mkey, mval in data.items():
-        if mkey == M_PAGES:
-            for p in mval:
-                page_fp = None #path of page json
-                img_fp = None #path of image
-                categ = None
-                blank = False
+    run_folder = Path(manifest_path).resolve().parent
+    bundle_id = run_folder.name
 
-                for key, value in p.items():
-                    if key == M_PAGE_LABEL:
-                        if value == "blank":
-                            blank = True
-                        categ = value
-                    elif key == M_PAGE_PATH:
-                        img_fp = value
-                    elif key == M_PAGE_TRANSCRIPT and img_fp is not None:
-                        #.../output/bundle_id/pages/whatever_00001.png
-                        #transcribe/whatever_00001.json
-                        page_fp = img_fp.rsplit("pages/", 1)[0] + value
-                    else:
-                        pass
+    transcripts = data.get("transcripts") or {}
+    with database.engine.begin() as con:
+        if not con.exec_driver_sql("INSERT OR IGNORE INTO bundles(bundle_id, source_pdf) VALUES(?, ?)",
+                                   (bundle_id, stored_path(data["input"]))).rowcount:
+            print(f"{bundle_id} is already in the database.")
+            return
+        page_types = {name for (name,) in con.exec_driver_sql("SELECT name FROM page_types")}
+        for p in data["pages"]:
+            if p.get("path") is None or p.get("label") in (None, "blank"):
+                continue
+            #a manifest written on Windows uses \
+            page = run_folder / p["transcript"].replace("\\", "/") if p.get("transcript") else None
+            category = p["label"] if page and p["label"] in page_types else OTHER_CAT
+            insert_page(Path(p["file"]).stem, page, stored_path(p["path"]), category,
+                        p.get("survey"), bundle_id, con, transcripts.get(p["file"], {}).get("request") if page else None)
+        insert_flags(run_folder / "review.json", con)
 
-                if blank and img_fp is not None and bundle_id is not None:
-                    insert_blank_page(img_fp, "survey_id", bundle_id, con)
-                elif page_fp is not None and img_fp is not None and categ is not None and bundle_id is not None:
-                    insert_page(page_fp, img_fp, categ, "survey_id", bundle_id, con)
-                else:
-                    print(f"Incomplete page info cannot insert page.")
-    con.close()
 
-def insert_blank_page(img_fp:str, survey_id:str, bundle_id:str, con):
-    #.../pages/page_id.png
-    page_id = img_fp.rsplit("/", 1)[1].split(".")[0]
+#request: how the page was read (from the manifest); its prompt and template hashes find their versions
+def insert_page(page_id, page_p, src_img_p:str, category:str, survey_id:str | None, bundle_id:str, con, request=None):
+    if survey_id is not None:
+        con.exec_driver_sql("INSERT OR IGNORE INTO surveys(survey_id, bundle_id) VALUES(?, ?)", (survey_id, bundle_id))
+    data = json.loads(page_p.read_text(encoding="utf-8")) if page_p else None
+    if data and "engine" in data: #older runs call the provider engine
+        data["provider"] = data.pop("engine")
+    versions = [version_id(con, kind, (request or {}).get(key)) for kind, key in (("prompt", "prompt"), (category, "template"))]
+    con.exec_driver_sql("INSERT INTO pages(page_id, import_path, survey_id, bundle_id, category, provider, model, effort, runtime,"
+                        " prompt_version_id, template_version_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (page_id, src_img_p, survey_id, bundle_id, category, *((data or {}).get(key) for key in META), *versions))
+    insert_content(page_id, data, category, con)
 
-    cur = con.cursor()
-    cur.execute("PRAGMA foreign_keys = ON;")
-
-    #insert survey if not already in db
-    cur.execute("INSERT OR IGNORE INTO surveys(survey_id, bundle_id) VALUES(?, ?)", (survey_id, bundle_id))
-    #insert page category if not already in db
-    cur.execute("INSERT OR IGNORE INTO categories VALUES('blank')")
-
-    #insert page
-    res = cur.execute("SELECT page_id FROM pages WHERE page_id=?", (page_id,))
-    if res.fetchone() is not None:
-        print(f"page {page_id} already in database!")
+#what was read off a page, into its tables; None (not read): just an empty text field to type into
+def insert_content(page_id, data, category, con):
+    if data is None:
+        insert_field(page_id, "text", None, con, False)
         return
-    else:
-        cur.execute("""
-            INSERT INTO pages(page_id, import_path, survey_id, bundle_id, category)
-            VALUES(?, ?, ?, ?, ?);
-        """, (page_id, img_fp, survey_id, bundle_id, 'blank'))
-
-#insert a single page into db
-#will ignore if pageid is already in db
-#if coded page, decoded values are pulled from the data_dict.json and put into database
-def insert_page(page_fp:str, img_fp:str, category:str, survey_id:str, bundle_id:str, con):
-    page_id = page_fp.rsplit("/", 1)[1].split(".")[0]
-
-    cur = con.cursor()
-    cur.execute("PRAGMA foreign_keys = ON;")
-
-    #insert survey if not already in db
-    cur.execute("INSERT OR IGNORE INTO surveys(survey_id, bundle_id) VALUES(?, ?)", (survey_id, bundle_id))
-    #insert page category if not already in db
-    cur.execute("INSERT OR IGNORE INTO categories VALUES(?)", (category,))
-
-    #insert page
-    res = cur.execute("SELECT page_id FROM pages WHERE page_id=?", (page_id,))
-    if res.fetchone() is not None:
-        print(f"page {page_id} already in database!")
-        return
-    else:
-        cur.execute("""
-            INSERT INTO pages(page_id, import_path, survey_id, bundle_id, category)
-            VALUES(?, ?, ?, ?, ?);
-        """, (page_id, img_fp, survey_id, bundle_id, category))
-
-    #do flags first!!
-
-    with open(page_fp, 'r', encoding='utf-8') as file:
-        data = json.load(file)
-
-    #insert page data abt the ai model and runtime stuff
-    cur.execute("""
-        UPDATE pages SET engine = ?, model = ?, effort = ?, runtime = ?
-        WHERE page_id = ?;
-    """, (data[ENGINE], data[MODEL], data[EFFORT], data[SECONDS], page_id))
-
-    #insert fields
     for key, value in data.items():
-
-        #insert residents and resident fields
-        if key == RESIDENTS:
-            resident_no = 1
-            for resident in value:
-                cur.execute("""
-                    INSERT INTO residents(page_id, resident_no)
-                    VALUES(?, ?);
-                """, (page_id, resident_no))
+        if key == "residents":
+            for resident_no, resident in enumerate(value):
+                con.exec_driver_sql("INSERT INTO residents(page_id, resident_no) VALUES(?, ?)", (page_id, resident_no))
                 for title, raw in resident.items():
-                    cur.execute("""
-                        INSERT INTO resident_fields(page_id, resident_no, resident_field_title, text_raw)
-                        VALUES(?, ?, ?, ?);
-                    """, (page_id, resident_no, title, raw))
-                resident_no += 1
+                    con.exec_driver_sql("INSERT INTO resident_fields(page_id, resident_no, resident_field_title, text_raw)"
+                                        " VALUES(?, ?, ?, ?)", (page_id, resident_no, title, raw))
+        elif key == "annotations":
+            for annotation_no, annotation in enumerate(value):
+                con.exec_driver_sql("INSERT INTO annotations(page_id, annotation_no, text_raw, location) VALUES(?, ?, ?, ?)",
+                                    (page_id, annotation_no, annotation["raw"], annotation["location"]))
+        elif key == "other_children":
+            for residence in ("died", "living_elsewhere"):
+                for child_no, child in enumerate(value.get(residence) or []):
+                    con.exec_driver_sql("INSERT INTO other_children(page_id, residence, child_no, text_raw) VALUES(?, ?, ?, ?)",
+                                        (page_id, residence, child_no, child))
+        elif key not in META:
+            insert_field(page_id, key, value, con, category == "coded")
 
-        #insert annotations
-        elif key == ANNOTATIONS:
-            annotation_no = 1
-            for annotation in value:
-                cur.execute("""
-                    INSERT INTO annotations(page_id, annotation_no, text_raw, location)
-                    VALUES(?, ?, ?, ?);
-                """, (page_id, annotation_no, annotation[ANN_RAW], annotation[ANN_LOCATION]))
-                annotation_no += 1
-
-        #insert other children
-        elif key == OTHER_CHILDREN:
-            child_no = 1
-            #"other_children": {
-            #    "died": [],
-            #    "living_elsewhere": []
-            for location, children in value.items():
-                if location == CHILD_DIED and children:
-                    for child in children:
-                        cur.execute("""
-                            INSERT INTO other_children(page_id, child_no, text_raw, location)
-                            VALUES(?, ?, ?, ?);
-                        """, (page_id, child_no, child, CHILD_DIED))
-                        child_no += 1
-                elif location == CHILD_ELSEWHERE and children:
-                        cur.execute("""
-                            INSERT INTO other_children(page_id, child_no, text_raw, location)
-                            VALUES(?, ?, ?, ?);
-                        """, (page_id, child_no, child, CHILD_ELSEWHERE))
-                        child_no += 1
-
-        #insert regular field
-        elif key != ENGINE and key != MODEL and key != EFFORT and key != SECONDS:
-            insert_field(page_id, f"{key}", value, con, category==CODED_CAT)
-
-#if a field is nested, recursively joins titles together with . (eg kitchen.shared)
 def insert_field(page_id, title:str, raw, con, coded:bool):
-    cur = con.cursor()
-
     if isinstance(raw, dict):
-        #recurse for each subfield
         for subtitle, subraw in raw.items():
-            insert_field(page_id, title + "." + f"{subtitle}", subraw, con, coded)
-    else:
-        #hit lowest level
+            insert_field(page_id, f"{title}.{subtitle}", subraw, con, coded)
+        return
+    decoded = None
+    if coded and isinstance(raw, str) and raw.strip().isdigit():
+        codes = coded_fields().get(title, {}).get("possible_values")
+        for num, text in (codes if isinstance(codes, dict) else {}).items():
+            low, _, high = num.partition("-") #a code is one number (07) or a range (000-996)
+            if int(low) <= int(raw) <= int(high or low):
+                decoded = text
+    con.exec_driver_sql("INSERT INTO fields(page_id, field_title, text_raw, decoded_value) VALUES(?, ?, ?, ?)",
+                        (page_id, title, raw, decoded))
 
-        decoded = None
-        #get decoded value if page is coded, otherwise just leave as None
-        if coded and raw is not None:
-            with open(DATA_DICT, 'r', encoding='utf-8') as file:
-                coded_dict = json.load(file)
+#grouping problems become flags, on the page's dwelling number if it has one
+def insert_flags(review_p, con):
+    if not review_p.is_file():
+        return
+    for entry in json.loads(review_p.read_text(encoding="utf-8")):
+        if entry.get("step") != "group":
+            continue
+        page_id = Path(entry["file"]).stem
+        field = con.exec_driver_sql("""SELECT field_title FROM fields WHERE page_id = ?
+            ORDER BY field_title != 'number_of_dwelling', rowid LIMIT 1""", (page_id,)).fetchone()
+        if field is not None: #a blank page isn't in the db
+            con.exec_driver_sql("""INSERT INTO flags(page_id, field_title, kind, reason)
+                VALUES(?, ?, 'inconsistency', ?)""", (page_id, field[0], "Grouping: " + entry["reason"].split(": ", 1)[-1]))
 
-                cfield = coded_dict["pages"]["3"]["fields"].get(title)
-                if cfield is not None:
-                    poss_vals = cfield["possible_values"]
-                    if poss_vals != "N/A":
-                        for num, text in poss_vals.items():
-                            if (int(raw) == int(num)) or (len(num.split("-")) > 1 and num.split("-")[0] <= int(raw) and num.split[1] >= int(raw)):
-                                decoded = text
+#the first version of kind with this text's hash; None if no version has it
+def version_id(con, kind, sha):
+    return sha and con.exec_driver_sql("SELECT MIN(version_id) FROM instruction_versions WHERE kind = ? AND sha256 = ?",
+                                       (kind, sha)).scalar()
 
-        #insert field
-        cur.execute("""
-            INSERT INTO fields(page_id, field_title, text_raw, decoded_value)
-            VALUES(?, ?, ?, ?);
-        """, (page_id, title, raw, decoded))
+#relative to the repo with /, so the db works on any checkout
+def stored_path(path):
+    path = Path(path).resolve()
+    return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
 
+@cache
+def coded_fields():
+    return json.loads(CODED_DICT.read_text(encoding="utf-8"))["pages"]["3"]["fields"]
 
-insert_outputs()
+def main():
+    from backend.pipeline.run import FULL, completed
+    database.migrate()
+    with database.engine.connect() as con:
+        loaded = {bundle_id for (bundle_id,) in con.exec_driver_sql("SELECT bundle_id FROM bundles")}
+    for file_path in sorted((ROOT / settings()["OUTPUT"]).rglob('manifest.json')):
+        if file_path.parent.name in loaded:
+            continue
+        if completed(file_path.parent, FULL):
+            print(file_path)
+            dump_into_db(file_path)
+        else:
+            print(f"{file_path}: run not finished, not loaded")
+
+if __name__ == "__main__":
+    main()
