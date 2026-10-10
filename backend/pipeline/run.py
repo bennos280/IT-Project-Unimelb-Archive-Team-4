@@ -234,6 +234,7 @@ def step_group(run: Run) -> None:
 
 
 STEPS = {"split": step_split, "identify": step_identify, "preprocess": step_preprocess, "transcribe": step_transcribe, "group": step_group}
+FULL = [step for step in STEPS if step != "preprocess"]  # what a run needs before it is loaded
 
 
 def run_steps(run: Run, steps: list[str]) -> None:

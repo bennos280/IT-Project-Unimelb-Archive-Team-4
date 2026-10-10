@@ -1,6 +1,6 @@
 # Unit tests
 
-**158 tests. Runs in ~16s.**
+**171 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
@@ -181,17 +181,37 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 | `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP. |
 | `test_fingerprint_crops_correct_quadrants` | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
 
-## `test_backend_api.py` — 11 tests
+## `test_backend_api.py` — 14 tests
 |Test|What it checks|
 |---|---|
-|`test_get_survey_not_found`|Returns HTTP 404 if requested survey id is not in database.|
-|`test_get_survey_success`|After seeding database with sample survey, successfully returns data from the requested survey.|
-|`test_get_reviewers_empty`|Returns empty list without crashing if there are no reviewers in database.|
-|`test_create_reviewer_success`|Successfully saves a reviewer into database.|
-|`test_create_reviewer_empty_name`|Returns HTTP 404 if requested reviewer to save has no name given.|
-|`test_get_reviews_empty_survey`|Returns empty list without crashing if there is no review data in database.
-|`test_get_reviews_latest`|Returns latest review if there is more than one on the same field.|
-|`test_save_reviews_outdated_revision`|Rejects request to save an outdated review on a page.|
-|`test_save_reviews_missing_revision`|Rejects request to save a review with revision no >1 than current revision no of the page.|
-|`test_save_reviews_no_reviewer`|Rejects request to save a review if reviewer is not in database.|
-|`test_save_reviews_success`|Successfully saves a review into database.|
+|`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
+|`test_get_survey_success`|A seeded survey comes back with its page in it, the page's field and a resident's field (`residents.20.relationship`) with their values, the page's `imageUrl` (`/pages/<page id>/image`) and no flags.|
+|`test_get_reviewers_empty`|Returns an empty list without crashing if there are no reviewers in the database.|
+|`test_create_reviewer_success`|Saves a reviewer and returns its id and name.|
+|`test_create_reviewer_empty_name`|A name of only spaces returns HTTP 400, "Enter a reviewer name."|
+|`test_create_reviewer_gives_the_next_id_and_a_known_name_its_reviewer`|A reviewer added by name gets the next free id; adding the same name again (spaces trimmed) returns that reviewer; a taken id is refused ("Reviewer id already exists."); `GET /reviewers` lists `{id, name}`.|
+|`test_get_reviews_empty_survey`|A survey with no saved reviews returns `{"reviews": {}, "revisions": {}}` without crashing.|
+|`test_save_reviews_outdated_revision`|Saving with revision 3 on a page already at revision 5 is refused with HTTP 409, "Revision number is outdated."; so is revision 7, more than one ahead.|
+|`test_save_reviews_success`|Saving an edit made on revision 0 (sent as revision 1, the page's revision after the save) returns 200 with the page's new revision (1) and a `savedAt`; sending the same save again (a stale copy) is refused, "Revision number is outdated."|
+|`test_saved_edits_come_back_with_what_they_replaced`|The page lists its fields in order (a field, a resident's field `residents.0.age`, an other child `other_children.living_elsewhere.0`, an annotation `annotations.0`). Edits to each are saved, including a field that was empty and a child cleared with `null`; a second save of the same field, by a reviewer known only by id, replaces the first; `GET /reviews` returns the latest value of each with the original it replaced, the reviewer and the same `savedAt` the save returned, and the page's revision.|
+|`test_save_refuses_pages_and_fields_that_are_not_there`|Saving to a survey the page isn't in returns 404; no revision for the page, two pages in one save, or an unknown reviewer id with no name returns 400 with the reason; an edit on a field not on its page (`residents.3.age`, `annotations.²`, or one followed by an edit from a new reviewer) returns 400; nothing is saved.|
+|`test_an_edited_code_comes_back_with_its_own_meaning`|A coded field edited from 1 to 2 comes back from `GET /reviews` with the meaning of 2 ("In kitchen"), not of what the model read.|
+|`test_a_page_scan_is_served_by_its_page_id`|`GET /pages/<page id>/image` returns the scan's bytes; an unknown page id returns 404.|
+|`test_survey_flags_grouping_problems_unreadable_text_and_other_pages`|A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.|
+
+## `test_loader.py` — 2 tests
+|Test|What it checks|
+|---|---|
+|`test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`|A page read as a page type the db has no record of is stored as `other`, not refused.|
+|`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field.|
+
+## `test_schema.py` — 5 tests
+The test db is built from `backend/db/models.py` with foreign keys checked, as in the real db.
+
+|Test|What it checks|
+|---|---|
+|`test_a_row_must_belong_to_something_that_exists`|A survey for a bundle that doesn't exist, a resident's field for a resident that doesn't exist, or a flag on a field that doesn't exist is refused.|
+|`test_a_job_status_is_waiting_running_done_or_failed`|Any other job status is refused.|
+|`test_a_page_has_one_of_the_page_types`|A page whose type isn't in `page_types` is refused.|
+|`test_a_flag_is_an_inconsistency_gibberish_or_uncertain`|A flag of any other kind is refused.|
+|`test_an_edit_fixes_exactly_one_thing`|An edit pointing at nothing, at two things (a field and an other child), at a resident's field without saying whose, or at an other child without saying which list, is refused.|
