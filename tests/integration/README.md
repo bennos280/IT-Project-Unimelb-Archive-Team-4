@@ -4,7 +4,7 @@ Multiple pieces of the pipeline wired together through their real entry points �
 `run.main`, `step_split`, `process_image`, the shipped identification model, the
 committed transcription results — instead of individual functions in isolation.
 Fixture data (`identify/`, `preprocess/`, `transcribe/`) lives alongside the test files
-in this folder, and `pipeline.identify.identify` / `pipeline.transcribe.score` read it
+in this folder, and `backend.pipeline.identify.identify` / `backend.pipeline.transcribe.score` read it
 from here directly.
 
 **56 test cases ~140s**
@@ -41,7 +41,7 @@ Preprocessing against the real fixture scans in `preprocess/`, plus its handoff 
 
 ## `test_run.py` — 8 test functions / 19 cases
 
-Resume and idempotency for `pipeline.run`. The thread running through all of it: retry
+Resume and idempotency for `backend.pipeline.run`. The thread running through all of it: retry
 unfinished work, never skip an unprocessed survey, never repeat a paid transcription
 call that was already saved. The fixture stubs the two expensive boundaries —
 `identify.identify_pages` and `transcribe.transcribe` — and **fails the test outright**

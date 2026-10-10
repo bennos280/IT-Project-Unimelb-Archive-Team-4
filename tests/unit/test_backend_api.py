@@ -5,9 +5,9 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from datetime import datetime, timezone, timedelta
 
-from backend import database
-from backend import models
-from backend.main import app, get_db
+from backend.db import database
+from backend.db import models
+from backend.api.main import app, get_db
 
 # Setup an in-memory SQLite database for testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"

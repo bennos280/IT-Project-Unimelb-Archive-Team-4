@@ -1,4 +1,4 @@
-"""Unit tests for pipeline/transcribe/run.py schema building and engine handling"""
+"""Unit tests for backend/pipeline/transcribe/transcribe.py schema building and engine handling"""
 
 import json
 import subprocess
@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from pipeline.transcribe import run as transcription
-from pipeline.transcribe.run import run_claude, run_cli, run_codex, schema_for, transcribe
+from backend.pipeline.transcribe import transcribe as transcription
+from backend.pipeline.transcribe.transcribe import run_claude, run_cli, run_codex, schema_for, transcribe
 
 
 @pytest.fixture

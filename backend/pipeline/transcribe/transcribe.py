@@ -12,7 +12,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from pipeline.common import ROOT, settings
+from backend.common import ROOT, settings
 
 HERE = Path(__file__).resolve().parent
 TIMEOUT = 1800  # seconds one page may take before we give up on it

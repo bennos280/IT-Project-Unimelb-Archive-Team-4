@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Dict, Any
-from backend import models
-from backend import database
-from backend.UI_groupings import groupings_main, groupings_coded
+from backend.db import models
+from backend.db import database
+from backend.api.sections import groupings_main, groupings_coded
 from datetime import datetime, timezone
 
 app = FastAPI()

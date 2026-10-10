@@ -1,6 +1,6 @@
-"""Integration test for pipeline/identify"""
+"""Integration test for backend/pipeline/identify"""
 """Every labelled page under tests/identify/pages: zero wrong answers, at least MIN_COVERAGE answered."""
-from pipeline.identify.identify import MIN_COVERAGE, held_out, labelled_pages, model, score, stored
+from backend.pipeline.identify.identify import MIN_COVERAGE, held_out, labelled_pages, model, score, stored
 
 PATHS, TRUTH = labelled_pages()
 X = stored(PATHS)

@@ -1,9 +1,9 @@
-"""Unit tests for pipeline/identify/model.py"""
+"""Unit tests for backend/pipeline/identify/classifier.py"""
 
 import numpy as np
 import pytest
 
-from pipeline.identify.model import (C, DIST_MARGIN, KNN, LABELS, REVIEW, Model,
+from backend.pipeline.identify.classifier import (C, DIST_MARGIN, KNN, LABELS, REVIEW, Model,
                                      choose_thresholds, cross_validate, unit)
 
 

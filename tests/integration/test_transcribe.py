@@ -1,7 +1,7 @@
 """Every committed model result under results/transcribe scores against its truth file."""
 import json
 
-from pipeline.transcribe.score import ANSWERS, TRUTH, score_page
+from backend.pipeline.transcribe.score import ANSWERS, TRUTH, score_page
 
 
 def test_results_score():

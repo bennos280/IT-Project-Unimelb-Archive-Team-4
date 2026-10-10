@@ -3,9 +3,9 @@ import sqlite3
 import os
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-DB = (ROOT / "backend/wilfprestsurvey.db").resolve()
-DATA_DICT = (ROOT / "data_dict.json").resolve()
+ROOT = Path(__file__).resolve().parents[2]
+DB = (ROOT / "backend/db/wilfprestsurvey.db").resolve()
+DATA_DICT = (ROOT / "backend/db/data_dict.json").resolve()
 CODED_CAT = "coded"
 
 #keys in manifest json
