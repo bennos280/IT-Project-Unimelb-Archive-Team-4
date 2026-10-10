@@ -17,7 +17,6 @@ Thumbs.db
 source-pre/
 
 # Database
-backend/db/wilfprestsurvey.db
 # SQLite's file for a write in progress
 *.db-journal
 # copies of the db made before a migration changes it
