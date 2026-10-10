@@ -57,7 +57,7 @@ Unit tests for scoring, bookkeeping, fingerprint storage, page identification, a
 | `test_min_coverage_is_the_documented_threshold` | `MIN_COVERAGE` remains fixed at 0.5 and the supported label set remains exactly `blank`, `coded`, `main`, and `notes`. |
 
 
-## `test_model.py` — 19 tests
+## `test_identify_classifier.py` — 19 tests
 
 Unit tests for the classifier, prediction safety gates, model persistence, threshold selection, fitting, and cross-validation in `backend.pipeline.identify.classifier`.
 
