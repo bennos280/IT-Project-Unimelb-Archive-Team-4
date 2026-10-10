@@ -215,6 +215,41 @@ def test_a_page_scan_is_served_by_its_page_id(client, db, tmp_path):
     assert client.get("/pages/nope/image").status_code == 404
 
 
+def test_a_page_scan_not_on_this_computer_comes_from_the_archive_and_is_kept(client, db, tmp_path, monkeypatch, archive):
+    from backend import scans
+    archive.add("216441", {4: ("44", b"jpeg of page 4")})
+    monkeypatch.setattr(scans, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
+    add_in_order(db, models.Bundle(bundle_id="x", source_pdf="data/raw/Surveys/216441/x.pdf"),
+                 *[models.Page(page_id=f"x_0000{n}", category="main", import_path=f"output/x/pages/x_0000{n}.png",
+                               bundle_id="x") for n in (4, 9)])
+    db.commit()
+
+    assert client.get("/pages/x_00004/image").content == b"jpeg of page 4"
+    assert client.get("/pages/x_00004/image").content == b"jpeg of page 4"
+    assert archive.requests == ["/nodes/download/216441", "/assets/downloadwiz/44"]  # downloaded once
+    assert client.get("/pages/x_00009/image").status_code == 404  # not on the archive
+
+
+def test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_again_for_a_while(client, db, tmp_path,
+                                                                                                   monkeypatch, archive):
+    from backend import scans
+    archive.add("216441", {4: ("44", b"jpeg of page 4")})
+    archive.cut_short.add("44")
+    monkeypatch.setattr(scans, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
+    add_in_order(db, models.Bundle(bundle_id="x", source_pdf="data/raw/Surveys/216441/x.pdf"),
+                 models.Page(page_id="x_00004", category="main", import_path="output/x/pages/x_00004.png", bundle_id="x"))
+    db.commit()
+
+    assert client.get("/pages/x_00004/image").status_code == 404
+    assert not (tmp_path / "output" / "scans" / "216441").exists() or not any((tmp_path / "output" / "scans" / "216441").iterdir())
+    asked = len(archive.requests)
+    assert client.get("/pages/x_00004/image").status_code == 404
+    assert len(archive.requests) == asked  # not asked again for RETRY seconds
+    archive.cut_short.clear()
+    scans.failed.clear()  # RETRY seconds later
+    assert client.get("/pages/x_00004/image").content == b"jpeg of page 4"
+
+
 def test_survey_flags_grouping_problems_unreadable_text_and_other_pages(client, db):
     add_in_order(db, models.Survey(survey_id="12345", bundle_id="6789"),
                  models.Page(page_id="p1", survey_id="12345", category="main", import_path="p1.png", bundle_id="6789"),

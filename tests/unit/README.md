@@ -1,6 +1,6 @@
 # Unit tests
 
-**171 tests. Runs in ~16s.**
+**190 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
@@ -181,7 +181,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 | `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP. |
 | `test_fingerprint_crops_correct_quadrants` | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
 
-## `test_backend_api.py` — 14 tests
+## `test_backend_api.py` — 16 tests
 |Test|What it checks|
 |---|---|
 |`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
@@ -197,6 +197,8 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_save_refuses_pages_and_fields_that_are_not_there`|Saving to a survey the page isn't in returns 404; no revision for the page, two pages in one save, or an unknown reviewer id with no name returns 400 with the reason; an edit on a field not on its page (`residents.3.age`, `annotations.²`, or one followed by an edit from a new reviewer) returns 400; nothing is saved.|
 |`test_an_edited_code_comes_back_with_its_own_meaning`|A coded field edited from 1 to 2 comes back from `GET /reviews` with the meaning of 2 ("In kitchen"), not of what the model read.|
 |`test_a_page_scan_is_served_by_its_page_id`|`GET /pages/<page id>/image` returns the scan's bytes; an unknown page id returns 404.|
+|`test_a_page_scan_not_on_this_computer_comes_from_the_archive_and_is_kept`|A page whose scan isn't on this computer is downloaded from the archive (faked here) once and kept; a page the archive hasn't got, returns 404.|
+|`test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_again_for_a_while`|A page download the archive breaks off is not kept (404); the archive isn't asked about that bundle again for `RETRY` seconds, and after that the page is downloaded and served.|
 |`test_survey_flags_grouping_problems_unreadable_text_and_other_pages`|A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.|
 
 ## `test_loader.py` — 2 tests
@@ -215,3 +217,37 @@ The test db is built from `backend/db/models.py` with foreign keys checked, as i
 |`test_a_page_has_one_of_the_page_types`|A page whose type isn't in `page_types` is refused.|
 |`test_a_flag_is_an_inconsistency_gibberish_or_uncertain`|A flag of any other kind is refused.|
 |`test_an_edit_fixes_exactly_one_thing`|An edit pointing at nothing, at two things (a field and an other child), at a resident's field without saying whose, or at an other child without saying which list, is refused.|
+
+## `test_jobs_api.py` — 6 tests
+|Test|What it checks|
+|---|---|
+|`test_bundles_list_each_pdf_whether_it_is_loaded_and_its_surveys`|`GET /bundles` lists every PDF under `DATA` by its bundle number, with whether it is loaded, its survey ids in scan order (by each survey's first page) and its latest job.|
+|`test_started_job_waits_for_the_worker`|`POST /jobs` queues a waiting job (202), with its last update time in UTC, that `GET /bundles` and `GET /jobs/<id>` report (an unknown id is 404), and refuses a second one for the same PDF while it waits.|
+|`test_pdfs_inside_the_repo_are_named_relative_to_it`|With `DATA` inside the repo (the usual setup), PDFs and jobs use a forward-slash path relative to the repo, so the db works on any checkout.|
+|`test_jobs_only_for_unloaded_pdfs_in_data`|A PDF outside `DATA` is refused (404), and a bundle already loaded is refused (409) so its reviews can't be lost.|
+|`test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run`|`GET /bundles` also lists each of the archive's bundles (`backend/archive_pdfs.txt`, faked here) whose PDF isn't in `DATA`, as `DATA/<bundle number>/<its PDF>`, and a job can be queued for it; a PDF already here is listed once.|
+|`test_the_real_archive_list_names_each_bundle_as_the_archive_does`|`backend/archive_pdfs.txt` lists the 45 bundles once each, as `<bundle number>/<file id>_<file name>.pdf`.|
+
+## `test_serve.py` — 4 tests
+
+The `uv run app` and `uv run api` commands (`backend/serve.py`), with the programs they start faked.
+
+| Test | What it checks |
+|---|---|
+|`test_the_api_stopping_by_itself_stops_the_worker`|It starts uvicorn on `backend.api.main:app` and `backend.worker`; when the API stops by itself (e.g. port 8000 in use), the worker is stopped too.|
+|`test_ctrl_c_waits_for_both_to_stop_themselves`|After Ctrl+C it waits for the API and the worker to stop themselves, and doesn't kill the worker, so a running job is marked failed and resumes next time.|
+|`test_api_runs_just_the_api_restarting_on_backend_code_changes`|`uv run api` runs only the API, reloading when files under `backend/` change.|
+|`test_every_command_points_at_a_function`|Each command in `pyproject.toml` (`survey`, `app`, `api`, `worker`) names a function that exists, so a typo there fails here.|
+
+## `test_worker.py` — 7 tests
+The pipeline and loader are faked: no model calls. Job state is read through a second connection, as the API sees it.
+
+|Test|What it checks|
+|---|---|
+|`test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys`|The worker runs the oldest waiting job, commits each step and page count while it runs, keeps the page count once the run moves on, loads the run's manifest.json and marks the job done.|
+|`test_a_job_is_a_full_run_every_step_but_the_optional_preprocess`|A job runs split, identify, transcribe and group: every step in the pipeline's `STEPS` but the optional preprocess.|
+|`test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing`|A failed model call marks the job failed with its reason, and nothing is loaded.|
+|`test_pdf_with_no_pages_fails_instead_of_loading_nothing`|A PDF with no pages fails with a reason instead of ending done with nothing loaded.|
+|`test_stopping_the_worker_marks_its_job_failed`|Ctrl+C during a job marks it failed, so it doesn't show as running forever.|
+|`test_job_cut_off_by_a_stopped_worker_can_be_run_again`|A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.|
+|`test_only_one_worker_runs_at_a_time`|A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.|
