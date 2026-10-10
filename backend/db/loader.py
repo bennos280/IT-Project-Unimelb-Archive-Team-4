@@ -79,15 +79,19 @@ def insert_field(page_id, title:str, raw, con, coded:bool):
         for subtitle, subraw in raw.items():
             insert_field(page_id, f"{title}.{subtitle}", subraw, con, coded)
         return
-    decoded = None
-    if coded and isinstance(raw, str) and raw.strip().isdigit():
+    con.exec_driver_sql("INSERT INTO fields(page_id, field_title, text_raw, decoded_value) VALUES(?, ?, ?, ?)",
+                        (page_id, title, raw, decode(title, raw) if coded else None))
+
+#a coded field's value's meaning, from data_dict.json; None if it isn't one of the field's codes
+def decode(title, raw):
+    meaning = None
+    if isinstance(raw, str) and raw.strip().isdigit():
         codes = coded_fields().get(title, {}).get("possible_values")
         for num, text in (codes if isinstance(codes, dict) else {}).items():
             low, _, high = num.partition("-") #a code is one number (07) or a range (000-996)
             if int(low) <= int(raw) <= int(high or low):
-                decoded = text
-    con.exec_driver_sql("INSERT INTO fields(page_id, field_title, text_raw, decoded_value) VALUES(?, ?, ?, ?)",
-                        (page_id, title, raw, decoded))
+                meaning = text
+    return meaning
 
 #grouping problems become flags, on the page's dwelling number if it has one
 def insert_flags(review_p, con):

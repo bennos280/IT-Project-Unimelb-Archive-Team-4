@@ -197,6 +197,15 @@ def test_save_refuses_pages_and_fields_that_are_not_there(client, db):
     assert client.get("/reviews/12345").json() == {"reviews": {"p": {}}, "revisions": {"p": 0}}  # nothing was saved
 
 
+def test_an_edited_code_comes_back_with_its_own_meaning(client, db):
+    add_in_order(db, models.Survey(survey_id="12345", bundle_id="6789"),
+                 models.Page(page_id="q", survey_id="12345", category="coded", import_path="q.png", bundle_id="6789"),
+                 models.Field(page_id="q", field_title="washouse", text_raw="1", decoded_value="In separate laundry"))
+    db.commit()
+    client.post("/reviews/12345", json={"reviews": {"q": {"washouse": review("2")}}, "revisions": {"q": 1}})
+    assert client.get("/reviews/12345").json()["reviews"]["q"]["washouse"]["decoded"] == "In kitchen"
+
+
 #------------------------------------------------- page_image(), and what the reviewer is asked to check
 def test_a_page_scan_is_served_by_its_page_id(client, db, tmp_path):
     (tmp_path / "scan.png").write_bytes(b"png")

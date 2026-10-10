@@ -176,17 +176,19 @@ def edit_target(field_id):
             return {"annotation_no": int(no)}
     return {"field_title": field_id}
 
-#each page's revision number and the latest edit of each field
+#each page's revision number and the latest edit of each field (a coded field's with its meaning)
 @app.get("/reviews/{survey_id}")
 def get_reviews(survey_id: str, db: Session = Depends(get_db)):
     pages = db.query(models.Page).filter(models.Page.survey_id == survey_id).order_by(models.Page.page_id).all()
     reviews_dict = {p.page_id: {} for p in pages} #page_id, (field id, review)
+    coded = {p.page_id for p in pages if p.category == "coded"}
     names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
     #oldest first, so a later edit of a field replaces an earlier one
     for e in db.query(models.Edit).filter(models.Edit.page_id.in_(reviews_dict)).order_by(models.Edit.edit_id):
         field_id, original = edited_field(db, e)
         reviews_dict[e.page_id][field_id] = {
             "value": e.edit_text,
+            "decoded": loader.decode(field_id, e.edit_text) if e.page_id in coded else None,
             "original": original,
             "reviewer": names.get(e.reviewer_id),
             "reviewerId": e.reviewer_id,

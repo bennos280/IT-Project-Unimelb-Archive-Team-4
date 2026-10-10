@@ -1,6 +1,6 @@
 # Unit tests
 
-**170 tests. Runs in ~16s.**
+**171 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
@@ -181,7 +181,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 | `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP. |
 | `test_fingerprint_crops_correct_quadrants` | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
 
-## `test_backend_api.py` — 13 tests
+## `test_backend_api.py` — 14 tests
 |Test|What it checks|
 |---|---|
 |`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
@@ -195,6 +195,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_save_reviews_success`|Saving an edit made on revision 0 (sent as revision 1, the page's revision after the save) returns 200 with the page's new revision (1) and a `savedAt`; sending the same save again (a stale copy) is refused, "Revision number is outdated."|
 |`test_saved_edits_come_back_with_what_they_replaced`|The page lists its fields in order (a field, a resident's field `residents.0.age`, an other child `other_children.living_elsewhere.0`, an annotation `annotations.0`). Edits to each are saved, including a field that was empty and a child cleared with `null`; a second save of the same field, by a reviewer known only by id, replaces the first; `GET /reviews` returns the latest value of each with the original it replaced, the reviewer and the same `savedAt` the save returned, and the page's revision.|
 |`test_save_refuses_pages_and_fields_that_are_not_there`|Saving to a survey the page isn't in returns 404; no revision for the page, two pages in one save, or an unknown reviewer id with no name returns 400 with the reason; an edit on a field not on its page (`residents.3.age`, `annotations.²`, or one followed by an edit from a new reviewer) returns 400; nothing is saved.|
+|`test_an_edited_code_comes_back_with_its_own_meaning`|A coded field edited from 1 to 2 comes back from `GET /reviews` with the meaning of 2 ("In kitchen"), not of what the model read.|
 |`test_a_page_scan_is_served_by_its_page_id`|`GET /pages/<page id>/image` returns the scan's bytes; an unknown page id returns 404.|
 |`test_survey_flags_grouping_problems_unreadable_text_and_other_pages`|A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.|
 
