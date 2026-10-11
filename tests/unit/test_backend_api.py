@@ -81,7 +81,7 @@ def test_get_reviews_empty_survey(client):
 
 #------------------------------------------------- save_reviews()
 
-#the revision sent is the page's next one (the one the edits were made on, plus 1)
+#the revision sent is the one the edits were made on; the page must still be at it
 def test_save_reviews_outdated_revision(client, db):
     survey = models.Survey(survey_id="12345", bundle_id="6789")
     #revision no is 5
@@ -204,6 +204,30 @@ def test_an_edited_code_comes_back_with_its_own_meaning(client, db):
     db.commit()
     client.post("/reviews/12345", json={"reviews": {"q": {"washouse": review("2")}}, "revisions": {"q": 1}})
     assert client.get("/reviews/12345").json()["reviews"]["q"]["washouse"]["decoded"] == "In kitchen"
+
+
+#------------------------------------------------- get_accuracy()
+def test_accuracy_counts_every_changed_field_on_saved_pages_against_the_model_that_read_them(client, db):
+    pages = [("p1", "opus"), ("p2", "opus"), ("p3", "opus"), ("p4", "sonnet")]
+    fields = [("p1", "address", "5 Peel St."), ("p1", "tenure", "Owner"), ("p1", "rooms", "4"),
+              ("p2", "address", "9 Kent St."), ("p2", "tenure", None), ("p3", "address", "2 Hope St."), ("p4", "address", "1 Low St.")]
+    add_in_order(db, models.Survey(survey_id="s", bundle_id="6789"),
+                 *[models.Page(page_id=page, survey_id="s", category="main", import_path="x.png", bundle_id="6789",
+                               model=model, effort="low") for page, model in pages],
+                 *[models.Field(page_id=page, field_title=title, text_raw=value) for page, title, value in fields])
+    db.commit()
+
+    def save(page, edits):
+        return client.post("/reviews/s", json={"reviews": {page: edits}, "revisions": {page: 1}}).status_code
+
+    assert save("p1", {"rooms": review("44"), "address": review("5 Peel St.")}) == 200  # one change; one re-typed as it was
+    assert save("p2", {}) == 200  # checked: all correct
+    assert save("p4", {"address": review("1 low st.")}) == 200  # any change counts, even just capitals
+    # p3 was never saved, so it isn't counted
+    versions = {"promptVersion": None, "templateVersion": None}  # read before prompt and template versions
+    assert client.get("/accuracy").json() == [
+        {"model": "opus", "effort": "low", **versions, "pages": 2, "fields": 5, "changed": 1, "accuracy": 80.0},
+        {"model": "sonnet", "effort": "low", **versions, "pages": 1, "fields": 1, "changed": 1, "accuracy": 0.0}]
 
 
 #------------------------------------------------- page_image(), and what the reviewer is asked to check

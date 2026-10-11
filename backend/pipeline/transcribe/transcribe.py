@@ -1,10 +1,5 @@
 """Transcribe one page image to JSON with a vision LLM. Prompt = the prompt + the page type's template: a job's come
-from the db's newest versions, otherwise prompt.txt and templates/<kind>.json.
-
-    survey transcribe tests/integration/transcribe/pages/coded/216412_p003.jpg [--model M] [--effort E] [--provider claude|codex]
-
-Output: results/transcribe/<model>-<effort>/<page>.json; `survey score` compares it with tests/integration/transcribe/truth.
-"""
+from the db's newest versions, otherwise prompt.txt and templates/<kind>.json."""
 import json
 import os
 import subprocess
@@ -13,7 +8,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from backend.common import ROOT, settings
+from backend.common import settings
 
 HERE = Path(__file__).resolve().parent
 TIMEOUT = 1800  # seconds one page may take before we give up on it
@@ -124,21 +119,3 @@ def transcribe(image, kind, provider=None, model=None, effort=None, texts=None):
     answer["seconds"] = seconds
     return answer
 
-
-def main(args):
-    """CLI for the evaluation set: kind = the image's folder name, output under results/transcribe/."""
-    if not args or args[0].startswith("-"):
-        sys.exit(__doc__)
-    image = Path(args[0]).resolve()
-    option = lambda name, default: args[args.index(name) + 1] if name in args else default
-    model = option("--model", settings()["MODEL"])
-    effort = option("--effort", settings()["EFFORT"])
-    answer = transcribe(image, image.parent.name, provider=option("--provider", None), model=model, effort=effort)
-    dest = ROOT / "results" / "transcribe" / f"{model}-{effort}" / f"{image.stem}.json"
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps(answer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"{dest.relative_to(ROOT)}  {answer['seconds']}s  {answer['model']}")
-
-
-if __name__ == "__main__":
-    main(sys.argv[1:])

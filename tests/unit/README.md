@@ -1,6 +1,6 @@
 # Unit tests
 
-**225 tests. Runs in ~16s.**
+**193 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
@@ -139,39 +139,6 @@ unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generat
 | `test_transcribe_defaults_model_and_effort_from_env` | When model and effort are omitted, uses the corresponding `MODEL` and `EFFORT` values from the environment configuration. |
 
 
-## `test_transcribe_score.py` — 35 tests
-
-unit tests for `backend.pipeline.transcribe.score`, covering JSON flattening, value normalisation, scorable fields, page-level scoring, invented values, character similarity, and leaderboard reporting.
-
-| Test | What it checks |
-|---|---|
-| `test_flatten_turns_nested_objects_into_dotted_paths` | Flattens nested objects into dotted paths so individual fields can be compared separately. |
-| `test_flatten_indexes_list_items_by_position` | Flattens list items using positional paths such as `notes[0]` and `notes[1]`. |
-| `test_flatten_handles_lists_of_objects` | Correctly combines list indexing and nested object paths, such as `annotations[0].raw`. |
-| `test_flatten_keeps_none_and_empty_values` | Preserves `None` and empty-string values so blank fields can be distinguished from missing fields and invented values can be detected. |
-| `test_flatten_of_a_bare_value_uses_an_empty_key` | Handles a scalar at the top level by representing it with an empty key rather than raising an error. |
-| `test_norm_treats_these_as_the_same_answer` | Treats differences in case, surrounding whitespace, repeated spaces, newlines, and `None` versus an empty string as equivalent. |
-| `test_norm_keeps_punctuation_because_it_carries_meaning` | Preserves meaningful punctuation so values such as `30/-` versus `30/` and `St.` versus `St` remain different. |
-| `test_norm_converts_non_strings_before_comparing` | Converts non-string values such as numbers and booleans to strings before comparison. |
-| `test_provenance_stamps_are_not_graded` | Excludes engine, model, effort, seconds, and other provenance stamps from scoring. |
-| `test_annotation_paths_are_excluded_from_grading` | Excludes fields under `annotations[...]` from grading while still grading normal fields containing the word "annotation". |
-| `test_ordinary_card_fields_are_graded` | Confirms ordinary card fields and nested household fields are included in scoring. |
-| `test_score_page_counts_exact_matches_as_hits` | Counts fields whose normalised answers exactly match the truth as hits. |
-| `test_score_page_lists_the_fields_that_were_missed` | Records the paths of fields where the transcription does not match the truth. |
-| `test_score_page_only_grades_fields_the_card_actually_has` | Excludes blank truth fields from the graded total while tracking them separately as blanks. |
-| `test_score_page_reports_invented_values_for_blank_fields` | Detects and records values supplied by the model for fields that were blank on the original card. |
-| `test_score_page_does_not_count_a_blank_answer_as_invented` | Confirms that correctly leaving a blank field blank is not treated as an invented value. |
-| `test_score_page_treats_a_missing_field_as_a_miss_not_a_crash` | Treats an omitted answer field as a miss rather than raising an exception. |
-| `test_score_page_character_similarity_rewards_near_misses` | Records character-level similarity so exact matches, near-misses, and substantially different answers can be distinguished. |
-| `test_score_page_ignores_stamps_and_annotations_end_to_end` | Verifies end-to-end that provenance stamps and annotation fields do not affect the graded totals while timing information is retained. |
-| `test_score_page_grades_nested_structures_field_by_field` | Scores nested objects field by field, allowing partial credit when some nested fields are correct. |
-| `test_score_page_of_an_empty_key_is_zero_not_an_error` | Handles a truth record with no gradeable fields by returning zero totals without dividing or crashing. |
-| `test_main_exits_when_there_are_no_results_yet` | When no transcription results exist, exits with a clear message explaining that results must be generated first. |
-| `test_main_prints_a_row_per_model_and_page_kind` | Prints a leaderboard row for each model and page type with the correct exact-match percentage and hit/total fraction. |
-| `test_main_counts_pages_with_no_answer_as_missing` | Counts truth pages without corresponding model answers as missing rather than silently excluding them from the results. |
-| `test_main_skips_a_kind_with_no_answers_at_all` | Omits page types that the model never attempted instead of displaying them as zero-score results. |
-
-
 ## `test_identify_fingerprint.py` — 3 tests
 
 Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, view construction, and quadrant cropping. The CLIP encoder (`_clip`) is mocked throughout, so these run in milliseconds with no model loaded.
@@ -182,7 +149,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 | `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP. |
 | `test_fingerprint_crops_correct_quadrants` | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
 
-## `test_backend_api.py` — 16 tests
+## `test_backend_api.py` — 17 tests
 |Test|What it checks|
 |---|---|
 |`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
@@ -197,6 +164,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_saved_edits_come_back_with_what_they_replaced`|The page lists its fields in order (a field, a resident's field `residents.0.age`, an other child `other_children.living_elsewhere.0`, an annotation `annotations.0`). Edits to each are saved, including a field that was empty and a child cleared with `null`; a second save of the same field, by a reviewer known only by id, replaces the first; `GET /reviews` returns the latest value of each with the original it replaced, the reviewer and the same `savedAt` the save returned, and the page's revision.|
 |`test_save_refuses_pages_and_fields_that_are_not_there`|Saving to a survey the page isn't in returns 404; no revision for the page, two pages in one save, or an unknown reviewer id with no name returns 400 with the reason; an edit on a field not on its page (`residents.3.age`, `annotations.²`, or one followed by an edit from a new reviewer) returns 400; nothing is saved.|
 |`test_an_edited_code_comes_back_with_its_own_meaning`|A coded field edited from 1 to 2 comes back from `GET /reviews` with the meaning of 2 ("In kitchen"), not of what the model read.|
+|`test_accuracy_counts_every_changed_field_on_saved_pages_against_the_model_that_read_them`|Each model's accuracy counts only pages a reviewer has saved (a save with no edits means all correct): any changed field, even just its capitals, counts as wrong, a field re-typed as it was doesn't, and an unsaved page isn't counted (opus 4 of 5 = 80%, sonnet 0 of 1 = 0%).|
 |`test_a_page_scan_is_served_by_its_page_id`|`GET /pages/<page id>/image` returns the scan's bytes; an unknown page id returns 404.|
 |`test_a_page_scan_not_on_this_computer_comes_from_the_archive_and_is_kept`|A page whose scan isn't on this computer is downloaded from the archive (faked here) once and kept; a page the archive hasn't got, returns 404.|
 |`test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_again_for_a_while`|A page download the archive breaks off is not kept (404); the archive isn't asked about that bundle again for `RETRY` seconds, and after that the page is downloaded and served.|
@@ -255,7 +223,7 @@ The pipeline and loader are faked: no model calls. Job state is read through a s
 |`test_job_cut_off_by_a_stopped_worker_can_be_run_again`|A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.|
 |`test_only_one_worker_runs_at_a_time`|A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.|
 
-## `test_instructions.py` — 19 tests
+## `test_instructions.py` — 20 tests
 
 The transcription prompt and templates as versions in the db (`backend/db/instructions.py` and `/instructions`).
 
@@ -267,14 +235,16 @@ The transcription prompt and templates as versions in the db (`backend/db/instru
 |`test_an_empty_prompt_is_refused`|A blank prompt is refused.|
 |`test_a_saved_template_becomes_the_newest_version_and_the_old_one_is_kept`|`POST /instructions/main` saves a new version with its reviewer and note; it becomes the newest (what the next job reads with) and the history lists both, newest first.|
 |`test_a_save_is_refused_when_unknown_unchanged_invalid_or_based_on_an_old_version`|An unknown kind (404) or reviewer (400), no change, or a template with problems (400, listing them) is refused; a save based on a version that is no longer the newest is refused (409).|
+|`test_accuracy_is_kept_apart_for_each_prompt_and_template_version`|`GET /accuracy` gives a row per prompt and template version, so versions can be compared.|
 
-## `test_page_types.py` — 6 tests
+## `test_page_types.py` — 7 tests
 
 Page types added from the review screen, and a page read again as another type.
 
 | Test | What it checks |
 |---|---|
 |`test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was`|A model answer the db can't take fails the job, and the page keeps its fields, type and revision: the swap is all or nothing.|
+|`test_a_page_read_again_counts_for_accuracy_only_once_a_reviewer_saves_it`|A page read again isn't counted by `GET /accuracy` until a reviewer saves it.|
 |`test_a_new_page_type_needs_a_template_before_pages_are_read_as_it`|`GET /page-types` lists the built-in four with their templates; a new type needs a lower-case name that isn't taken or reserved (`blank`) and a known reviewer; a page can't be read as it until it has a template (`other` can't have one); then `PUT /pages/{id}/type` queues a page job, once.|
 |`test_a_page_made_other_is_emptied_at_once`|Making a page `other` empties it to one blank text field at once and moves its revision on.|
 |`test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`|An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).|
