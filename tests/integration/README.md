@@ -7,13 +7,13 @@ Fixture data (`identify/`, `preprocess/`, `transcribe/`) lives alongside the tes
 in this folder, and `backend.pipeline.identify.identify` / `backend.pipeline.transcribe.score` read it
 from here directly.
 
-**56 test cases ~140s**
+**69 test cases ~140s**
 
 ```bash
 uv run pytest tests/integration
 ```
 
-## `test_split.py` — 6 tests
+## `test_split.py` — 9 tests
 
 PDF → page images (`step_split`). The theme is all-or-nothing publication: a failed
 re-render must never leave a half-updated `pages/` folder.
@@ -26,6 +26,9 @@ re-render must never leave a half-updated `pages/` folder.
 | `test_failed_publication_restores_previous_images` | If the final rename fails, the previous images are restored. |
 | `test_failed_publication_and_restore_retains_previous_images` | If the restore *also* fails, the old images are retained in a `.split-*/previous` staging dir and its path is attached to the raised error. |
 | `test_image_folder_is_used_without_changes` | A folder of images as input is read in place: no output written, source untouched. |
+| `test_pdf_not_on_this_computer_is_downloaded_from_the_archive_and_kept` | A PDF not on this computer is downloaded from the archive (faked here) after opening its bundle's download page, saved in `DATA` under the archive's name, then split as usual; no part-downloads are left behind. |
+| `test_pdf_the_archive_cannot_send_stops_the_run_and_keeps_nothing` | A PDF the archive breaks off halfway (fewer bytes than it announced), or doesn't have, stops the run saying why; nothing is left in `DATA` and no `pages/` folder is published. |
+| `test_a_long_pdf_is_split_on_every_core_in_page_order` | A 40-page PDF, more than one 16-page chunk so several processes draw it, gives all 40 pages named in page order, each the same image as drawing that page alone. |
 
 ## `test_preprocessing.py` — 28 tests
 
@@ -39,7 +42,7 @@ Preprocessing against the real fixture scans in `preprocess/`, plus its handoff 
 | `test_skewed_image_detection` | The real `skewed_image_1.jpg` fixture is detected confidently at 1.57° ± 0.3°. |
 | `test_crop`  | Page crop on the real `crop.png`: output matches the independently measured paper size, the returned corners enclose all handwritten content, and dark scanner border pixels at least halve. |
 
-## `test_run.py` — 8 test functions / 19 cases
+## `test_run.py` — 10 test functions / 21 cases
 
 Resume and idempotency for `backend.pipeline.run`. The thread running through all of it: retry
 unfinished work, never skip an unprocessed survey, never repeat a paid transcription
@@ -57,6 +60,8 @@ if a live transcription model is ever called; everything else runs for real.
 | `test_transcription_reuse_requires_matching_inputs_and_result`  | Cache invalidation: a changed image, label, model, effort, prompt, template, deleted result or edited result each force the right number of re-calls. |
 | `test_legacy_completed_manifest_still_skips_input`  | An older manifest format still counts as complete. |
 | `test_failed_json_publication_keeps_previous_progress`  | A failed atomic write leaves the old manifest byte-identical and drops no temp files. |
+| `test_pdfs_in_bundle_folders_are_found` | `uv run survey` with no PDF named finds the PDFs in DATA's bundle folders (`DATA/216412/a.pdf`), not only ones directly in DATA, and ignores PDFs inside the output folder. |
+| `test_run_reports_each_step_and_transcription_progress`  | A run's `progress` callback hears each step start and every transcribed page (done / total), which the worker saves on the job. |
 
 ## `test_identify.py` — 2 tests
 
@@ -84,6 +89,16 @@ Pages → surveys (`step_group`), from stored transcriptions: no model calls.
 |---|---|
 | `test_cards_join_the_main_form_with_their_number` | On a made-up bundle, each coded card joins the main form with its dwelling number (before or after it, or misfiled far away), second main sheets and flats (24A, 24B) stay separate surveys, and unreadable or reused numbers are flagged. |
 | `test_real_bundles_group_like_ash` | 19 real bundles (`group/`, Opus 5.5 transcriptions + Ash's hand grouping of 589 surveys): at least `BASELINE` surveys match Ash exactly, and every one that does not is flagged for a human. |
+
+## `test_scans.py` — 2 tests
+
+The archive's real download page for Box Hill 00 (bundle 216412), saved as `archive/download_216412.html`, so the
+code that reads it is checked against the archive's own markup, not only the tests' stand-in.
+
+| Test | What it checks |
+|---|---|
+| `test_the_archives_real_download_page_gives_every_page_its_file` | Reading the real page finds all 227 pages in order, each with its file id (page 1 → 423448, page 227 → 425881). |
+| `test_no_test_reaches_the_internet` | A plain `urllib` request to the archive fails during tests: `tests/conftest.py` blocks every internet lookup but this computer's own. |
 
 ## `test_migrations.py` — 4 tests
 

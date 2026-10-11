@@ -8,10 +8,11 @@ from pydantic import BaseModel
 from functools import cache
 import json
 from backend.db import database, loader, models
-from backend.db.loader import CODED_DICT
+from backend.db.loader import CODED_DICT, stored_path
+from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
 from datetime import datetime, timezone
-from backend.common import ROOT
+from backend.common import ROOT, settings
 
 app = FastAPI()
 
@@ -116,12 +117,12 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
         })
     return {"id":survey_id, "title":"Wilfred Prest Survey", "pages":pages_list}
 
-#a page's scan, as this computer's pipeline run made it
+#a page's scan: the one this computer's pipeline run made, else the archive's
 @app.get("/pages/{page_id}/image", name="page_image")
 def page_image(page_id: str, db: Session = Depends(get_db)):
     page = db.get(models.Page, page_id)
-    scan = page and ROOT / page.import_path
-    if not (scan and scan.is_file()):
+    scan = page and scans.page_scan(page.import_path, db.get(models.Bundle, page.bundle_id).source_pdf, page_id)
+    if not scan:
         raise HTTPException(status_code=404, detail="No scan for this page.")
     return FileResponse(scan)
 
@@ -230,3 +231,67 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
         db.rollback()
         raise
     return {"revision": revision, "savedAt": timestamp.isoformat()}
+
+
+#--PIPELINE JOBS--# (queued here, done by backend/worker.py)
+class StartJobRequest(BaseModel):
+    pdf: str #as listed by GET /bundles
+
+#every survey PDF under DATA in .env, and each of the archive's bundles whose PDF isn't there, as
+#DATA/<bundle number>/<its PDF> (running it downloads the PDF)
+def pdfs():
+    data = ROOT / settings()["DATA"]
+    here = list(data.rglob("*.pdf"))
+    names = {p.name for p in here}
+    return sorted(here + [p for p in (data / pdf for pdf in scans.ARCHIVE_PDFS) if p.name not in names])
+
+def job_json(job):
+    return {"id": job.job_id, "kind": job.kind, "pdf": job.pdf, "pageId": job.page_id, "pageType": job.page_type,
+            "status": job.status, "step": job.step,
+            "donePages": job.done_pages, "totalPages": job.total_pages, "error": job.error,
+            "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
+
+#every runnable PDF, with its loaded survey ids and latest job; name is the bundle number (the PDF's folder)
+@app.get("/bundles")
+def get_bundles(db: Session = Depends(get_db)):
+    loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id)}
+    surveys = {}
+    for survey_id, bundle_id in (db.query(models.Page.survey_id, models.Page.bundle_id)
+                                 .filter(models.Page.survey_id.is_not(None))
+                                 .group_by(models.Page.survey_id, models.Page.bundle_id)
+                                 .order_by(func.min(models.Page.page_id))):
+        surveys.setdefault(bundle_id, []).append(survey_id)
+    latest = {job.pdf: job for job in db.query(models.Job).order_by(models.Job.job_id)}
+    data = ROOT / settings()["DATA"]
+    bundles = []
+    for p in pdfs():
+        job = latest.get(stored_path(p))
+        bundles.append({"pdf": stored_path(p), "bundle": p.stem, "name": p.stem if p.parent == data else p.parent.name,
+                        "loaded": p.stem in loaded, "surveys": surveys.get(p.stem, []), "job": job_json(job) if job else None})
+    return bundles
+
+#queues a pipeline run of one PDF; the worker picks it up
+@app.post("/jobs", status_code=202)
+def start_job(payload: StartJobRequest, db: Session = Depends(get_db)):
+    pdf = next((p for p in pdfs() if stored_path(p) == payload.pdf), None)
+    if pdf is None:
+        raise HTTPException(status_code=404, detail="No such PDF in DATA or on the archive.")
+    write_lock(db)
+    #a rerun could lose saved reviews
+    if db.query(models.Bundle).filter(models.Bundle.bundle_id == pdf.stem).first():
+        raise HTTPException(status_code=409, detail="This bundle is already loaded.")
+    if db.query(models.Job).filter(models.Job.pdf == payload.pdf, models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="This bundle is already waiting or running.")
+
+    job = models.Job(pdf=payload.pdf)
+    db.add(job)
+    db.commit()
+    return job_json(job)
+
+#one job of any kind, so a screen can follow it until it is done or failed
+@app.get("/jobs/{job_id}")
+def get_job(job_id: int, db: Session = Depends(get_db)):
+    job = db.get(models.Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No such job.")
+    return job_json(job)

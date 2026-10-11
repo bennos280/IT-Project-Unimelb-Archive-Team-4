@@ -46,9 +46,12 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 | `uv run survey data/x.pdf --preprocess`                          | Identify pages, then crop, straighten, and binarize eligible page images                                                                                                                                       |
 | `uv run survey data/x.pdf --preprocess --transcribe`             | Identify and preprocess eligible page images, then transcribe them to JSON                                                                                                                                     |
 | `uv run python -m backend.db.loader` | Load finished runs in `OUTPUT` into the database (`backend/db/wilfprestsurvey.db`), creating or upgrading it first |
-| `uv run uvicorn backend.api.main:app` | Start the API for the review screen; every endpoint is listed, and can be tried, at http://127.0.0.1:8000/docs |
+| `uv run app` | Start the API (every endpoint is listed, and can be tried, at http://127.0.0.1:8000/docs) and the worker that runs the jobs queued with `POST /jobs`; Ctrl+C stops both |
+| `uv run api` / `uv run worker` | Just one of the two (the API restarts when you save code) |
 | `uv run alembic revision --autogenerate -m "what changed"` | After changing the tables in `backend/db/models.py`; a database upgrades itself on its next load, backed up first |
 | ↳ Optional enhancements                                          | `--greyscale` converts to greyscale; `--binarize` converts to black and white; `--no-deskew` skips deskewing; `--no-crop` skips cropping; `--c <num>` adjusts the adaptive threshold constant (e.g. `--c 12`). |
+
+A bundle's PDF, or a page's scan, that isn't on this computer is downloaded from [the archive](https://archives.library.unimelb.edu.au/nodes/view/499420) and kept.
 
 If a run stops partway through, run the same command again. Splitting and identification run again for unfinished inputs. With `--transcribe`, saved page transcripts are reused when the image, page type, model, effort, prompt and template still match and the saved result is unchanged. Adding `--transcribe` also picks up inputs that have finished identification but have not finished transcription.
 

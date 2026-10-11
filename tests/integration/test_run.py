@@ -1,5 +1,4 @@
-"""Integration tests, testing the pipeline's resume/retry/caching correctness"""
-"""Retry unfinished work without skipping surveys or repeating saved transcription calls."""
+"""Integration tests of the pipeline's resume, retry and caching: retry unfinished work without skipping surveys or repeating saved transcription calls."""
 import json
 from pathlib import Path
 
@@ -52,6 +51,14 @@ def test_failed_identification_is_retried(survey, monkeypatch):
     assert run.unprocessed(source.parent, output) == []
     monkeypatch.setattr(identify, "identify_pages", fail)
     assert run.main([]) == 0  # A completed survey is skipped.
+
+
+def test_pdfs_in_bundle_folders_are_found(tmp_path):
+    data, output = tmp_path / "data", tmp_path / "data" / "output"  # results kept inside DATA are not inputs
+    for pdf in (data / "216412" / "a.pdf", data / "216413" / "b.pdf", output / "old" / "c.pdf"):
+        pdf.parent.mkdir(parents=True, exist_ok=True)
+        pdf.write_bytes(b"%PDF")
+    assert run.unprocessed(data, output) == [data / "216412" / "a.pdf", data / "216413" / "b.pdf"]
 
 
 def test_transcription_is_selected_only_when_requested(survey, monkeypatch):
@@ -121,6 +128,16 @@ def test_interrupted_transcription_reuses_saved_pages(survey, monkeypatch):
     assert (output / source.stem / "transcribe" / "page1.json").read_bytes() == saved
     assert run.completed(output / source.stem, ["split", "identify", "transcribe"],
 )
+
+
+def test_run_reports_each_step_and_transcription_progress(survey, monkeypatch):
+    source, output, _ = survey
+    monkeypatch.setattr(transcription, "transcribe", lambda image, kind, **options: {"text": image.name})
+    seen = []
+    run.run_steps(run.Run(source.resolve(), output / source.stem, progress=lambda *report: seen.append(report)),
+                  ["split", "identify", "transcribe", "group"])
+    assert seen == [("split", 0, 0), ("identify", 0, 0), ("transcribe", 0, 0), ("transcribe", 0, 2),
+                    ("transcribe", 1, 2), ("transcribe", 2, 2), ("group", 0, 0)]
 
 
 @pytest.mark.parametrize("changed", ["image", "label", "model", "effort", "prompt", "template",
