@@ -109,3 +109,16 @@ def test_only_one_worker_runs_at_a_time(tmp_path, monkeypatch):
         worker.only_worker()
     lock.release()
     worker.only_worker().release()  # free again once the first worker has stopped
+
+
+def test_a_job_reads_with_the_newest_prompt_and_templates(db, tmp_path, monkeypatch):
+    db.add_all([models.InstructionVersion(kind="prompt", body="old", sha256="a"),
+                models.InstructionVersion(kind="main", body="{}", sha256="b"),
+                models.InstructionVersion(kind="prompt", body="new", sha256="c")])
+    queue(db, tmp_path)
+    used = []
+    monkeypatch.setattr(worker.pipeline, "run_steps",
+                        lambda run, names: used.append(run.texts) or run.pages.append({"file": "a_00001.png"}))
+    monkeypatch.setattr(worker.loader, "dump_into_db", lambda manifest: None)
+    worker.work_once(db)
+    assert used == [{"prompt": "new", "main": "{}"}]

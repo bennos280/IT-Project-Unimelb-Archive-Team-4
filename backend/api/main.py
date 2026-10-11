@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from functools import cache
 import json
-from backend.db import database, loader, models
+from backend.db import database, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
@@ -231,6 +231,171 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
         db.rollback()
         raise
     return {"revision": revision, "savedAt": timestamp.isoformat()}
+
+
+#--TRANSCRIPTION PROMPT AND TEMPLATES--# (backend/db/instructions.py: saved as versions; jobs use the newest of each)
+class InstructionRequest(BaseModel):
+    body: str
+    basedOn: int | None #the version the edit started from (None: a page type's first template); refused if a newer one was saved since
+    reviewerId: int
+    note: str | None = None
+
+def version_json(v, names):
+    return {"id": v.version_id, "kind": v.kind, "body": v.body, "reviewerId": v.reviewer_id, "reviewer": names.get(v.reviewer_id),
+            "note": v.note, "createdAt": v.created_at.replace(tzinfo=timezone.utc).isoformat() if v.created_at else ""}
+
+#the newest prompt, and the newest template of each page type
+@app.get("/instructions")
+def get_instructions(db: Session = Depends(get_db)):
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    return {kind: version_json(v, names) for kind, v in instructions.newest(db).items()}
+
+#every version of the prompt or of one template, newest first
+@app.get("/instructions/{kind}")
+def get_instruction_versions(kind: str, db: Session = Depends(get_db)):
+    versions = (db.query(models.InstructionVersion).filter(models.InstructionVersion.kind == kind)
+                .order_by(models.InstructionVersion.version_id.desc()).all())
+    if not versions:
+        raise HTTPException(status_code=404, detail=f"No prompt or template called {kind}.")
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    return [version_json(v, names) for v in versions]
+
+#saves a new version of the prompt or of a page type's template (other has none), used from the next job on; checked first
+@app.post("/instructions/{kind}", status_code=201)
+def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depends(get_db)):
+    write_lock(db)
+    current = instructions.newest(db)
+    if kind != instructions.PROMPT and (kind == loader.OTHER_CAT or not db.get(models.PageType, kind)):
+        raise HTTPException(status_code=404, detail=f"No prompt or page type called {kind}.")
+    reviewer = db.get(models.Reviewer, payload.reviewerId)
+    if reviewer is None:
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    if payload.basedOn != (current[kind].version_id if kind in current else None):
+        raise HTTPException(status_code=409, detail="Someone saved a newer version: reload it and make your change again.")
+    if kind in current and payload.body.replace("\r\n", "\n") == current[kind].body.replace("\r\n", "\n"):
+        raise HTTPException(status_code=400, detail="Nothing changed.")
+    if found := instructions.problems(kind, payload.body, {k: v.body for k, v in current.items()}):
+        raise HTTPException(status_code=400, detail=found)
+    version = models.InstructionVersion(kind=kind, body=payload.body, sha256=instructions.sha256(payload.body),
+                                        reviewer_id=reviewer.reviewer_id, note=payload.note)
+    db.add(version)
+    db.commit()
+    return version_json(version, {reviewer.reviewer_id: reviewer.name})
+
+
+#--PAGE TYPES--# (the four built in, and any added here; a page type's pages are read with its template)
+class PageTypeRequest(BaseModel):
+    name: str
+    reviewerId: int
+
+class PageTypeChange(BaseModel):
+    pageType: str
+    reviewerId: int
+
+RESERVED = {instructions.PROMPT, "blank", "review"} #the prompt's kind, and what page sorting answers for no page type
+
+#the page types, each with its newest template's version (None: it has none, so its pages aren't read)
+@app.get("/page-types")
+def get_page_types(db: Session = Depends(get_db)):
+    templates = instructions.newest(db)
+    return [{"name": t.name, "builtIn": t.built_in, "templateVersion": templates[t.name].version_id if t.name in templates else None}
+            for t in db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)]
+
+#adds a page type; POST /instructions/{name} gives it a template, and only then can pages be read as it
+@app.post("/page-types", status_code=201)
+def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    write_lock(db)
+    if not instructions.KEY.fullmatch(name) or name in RESERVED:
+        raise HTTPException(status_code=400, detail="A page type's name is lower-case letters, digits and _, starting with a letter.")
+    if db.get(models.PageType, name):
+        raise HTTPException(status_code=409, detail=f"There is already a page type called {name}.")
+    if not db.get(models.Reviewer, payload.reviewerId):
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    db.add(models.PageType(name=name, reviewer_id=payload.reviewerId))
+    db.commit()
+    return {"name": name, "builtIn": False, "templateVersion": None}
+
+#reads a page again as another page type, replacing what was read off it: queued for the worker, or for other done now (an
+#empty page to type into). A page with saved reviews keeps its type, as reading it again would lose them.
+@app.put("/pages/{page_id}/type")
+def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depends(get_db)):
+    write_lock(db)
+    page = db.get(models.Page, page_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    if not db.get(models.PageType, payload.pageType):
+        raise HTTPException(status_code=400, detail=f"No page type called {payload.pageType}.")
+    if not db.get(models.Reviewer, payload.reviewerId):
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    if payload.pageType == page.category:
+        raise HTTPException(status_code=400, detail="The page is already that type.")
+    if db.query(models.Edit).filter(models.Edit.page_id == page_id).first():
+        raise HTTPException(status_code=409, detail="This page has saved reviews, which reading it again would lose.")
+    if db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="This page is already waiting to be read again.")
+    if payload.pageType == loader.OTHER_CAT:
+        loader.clear_content(page_id, db.connection())
+        loader.insert_content(page_id, None, loader.OTHER_CAT, db.connection())
+        page.category, page.revision_no = loader.OTHER_CAT, (page.revision_no or 0) + 1
+        page.provider = page.model = page.effort = page.runtime = page.prompt_version_id = page.template_version_id = None
+        db.commit()
+        return {"pageType": page.category, "job": None}
+    if payload.pageType not in instructions.newest(db):
+        raise HTTPException(status_code=400, detail=f"Give {payload.pageType} a template first.")
+    job = models.Job(kind="page", page_id=page_id, page_type=payload.pageType, reviewer_id=payload.reviewerId)
+    db.add(job)
+    db.commit()
+    return {"pageType": page.category, "job": job_json(job)}
+
+
+#--PAGE SORTING--# (retrained with the pages reviewers settled; new bundles are sorted by the active model, else the shipped one)
+class TrainRequest(BaseModel):
+    reviewerId: int
+
+class ActiveModelRequest(BaseModel):
+    modelId: int | None #None: back to the shipped model
+    reviewerId: int
+
+def sorting_model_json(m, names):
+    return {"id": m.model_id, "pageTypes": m.page_types.split(","), "pages": m.pages, "answered": m.answered, "wrong": m.wrong,
+            "passed": m.passed, "active": m.active, "note": m.note, "reviewer": names.get(m.reviewer_id),
+            "createdAt": m.created_at.replace(tzinfo=timezone.utc).isoformat() if m.created_at else ""}
+
+#every retraining, newest first, with its check: pages each sorted by a model that never saw them, answered, wrong
+@app.get("/sorting-models")
+def get_sorting_models(db: Session = Depends(get_db)):
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    return [sorting_model_json(m, names) for m in db.query(models.SortingModel).order_by(models.SortingModel.model_id.desc())]
+
+#queues a retraining for the worker; a model that passes its check becomes the active one
+@app.post("/sorting-models", status_code=202)
+def train_sorting_model(payload: TrainRequest, db: Session = Depends(get_db)):
+    if not db.get(models.Reviewer, payload.reviewerId):
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    write_lock(db)
+    if db.query(models.Job).filter(models.Job.kind == "train", models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="Page sorting is already waiting to be retrained.")
+    job = models.Job(kind="train", reviewer_id=payload.reviewerId)
+    db.add(job)
+    db.commit()
+    return job_json(job)
+
+#makes a model that passed its check the one new bundles use, or (None) goes back to the shipped model
+@app.put("/sorting-models/active")
+def set_active_sorting_model(payload: ActiveModelRequest, db: Session = Depends(get_db)):
+    if not db.get(models.Reviewer, payload.reviewerId):
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    chosen = payload.modelId is not None and db.get(models.SortingModel, payload.modelId)
+    if payload.modelId is not None and not chosen:
+        raise HTTPException(status_code=404, detail="No such model.")
+    if chosen and not chosen.passed:
+        raise HTTPException(status_code=400, detail="That model failed its check, so it wasn't kept.")
+    db.query(models.SortingModel).update({"active": False})
+    if chosen:
+        chosen.active = True
+    db.commit()
+    return {"active": payload.modelId}
 
 
 #--PIPELINE JOBS--# (queued here, done by backend/worker.py)

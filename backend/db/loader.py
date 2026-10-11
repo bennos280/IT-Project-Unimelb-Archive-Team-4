@@ -74,6 +74,11 @@ def insert_content(page_id, data, category, con):
         elif key not in META:
             insert_field(page_id, key, value, con, category == "coded")
 
+#deletes what was read off a page, and with it its flags and edits, before it is read again
+def clear_content(page_id, con):
+    for table in ("fields", "residents", "other_children", "annotations"):
+        con.exec_driver_sql(f"DELETE FROM {table} WHERE page_id = ?", (page_id,))
+
 def insert_field(page_id, title:str, raw, con, coded:bool):
     if isinstance(raw, dict):
         for subtitle, subraw in raw.items():

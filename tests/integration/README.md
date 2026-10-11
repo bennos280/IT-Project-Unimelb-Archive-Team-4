@@ -7,7 +7,7 @@ Fixture data (`identify/`, `preprocess/`, `transcribe/`) lives alongside the tes
 in this folder, and `backend.pipeline.identify.identify` / `backend.pipeline.transcribe.score` read it
 from here directly.
 
-**69 test cases ~140s**
+**72 test cases ~140s**
 
 ```bash
 uv run pytest tests/integration
@@ -42,7 +42,7 @@ Preprocessing against the real fixture scans in `preprocess/`, plus its handoff 
 | `test_skewed_image_detection` | The real `skewed_image_1.jpg` fixture is detected confidently at 1.57° ± 0.3°. |
 | `test_crop`  | Page crop on the real `crop.png`: output matches the independently measured paper size, the returned corners enclose all handwritten content, and dark scanner border pixels at least halve. |
 
-## `test_run.py` — 10 test functions / 21 cases
+## `test_run.py` — 13 test functions / 24 cases
 
 Resume and idempotency for `backend.pipeline.run`. The thread running through all of it: retry
 unfinished work, never skip an unprocessed survey, never repeat a paid transcription
@@ -53,15 +53,18 @@ if a live transcription model is ever called; everything else runs for real.
 | Test  | What it checks |
 |---|---|
 | `test_failed_identification_is_retried`  | After identification fails, the manifest records only `split` and the survey stays in `unprocessed()`; a later successful run completes it; a completed survey is then skipped even if identification would fail again. |
+| `test_pdfs_in_bundle_folders_are_found` | `uv run survey` with no PDF named finds the PDFs in DATA's bundle folders (`DATA/216412/a.pdf`), not only ones directly in DATA, and ignores PDFs inside the output folder. |
 | `test_transcription_is_selected_only_when_requested`  | Transcription runs only under `--transcribe`, and a second `--transcribe` run makes no further calls. |
 | `test_failed_explicit_rerun_clears_old_completion`  | An explicitly requested rerun that fails clears the previous completion rather than leaving a stale "done" marker. |
 | `test_invalid_manifest_does_not_hide_input`  | Truncated, `null`, malformed and non-UTF-8 manifests all leave the survey visible to `unprocessed()` instead of silently hiding it. |
-| `test_interrupted_transcription_reuses_saved_pages`  | A mid-transcription `SystemExit` keeps page 1's saved result; the retry re-calls only page 2, and page 1's file is byte-identical. No paid retry happens without the flag. |
+| `test_interrupted_transcription_reuses_saved_pages`  | Pages are read in parallel: a `SystemExit` on page 2 keeps page 1's saved result; the retry re-calls only page 2, and page 1's file is byte-identical. No paid retry happens without the flag. |
+| `test_failed_transcription_stops_without_reading_the_queued_pages` | With one reader, a `SystemExit` on page 1 stops the run with that error and the page still waiting is never read (paid). |
+| `test_run_reports_each_step_and_transcription_progress`  | A run's `progress` callback hears each step start and every transcribed page (done / total), which the worker saves on the job. |
 | `test_transcription_reuse_requires_matching_inputs_and_result`  | Cache invalidation: a changed image, label, model, effort, prompt, template, deleted result or edited result each force the right number of re-calls. |
 | `test_legacy_completed_manifest_still_skips_input`  | An older manifest format still counts as complete. |
 | `test_failed_json_publication_keeps_previous_progress`  | A failed atomic write leaves the old manifest byte-identical and drops no temp files. |
-| `test_pdfs_in_bundle_folders_are_found` | `uv run survey` with no PDF named finds the PDFs in DATA's bundle folders (`DATA/216412/a.pdf`), not only ones directly in DATA, and ignores PDFs inside the output folder. |
-| `test_run_reports_each_step_and_transcription_progress`  | A run's `progress` callback hears each step start and every transcribed page (done / total), which the worker saves on the job. |
+| `test_a_job_reads_each_page_with_its_texts_and_skips_a_page_type_with_no_template` | Given a job's texts (the db's newest prompt and templates), `step_transcribe` reads each page with them, skips a page type they have no template for, and records the prompt's hash for reuse. |
+| `test_a_run_sorts_its_pages_with_its_sorting_model` | A run given a retrained model's weights sorts its pages with them. |
 
 ## `test_identify.py` — 2 tests
 
