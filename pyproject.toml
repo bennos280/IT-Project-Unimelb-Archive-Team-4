@@ -16,17 +16,18 @@ dependencies = [
     "uvicorn>=0.54.0",
     "sqlalchemy>=2.1.1",
     "pydantic>=2.13.5",
+    "alembic>=1.20.0",
 ]
 
 [project.scripts]
-survey = "pipeline.run:main"
+survey = "backend.pipeline.run:main"
 
 [build-system]
 requires = ["setuptools>=70"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["pipeline*"]
+include = ["backend*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

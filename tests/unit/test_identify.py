@@ -1,14 +1,14 @@
-"""Unit tests for mainly pipeline/identify/identify.py"""
+"""Unit tests for mainly backend/pipeline/identify/identify.py"""
 
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from pipeline.identify import identify
-from pipeline.identify.identify import (MIN_COVERAGE, Score, identify_pages,
+from backend.pipeline.identify import identify
+from backend.pipeline.identify.identify import (MIN_COVERAGE, Score, identify_pages,
                                         labelled_pages, score, stored)
-from pipeline.identify.model import LABELS, REVIEW
+from backend.pipeline.identify.classifier import LABELS, REVIEW
 
 
 

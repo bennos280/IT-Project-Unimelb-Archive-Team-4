@@ -7,9 +7,9 @@ from pathlib import Path
 
 import numpy as np
 
-from pipeline.common import IMAGES, ROOT
-from pipeline.identify.fingerprint import CODE_HASH, fingerprint
-from pipeline.identify.model import LABELS, REVIEW, WEIGHTS, Model
+from backend.common import IMAGES, ROOT
+from backend.pipeline.identify.fingerprint import CODE_HASH, fingerprint
+from backend.pipeline.identify.classifier import LABELS, REVIEW, WEIGHTS, Model
 
 PAGES = ROOT / "tests" / "integration" / "identify" / "pages"        # labelled pages: pages/<label>/.../x.jpg
 STORE = ROOT / "tests" / "integration" / "identify" / "fingerprints" / CODE_HASH    # their fingerprints, committed, one file per image

@@ -5,7 +5,7 @@ import pymupdf
 import pytest
 from PIL import Image
 
-from pipeline.run import Run, step_split
+from backend.pipeline.run import Run, step_split
 
 
 def make_pdf(path, pages, text="original"):

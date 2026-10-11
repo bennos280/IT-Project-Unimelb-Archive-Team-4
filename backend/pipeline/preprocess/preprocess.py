@@ -1,6 +1,6 @@
 """Crop and straighten survey cards, binarise colour by default.
 
-python pipeline/preprocess.py source --output source-pre
+python backend/pipeline/preprocess/preprocess.py source --output source-pre
 
 optional enhancements:
 --greyscale converts to greyscale; --binarize converts to black and white.
@@ -338,8 +338,8 @@ def process_image(source, destination, args):
  
  
 def main(argv=None):
-    from pipeline.common import settings
-    from pipeline.preprocess.options import add_arguments, resolve_options
+    from backend.common import settings
+    from backend.pipeline.preprocess.options import add_arguments, resolve_options
 
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("input", type=Path, help="One image or a folder of images")

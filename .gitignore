@@ -39,3 +39,8 @@ tests/integration/ui-reviewscreen/report.json
 
 # US8 database
 backend/wilfprestsurvey.db
+# Database
+# SQLite's file for a write in progress
+*.db-journal
+# copies of the db made before a migration changes it
+backend/db/wilfprestsurvey-backup-*.db

@@ -27,8 +27,8 @@
 
   "yard_or_uncultivated_space": null,
   "cultivated_garden": null,
-  "weekly_value_fruit_and_vegetables_grown": null,
-  "weekly_value_fruit_and_vegetables_sold": null,
+  "weekly_value_of_fruit_and_vegetables_grown": null,
+  "weekly_value_of_fruit_and_vegetables_sold": null,
   "other_commercial_activities_on_premises": null,
 
   "tenure": null,
@@ -54,10 +54,10 @@
       "full_time_earnings_excluding_overtime": null,
       "weekly_contribution_to_board": null,
       "weekly_payments_to_relatives_living_elsewhere": null,
-      "prewar_occupation": null,
-      "prewar_normal_weekly_earnings": null,
-      "prewar_place_of_work_if_outside_melbourne": null,
-      "prewar_occupational_preference": null
+      "pre_war_occupation": null,
+      "pre_war_normal_weekly_earnings": null,
+      "pre_war_place_of_work_if_outside_melbourne": null,
+      "pre_war_occupational_preference": null
     }
   ],
 
@@ -71,7 +71,7 @@
     "number_of_living_rooms": null,
     "state_if_used_as_bedrooms": null,
     "rooms_not_in_daily_use": null,
-    "sleepouts": null
+    "number_of_sleepouts": null
   },
 
   "bath": {

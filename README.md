@@ -39,12 +39,15 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 | Command                                                          | Description                                                                                                                                                                                                    |
 | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `uv run survey`                                                  | Process new or unfinished PDFs (or folders of page images) in `DATA` → `<OUTPUT>/<name>/manifest.json` + `review.json`                                                                                         |
-| `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI signed in, or `codex` for gpt-\* models)            |
-| `uv run pytest`                                                  | Run all tests (see `tests/README.md` for more info) scored                                                                                                                                                     |
+| `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI signed in, or `codex` for gpt-\* models)                                                             |
+| `uv run pytest`                                                  | Run all tests (see `tests/README.md` for more info) scored                                                                                                      |
 | `uv run survey train`                                            | Refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`)                                                                                                        |
 | `uv run survey transcribe <card>`, `uv run survey score --pages` | Run transcription/scoring and view the transcription leaderboard in `results/transcribe/`                                                                                                                      |
 | `uv run survey data/x.pdf --preprocess`                          | Identify pages, then crop, straighten, and binarize eligible page images                                                                                                                                       |
 | `uv run survey data/x.pdf --preprocess --transcribe`             | Identify and preprocess eligible page images, then transcribe them to JSON                                                                                                                                     |
+| `uv run python -m backend.db.loader` | Load finished runs in `OUTPUT` into the database (`backend/db/wilfprestsurvey.db`), creating or upgrading it first |
+| `uv run uvicorn backend.api.main:app` | Start the API for the review screen; every endpoint is listed, and can be tried, at http://127.0.0.1:8000/docs |
+| `uv run alembic revision --autogenerate -m "what changed"` | After changing the tables in `backend/db/models.py`; a database upgrades itself on its next load, backed up first |
 | ↳ Optional enhancements                                          | `--greyscale` converts to greyscale; `--binarize` converts to black and white; `--no-deskew` skips deskewing; `--no-crop` skips cropping; `--c <num>` adjusts the adaptive threshold constant (e.g. `--c 12`). |
 
 If a run stops partway through, run the same command again. Splitting and identification run again for unfinished inputs. With `--transcribe`, saved page transcripts are reused when the image, page type, model, effort, prompt and template still match and the saved result is unchanged. Adding `--transcribe` also picks up inputs that have finished identification but have not finished transcription.
@@ -53,7 +56,7 @@ If you replace a PDF that was already completed, pass its path explicitly to rer
 
 ## Add a step
 
-A step is one function in `pipeline/run.py` that reads and writes `run.pages`, plus one entry in `STEPS`:
+A step is one function in `backend/pipeline/run.py` that reads and writes `run.pages`, plus one entry in `STEPS`:
 
 ```python
 def step_thing(run):
@@ -65,32 +68,4 @@ def step_thing(run):
 STEPS = {"split": step_split, "identify": step_identify,"preprocess": step_preprocess, "thing": step_thing, "transcribe": step_transcribe}
 ```
 
-Heavy code goes in `pipeline/thing/`, imported inside the function. Flagged pages land in `review.json`.
-
-## UI Setup
-
-1. Install **Node.js 24.x** (includes npm), alongside the Python setup above.
-
-2. If the demo database does not already exist, create it from the project folder:
-
-   ```sh
-   uv run python backend/seed_demo.py
-   ```
-
-3. Start the backend from the project folder:
-
-   ```sh
-   uv run uvicorn backend.main:app --reload --port 8000
-   ```
-
-4. In a second terminal, open the project folder and start the frontend:
-
-   ```sh
-   cd frontend
-   npm ci
-   npm run dev -- --port 5174 --strictPort
-   ```
-
-5. Open [the demo survey](http://localhost:5174/?survey=216417_1).
-
-Keep both terminals running while using the app.
+Heavy code goes in `backend/pipeline/thing/`, imported inside the function. Flagged pages land in `review.json`.
