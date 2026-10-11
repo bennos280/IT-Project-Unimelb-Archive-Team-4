@@ -7,7 +7,7 @@ import sys
 from backend.common import ROOT
 
 TRUTH, ANSWERS = ROOT / "tests" / "integration" /"transcribe" / "truth", ROOT / "results" / "transcribe"
-STAMPS = {"engine", "model", "effort", "seconds"}  # written by transcribe.py, not read off the card
+STAMPS = {"engine", "provider", "model", "effort", "seconds"}  # written by transcribe.py, not read off the card
 
 
 def flatten(obj, prefix=""):

@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from itertools import repeat
 from pathlib import Path
@@ -18,6 +18,8 @@ from backend import scans
 from backend.common import ROOT, find_images, settings
 from backend.pipeline.identify.classifier import REVIEW
 from backend.pipeline.preprocess.options import add_arguments, resolve_options
+
+READERS = 16  # pages transcribed at once
 
 
 @dataclass
@@ -30,6 +32,8 @@ class Run:
     log: list[dict] = field(default_factory=list)
     transcripts: dict[str, dict] = field(default_factory=dict)  # reusable completed page results
     preprocess_options: SimpleNamespace | None = None    # Preprocessing settings, if provided.
+    texts: dict[str, str] | None = None                  # the prompt and templates to read with (a job: the db's); None: the files
+    sorting_model: Path | None = None                    # retrained page sorting's weights; None: the shipped model
     progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
 
     def flag(self, page: dict, step: str, reason: str) -> None:
@@ -66,6 +70,10 @@ def completed(out: Path, steps: list[str]) -> bool:
 def digest(path: Path) -> str:
     with path.open("rb") as source:
         return hashlib.file_digest(source, "sha256").hexdigest()
+
+
+def text_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------- steps
@@ -122,11 +130,12 @@ def step_split(run: Run) -> None:
 
 
 def step_identify(run: Run) -> None:
-    """Each page -> label main / notes / coded / blank, or review when the model isn't sure."""
+    """Each page -> label main / notes / coded / blank (or a page type sorting was retrained on), or review when the
+    model isn't sure."""
     from backend.pipeline.identify.identify import identify_pages
     images = find_images(run.images or run.input)
     run.pages = [{"file": p.name, "path": str(p)} for p in images]
-    for page, r in zip(run.pages, identify_pages(images)):
+    for page, r in zip(run.pages, identify_pages(images, run.sorting_model)):
         page.update(label=r["label"], confidence=r["confidence"], distance=r["distance"])
         if r["label"] == REVIEW:
             run.flag(page, "identify", "unlike any known page type; check highest distance first")
@@ -143,8 +152,10 @@ def step_preprocess(run: Run) -> None:
     if options is None:
         raise ValueError("Preprocessing options were not configured")
 
+    from backend.pipeline.transcribe.transcribe import read_texts
+    readable = (run.texts or read_texts()).keys() - {"prompt"} #the page types with a template
     for page in run.pages:
-        if page.get("label") not in ("main", "notes", "coded"):
+        if page.get("label") not in readable:
             continue
 
         source = Path(page["path"])
@@ -171,28 +182,54 @@ def step_preprocess(run: Run) -> None:
         page["preprocessing"] = report
 
 def step_transcribe(run: Run) -> None:
-    """Each labelled page -> out/transcribe/<file>.json via the model in .env. Paid: only with --transcribe."""
-    from backend.pipeline.transcribe.transcribe import HERE, transcribe
+    """Each labelled page -> out/transcribe/<file>.json, READERS at a time, each saved as soon as it is read (paid: only
+    with --transcribe). A failed page stops the step once the reads under way are saved."""
+    from backend.pipeline.transcribe.transcribe import read_texts, transcribe
     config = settings()
+    texts = run.texts or read_texts()
     folder = run.out / "transcribe"
     folder.mkdir(parents=True, exist_ok=True)
-    pages = [page for page in run.pages if page.get("label") in ("main", "notes", "coded")]
-    run.progress("transcribe", 0, len(pages))
-    for done, page in enumerate(pages, start=1):
+    pages = [page for page in run.pages if page.get("label") in texts.keys() - {"prompt"}]
+    todo = []
+    for page in pages:
         image, kind = Path(page["path"]), page["label"]
         dest = folder / f"{Path(page['file']).stem}.json"
         request = {"image": digest(image), "label": kind,
                    "model": config["MODEL"], "effort": config["EFFORT"],
-                   "prompt": digest(HERE / "prompt.txt"),
-                   "template": digest(HERE / "templates" / f"{kind}.json")}
+                   "prompt": text_digest(texts["prompt"]),
+                   "template": text_digest(texts[kind])}
         saved = run.transcripts.get(page["file"])
-        if not (isinstance(saved, dict) and saved.get("request") == request
-                and dest.is_file() and saved.get("result") == digest(dest)):
-            write(dest, transcribe(image, kind, model=config["MODEL"], effort=config["EFFORT"]))
-            run.transcripts[page["file"]] = {"request": request, "result": digest(dest)}
-        page["transcript"] = str(dest.relative_to(run.out))
-        run.save()
-        run.progress("transcribe", done, len(pages))
+        if isinstance(saved, dict) and saved.get("request") == request and dest.is_file() and saved.get("result") == digest(dest):
+            page["transcript"] = str(dest.relative_to(run.out))
+        else:
+            todo.append((page, image, kind, dest, request))
+    run.save()
+    done, failure = len(pages) - len(todo), None
+    run.progress("transcribe", done, len(pages))
+    with ThreadPoolExecutor(READERS) as pool:
+        reads = {pool.submit(transcribe, image, kind, provider=config["PROVIDER"], model=config["MODEL"], effort=config["EFFORT"], texts=texts): (page, dest, request)
+                 for page, image, kind, dest, request in todo}
+        try:
+            for read in as_completed(reads):
+                page, dest, request = reads[read]
+                try:
+                    answer = read.result()
+                except BaseException as error:  # a failed model call raises SystemExit
+                    failure = failure or error
+                    for other in reads:  # not pool.shutdown: its cancelled reads would leave as_completed waiting forever
+                        other.cancel()
+                    continue
+                write(dest, answer)
+                run.transcripts[page["file"]] = {"request": request, "result": digest(dest)}
+                page["transcript"] = str(dest.relative_to(run.out))
+                run.save()
+                done += 1
+                run.progress("transcribe", done, len(pages))
+        except BaseException:  # stopped, or saving or reporting failed: don't pay for the reads still queued
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+    if failure:
+        raise failure
 
 
 def step_group(run: Run) -> None:
@@ -348,7 +385,7 @@ def main(argv=None) -> int:
     if not inputs:
         print(f"nothing to do: every input in DATA has completed the requested steps under {output}")
         return 0
-    print(f"{len(inputs)} to process -> {output}" + (f"   (MODEL={config['MODEL']})" if opts.transcribe else ""))
+    print(f"{len(inputs)} to process -> {output}" + (f"   ({config['PROVIDER']}: {config['MODEL']})" if opts.transcribe else ""))
     for path in inputs:
         run_steps(Run(path.resolve(), output / path.stem, preprocess_options=preprocess_options,),steps,)
     return 0

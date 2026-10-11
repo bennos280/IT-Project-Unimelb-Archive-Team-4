@@ -1,6 +1,6 @@
 # Unit tests
 
-**190 tests. Runs in ~16s.**
+**225 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
@@ -33,12 +33,13 @@ preprocessing steps tests and CLI/config option handling for `backend.pipeline.p
 | `test_invalid_config_value_becomes_a_usage_error` | An invalid `PREPROCESS_*` configuration value is converted into an argparse usage error with exit code 2 rather than producing a traceback. |
 | `test_progress_lines_name_each_file_and_its_detected_skew` | Console progress output names each processed file, shows its mode and detected skew, and includes the final report location. |
 
-## `test_identify.py` — 15 tests
+## `test_identify.py` — 20 tests
 
 Unit tests for scoring, bookkeeping, fingerprint storage, page identification, and model-result handling in `backend.pipeline.identify`.
 
 | Test | What it checks |
 |---|---|
+|`test_identify_pages_sorts_with_the_weights_it_is_given`|`identify_pages()` loads the weights it is given (a retrained model), or the shipped ones when given none.|
 | `test_score_counts_correct_wrong_and_abstained_separately` | Correctly separates answered pages, wrong answers, and `REVIEW` abstentions when calculating the score. |
 | `test_abstaining_is_never_counted_as_wrong` | `REVIEW` answers are treated as abstentions rather than mistakes, reducing coverage but not increasing the wrong count. |
 | `test_answering_a_other_card_is_always_wrong` | Answering a page whose truth is `other` counts as wrong, while `REVIEW` is accepted. |
@@ -51,7 +52,7 @@ Unit tests for scoring, bookkeeping, fingerprint storage, page identification, a
 | `test_labelled_pages_is_deterministic_in_order` | `labelled_pages()` consistently returns pages in sorted order so page paths and their truth labels remain aligned. |
 | `test_stored_tells_you_to_train_when_a_fingerprint_is_missing` | A missing fingerprint raises `FileNotFoundError` with a message identifying the missing pages and the required training command. |
 | `test_stored_loads_fingerprints_by_image_content_not_filename` | Fingerprints are retrieved using image content hashes rather than filenames, with cached `float16` values converted to `float32`. |
-|`test_stored_computes_and_saves_missing_fingerprints`| Missing fingerprint and compute=True then it should  correctly compute and save it |
+| `test_stored_computes_and_saves_missing_fingerprints` | With `compute=True`, a page whose fingerprint isn't stored yet is fingerprinted, returned, and saved as one `float16` `.npy` file. |
 | `test_identify_pages_on_an_empty_list_does_not_load_the_model` | An empty page list immediately returns an empty result without attempting to load the model. |
 | `test_identify_pages_returns_plain_python_types` | Identification results use ordinary Python `str` and `float` values that can be serialized with `json.dumps`, rather than NumPy scalar types. |
 | `test_min_coverage_is_the_documented_threshold` | `MIN_COVERAGE` remains fixed at 0.5 and the supported label set remains exactly `blank`, `coded`, `main`, and `notes`. |
@@ -90,7 +91,7 @@ Unit tests for `.env` configuration parsing and page-image discovery in `backend
 
 | Test | What it checks |
 |---|---|
-| `test_settings_reads_keys_and_defaults_output` | Reads the required `DATA`, `MODEL`, and `EFFORT` settings from `.env` and uses `"output"` as the default when `OUTPUT` is not provided. |
+| `test_settings_reads_keys_and_defaults_output` | Reads the required `DATA`, `MODEL`, and `EFFORT` settings from `.env` and uses `"output"` as the default when `OUTPUT` is not provided and `"claude"` when `PROVIDER` is not. |
 | `test_settings_strips_comments_whitespace_and_bom` | Removes surrounding whitespace, ignores comments and lines without `=`, and handles a UTF-8 BOM when reading `.env` files. |
 | `test_settings_keeps_hash_when_not_preceded_by_space` | Preserves `#` characters inside values when they are not preceded by a space, rather than treating them as comments. |
 | `test_settings_exits_when_env_file_is_missing` | Raises `SystemExit` with a clear message when the `.env` file does not exist. |
@@ -102,16 +103,17 @@ Unit tests for `.env` configuration parsing and page-image discovery in `backend
 | `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images. |
 
 
-## `test_transcribe.py` — 27 tests
+## `test_transcribe.py` — 35 tests
 
-unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generation, CLI handling, Claude/Codex engine behaviour, engine selection, response processing, and transcription metadata.
+unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generation, CLI handling, Claude/Codex provider behaviour, response processing, and transcription metadata.
 
 | Test | What it checks |
 |---|---|
+|`test_transcribe_reads_with_the_texts_it_is_given`|Given a job's texts (the db's newest prompt and templates), `transcribe()` reads with them instead of the files, for any page type they have a template for; Windows line endings in the prompt reach the model as plain ones.|
 | `test_schemafor_turns_a_flat_template_into_an_object_schema` | Converts a flat template into an object schema where every field is required and accepts strings or null, with no additional properties. |
 | `test_schemafor_preserves_key_order` | Preserves the original template key order in the schema's required fields. |
 | `test_schemafor_handles_lists_by_describing_their_first_item` | Converts template lists into arrays whose item schema matches the first example element. |
-| `test_schemafor_handles_an_empty_list_without_crashing` | Handles an empty template list without raising an `IndexError`, falling back to string-or-null items. |
+| `test_schemfor_handles_an_empty_list_without_crashing` | Handles an empty template list without raising an `IndexError`, falling back to string-or-null items. |
 | `test_schemafor_recurses_through_nested_structures` | Correctly builds schemas for nested objects and lists at multiple levels. |
 | `test_schemafor_maps_every_scalar_to_string_or_null` | Maps every scalar template value, including `None`, strings, numbers, and booleans, to a string-or-null schema. |
 | `test_schema_for_output_is_json_serialisable` | Ensures the generated schema can be serialised with `json.dumps()` before being passed to the CLI. |
@@ -119,7 +121,7 @@ unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generat
 | `test_run_cli_explains_a_missing_cli_instead_of_crashing` | Converts a missing Claude/Codex executable into a clear "CLI not found" message. |
 | `test_run_cli_passes_capture_and_timeout_settings_through` | Verifies subprocess output capture, timeout, replacement-character decoding, working directory, and command arguments are passed correctly. |
 | `test_run_claude_returns_the_structured_output_and_model_name` | Parses a successful Claude response and returns both the structured answer and the actual model version reported by the CLI. |
-| `test_run_claude_builds_the_command_with_the_image_path_and_schema` | Builds the Claude command with the image path, selected model and effort, Read permission, and JSON schema arguments. |
+| `test_run_claude_builds_the_command_with_the_image_path_and_schema` | Builds the Claude command with the image path, selected model and effort, Read as the only tool, none of the user's MCP servers, `--safe-mode` (none of their CLAUDE.md, plugins, hooks, skills or memory), and JSON schema arguments. |
 | `test_run_claude_exits_when_the_reply_is_not_json` | Rejects non-JSON CLI output and exits with a useful message containing the raw response. |
 | `test_run_claude_exits_when_the_reply_is_an_error_or_incomplete` | Rejects both explicit Claude errors and valid JSON responses missing `structured_output`. |
 | `test_run_codex_reads_the_answer_from_the_output_file` | Reads and parses the JSON answer written by Codex to its `--output-last-message` file and returns the requested model name. |
@@ -127,18 +129,17 @@ unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generat
 | `test_run_codex_runs_read_only_and_ephemeral` | Verifies Codex uses an ephemeral session, ignores user configuration, runs with a read-only sandbox, and receives the image path. |
 | `test_run_codex_exits_on_a_bad_exit_code_or_a_missing_answer_file` | Rejects either a non-zero Codex exit code or a missing output file instead of treating the result as a valid empty transcription. |
 | `test_run_codex_exits_when_the_answer_file_holds_no_json` | Rejects an output file containing prose without a JSON object and exits with a clear message. |
-| `test_transcribe_picks_the_engine_from_the_model_name` | Selects Codex for `gpt-*` models and Claude for documented non-GPT models, recording the selected engine in the result. |
-| `test_transcribe_honours_an_explicit_engine_override` | An explicit `engine="claude"` override takes precedence over the automatic engine selected from the model name. |
-| `test_transcribe_rejects_an_unknown_engine` | Rejects an invalid engine name immediately and reports that the valid choices are Claude or Codex. |
-| `test_transcribe_stamps_every_answer_with_provenance` | Adds engine, actual model version, effort, and elapsed seconds to every transcription result. |
-| `test_transcribe_falls_back_to_the_requested_model_name` | Uses the requested model name when the selected engine does not report an actual model version. |
+| `test_transcribe_reads_with_the_provider_it_is_given` | 2 cases: `PROVIDER` picks the CLI (`claude` or `codex`) whatever the model is called, and the answer is stamped with it; an OpenAI `o3` goes to Codex though it isn't named gpt-*. |
+| `test_transcribe_refuses_an_unknown_provider` | A provider other than `claude` or `codex` stops with "PROVIDER must be claude or codex". |
+| `test_transcribe_stamps_every_answer_with_provenance` | Adds provider, actual model version, effort, and elapsed seconds to every transcription result. |
+| `test_transcribe_falls_back_to_the_requested_model_name` | Uses the requested model name when the provider does not report an actual model version. |
 | `test_transcribe_unwraps_a_notes_answer_returned_as_a_json_string` | Repairs notes responses where the complete transcription object has incorrectly been returned as a JSON string inside the `text` field. |
 | `test_transcribe_leaves_ordinary_text_untouched` | Leaves normal text and invalid JSON-looking text unchanged when the notes JSON-unwrapping repair does not apply. |
-| `test_transcribe_sends_the_template_inside_the_prompt` | Includes the page template alongside `prompt.txt` in the model prompt and passes the same template to the transcription engine. |
+| `test_transcribe_sends_the_template_inside_the_prompt` | Includes the page template alongside `prompt.txt` in the model prompt and passes the same template to the provider's model call. |
 | `test_transcribe_defaults_model_and_effort_from_env` | When model and effort are omitted, uses the corresponding `MODEL` and `EFFORT` values from the environment configuration. |
 
 
-## `test_transcribe_score.py` — 31 tests
+## `test_transcribe_score.py` — 35 tests
 
 unit tests for `backend.pipeline.transcribe.score`, covering JSON flattening, value normalisation, scorable fields, page-level scoring, invented values, character similarity, and leaderboard reporting.
 
@@ -201,9 +202,10 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_again_for_a_while`|A page download the archive breaks off is not kept (404); the archive isn't asked about that bundle again for `RETRY` seconds, and after that the page is downloaded and served.|
 |`test_survey_flags_grouping_problems_unreadable_text_and_other_pages`|A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.|
 
-## `test_loader.py` — 2 tests
+## `test_loader.py` — 3 tests
 |Test|What it checks|
 |---|---|
+|`test_each_page_records_the_prompt_and_template_versions_that_read_it`|A page whose manifest entry has the hashes of a stored prompt and template version is stored with those versions; a hash no version has, or a page that wasn't read, leaves them empty.|
 |`test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`|A page read as a page type the db has no record of is stored as `other`, not refused.|
 |`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field.|
 
@@ -239,11 +241,12 @@ The `uv run app` and `uv run api` commands (`backend/serve.py`), with the progra
 |`test_api_runs_just_the_api_restarting_on_backend_code_changes`|`uv run api` runs only the API, reloading when files under `backend/` change.|
 |`test_every_command_points_at_a_function`|Each command in `pyproject.toml` (`survey`, `app`, `api`, `worker`) names a function that exists, so a typo there fails here.|
 
-## `test_worker.py` — 7 tests
+## `test_worker.py` — 8 tests
 The pipeline and loader are faked: no model calls. Job state is read through a second connection, as the API sees it.
 
 |Test|What it checks|
 |---|---|
+|`test_a_job_reads_with_the_newest_prompt_and_templates`|A job hands the pipeline the newest version of the prompt and of each template, as the job starts.|
 |`test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys`|The worker runs the oldest waiting job, commits each step and page count while it runs, keeps the page count once the run moves on, loads the run's manifest.json and marks the job done.|
 |`test_a_job_is_a_full_run_every_step_but_the_optional_preprocess`|A job runs split, identify, transcribe and group: every step in the pipeline's `STEPS` but the optional preprocess.|
 |`test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing`|A failed model call marks the job failed with its reason, and nothing is loaded.|
@@ -251,3 +254,45 @@ The pipeline and loader are faked: no model calls. Job state is read through a s
 |`test_stopping_the_worker_marks_its_job_failed`|Ctrl+C during a job marks it failed, so it doesn't show as running forever.|
 |`test_job_cut_off_by_a_stopped_worker_can_be_run_again`|A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.|
 |`test_only_one_worker_runs_at_a_time`|A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.|
+
+## `test_instructions.py` — 19 tests
+
+The transcription prompt and templates as versions in the db (`backend/db/instructions.py` and `/instructions`).
+
+| Test | What it checks |
+|---|---|
+|`test_a_prompt_saved_with_only_its_line_endings_changed_is_no_change`|A prompt sent back with plain line endings instead of Windows ones (as a browser's text box does) is no change, so no new version makes jobs read pages again.|
+|`test_todays_prompt_and_templates_pass_the_checks`|Today's `prompt.txt` and templates pass every check.|
+|`test_a_template_that_would_break_the_pipeline_or_the_review_screen_is_refused`|14 cases: a template that isn't JSON or an object or has no fields, lacks `number_of_dwelling` (main, coded) or `text` (notes), has a field the pipeline fills in, `annotations`, `residents` or `other_children` in another shape, a name with a dot or capitals, a field that isn't null or an object, or makes the command line too long for Windows, is refused with that reason.|
+|`test_an_empty_prompt_is_refused`|A blank prompt is refused.|
+|`test_a_saved_template_becomes_the_newest_version_and_the_old_one_is_kept`|`POST /instructions/main` saves a new version with its reviewer and note; it becomes the newest (what the next job reads with) and the history lists both, newest first.|
+|`test_a_save_is_refused_when_unknown_unchanged_invalid_or_based_on_an_old_version`|An unknown kind (404) or reviewer (400), no change, or a template with problems (400, listing them) is refused; a save based on a version that is no longer the newest is refused (409).|
+
+## `test_page_types.py` — 6 tests
+
+Page types added from the review screen, and a page read again as another type.
+
+| Test | What it checks |
+|---|---|
+|`test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was`|A model answer the db can't take fails the job, and the page keeps its fields, type and revision: the swap is all or nothing.|
+|`test_a_new_page_type_needs_a_template_before_pages_are_read_as_it`|`GET /page-types` lists the built-in four with their templates; a new type needs a lower-case name that isn't taken or reserved (`blank`) and a known reviewer; a page can't be read as it until it has a template (`other` can't have one); then `PUT /pages/{id}/type` queues a page job, once.|
+|`test_a_page_made_other_is_emptied_at_once`|Making a page `other` empties it to one blank text field at once and moves its revision on.|
+|`test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`|An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).|
+|`test_the_worker_reads_the_page_again_and_swaps_what_was_read`|The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.|
+|`test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`|If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.|
+
+## `test_sorting_models.py` — 9 tests
+
+Page sorting retrained from the review screen; page fingerprints are made up, so no model is loaded.
+
+| Test | What it checks |
+|---|---|
+|`test_a_new_page_type_is_left_out_when_too_few_of_its_settled_pages_have_a_scan`|A new type's 10 pages are counted among the settled pages that have a scan; the note says which types were left out and how many pages had no scan.|
+|`test_retraining_keeps_its_fingerprints_apart_from_the_committed_ones`|The real `retrain()` and `stored()` (page fingerprints made up) write the settled pages' fingerprints to their own folder, never touch the committed ones, and reuse them next time.|
+|`test_a_model_learns_a_page_type_beyond_the_four`|Given labels beyond the four, the model learns the new type and sorts its pages into it (or review).|
+|`test_retraining_learns_a_settled_page_type_and_keeps_the_model`|`retrain()` on the labelled pages plus settled pages of a new type passes its held-out check, writes the model, and the model sorts the new type.|
+|`test_a_retraining_that_fails_its_check_is_not_kept`|Settled pages a model can't tell from main forms fail the check, and no model is written.|
+|`test_the_worker_trains_on_settled_pages_and_uses_a_model_that_passes`|A training job uses the pages reviewers settled (not other or unchecked pages, nor a new type with fewer than 10), records the model with its reviewer and a note of what was left out, and makes it the only active one.|
+|`test_a_model_that_fails_its_check_is_recorded_but_not_used`|A model that fails is recorded with its check, but not kept or used.|
+|`test_a_bundle_job_sorts_with_the_active_model`|A bundle job sorts pages with the active model's weights; if that file is gone, the job fails saying so.|
+|`test_sorting_models_are_trained_listed_and_chosen_through_the_api`|`POST /sorting-models` queues one training (409 while waiting; 400 for an unknown reviewer); the list is newest first; `PUT /sorting-models/active` refuses an unknown (404) or failed (400) model, makes a passed one the only active one, and `null` goes back to the shipped model.|
