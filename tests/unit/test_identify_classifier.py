@@ -161,7 +161,7 @@ def test_choose_thresholds_excludes_every_wrong_answer():
 def test_choose_thresholds_treats_others_as_never_answerable():
     """A row whose truth is outside LABELS counts as "bad" even if the label matches.
 
-    basically cards in other(`tests/identify/pages/other/`) have no correct answer, so
+    basically cards in other(`tests/integration/identify/pages/other/`) have no correct answer, so
     answering at all is an error.
     """
     label = np.array(["main", "main", "blank", "main"])

@@ -1,4 +1,5 @@
-"""Which kind of page is an image? identify_pages() for the pipeline; the rest serves `survey train` and the tests."""
+"""Which kind of page is an image? identify_pages() for the pipeline, train() for `survey train`, retrain() for retraining
+from the review screen."""
 import hashlib
 import shutil
 from dataclasses import dataclass
@@ -16,15 +17,16 @@ STORE = ROOT / "tests" / "integration" / "identify" / "fingerprints" / CODE_HASH
 MIN_COVERAGE = 0.5
 
 
-@lru_cache(maxsize=1)
-def model() -> Model:
-    return Model.load()
+@lru_cache(maxsize=4)
+def model(weights=None) -> Model:
+    return Model.load(weights or WEIGHTS)
 
 
-def identify_pages(paths) -> list[dict]:
-    """Per page: {"path", "label" (a LABEL or REVIEW), "confidence", "distance"}."""
+def identify_pages(paths, weights=None) -> list[dict]:
+    """Per page: {"path", "label" (a page type the model knows, or REVIEW), "confidence", "distance"}. weights: a
+    retrained model's file; None: the shipped one."""
     paths = [Path(p) for p in paths]
-    labels, conf, dist = model().predict(fingerprint(paths)) if paths else ([], [], [])
+    labels, conf, dist = model(weights).predict(fingerprint(paths)) if paths else ([], [], [])
     return [{"path": p, "label": str(l), "confidence": float(c), "distance": float(d)}
             for p, l, c, d in zip(paths, labels, conf, dist)]
 
@@ -36,31 +38,33 @@ def labelled_pages() -> tuple[list[Path], np.ndarray]:
     return paths, np.array([p.relative_to(PAGES).parts[0] for p in paths])
 
 
-def stored(paths, compute=False) -> np.ndarray:
-    """Fingerprints of labelled pages from STORE, named by image bytes. compute=True fills the gaps (survey train)."""
-    files = [STORE / (hashlib.sha1(p.read_bytes()).hexdigest()[:20] + ".npy") for p in paths]
+def stored(paths, compute=False, store=None) -> np.ndarray:
+    """Fingerprints of pages from store (default STORE), named by image bytes. compute=True fills the gaps (survey train,
+    retraining)."""
+    store = store or STORE
+    files = [store / (hashlib.sha1(p.read_bytes()).hexdigest()[:20] + ".npy") for p in paths]
     missing = [i for i, f in enumerate(files) if not f.exists()]
     if missing and not compute:
-        raise FileNotFoundError(f"{len(missing)} pages have no fingerprint in {STORE.relative_to(ROOT)}: run `survey train`")
+        raise FileNotFoundError(f"{len(missing)} pages have no fingerprint in {store}: run `survey train`")
     if compute:
-        STORE.mkdir(parents=True, exist_ok=True)
+        store.mkdir(parents=True, exist_ok=True)
         for i, row in zip(missing, fingerprint([paths[i] for i in missing])):
             np.save(files[i], row.astype(np.float16))
-        for stale in set(STORE.glob("*.npy")) - set(files):              # pages since removed
+        for stale in set(store.glob("*.npy")) - set(files):              # pages since removed
             stale.unlink()
-        for old in STORE.parent.iterdir():                                 # fingerprints of older code
-            if old != STORE and old.is_dir():
+        for old in store.parent.iterdir():                                 # fingerprints of older code
+            if old != store and old.is_dir():
                 shutil.rmtree(old)
     return np.stack([np.load(f).astype(np.float32) for f in files])
 
 
-def held_out(X, truth, folds=5, seed=0) -> list[str]:
+def held_out(X, truth, folds=5, seed=0, labels=LABELS) -> list[str]:
     """Train on 4/5, label the other 1/5, five times round: every page labelled by a model that never saw it."""
     from sklearn.model_selection import StratifiedKFold
     truth = np.asarray(truth)
     out = [REVIEW] * len(truth)
     for tr, te in StratifiedKFold(folds, shuffle=True, random_state=seed).split(X, truth):
-        for i, label in zip(te, Model.fit(X[tr], truth[tr]).predict(X[te])[0]):
+        for i, label in zip(te, Model.fit(X[tr], truth[tr], labels).predict(X[te])[0]):
             out[i] = str(label)
     return out
 
@@ -112,3 +116,20 @@ def train() -> int:
     Model.fit(X, truth).save()
     print(f"wrote {WEIGHTS.relative_to(ROOT)} ({WEIGHTS.stat().st_size >> 20} MB)")
     return 0 if result.passes() else 1
+
+
+def retrain(confirmed, out: Path, store: Path) -> tuple[Score, tuple]:
+    """Page sorting refitted on the labelled pages plus confirmed, (image, page type) pairs reviewers settled; it is
+    written to out only if, page by page, a model that never saw the page answers no page wrong and at least
+    MIN_COVERAGE of them. store: a folder of their fingerprints, apart from the committed STORE. -> the check's
+    score and the page types the model sorts into."""
+    paths, truth = labelled_pages()
+    images = [Path(image) for image, _ in confirmed]
+    X = np.vstack([stored(paths), stored(images, compute=True, store=store / CODE_HASH)]) if images else stored(paths)
+    truth = np.concatenate([truth, [page_type for _, page_type in confirmed]]) if images else truth
+    labels = tuple(sorted(set(LABELS) | {page_type for _, page_type in confirmed}))
+    result = score(held_out(X, truth, labels=labels), truth, paths + images)
+    if result.passes():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        Model.fit(X, truth, labels).save(out)
+    return result, labels

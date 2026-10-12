@@ -1,4 +1,4 @@
-"""Shared by every step: repo root, .env settings, page images."""
+"""Shared by the backend: repo root, .env settings, page images."""
 import sys
 from pathlib import Path
 
@@ -8,11 +8,11 @@ KEYS = ("DATA", "OUTPUT", "MODEL", "EFFORT")
 
 
 def settings() -> dict[str, str]:
-    """KEY=VALUE lines from .env; OUTPUT defaults to output, other keys are required."""
+    """KEY=VALUE lines from .env: DATA, MODEL and EFFORT are required, OUTPUT defaults to output and PROVIDER to claude."""
     env = ROOT / ".env"
     if not env.exists():
         sys.exit("no .env: copy .env.example to .env")
-    found = {"OUTPUT": "output"}
+    found = {"OUTPUT": "output", "PROVIDER": "claude"}
     for line in env.read_text(encoding="utf-8-sig").splitlines():
         if "=" in line and not line.lstrip().startswith("#"):
             key, value = line.split("=", 1)

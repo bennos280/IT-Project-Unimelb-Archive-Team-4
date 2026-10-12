@@ -1,18 +1,25 @@
-"""The `survey` command: split ->  identify -> preprocess -> transcribe -> group on each PDF. A step is one function on run.pages."""
+"""The `survey` command: split -> identify -> preprocess -> transcribe -> group on each PDF. A step is one function on run.pages."""
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 import tempfile
 import time
+from collections.abc import Callable
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from itertools import repeat
 from pathlib import Path
 from types import SimpleNamespace
 
+from backend import scans
 from backend.common import ROOT, find_images, settings
 from backend.pipeline.identify.classifier import REVIEW
 from backend.pipeline.preprocess.options import add_arguments, resolve_options
+
+READERS = 16  # pages transcribed at once
 
 
 @dataclass
@@ -25,6 +32,9 @@ class Run:
     log: list[dict] = field(default_factory=list)
     transcripts: dict[str, dict] = field(default_factory=dict)  # reusable completed page results
     preprocess_options: SimpleNamespace | None = None    # Preprocessing settings, if provided.
+    texts: dict[str, str] | None = None                  # the prompt and templates to read with (a job: the db's); None: the files
+    sorting_model: Path | None = None                    # retrained page sorting's weights; None: the shipped model
+    progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
 
     def flag(self, page: dict, step: str, reason: str) -> None:
         self.review.append({"file": page["file"], "step": step, "reason": reason})
@@ -54,9 +64,7 @@ def read_manifest(out: Path) -> dict:
 
 def completed(out: Path, steps: list[str]) -> bool:
     log = read_manifest(out).get("steps", [])
-    return isinstance(log, list) and all(
-        any(isinstance(entry, dict) and entry.get("step") == name for entry in log)
-        for name in steps)
+    return isinstance(log, list) and all(name in [entry.get("step") for entry in log if isinstance(entry, dict)] for name in steps)
 
 
 def digest(path: Path) -> str:
@@ -64,12 +72,30 @@ def digest(path: Path) -> str:
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
+def text_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 # ---------------------------------------------------------------- steps
+def render(pdf_path: Path, numbers: range, folder: Path) -> None:
+    """Draws these pages (counting from 0) of a PDF as PNGs in folder."""
+    import pymupdf
+    with pymupdf.open(pdf_path) as pdf:
+        for n in numbers:
+            pdf[n].get_pixmap(dpi=200, alpha=False).save(folder / f"{pdf_path.stem}_{n + 1:05d}.png")
+
+
 def step_split(run: Run) -> None:
-    """PDF -> one PNG per page under out/pages/. A folder of images is used as is."""
+    """PDF -> one PNG per page under out/pages/; a PDF not on this computer is downloaded from the archive into its place
+    (the bundle number is its folder). A folder of images is used as is."""
     if run.input.suffix.lower() != ".pdf":
         return
     import pymupdf
+    if not run.input.exists():
+        try:
+            scans.fetch_pdf(run.input)
+        except scans.ARCHIVE_ERRORS as error:
+            raise SystemExit(f"bundle {run.input.parent.name}'s PDF isn't on this computer, and the archive couldn't send it ({error})")
     folder = run.out / "pages"
     run.out.mkdir(parents=True, exist_ok=True)
     work = tempfile.TemporaryDirectory(prefix=".split-", dir=run.out, delete=False)
@@ -77,10 +103,14 @@ def step_split(run: Run) -> None:
     try:
         pending.mkdir()
         with pymupdf.open(run.input) as pdf:
-            for i, page in enumerate(pdf, start=1):
-                page.get_pixmap(dpi=200, alpha=False).save(pending / f"{run.input.stem}_{i:05d}.png")
-        # Both directories are under this run's output, on the same filesystem.
-        # Keep the old images until rendering and publication have succeeded.
+            count = pdf.page_count
+        chunks = [range(start, min(start + 16, count)) for start in range(0, count, 16)]
+        if len(chunks) <= 1:  # not worth starting processes for
+            render(run.input, range(count), pending)
+        else:  # a chunk of 16 pages per process, on every core
+            with ProcessPoolExecutor(min(len(chunks), os.cpu_count() or 1)) as pool:
+                list(pool.map(render, repeat(run.input), chunks, repeat(pending)))
+        # swap in the new pages; the old ones stay until this succeeds
         try:
             if folder.exists():
                 folder.rename(previous)
@@ -93,18 +123,19 @@ def step_split(run: Run) -> None:
                     error.add_note(f"Previous page images kept at {previous}: {restore_error}")
             raise
     finally:
-        # If restoration was blocked too, leave the backup available for recovery.
+        # a failed restore leaves the backup in place
         if not previous.exists() or folder.exists():
             work.cleanup()
     run.images = folder
 
 
 def step_identify(run: Run) -> None:
-    """Each page -> label main / notes / coded / blank, or review when the model isn't sure."""
+    """Each page -> label main / notes / coded / blank (or a page type sorting was retrained on), or review when the
+    model isn't sure."""
     from backend.pipeline.identify.identify import identify_pages
     images = find_images(run.images or run.input)
     run.pages = [{"file": p.name, "path": str(p)} for p in images]
-    for page, r in zip(run.pages, identify_pages(images)):
+    for page, r in zip(run.pages, identify_pages(images, run.sorting_model)):
         page.update(label=r["label"], confidence=r["confidence"], distance=r["distance"])
         if r["label"] == REVIEW:
             run.flag(page, "identify", "unlike any known page type; check highest distance first")
@@ -121,8 +152,10 @@ def step_preprocess(run: Run) -> None:
     if options is None:
         raise ValueError("Preprocessing options were not configured")
 
+    from backend.pipeline.transcribe.transcribe import read_texts
+    readable = (run.texts or read_texts()).keys() - {"prompt"} #the page types with a template
     for page in run.pages:
-        if page.get("label") not in ("main", "notes", "coded"):
+        if page.get("label") not in readable:
             continue
 
         source = Path(page["path"])
@@ -149,26 +182,54 @@ def step_preprocess(run: Run) -> None:
         page["preprocessing"] = report
 
 def step_transcribe(run: Run) -> None:
-    """Each labelled page -> out/transcribe/<file>.json via the model in .env. Paid: only with --transcribe."""
-    from backend.pipeline.transcribe.transcribe import HERE, transcribe
+    """Each labelled page -> out/transcribe/<file>.json, READERS at a time, each saved as soon as it is read (paid: only
+    with --transcribe). A failed page stops the step once the reads under way are saved."""
+    from backend.pipeline.transcribe.transcribe import read_texts, transcribe
     config = settings()
+    texts = run.texts or read_texts()
     folder = run.out / "transcribe"
     folder.mkdir(parents=True, exist_ok=True)
-    for page in run.pages:
-        if page.get("label") in ("main", "notes", "coded"):
-            image, kind = Path(page["path"]), page["label"]
-            dest = folder / f"{Path(page['file']).stem}.json"
-            request = {"image": digest(image), "label": kind,
-                       "model": config["MODEL"], "effort": config["EFFORT"],
-                       "prompt": digest(HERE / "prompt.txt"),
-                       "template": digest(HERE / "templates" / f"{kind}.json")}
-            saved = run.transcripts.get(page["file"])
-            if not (isinstance(saved, dict) and saved.get("request") == request
-                    and dest.is_file() and saved.get("result") == digest(dest)):
-                write(dest, transcribe(image, kind, model=config["MODEL"], effort=config["EFFORT"]))
-                run.transcripts[page["file"]] = {"request": request, "result": digest(dest)}
+    pages = [page for page in run.pages if page.get("label") in texts.keys() - {"prompt"}]
+    todo = []
+    for page in pages:
+        image, kind = Path(page["path"]), page["label"]
+        dest = folder / f"{Path(page['file']).stem}.json"
+        request = {"image": digest(image), "label": kind,
+                   "model": config["MODEL"], "effort": config["EFFORT"],
+                   "prompt": text_digest(texts["prompt"]),
+                   "template": text_digest(texts[kind])}
+        saved = run.transcripts.get(page["file"])
+        if isinstance(saved, dict) and saved.get("request") == request and dest.is_file() and saved.get("result") == digest(dest):
             page["transcript"] = str(dest.relative_to(run.out))
-            run.save()
+        else:
+            todo.append((page, image, kind, dest, request))
+    run.save()
+    done, failure = len(pages) - len(todo), None
+    run.progress("transcribe", done, len(pages))
+    with ThreadPoolExecutor(READERS) as pool:
+        reads = {pool.submit(transcribe, image, kind, provider=config["PROVIDER"], model=config["MODEL"], effort=config["EFFORT"], texts=texts): (page, dest, request)
+                 for page, image, kind, dest, request in todo}
+        try:
+            for read in as_completed(reads):
+                page, dest, request = reads[read]
+                try:
+                    answer = read.result()
+                except BaseException as error:  # a failed model call raises SystemExit
+                    failure = failure or error
+                    for other in reads:  # not pool.shutdown: its cancelled reads would leave as_completed waiting forever
+                        other.cancel()
+                    continue
+                write(dest, answer)
+                run.transcripts[page["file"]] = {"request": request, "result": digest(dest)}
+                page["transcript"] = str(dest.relative_to(run.out))
+                run.save()
+                done += 1
+                run.progress("transcribe", done, len(pages))
+        except BaseException:  # stopped, or saving or reporting failed: don't pay for the reads still queued
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+    if failure:
+        raise failure
 
 
 def step_group(run: Run) -> None:
@@ -234,7 +295,7 @@ def step_group(run: Run) -> None:
 
 
 STEPS = {"split": step_split, "identify": step_identify, "preprocess": step_preprocess, "transcribe": step_transcribe, "group": step_group}
-FULL = [step for step in STEPS if step != "preprocess"]  # what a run needs before it is loaded
+FULL = [step for step in STEPS if step != "preprocess"]  # a full run: what a job does, and what a run needs before it is loaded
 
 
 def run_steps(run: Run, steps: list[str]) -> None:
@@ -245,9 +306,10 @@ def run_steps(run: Run, steps: list[str]) -> None:
     run.pages.clear()
     run.review.clear()
     run.images = None
-    run.save()  # Invalidate old completion before any work, including PDF rendering.
+    run.save()  # the old run counts as unfinished until this one is
     for name in steps:
         started = time.perf_counter()
+        run.progress(name, 0, 0)
         STEPS[name](run)
         flagged = sum(r["step"] == name for r in run.review)
         run.log.append({"step": name, "seconds": round(time.perf_counter() - started, 1), "pages": len(run.pages), "flagged": flagged})
@@ -258,16 +320,15 @@ def run_steps(run: Run, steps: list[str]) -> None:
 
 # ---------------------------------------------------------------- the survey command
 def unprocessed(folder: Path, output: Path, steps: list[str] | None = None) -> list[Path]:
-    """PDFs (or folders of images) in DATA whose requested steps have not all finished."""
+    """PDFs anywhere in DATA (as DATA/<bundle>/<pdf>), and folders of images in it, whose requested steps have not all
+    finished."""
     if steps is None:
         steps = ["split", "identify"]
-        
     if not folder.is_dir():
         sys.exit(f"DATA={folder} is not a folder; fix .env")
-    candidates = sorted(p for p in folder.iterdir()
-                        if p.resolve() != output.resolve()
-                        and ((p.is_file() and p.suffix.lower() == ".pdf")
-                             or (p.is_dir() and find_images(p))))
+    out = output.resolve()
+    candidates = sorted([p for p in folder.rglob("*.pdf") if out not in p.resolve().parents]
+                        + [p for p in folder.iterdir() if p.is_dir() and p.resolve() != out and find_images(p)])
     if not candidates:
         sys.exit(f"{folder} is empty: put survey PDFs in it (https://archives.library.unimelb.edu.au/nodes/view/499420)")
     return [p for p in candidates if not completed(output / p.stem, steps)]
@@ -324,7 +385,7 @@ def main(argv=None) -> int:
     if not inputs:
         print(f"nothing to do: every input in DATA has completed the requested steps under {output}")
         return 0
-    print(f"{len(inputs)} to process -> {output}" + (f"   (MODEL={config['MODEL']})" if opts.transcribe else ""))
+    print(f"{len(inputs)} to process -> {output}" + (f"   ({config['PROVIDER']}: {config['MODEL']})" if opts.transcribe else ""))
     for path in inputs:
         run_steps(Run(path.resolve(), output / path.stem, preprocess_options=preprocess_options,),steps,)
     return 0

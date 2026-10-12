@@ -136,8 +136,7 @@ def test_labelled_pages_is_deterministic_in_order(tmp_path, monkeypatch):
 # ---------------------------------------------------------------- stored()
 def test_stored_tells_you_to_train_when_a_fingerprint_is_missing(tmp_path, monkeypatch):
 
-    # The error message shows STORE relative to the project root, so both
-    # constants are redirected into tmp_path together.
+    # the fingerprint store and the project root are both redirected into tmp_path
     monkeypatch.setattr(identify, "ROOT", tmp_path)
     monkeypatch.setattr(identify, "STORE", tmp_path / "fingerprints" / "abc123")
     page = tmp_path / "new.jpg"
@@ -203,7 +202,7 @@ def test_identify_pages_returns_plain_python_types(monkeypatch):
         def predict(self, X):
             return (np.array(["main", REVIEW]), np.float32([0.9, 0.2]), np.float32([0.1, 0.8]))
 
-    monkeypatch.setattr(identify, "model", lambda: FakeModel())
+    monkeypatch.setattr(identify, "model", lambda weights=None: FakeModel())
     monkeypatch.setattr(identify, "fingerprint", lambda paths: np.zeros((len(paths), 4), np.float32))
 
     results = identify_pages(["a.jpg", "b.jpg"])
@@ -222,3 +221,16 @@ def test_min_coverage_is_the_documented_threshold():
     assert MIN_COVERAGE == 0.5
     assert set(LABELS) == {"blank", "coded", "main", "notes"}
 
+
+def test_identify_pages_sorts_with_the_weights_it_is_given(monkeypatch):
+    loaded = []
+
+    class FakeModel:
+        def predict(self, X):
+            return np.array(["main"]), np.float32([0.9]), np.float32([0.1])
+
+    monkeypatch.setattr(identify, "model", lambda weights=None: loaded.append(weights) or FakeModel())
+    monkeypatch.setattr(identify, "fingerprint", lambda paths: np.zeros((len(paths), 4), np.float32))
+    identify_pages(["a.jpg"], Path("retrained.npz"))
+    identify_pages(["a.jpg"])
+    assert loaded == [Path("retrained.npz"), None]  # None: the shipped weights

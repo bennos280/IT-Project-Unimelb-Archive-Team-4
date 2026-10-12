@@ -1,6 +1,6 @@
-"""Integration tests, testing the pipeline's resume/retry/caching correctness"""
-"""Retry unfinished work without skipping surveys or repeating saved transcription calls."""
+"""Integration tests of the pipeline's resume, retry and caching: retry unfinished work without skipping surveys or repeating saved transcription calls."""
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -11,7 +11,7 @@ from backend.pipeline.identify import identify
 from backend.pipeline.transcribe import transcribe as transcription
 
 
-def labels(images):
+def labels(images, weights=None):
     return [{"label": "main", "confidence": 1.0, "distance": 0.0} for _ in images]
 
 
@@ -22,7 +22,7 @@ def survey(tmp_path, monkeypatch):
     source.mkdir(parents=True)
     for i in (1, 2):
         Image.new("RGB", (8, 8), (i, i, i)).save(source / f"page{i}.png")
-    config = {"DATA": str(data), "OUTPUT": str(output), "MODEL": "sonnet", "EFFORT": "high"}
+    config = {"DATA": str(data), "OUTPUT": str(output), "PROVIDER": "claude", "MODEL": "sonnet", "EFFORT": "high"}
     monkeypatch.setattr(run, "settings", lambda: config)
     monkeypatch.setattr(identify, "identify_pages", labels)
 
@@ -36,7 +36,7 @@ def survey(tmp_path, monkeypatch):
 def test_failed_identification_is_retried(survey, monkeypatch):
     source, output, _ = survey
 
-    def fail(images):
+    def fail(images, weights=None):
         raise RuntimeError("identification failed")
 
     monkeypatch.setattr(identify, "identify_pages", fail)
@@ -52,6 +52,14 @@ def test_failed_identification_is_retried(survey, monkeypatch):
     assert run.unprocessed(source.parent, output) == []
     monkeypatch.setattr(identify, "identify_pages", fail)
     assert run.main([]) == 0  # A completed survey is skipped.
+
+
+def test_pdfs_in_bundle_folders_are_found(tmp_path):
+    data, output = tmp_path / "data", tmp_path / "data" / "output"  # results kept inside DATA are not inputs
+    for pdf in (data / "216412" / "a.pdf", data / "216413" / "b.pdf", output / "old" / "c.pdf"):
+        pdf.parent.mkdir(parents=True, exist_ok=True)
+        pdf.write_bytes(b"%PDF")
+    assert run.unprocessed(data, output) == [data / "216412" / "a.pdf", data / "216413" / "b.pdf"]
 
 
 def test_transcription_is_selected_only_when_requested(survey, monkeypatch):
@@ -101,9 +109,9 @@ def test_interrupted_transcription_reuses_saved_pages(survey, monkeypatch):
     source, output, _ = survey
     calls = []
 
-    def transcribe(image, kind, **options):
+    def transcribe(image, kind, **options):  # pages are read in parallel, so the first read of page 2 fails
         calls.append(image.name)
-        if calls == ["page1.png", "page2.png"]:
+        if calls.count("page2.png") == 1 and image.name == "page2.png":
             raise SystemExit("model timed out")
         return {"text": image.name}
 
@@ -115,12 +123,41 @@ def test_interrupted_transcription_reuses_saved_pages(survey, monkeypatch):
     assert [entry["step"] for entry in manifest["steps"]] == ["split", "identify"]
     saved = (output / source.stem / "transcribe" / "page1.json").read_bytes()
     assert run.main([]) == 0  # No paid retry without the flag.
-    assert calls == ["page1.png", "page2.png"]
+    assert sorted(calls) == ["page1.png", "page2.png"]
     assert run.main(["--transcribe"]) == 0
-    assert calls == ["page1.png", "page2.png", "page2.png"]
+    assert sorted(calls) == ["page1.png", "page2.png", "page2.png"]
     assert (output / source.stem / "transcribe" / "page1.json").read_bytes() == saved
     assert run.completed(output / source.stem, ["split", "identify", "transcribe"],
 )
+
+
+def test_failed_transcription_stops_without_reading_the_queued_pages(survey, monkeypatch):
+    source, _, _ = survey
+    Image.new("RGB", (8, 8), (3, 3, 3)).save(source / "page3.png")
+    calls = []
+
+    def transcribe(image, kind, **options):  # page 1 fails while page 3 waits for the only reader
+        calls.append(image.name)
+        if image.name == "page1.png":
+            raise SystemExit("model timed out")
+        time.sleep(0.5)
+        return {"text": image.name}
+
+    monkeypatch.setattr(run, "READERS", 1)
+    monkeypatch.setattr(transcription, "transcribe", transcribe)
+    with pytest.raises(SystemExit, match="model timed out"):
+        run.main(["--transcribe"])
+    assert "page3.png" not in calls
+
+
+def test_run_reports_each_step_and_transcription_progress(survey, monkeypatch):
+    source, output, _ = survey
+    monkeypatch.setattr(transcription, "transcribe", lambda image, kind, **options: {"text": image.name})
+    seen = []
+    run.run_steps(run.Run(source.resolve(), output / source.stem, progress=lambda *report: seen.append(report)),
+                  ["split", "identify", "transcribe", "group"])
+    assert seen == [("split", 0, 0), ("identify", 0, 0), ("transcribe", 0, 0), ("transcribe", 0, 2),
+                    ("transcribe", 1, 2), ("transcribe", 2, 2), ("group", 0, 0)]
 
 
 @pytest.mark.parametrize("changed", ["image", "label", "model", "effort", "prompt", "template",
@@ -146,7 +183,7 @@ def test_transcription_reuse_requires_matching_inputs_and_result(survey, monkeyp
     if changed == "image":
         Image.new("RGB", (8, 8), "red").save(source / "page1.png")
     elif changed == "label":
-        monkeypatch.setattr(identify, "identify_pages", lambda images: [
+        monkeypatch.setattr(identify, "identify_pages", lambda images, weights=None: [
             {"label": "notes" if p.name == "page1.png" else "main", "confidence": 1.0, "distance": 0.0}
             for p in images])
     elif changed in ("model", "effort"):
@@ -188,3 +225,28 @@ def test_failed_json_publication_keeps_previous_progress(tmp_path, monkeypatch):
         run.write(manifest, {"steps": [{"step": "split"}, {"step": "identify"}]})
     assert manifest.read_bytes() == before
     assert list(tmp_path.iterdir()) == [manifest]
+
+
+def test_a_job_reads_each_page_with_its_texts_and_skips_a_page_type_with_no_template(tmp_path, monkeypatch):
+    image = tmp_path / "page.png"
+    Image.new("RGB", (8, 8)).save(image)
+    monkeypatch.setattr(run, "settings", lambda: {"PROVIDER": "claude", "MODEL": "sonnet", "EFFORT": "high"})
+    read = []
+    monkeypatch.setattr(transcription, "transcribe",
+                        lambda image, kind, **options: read.append((kind, options["texts"])) or {"text": "read"})
+    texts = {"prompt": "Read it.", "followup": '{"text": null}'}  # a job's: the db's newest versions
+    job = run.Run(tmp_path / "bundle.pdf", tmp_path / "out", texts=texts)
+    job.pages = [{"file": "a.png", "path": str(image), "label": "followup"}, {"file": "b.png", "path": str(image), "label": "main"}]
+    run.step_transcribe(job)
+    assert read == [("followup", texts)]  # main has no template in these texts
+    assert job.transcripts["a.png"]["request"]["prompt"] == run.text_digest("Read it.")
+
+
+def test_a_run_sorts_its_pages_with_its_sorting_model(tmp_path, monkeypatch):
+    image = tmp_path / "pages" / "a.png"
+    image.parent.mkdir()
+    Image.new("RGB", (8, 8)).save(image)
+    used = []
+    monkeypatch.setattr(identify, "identify_pages", lambda images, weights=None: used.append(weights) or labels(images))
+    run.step_identify(run.Run(tmp_path / "pages", tmp_path / "out", sorting_model=tmp_path / "model.npz"))
+    assert used == [tmp_path / "model.npz"]

@@ -1,5 +1,5 @@
-"""Linear head over the fingerprint plus two abstention gates (confidence, distance to the training pages):
-the model answers REVIEW rather than guess."""
+"""A page fingerprint -> its page type, with two checks (confidence, and distance to the example pages): it answers
+REVIEW rather than guess."""
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -8,9 +8,9 @@ import numpy as np
 LABELS = ("blank", "coded", "main", "notes")
 REVIEW = "review"
 WEIGHTS = Path(__file__).with_name("weights.npz")
-KNN = 5
-DIST_MARGIN = 0.10          # tighten the chosen distance gate by this much; foreign forms sit right at it
-C = 0.5
+KNN = 5                     # example pages a page's distance is measured to
+DIST_MARGIN = 0.10          # the distance limit is made this much stricter: foreign forms sit right at it
+C = 0.5                     # lower keeps the classifier simpler, so it can't memorise the examples
 
 
 @dataclass
@@ -20,16 +20,16 @@ class Model:
     coef: np.ndarray
     intercept: np.ndarray
     classes: np.ndarray
-    reference: np.ndarray           # (M, D) unit-norm training fingerprints
+    reference: np.ndarray           # every example page's fingerprint, scaled to length 1
     prob_threshold: float = 1.0
     dist_threshold: float = 0.0
 
     @classmethod
-    def fit(cls, X: np.ndarray, y) -> "Model":
-        """Thresholds from cross-validation inside (X, y); the head on the rows whose truth is a LABEL."""
+    def fit(cls, X: np.ndarray, y, labels=LABELS) -> "Model":
+        """Thresholds from cross-validation inside (X, y); the head on the rows whose truth is one of labels."""
         y = np.asarray(y)
-        prob_t, dist_t = choose_thresholds(*cross_validate(X, y), y)
-        known = np.isin(y, LABELS)
+        prob_t, dist_t = choose_thresholds(*cross_validate(X, y, labels=labels), y, labels)
+        known = np.isin(y, labels)
         return cls._head(X[known], y[known], prob_t, dist_t)
 
     @classmethod
@@ -71,12 +71,12 @@ def unit(X: np.ndarray) -> np.ndarray:
     return X / (np.linalg.norm(X, axis=1, keepdims=True) + 1e-9)
 
 
-def cross_validate(X, y, folds=5, seed=0):
-    """Held-out (label, confidence, distance) for every row. Rows whose truth is not a LABEL (foreign forms)
+def cross_validate(X, y, folds=5, seed=0, labels=LABELS):
+    """Held-out (label, confidence, distance) for every row. Rows whose truth is not one of labels (foreign forms)
     are never trained on; every fold scores them and the scores are averaged."""
     from sklearn.model_selection import StratifiedKFold
     y = np.asarray(y)
-    known = np.isin(y, LABELS)
+    known = np.isin(y, labels)
     ki, oi = np.where(known)[0], np.where(~known)[0]
     label, conf, dist = np.full(len(y), REVIEW, object), np.zeros(len(y)), np.zeros(len(y))
     for tr, te in StratifiedKFold(folds, shuffle=True, random_state=seed).split(ki, y[ki]):
@@ -90,10 +90,10 @@ def cross_validate(X, y, folds=5, seed=0):
     return label, conf, dist
 
 
-def choose_thresholds(label, conf, dist, truth) -> tuple[float, float]:
+def choose_thresholds(label, conf, dist, truth, labels=LABELS) -> tuple[float, float]:
     """(prob_t, dist_t) with the largest coverage and no answered row wrong, distance then DIST_MARGIN tighter."""
     truth = np.asarray(truth)
-    bad = (np.asarray(label) != truth) | ~np.isin(truth, LABELS)
+    bad = (np.asarray(label) != truth) | ~np.isin(truth, labels)
     best = (0.0, 1.0, 0.0)
     for d in np.unique(dist):
         worst = conf[bad & (dist <= d)]
