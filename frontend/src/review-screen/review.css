@@ -627,11 +627,12 @@ thead {
 }
 .source-highlight {
   position: absolute;
-  border: 3px solid #ca7700;
-  background: #ffbf0024;
+  border: none;
+  border-radius: 8px;
+  background: rgba(0, 120, 255, 0.18);
   pointer-events: none;
   box-sizing: border-box;
-  box-shadow: 0 0 0 1px #fff9;
+  box-shadow: none;
 }
 .field {
   cursor: pointer;

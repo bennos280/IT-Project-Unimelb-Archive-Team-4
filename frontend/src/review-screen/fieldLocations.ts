@@ -3,6 +3,8 @@ import type { PageType, SourceRegion } from "./model";
 
 export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
   main: {
+    // Approximate handwritten dwelling number in the upper-left margin.
+    number_of_dwelling: { x: 0.02, y: 0.025, width: 0.18, height: 0.10 },
     address: {
       x: 0.0216,
       y: 0.1409,
@@ -63,13 +65,13 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.3105860809471241,
       height: 0.0420338297548985,
     },
-    weekly_value_fruit_and_vegetables_grown: {
+    weekly_value_of_fruit_and_vegetables_grown: {
       x: 0.4562825968188884,
       y: 0.1941206367176487,
       width: 0.3051988053934711,
       height: 0.038573874599133084,
     },
-    weekly_value_fruit_and_vegetables_sold: {
+    weekly_value_of_fruit_and_vegetables_sold: {
       x: 0.4561876401029581,
       y: 0.21929527263356358,
       width: 0.3064099215423435,
@@ -183,7 +185,7 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.18144842297820785,
       height: 0.04100549458256442,
     },
-    "rooms.sleepouts": {
+    "rooms.number_of_sleepouts": {
       x: 0.598527121626361,
       y: 0.67021711822353,
       width: 0.18509767711106506,
@@ -369,25 +371,25 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.08765769719746849,
       height: 0.040989519693531484,
     },
-    "residents.0.prewar_occupation": {
+    "residents.0.pre_war_occupation": {
       x: 0.1721864214518006,
       y: 0.8485473371028877,
       width: 0.08842893388624082,
       height: 0.032958533863647665,
     },
-    "residents.0.prewar_normal_weekly_earnings": {
+    "residents.0.pre_war_normal_weekly_earnings": {
       x: 0.172825205945416,
       y: 0.8757391308413546,
       width: 0.08731102988649586,
       height: 0.029333597763203767,
     },
-    "residents.0.prewar_place_of_work_if_outside_melbourne": {
+    "residents.0.pre_war_place_of_work_if_outside_melbourne": {
       x: 0.17370865648264758,
       y: 0.9002520136152811,
       width: 0.0876101215147699,
       height: 0.05196514512991868,
     },
-    "residents.0.prewar_occupational_preference": {
+    "residents.0.pre_war_occupational_preference": {
       x: 0.17226793528511533,
       y: 0.9427312891189965,
       width: 0.0899308682985541,
@@ -489,25 +491,25 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.08765769719746849,
       height: 0.040989519693531484,
     },
-    "residents.1.prewar_occupation": {
+    "residents.1.pre_war_occupation": {
       x: 0.2580975804651756,
       y: 0.8485473371028877,
       width: 0.08842893388624082,
       height: 0.032958533863647665,
     },
-    "residents.1.prewar_normal_weekly_earnings": {
+    "residents.1.pre_war_normal_weekly_earnings": {
       x: 0.2580975804651756,
       y: 0.8757391308413546,
       width: 0.08731102988649586,
       height: 0.029333597763203767,
     },
-    "residents.1.prewar_place_of_work_if_outside_melbourne": {
+    "residents.1.pre_war_place_of_work_if_outside_melbourne": {
       x: 0.2580975804651756,
       y: 0.9002520136152811,
       width: 0.0876101215147699,
       height: 0.05196514512991868,
     },
-    "residents.1.prewar_occupational_preference": {
+    "residents.1.pre_war_occupational_preference": {
       x: 0.2580975804651756,
       y: 0.9427312891189965,
       width: 0.0899308682985541,
@@ -609,25 +611,25 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.0879308682985541,
       height: 0.040989519693531484,
     },
-    "residents.2.prewar_occupation": {
+    "residents.2.pre_war_occupation": {
       x: 0.3421194742463614,
       y: 0.8385473371028876,
       width: 0.0879308682985541,
       height: 0.03397533863647665,
     },
-    "residents.2.prewar_normal_weekly_earnings": {
+    "residents.2.pre_war_normal_weekly_earnings": {
       x: 0.3421194742463614,
       y: 0.8757391308413546,
       width: 0.08731102988649586,
       height: 0.029333597763203767,
     },
-    "residents.2.prewar_place_of_work_if_outside_melbourne": {
+    "residents.2.pre_war_place_of_work_if_outside_melbourne": {
       x: 0.3421194742463614,
       y: 0.9002520136152811,
       width: 0.0876101215147699,
       height: 0.05196514512991868,
     },
-    "residents.2.prewar_occupational_preference": {
+    "residents.2.pre_war_occupational_preference": {
       x: 0.3421194742463614,
       y: 0.9427312891189965,
       width: 0.0899308682985541,
@@ -729,25 +731,25 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.08765769719746849,
       height: 0.040989519693531484,
     },
-    "residents.3.prewar_occupation": {
+    "residents.3.pre_war_occupation": {
       x: 0.428741439565432,
       y: 0.8424473371028877,
       width: 0.0872893388624082,
       height: 0.032958533863647665,
     },
-    "residents.3.prewar_normal_weekly_earnings": {
+    "residents.3.pre_war_normal_weekly_earnings": {
       x: 0.428741439565432,
       y: 0.8757391308413546,
       width: 0.08731102988649586,
       height: 0.029333597763203767,
     },
-    "residents.3.prewar_place_of_work_if_outside_melbourne": {
+    "residents.3.pre_war_place_of_work_if_outside_melbourne": {
       x: 0.426741439565432,
       y: 0.9002520136152811,
       width: 0.0876101215147699,
       height: 0.05196514512991868,
     },
-    "residents.3.prewar_occupational_preference": {
+    "residents.3.pre_war_occupational_preference": {
       x: 0.426741439565432,
       y: 0.9427312891189965,
       width: 0.0899308682985541,
@@ -849,25 +851,25 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.08765769719746849,
       height: 0.040989519693531484,
     },
-    "residents.4.prewar_occupation": {
+    "residents.4.pre_war_occupation": {
       x: 0.5186851002925282,
       y: 0.8485473371028877,
       width: 0.08842893388624082,
       height: 0.032958533863647665,
     },
-    "residents.4.prewar_normal_weekly_earnings": {
+    "residents.4.pre_war_normal_weekly_earnings": {
       x: 0.5193238847861437,
       y: 0.8757391308413546,
       width: 0.08731102988649586,
       height: 0.029333597763203767,
     },
-    "residents.4.prewar_place_of_work_if_outside_melbourne": {
+    "residents.4.pre_war_place_of_work_if_outside_melbourne": {
       x: 0.5202073353233752,
       y: 0.9002520136152811,
       width: 0.0876101215147699,
       height: 0.05196514512991868,
     },
-    "residents.4.prewar_occupational_preference": {
+    "residents.4.pre_war_occupational_preference": {
       x: 0.5187666141258429,
       y: 0.9427312891189965,
       width: 0.0899308682985541,
@@ -899,7 +901,7 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.2910033639710752,
       height: 0.06097610949473428,
     },
-    total_resident_members: {
+    total_number_resident_members: {
       x: 0.018879294360713055,
       y: 0.23502233331967382,
       width: 0.30010860064100864,
@@ -917,13 +919,13 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.29195030858474824,
       height: 0.059992623857722416,
     },
-    number_over_10_m: {
+    number_over_10_male: {
       x: 0.025355600879400312,
       y: 0.35224152768102285,
       width: 0.2885863375096019,
       height: 0.055546449207064696,
     },
-    number_over_10_f: {
+    number_over_10_female: {
       x: 0.03287155987603634,
       y: 0.3860386018112527,
       width: 0.28706327973935847,
@@ -935,31 +937,31 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.284023786189177,
       height: 0.057779781174445766,
     },
-    boarders: {
+    number_of_boarders: {
       x: 0.02948110083966837,
       y: 0.46473794205630453,
       width: 0.2747728657325246,
       height: 0.05077244601073644,
     },
-    participating_members: {
+    number_of_participating_members: {
       x: 0.029957884141657617,
       y: 0.5026431176494693,
       width: 0.2783288745265277,
       height: 0.05312871368274397,
     },
-    adult_m_breadwinners: {
+    number_of_adult_male_breadwinners: {
       x: 0.026898524620559954,
       y: 0.5315534975207966,
       width: 0.2907451063491643,
       height: 0.06336311109289838,
     },
-    adult_f_breadwinners: {
+    number_of_adult_female_breadwinners: {
       x: 0.02420999655656504,
       y: 0.5662418555095685,
       width: 0.2860037612904935,
       height: 0.06392656640576977,
     },
-    juvenile_breadwinners_under_21: {
+    number_of_juvenile_breadwinners_under_21: {
       x: 0.03116970836754695,
       y: 0.6186841781748146,
       width: 0.27970624851005216,
@@ -971,7 +973,7 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.2804810213757847,
       height: 0.048877187231078145,
     },
-    retired_and_indep_persons: {
+    retired_and_independent_persons: {
       x: 0.03299737769183906,
       y: 0.715895586608204,
       width: 0.28218287288427407,
@@ -1019,13 +1021,13 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.2950626440282891,
       height: 0.057400729418514124,
     },
-    main_source_heads_unearned_income: {
+    main_source_of_heads_unearned_income: {
       x: 0.3203586469949408,
       y: 0.26753882719337785,
       width: 0.29823457738457865,
       height: 0.06870056960209814,
     },
-    subsidiary_source_heads_income: {
+    subsidiary_source_of_heads_income: {
       x: 0.32362991020581144,
       y: 0.31186739335327623,
       width: 0.3058432442454905,
@@ -1073,7 +1075,7 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.3047307498741822,
       height: 0.05422489038233003,
     },
-    prewar_occupation: {
+    pre_war_occupation: {
       x: 0.3240934495271899,
       y: 0.623068884973159,
       width: 0.3002344184568114,
@@ -1175,7 +1177,7 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.3357477385903107,
       height: 0.05330447332295207,
     },
-    washhouse: {
+    washouse: {
       x: 0.6222853978491776,
       y: 0.41792985237470803,
       width: 0.33985523501443593,
@@ -1223,19 +1225,19 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       width: 0.3429421171827405,
       height: 0.06845886007867885,
     },
-    children_of_h_or_wife_living: {
+    children_of_head_or_wife_living: {
       x: 0.7377555260509099,
       y: 0.7782752120640904,
       width: 0.20982810968664745,
       height: 0.0450488925541942,
     },
-    children_of_h_or_wife_dead: {
+    children_of_head_or_wife_dead: {
       x: 0.7182438316160306,
       y: 0.8155898800864648,
       width: 0.24171175138399592,
       height: 0.06351469978076463,
     },
-    children_of_h_or_wife_total: {
+    children_of_head_or_wife_total: {
       x: 0.7401017799909941,
       y: 0.8653394626173011,
       width: 0.216056298506079,
@@ -1251,3 +1253,26 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
     },
   },
 };
+
+// Broader guide regions tolerate small differences in scan crop and alignment.
+export function getSourceRegion(type: PageType, fieldId: string): SourceRegion | undefined {
+  let region = fieldLocations[type]?.[fieldId];
+  if (type === "main" && /^other_children\.(died|living_elsewhere)\.\d+$/.test(fieldId)) {
+    region = {
+      x: 0.06,
+      y: fieldId.startsWith("other_children.died.") ? 0.378 : 0.408,
+      width: 0.71,
+      height: 0.035,
+    };
+  }
+  if (!region) return undefined;
+  const padding = 0.015;
+  const x = Math.max(0, region.x - padding);
+  const y = Math.max(0, region.y - padding);
+  return {
+    x,
+    y,
+    width: Math.min(1, region.x + region.width + padding) - x,
+    height: Math.min(1, region.y + region.height + padding) - y,
+  };
+}
