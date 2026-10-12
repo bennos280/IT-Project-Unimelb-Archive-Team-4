@@ -25,7 +25,8 @@ def run_folder(tmp_path):
         {"file": f"{stem}.png", "path": str(out / "pages" / f"{stem}.png"), "label": label,
          "transcript": f"transcribe\\{stem}.json", "survey": survey} for stem, label, survey in pages]
         + [{"file": "216412_00004.png", "path": str(out / "pages" / "216412_00004.png"), "label": "blank", "survey": "216412-3"},
-           {"file": "216412_00005.png", "path": str(out / "pages" / "216412_00005.png"), "label": "review", "survey": "216412-3"}]}
+           {"file": "216412_00005.png", "path": str(out / "pages" / "216412_00005.png"), "label": "review", "survey": "216412-3"}],
+        "transcripts": {f"{stem}.png": {"request": {"model": "opus"}} for stem, _, _ in pages}}  #the model .env asked for
     (out / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (out / "review.json").write_text(json.dumps([
         {"file": "216412_00005.png", "step": "identify", "reason": "unlike any known page type"},

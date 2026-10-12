@@ -50,9 +50,7 @@ def run_claude(image, prompt, template, model, effort):
         sys.exit(f"claude gave no JSON back (exit {out.returncode}):\n{(out.stderr or out.stdout)[:500]}")
     if reply.get("is_error") or "structured_output" not in reply:
         sys.exit(f"claude failed: {str(reply.get('result') or out.stderr)[:500]}")
-    #the model that wrote the reading (Claude Code also has a small model title the session)
-    usage = reply.get("modelUsage") or {}
-    return reply["structured_output"], max(usage, key=lambda m: usage[m].get("outputTokens", 0), default=None)
+    return reply["structured_output"]
 
 
 def run_codex(image, prompt, template, model, effort):
@@ -71,7 +69,7 @@ def run_codex(image, prompt, template, model, effort):
             sys.exit(f"codex failed (exit {out.returncode}):\n{(out.stderr or out.stdout)[-600:]}")
         raw = last.read_text(encoding="utf-8").strip()
     try:
-        return json.loads(raw[raw.find("{"):raw.rfind("}") + 1]), model
+        return json.loads(raw[raw.find("{"):raw.rfind("}") + 1])
     except ValueError:
         sys.exit(f"codex gave no JSON back:\n{raw[:500]}")
 
@@ -101,9 +99,9 @@ def transcribe(image, kind, provider=None, model=None, effort=None, texts=None):
 
     started = time.perf_counter()
     if provider == "codex":
-        answer, version = run_codex(image, prompt, template, model, effort)
+        answer = run_codex(image, prompt, template, model, effort)
     else:
-        answer, version = run_claude(image, prompt, template, model, effort)
+        answer = run_claude(image, prompt, template, model, effort)
     seconds = round(time.perf_counter() - started, 1)
 
     # Notes pages: a model sometimes returns the whole structure as a string inside "text".
@@ -116,7 +114,7 @@ def transcribe(image, kind, provider=None, model=None, effort=None, texts=None):
             pass
 
     answer["provider"] = provider
-    answer["model"] = version or model
+    answer["model"] = model
     answer["effort"] = effort
     answer["seconds"] = seconds
     return answer

@@ -103,7 +103,7 @@ Unit tests for `.env` configuration parsing and page-image discovery in `backend
 | `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images. |
 
 
-## `test_transcribe.py` — 35 tests
+## `test_transcribe.py` — 34 tests
 
 unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generation, CLI handling, Claude/Codex provider behaviour, response processing, and transcription metadata.
 
@@ -120,19 +120,18 @@ unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generat
 | `test_run_cli_turns_a_hang_into_a_readable_exit` | Converts a CLI timeout into a readable exit message instead of exposing a raw `TimeoutExpired` traceback. |
 | `test_run_cli_explains_a_missing_cli_instead_of_crashing` | Converts a missing Claude/Codex executable into a clear "CLI not found" message. |
 | `test_run_cli_passes_capture_and_timeout_settings_through` | Verifies subprocess output capture, timeout, replacement-character decoding, working directory, and command arguments are passed correctly. |
-| `test_run_claude_returns_the_structured_output_and_model_name` | Parses a successful Claude response and returns the structured answer and the model that wrote it, leaving out the small model Claude Code has title the session. |
+| `test_run_claude_returns_the_structured_output` | Parses a successful Claude response and returns the structured answer. |
 | `test_run_claude_builds_the_command_with_the_image_path_and_schema` | Builds the Claude command with the image path, selected model and effort, Read as the only tool, none of the user's MCP servers, `--safe-mode` (none of their CLAUDE.md, plugins, hooks, skills or memory), and JSON schema arguments. |
 | `test_run_claude_exits_when_the_reply_is_not_json` | Rejects non-JSON CLI output and exits with a useful message containing the raw response. |
 | `test_run_claude_exits_when_the_reply_is_an_error_or_incomplete` | Rejects both explicit Claude errors and valid JSON responses missing `structured_output`. |
-| `test_run_codex_reads_the_answer_from_the_output_file` | Reads and parses the JSON answer written by Codex to its `--output-last-message` file and returns the requested model name. |
+| `test_run_codex_reads_the_answer_from_the_output_file` | Reads and parses the JSON answer written by Codex to its `--output-last-message` file. |
 | `test_run_codex_extracts_json_surrounded_by_chatter` | Extracts valid JSON from Codex output even when explanatory text appears before or after the JSON object. |
 | `test_run_codex_runs_read_only_and_ephemeral` | Verifies Codex uses an ephemeral session, ignores user configuration, runs with a read-only sandbox, and receives the image path. |
 | `test_run_codex_exits_on_a_bad_exit_code_or_a_missing_answer_file` | Rejects either a non-zero Codex exit code or a missing output file instead of treating the result as a valid empty transcription. |
 | `test_run_codex_exits_when_the_answer_file_holds_no_json` | Rejects an output file containing prose without a JSON object and exits with a clear message. |
 | `test_transcribe_reads_with_the_provider_it_is_given` | 2 cases: `PROVIDER` picks the CLI (`claude` or `codex`) whatever the model is called, and the answer is stamped with it; an OpenAI `o3` goes to Codex though it isn't named gpt-*. |
 | `test_transcribe_refuses_an_unknown_provider` | A provider other than `claude` or `codex` stops with "PROVIDER must be claude or codex". |
-| `test_transcribe_stamps_every_answer_with_provenance` | Adds provider, actual model version, effort, and elapsed seconds to every transcription result. |
-| `test_transcribe_falls_back_to_the_requested_model_name` | Uses the requested model name when the provider does not report an actual model version. |
+| `test_transcribe_stamps_every_answer_with_provenance` | Adds provider, model and effort (as given, else from `.env`) and elapsed seconds to every transcription result. |
 | `test_transcribe_unwraps_a_notes_answer_returned_as_a_json_string` | Repairs notes responses where the complete transcription object has incorrectly been returned as a JSON string inside the `text` field. |
 | `test_transcribe_leaves_ordinary_text_untouched` | Leaves normal text and invalid JSON-looking text unchanged when the notes JSON-unwrapping repair does not apply. |
 | `test_transcribe_sends_the_template_inside_the_prompt` | Includes the page template alongside `prompt.txt` in the model prompt and passes the same template to the provider's model call. |
@@ -175,7 +174,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |---|---|
 |`test_each_page_records_the_prompt_and_template_versions_that_read_it`|A page whose manifest entry has the hashes of a stored prompt and template version is stored with those versions; a hash no version has, or a page that wasn't read, leaves them empty.|
 |`test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`|A page read as a page type the db has no record of is stored as `other`, not refused.|
-|`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field, and an older model label listing every model Claude Code used (`claude-haiku-4-5-20251001+claude-opus-5-5`) is stored as the reading model alone.|
+|`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field, and an older model label listing every model Claude Code used (`claude-haiku-4-5-20251001+claude-opus-5-5`) is stored as the one the run asked for in its manifest (`opus`).|
 
 ## `test_schema.py` — 5 tests
 The test db is built from `backend/db/models.py` with foreign keys checked, as in the real db.
