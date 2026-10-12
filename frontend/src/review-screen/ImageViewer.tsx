@@ -123,7 +123,7 @@ export default function ImageViewer({
       >
         {error ? (
           <div className="empty">
-            The source image could not be loaded. Check its URL in US8.
+            The source image could not be loaded. Check its URL in database.
           </div>
         ) : (
           <div className="scan-stage" ref={stage} style={{ width: `${zoom}%` }}>

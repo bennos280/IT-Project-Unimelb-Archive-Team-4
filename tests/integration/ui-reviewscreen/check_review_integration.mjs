@@ -91,7 +91,7 @@ const reviewer = fixture.reviewer;
 
 // Checks survey page count, page types, and non-child field IDs and
 // values through the real adapter and backend. Children are checked next.
-await test("Load demo survey through actual US7 getSurvey and parseSurvey", async () => {
+await test("Load database survey through frontend getSurvey and parseSurvey", async () => {
   const survey = await api.getSurvey(fixture.id);
   assert(survey.pages.length === fixture.pages.length, "Page count differs");
   for (const source of fixture.pages) {
@@ -119,9 +119,9 @@ await test("Load demo survey through actual US7 getSurvey and parseSurvey", asyn
     }
   }
 });
-// Checks that US8 returns the child IDs defined in the SQL seed.
+// Checks that the backend returns the child IDs defined in the database copy.
 // Child numbers are unique across the page, not within each residence group.
-await test("Child field IDs returned by US8 match SQL seed", async () => {
+await test("Child field IDs returned by backend match database copy", async () => {
   const survey = await api.getSurvey(fixture.id);
   const page = survey.pages.find((p) => p.id === main.id);
 
@@ -142,14 +142,14 @@ await test("Child field IDs returned by US8 match SQL seed", async () => {
   );
 });
 
-// Checks that the seeded backend reviewer is returned with the
+// Checks that the test backend reviewer is returned with the
 // frontend's expected id and name.
-await test("Reviewer list converts reviewer_id to id", async () => {
+await test("Reviewer list uses backend id", async () => {
   assert(
     (await api.getReviewers()).some(
       (r) => r.id === reviewer.id && r.name === reviewer.name,
     ),
-    "Seeded reviewer not returned correctly",
+    "Test reviewer not returned correctly",
   );
 });
 
@@ -171,7 +171,7 @@ await test("Create a reviewer through current frontend request", async () => {
 async function saveAndReload(page, field, value) {
   assert(
     page && field,
-    "SQL seed is missing the page or field required by this check",
+    "database copy is missing the page or field required by this check",
   );
   const before = await api.getReviews(fixture.id);
   const revision = before.revisions[page.id] ?? 0;
@@ -250,8 +250,8 @@ const childField = main.fields.find(
 await test("Save and reload child field including index zero", () =>
   saveAndReload(main, childField, "Integration child"));
 
-// Checks the first two residents using US8’s numbering, which starts at 1.
-for (const index of [1, 2]) {
+// Checks the first two residents using the backend’s numbering, which starts at 0.
+for (const index of [0, 1]) {
   const field = main.fields.find(
     (f) => f.id.startsWith(`residents.${index}.`) && f.value !== null,
   );

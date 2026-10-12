@@ -54,6 +54,18 @@ If a run stops partway through, run the same command again. Splitting and identi
 
 If you replace a PDF that was already completed, pass its path explicitly to rerun it, for example `uv run survey data/x.pdf`. The generated page folder is replaced after the new PDF renders successfully, so pages from an older, longer PDF are removed.
 
+## UI Setup
+
+Install **Node.js 24.x** (includes npm), alongside the Python setup above. Run these commands from the project folder:
+
+| Command | Description |
+| ------- | ----------- |
+| `npm --prefix frontend ci` | Install frontend dependencies before the first run |
+| `uv run uvicorn backend.api.main:app` | Start the backend on port 8000 |
+| `npm --prefix frontend run dev -- --port 5174 --strictPort` | Start the frontend in a second terminal |
+
+Keep both terminals running and open [the review UI](http://localhost:5174/). To select a survey, add `?survey=<survey_id>` to the URL using an ID from the database.
+
 ## Add a step
 
 A step is one function in `backend/pipeline/run.py` that reads and writes `run.pages`, plus one entry in `STEPS`:

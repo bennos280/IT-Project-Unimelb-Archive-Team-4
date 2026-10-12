@@ -14,6 +14,5 @@ See README in each folder for a more comprehensive list of tests.
 Run all US7 checks:
 
 ```bash
-cd tests
-npm run test:all
+npm --prefix tests run test:all
 ```

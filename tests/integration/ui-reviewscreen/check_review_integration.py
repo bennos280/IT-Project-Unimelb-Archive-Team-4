@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise actual US7 adapter against US8 using a disposable SQLite database."""
+"""Exercise the frontend review adapter against the backend API using a disposable SQLite database."""
 import argparse
 import json
 import os
@@ -7,23 +7,22 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import sqlite3
 
 # NOTE Since no aggreed apon name for survey_id, bundleNum_SurveyNum was used temporarily
-# Reads optional frontend, backend, fixture, and report locations.
+# Reads optional frontend, backend and database locations.
 parser = argparse.ArgumentParser(description=__doc__)
 root = Path(__file__).resolve().parents[3]
 parser.add_argument('--frontend', type=Path, default=root / 'frontend')
 parser.add_argument('--backend', type=Path, default=root / 'backend')
-parser.add_argument('--seed', type=Path, help='Standalone SQL seed containing schema and records')
-parser.add_argument('--survey', default='216417_1', help='Survey ID in the SQL seed')
-parser.add_argument('--report', type=Path, help='Optional output report path')
+parser.add_argument('--database', type=Path, help='Source SQLite database; tests modify a temporary copy only')
+parser.add_argument('--survey', default='1252581_1973-0002-00018-225', help='Survey with main, notes, coded, blank, child and resident fields' )
 args = parser.parse_args()
 args.frontend = args.frontend.resolve()
 args.backend = args.backend.resolve()
-seed = args.seed.resolve() if args.seed else args.backend / 'seed_demo.sql'
-report_path = args.report.resolve() if args.report else Path(__file__).resolve().parent / 'report.json'
-if not seed.exists() or not (args.backend / 'main.py').exists():
-    parser.error('SQL seed or backend/main.py was not found. Supply --seed and --backend.')
+source_database = args.database.resolve() if args.database else args.backend / 'db' / 'wilfprestsurvey.db'
+if not source_database.is_file() or not (args.backend / 'api' / 'main.py').is_file():
+    parser.error('Source database or backend/api/main.py was not found. Supply --database and --backend.')
 try:
     from sqlalchemy import create_engine, event
     from sqlalchemy.orm import sessionmaker
@@ -31,37 +30,46 @@ try:
 except ImportError:
     sys.exit('Install dependencies first: python -m pip install fastapi sqlalchemy httpx')
 
-# Expected values are read directly from the seeded database, never from
+# Expected values are read directly from the copied database, never from
 # survey.json or an API response. JSON below is only an inter-process format.
 script_dir = Path(__file__).resolve().parent
 results = []
 
 # Creates a disposable directory and SQLite database for this run.
-with tempfile.TemporaryDirectory(prefix='us7-us8-check-') as temporary:
+with tempfile.TemporaryDirectory(prefix='review-integration-') as temporary:
     # Relative backend DB paths can only point inside this disposable directory.
     old_cwd = Path.cwd()
     os.chdir(temporary)
     sys.dont_write_bytecode = True
     sys.path.insert(0, str(args.backend.parent))
-    from backend import database
+    from backend.db import database
+    target = Path(temporary) / 'test.sqlite'
+    source = sqlite3.connect(source_database.as_uri() + '?mode=ro', uri=True)
+    destination = sqlite3.connect(target)
+    try:
+        source.backup(destination)
+    finally:
+        destination.close()
+        source.close()
+    database.migrate(f'sqlite:///{target}')
     engine = create_engine(f'sqlite:///{Path(temporary) / "test.sqlite"}', connect_args={'check_same_thread': False})
     @event.listens_for(engine, 'connect')
     def foreign_keys(connection, _):
         connection.execute('PRAGMA foreign_keys=ON')
     database.engine = engine
     database.SessionLocal = sessionmaker(bind=engine)
-    from backend.main import app, get_db
+    from backend.api.main import app, get_db
 
-    # The standalone seed defines its own schema; do not run create.sql too.
+    # Inspect data and create any test reviewer in the migrated copy only.
     connection = engine.raw_connection()
     try:
-        connection.executescript(seed.read_text())
         cursor = connection.cursor()
         if not cursor.execute('SELECT 1 FROM surveys WHERE survey_id=?', (args.survey,)).fetchone():
-            raise RuntimeError(f'Survey {args.survey} is missing from {seed}')
+            raise RuntimeError(f'Survey {args.survey} is missing from {source_database}')
         person = cursor.execute('SELECT reviewer_id,name FROM reviewers ORDER BY reviewer_id LIMIT 1').fetchone()
         if person is None:
-            raise RuntimeError('SQL seed must contain a reviewer.')
+            cursor.execute('INSERT INTO reviewers(name) VALUES (?)', ('Integration test reviewer',))
+            person = (cursor.lastrowid, 'Integration test reviewer')
         fixture = {'id': args.survey, 'pages': [], 'reviewer': {'id': person[0], 'name': person[1]}}
         rows = cursor.execute('SELECT page_id,category,import_path FROM pages WHERE survey_id=? ORDER BY page_id', (args.survey,)).fetchall()
         for page_id, category, image_url in rows:
@@ -73,8 +81,8 @@ with tempfile.TemporaryDirectory(prefix='us7-us8-check-') as temporary:
             for number, residence, value in cursor.execute('SELECT child_no,residence,text_raw FROM other_children WHERE page_id=? ORDER BY child_no', (page_id,)).fetchall():
                 fields.append({'id': f'other_children.{residence}.{number}', 'value': value})
             for number, value in cursor.execute('SELECT annotation_no,text_raw FROM annotations WHERE page_id=? ORDER BY annotation_no', (page_id,)).fetchall():
-                fields.append({'id': f'annotation.{number}', 'value': value})
-            fixture['pages'].append({'id': page_id, 'type': category, 'imageUrl': image_url, 'fields': fields})
+                fields.append({'id': f'annotations.{number}', 'value': value})
+            fixture['pages'].append({'id': page_id, 'type': 'notes' if category == 'other' else category, 'imageUrl': f'http://testserver/pages/{page_id}/image', 'fields': fields})
         connection.commit()
     finally:
         connection.close()
@@ -86,7 +94,7 @@ with tempfile.TemporaryDirectory(prefix='us7-us8-check-') as temporary:
     fixture_path.write_text(json.dumps(fixture))
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
-            process = subprocess.Popen(['node',str(script_dir/'us7-8-check.mjs'),str(args.frontend),str(fixture_path)], stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
+            process = subprocess.Popen(['node',str(script_dir/'check_review_integration.mjs'),str(args.frontend),str(fixture_path)], stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
             try:
                 for line in process.stdout:
                     message = json.loads(line)
@@ -116,10 +124,8 @@ with tempfile.TemporaryDirectory(prefix='us7-us8-check-') as temporary:
 for result in results:
     print(f'{result["status"]}: {result["name"]}')
     if result.get('reason'): print('  '+result['reason'])
-# Writes the report and returns a nonzero exit code if any check failed,
+# Returns a nonzero exit code if any check failed,
 # allowing npm test:all to detect the integration failure.
 passed = sum(r['status']=='PASS' for r in results)
-print(f'\n{passed}/{len(results)} checks passed. Production database was not used.')
-report = {'results':results,'seed':str(seed),'scope':'Actual frontend api.ts/model.ts through FastAPI TestClient; no browser, Vite proxy, images or live deployment.'}
-report_path.write_text(json.dumps(report,indent=2))
+print(f'\n{passed}/{len(results)} checks passed. Source database was read-only; all saves used a temporary copy.')
 sys.exit(0 if passed == len(results) else 1)
