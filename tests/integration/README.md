@@ -3,11 +3,11 @@
 Multiple pieces of the pipeline wired together through their real entry points —
 `run.main`, `step_split`, `process_image`, the shipped identification model, the
 committed transcription results — instead of individual functions in isolation.
-Fixture data (`identify/`, `preprocess/`, `transcribe/`) lives alongside the test files
-in this folder, and `backend.pipeline.identify.identify` / `backend.pipeline.transcribe.score` read it
+Fixture data (`identify/`, `preprocess/`, `group/`, `archive/`) lives alongside the test files
+in this folder, and `backend.pipeline.identify.identify` reads its labelled pages
 from here directly.
 
-**72 test cases ~140s**
+**71 test cases ~140s**
 
 ```bash
 uv run pytest tests/integration
@@ -75,14 +75,6 @@ Page-kind classification over every labelled page in `identify/pages/`.
 |---|---|
 | `test_shipped_weights` | The committed model scored against pages it was trained on. Catches a corrupted or mismatched weights file. |
 | `test_held_out` | 5-fold: trains on 4/5 and scores the 1/5 never seen, so every page is judged by a model trained without it. This is the honest accuracy number. |
-
-## `test_transcribe.py` — 1 test
-
-No test doubles — real committed model outputs, real scorer.
-
-| Test | What it checks |
-|---|---|
-| `test_results_score` | Every committed model output under `results/transcribe/` is scored against its truth file in `transcribe/truth/`, asserting `0 <= hits <= total`. Also asserts truth files were found at all, so an empty glob fails loudly instead of vacuously passing. |
 
 ## `test_group.py` — 2 tests
 

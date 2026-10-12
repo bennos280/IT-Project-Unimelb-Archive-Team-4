@@ -342,14 +342,8 @@ def main(argv=None) -> int:
     if args[:1] == ["preprocess"]:
         from backend.pipeline.preprocess.preprocess import main as preprocess
         return preprocess(args[1:])
-    if args[:1] == ["transcribe"]:
-        from backend.pipeline.transcribe.transcribe import main as transcribe
-        return transcribe(args[1:])
-    if args[:1] == ["score"]:
-        from backend.pipeline.transcribe.score import main as score
-        return score(show_pages="--pages" in args)
 
-    parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train | transcribe <card> | score [--pages]")
+    parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train")
     parser.add_argument("inputs", nargs="*", type=Path, help="PDFs or folders of page images; default: unprocessed PDFs in DATA")
     parser.add_argument("--transcribe", action="store_true", help="also transcribe (paid)")
     parser.add_argument("--preprocess",action="store_true", help="Crop, straighten, and binarize images before transcription",)

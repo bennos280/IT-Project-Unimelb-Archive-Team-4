@@ -88,6 +88,24 @@ def test_a_save_is_refused_when_unknown_unchanged_invalid_or_based_on_an_old_ver
     assert client.get("/instructions/letters").status_code == 404
 
 
+def test_accuracy_is_kept_apart_for_each_prompt_and_template_version(client, seeded):
+    newest = instructions.newest(seeded)
+    later = models.InstructionVersion(kind="main", body=main_with(occupation=None), sha256="later")
+    for row in [later, models.Survey(survey_id="s", bundle_id="6789"),
+                *[models.Page(page_id=page, survey_id="s", category="main", import_path="x.png", bundle_id="6789", model="opus",
+                               effort="low", prompt_version_id=newest["prompt"].version_id, template_version_id=template)
+                  for page, template in (("p1", newest["main"].version_id), ("p2", None))],
+                *[models.Field(page_id=page, field_title="address", text_raw="5 Peel St.") for page in ("p1", "p2")]]:
+        seeded.add(row)
+        seeded.flush()  # in order: the db checks each row's links
+    seeded.query(models.Page).filter_by(page_id="p2").update({"template_version_id": later.version_id})
+    seeded.commit()
+    for page in ("p1", "p2"):
+        client.post("/reviews/s", json={"reviews": {page: {}}, "revisions": {page: 1}})
+    assert [(row["promptVersion"], row["templateVersion"], row["pages"]) for row in client.get("/accuracy").json()] == [
+        (newest["prompt"].version_id, newest["main"].version_id, 1), (newest["prompt"].version_id, later.version_id, 1)]
+
+
 def test_a_prompt_saved_with_only_its_line_endings_changed_is_no_change(client, seeded):
     prompt = client.get("/instructions").json()["prompt"]
     saved = client.post("/instructions/prompt", json={"body": prompt["body"].replace("\r\n", "\n"), "basedOn": prompt["id"],
