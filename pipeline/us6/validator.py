@@ -71,8 +71,35 @@ def _years(value: Any) -> Decimal | None:
     for fraction, decimal in [('½', '.5'), ('¼', '.25'), ('¾', '.75')]:
         text = text.replace(fraction, decimal)
     # An exact duration, not a range or an approximation.
-    match = re.fullmatch(r'(\d+(?:\.\d+)?)\s*(?:years?|yrs?\.?|y\.?)?', text)
+    match = re.fullmatch(r'(\d+(?:\.\d+)?)\s*(?:years?\.?|yrs?\.?|y\.?)?', text)
     return Decimal(match[1]) if match else None
+
+
+def _relationship(value: Any) -> tuple[str | None, str | None]:
+    """Recognize exact relationships with an optional explicit sex suffix.
+
+    A full match avoids treating 'head boarder' or 'headache' as a Head.
+    Annotated relationships also count in boarder and child comparisons.
+    """
+    text = _text(value)
+    if text is None:
+        return None, None
+    match = re.fullmatch(r'(head|h\.?|son|daughter|wife|husband|father|mother|brother|sister|boarder|lodger)\s*(?:\(\s*(m|f|male|female)\s*\))?', text)
+    if not match:
+        return text, None
+    relation, annotation = match.groups()
+    if relation in ('h', 'h.'):
+        relation = 'head'
+    gender = annotation[0].upper() if annotation else None
+    return relation, gender
+
+
+def _room_bounds(value: Any):
+    """Room codes 1-11 are exact; 0 is the codebook's over-11 bucket."""
+    count = _count(value)
+    if count is None or count > 11:
+        return None
+    return (Decimal(12), None) if count == 0 else (count, count)
 
 
 def _has_content(value: Any) -> bool:
@@ -169,17 +196,46 @@ def find_issues(survey: dict[str, Any]) -> list[dict[str, Any]]:
 
     for left, right in [
         ('NUMBER', 'NUMBER OF DWELLING'),
-        ('NO. OF SEPARATE BEDROOMS', 'NUMBER OF BEDROOMS'),
-        ('NO. OF LIVING ROOMS', 'NUMBER OF LIVING ROOMS'),
         ('ROOMS NOT IN DAILY USE', 'ROOMS NOT IN DAILY USE'),
-        ('NUMBER OF SLEEPOUTS', 'NUMBER OF SLEEPOUTS'),
     ]:
         compare(a.main(left), a.coded(right), right, _dwelling if left == 'NUMBER' else _count)
     for source,target in [('INDUSTRY OF HEAD CODE','INDUSTRY OF H.'),('OCCUPATION OF HEAD CODE','OCCUPATION OF H.')]:
         # Only explicit handwritten codes, never the occupation/industry prose.
         if a.main(source).value is not MISSING:
             compare(a.main(source),a.coded(target),source,_code)
-    compare(a.main('LENGTH OF RESIDENCE'), a.coded('LENGTH OF RESIDENCE'), 'Length of residence', _years)
+    for source, target in [('NO. OF SEPARATE BEDROOMS', 'NUMBER OF BEDROOMS'), ('NO. OF LIVING ROOMS', 'NUMBER OF LIVING ROOMS')]:
+        left, right = a.main(source), a.coded(target)
+        if _blank(left.value) and _blank(right.value):
+            continue
+        count, bounds = _count(left.value), _room_bounds(right.value)
+        if count is None or bounds is None:
+            issue('Page 1–3 comparison incomplete', f'{target}: a corresponding room count/code is missing or cannot be interpreted.', [left, right])
+        elif count < bounds[0] or (bounds[1] is not None and count > bounds[1]):
+            issue('Page 1–3 conflict', f'{target}: the Page 1 count contradicts the coded room count/bucket.', [left, right], 'Page 3 codes 1–11 are exact counts; code 0 means over 11.')
+
+    left, right = a.main('NUMBER OF SLEEPOUTS'), a.coded('NUMBER OF SLEEPOUTS')
+    if not (_blank(left.value) and _blank(right.value)):
+        count, code = _count(left.value), _count(right.value)
+        named_type = {'verandah': 1, 'balcony': 2, 'outhouse': 3}.get(_text(left.value))
+        if code is None or code not in (0, 1, 2, 3, 4) or (count is None and named_type is None):
+            issue('Page 1–3 comparison incomplete', 'Sleepouts: a corresponding count/type or coded category is missing or cannot be interpreted.', [left, right])
+        else:
+            allowed = {named_type} if named_type is not None else ({0} if count == 0 else {1, 2, 3} if count == 1 else {4})
+            if code not in allowed:
+                issue('Page 1–3 conflict', 'Sleepouts: the Page 1 count/type contradicts the Page 3 category.', [left, right], 'Count 0 -> code 0; count 1 -> code 1/2/3; count >=2 -> code 4. Explicit types restrict the matching code.')
+
+    residence, residence_code = a.main('LENGTH OF RESIDENCE'), a.coded('LENGTH OF RESIDENCE')
+    code = _count(residence_code.value)
+    if code == 99:
+        pass  # Valid unknown/vague code; not an exact 99-year duration.
+    elif code == 0 and not _blank(residence.value):
+        years = _years(residence.value)
+        if years is None:
+            issue('Page 1–3 comparison incomplete', 'Length of residence: the Page 1 duration cannot be compared with the under-one-year code.', [residence, residence_code])
+        elif years >= 1:
+            issue('Page 1–3 conflict', 'Length of residence: Page 3 says under one year but Page 1 records at least one year.', [residence, residence_code])
+    else:
+        compare(residence, residence_code, 'Length of residence', _years)
 
     table = a.main('PERSONNEL')
     if not _blank(table.value) and not isinstance(table.value, list):
@@ -213,7 +269,9 @@ def find_issues(survey: dict[str, Any]) -> list[dict[str, Any]]:
             return 'M'
         if explicit in ('f', 'female'):
             return 'F'
-        rel = _text(personal.get('RELATIONSHIP'))
+        rel, annotation = _relationship(personal.get('RELATIONSHIP'))
+        if annotation is not None:
+            return annotation
         if rel in ('son', 'husband', 'father', 'brother'):
             return 'M'
         if rel in ('daughter', 'wife', 'mother', 'sister'):
@@ -222,21 +280,37 @@ def find_issues(survey: dict[str, Any]) -> list[dict[str, Any]]:
 
     sex_refs = [a.main('PERSONNEL', i, 'PERSONAL', 'RELATIONSHIP') for i, _ in people]
     sex_refs += [a.main('PERSONNEL', i, 'PERSONAL', key) for i, p in people for key in ('SEX', 'GENDER') if key in p.get('PERSONAL', {})]
-    for gender in ('M', 'F'):
-        older = [(i, p, age) for (i, p), age in zip(people, ages) if age is not None and age > 10]
-        known = complete_ages and all(sex(p) is not None for _, p, _ in older)
-        value = sum(sex(p) == gender for _, p, _ in older) if known else None
-        derived_compare(a.coded('NUMBER OVER 10', gender), value, age_refs + sex_refs or [table], f'Residents over 10 ({gender})', 'Count ages >10 by explicit sex or unambiguous relationship; do not guess the sex of Head.')
+    older = [(i, p, age) for (i, p), age in zip(people, ages) if age is not None and age > 10]
+    gender_targets = [a.coded('NUMBER OVER 10', gender) for gender in ('M', 'F')]
+    if complete_ages:
+        unknown = sum(sex(p) is None for _, p, _ in older)
+        for gender, target in zip(('M', 'F'), gender_targets):
+            minimum = sum(sex(p) == gender for _, p, _ in older)
+            maximum = minimum + unknown
+            recorded = _count(target.value)
+            refs = age_refs + sex_refs or [table]
+            if recorded is None:
+                derived_compare(target, None, refs, f'Residents over 10 ({gender})', 'The coded count is missing or cannot be interpreted.')
+            elif recorded < minimum or recorded > maximum:
+                issue('Page 1–3 conflict', f'Residents over 10 ({gender}): the coded count is outside the range supported by Page 1.', refs + [target], f'{minimum} <= OVER 10 {gender} <= {maximum}; unknown sex is not guessed.')
+        counts = [_count(target.value) for target in gender_targets]
+        if all(count is not None for count in counts) and sum(counts) != len(older):
+            issue('Page 1–3 conflict', 'Residents over 10: coded male plus female counts differ from the Page 1 age-derived total.', age_refs + gender_targets, f'OVER 10 M + OVER 10 F = {len(older)}')
+    else:
+        for gender, target in zip(('M', 'F'), gender_targets):
+            derived_compare(target, None, age_refs + sex_refs or [table], f'Residents over 10 ({gender})', 'Missing source ages prevent establishing an age-group range.')
 
-    heads = [(i, p) for i, p in people if _text(p.get('PERSONAL', {}).get('RELATIONSHIP')) in ('head', 'h', 'h.')]
-    if len(heads) == 1:
+    heads = [(i, p) for i, p in people if _relationship(p.get('PERSONAL', {}).get('RELATIONSHIP'))[0] == 'head']
+    if _count(a.coded('AGE OF HEAD').value) == 0:
+        pass  # 00 means not known, not an age of zero.
+    elif len(heads) == 1:
         i, _ = heads[0]
         compare(a.main('PERSONNEL', i, 'PERSONAL', 'AGE'), a.coded('AGE OF HEAD'), 'Age of head')
     elif heads or not _blank(a.coded('AGE OF HEAD').value):
         issue('Page 1–3 comparison incomplete', 'Age of head: Page 1 does not identify exactly one Head; no person is selected by position.', [a.main('PERSONNEL', i, 'PERSONAL', 'RELATIONSHIP') for i, _ in people] + [a.coded('AGE OF HEAD')])
 
     # Derive boarder counts only with a complete relationship column.
-    rels = [_text(p.get('PERSONAL', {}).get('RELATIONSHIP')) for _, p in people]
+    rels = [_relationship(p.get('PERSONAL', {}).get('RELATIONSHIP'))[0] for _, p in people]
     boarders = sum(r in ('boarder', 'lodger') for r in rels) if isinstance(table.value, list) and all(r is not None for r in rels) else None
     derived_compare(a.coded('NO. OF BOARDERS'), boarders, sex_refs or [table], 'Boarders', 'Count explicit Boarder/Lodger relationships; no inference from income.')
 
@@ -251,10 +325,23 @@ def find_issues(survey: dict[str, Any]) -> list[dict[str, Any]]:
     # Age subgroups overlap: under-14 includes all under-5 and 5–10 residents.
     relation(bands[:2] + [a.coded('CHILDREN UNDER 14')], 'Children under 14 cannot be fewer than residents aged 10 or younger.', lambda v: v[0] + v[1] <= v[2], 'UNDER 5 + 5–10 <= CHILDREN UNDER 14')
     rooms = a.coded('TOTAL NUMBER OF ROOMS')
-    for name in ('NUMBER OF BEDROOMS', 'NUMBER OF LIVING ROOMS', 'ROOMS NOT IN DAILY USE', 'ROOMS SHARED'):
-        relation([a.coded(name), rooms], f'{name} cannot exceed total rooms.', lambda v: v[0] <= v[1], f'{name} <= TOTAL ROOMS')
-    # Separate bedrooms and living rooms are distinct rooms, even when a living room is also slept in.
-    relation([a.coded('NUMBER OF BEDROOMS'), a.coded('NUMBER OF LIVING ROOMS'), rooms], 'Separate bedrooms plus living rooms cannot exceed total rooms.', lambda v: v[0] + v[1] <= v[2], 'BEDROOMS + LIVING ROOMS <= TOTAL ROOMS')
+
+    def room_relation(refs, name, add=False):
+        if all(_blank(ref.value) for ref in refs):
+            return
+        ranges = [_room_bounds(ref.value) if ref.path[-1] != 'ROOMS NOT IN DAILY USE' else ((_count(ref.value), _count(ref.value)) if _count(ref.value) is not None else None) for ref in refs]
+        if any(bounds is None for bounds in ranges):
+            issue('Page 3 comparison incomplete', name + ': a required room count/code is missing or cannot be interpreted.', refs)
+            return
+        lower = sum(bounds[0] for bounds in ranges[:-1]) if add else ranges[0][0]
+        total_upper = ranges[-1][1]
+        if total_upper is not None and lower > total_upper:
+            issue('Page 3 internal conflict', name, refs, 'Use exact room counts or the over-11 lower bound; flag only a definite contradiction.')
+
+    for name in ('NUMBER OF BEDROOMS', 'NUMBER OF LIVING ROOMS', 'ROOMS NOT IN DAILY USE'):
+        room_relation([a.coded(name), rooms], f'{name} cannot exceed total rooms.')
+    room_relation([a.coded('NUMBER OF BEDROOMS'), a.coded('NUMBER OF LIVING ROOMS'), rooms], 'Separate bedrooms plus living rooms cannot exceed total rooms.', add=True)
+    # ROOMS SHARED is a facility-sharing category, never a room count.
 
     # Main-page relationships: rooms not in use are not an extra room category.
     for state, count in [('STATE IF USED AS BEDROOMS', 'NO. OF LIVING ROOMS')]:
@@ -265,7 +352,7 @@ def find_issues(survey: dict[str, Any]) -> list[dict[str, Any]]:
             issue('Page 1 comparison incomplete', 'Living rooms used as bedrooms: the living-room count is missing or cannot be interpreted.', [s, c])
 
     # Child relationship establishes a lower bound, not a full parentage count.
-    resident_children = [a.main('PERSONNEL', i, 'PERSONAL', 'RELATIONSHIP') for i, p in people if _text(p.get('PERSONAL', {}).get('RELATIONSHIP')) in ('son', 'daughter')]
+    resident_children = [a.main('PERSONNEL', i, 'PERSONAL', 'RELATIONSHIP') for i, p in people if _relationship(p.get('PERSONAL', {}).get('RELATIONSHIP'))[0] in ('son', 'daughter')]
     if resident_children:
         living = _count(child('LIVING').value)
         if living is None:
@@ -279,18 +366,30 @@ def find_issues(survey: dict[str, Any]) -> list[dict[str, Any]]:
         refs = resident_children + [a.coded('CHILDREN OTHER THAN THOSE AT HOME'), child('LIVING')]
         if elsewhere is not None and living is not None and len(resident_children) + elsewhere > living:
             issue('Page 1–3 conflict', 'Resident children plus children elsewhere exceed living children.', refs, f'{len(resident_children)} resident sons/daughters + elsewhere <= LIVING')
-    for main_name, target in [('DIED', child('DEAD')), ('LIVING ELSEWHERE', a.coded('CHILDREN OTHER THAN THOSE AT HOME'))]:
-        sources = [a.main('PERSONNEL', i, 'OTHER CHILDREN', main_name) for i, _ in heads]
-        if len(heads) == 1 and sources and not _blank(sources[0].value):
-            compare(sources[0], target, f"Head's other children: {main_name}")
-        # With multiple parents the source may be duplicated; do not sum it.
+    # Upstream other_children is survey-level raw text arrays. Do not apply
+    # obsolete per-Head numeric comparisons or guess counts from array lengths.
     # A probable-age interval can validate membership without equality.
     probable, house_age = a.main('PROBABLE AGE'), a.coded('AGE OF HOUSE')
     raw = _text(probable.value)
-    if raw and _blank(house_age.value):
+    special_house_age = _count(house_age.value)
+    if special_house_age in (0, 98):
+        pass  # No indication / old with no exact age, not numeric zero/98.
+    elif special_house_age == 99:
+        bound = re.fullmatch(r'(over|more than)\s+(\d+(?:\.\d+)?)\s*(?:years?\.?|yrs?\.?)?', raw or '')
+        if bound and Decimal(bound[2]) <= 99:
+            pass
+        elif _years(probable.value) is not None and _years(probable.value) <= 99:
+            issue('Page 1–3 conflict', 'Age of house: the exact Page 1 age contradicts the over-99 coded bucket.', [probable, house_age], 'Page 3 code 99 means age >99, not age exactly 99.')
+        elif raw:
+            interval = re.fullmatch(r'(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*(?:years?\.?|yrs?\.?)?', raw)
+            upper = re.fullmatch(r'(under|less than)\s+(\d+(?:\.\d+)?)\s*(?:years?\.?|yrs?\.?)?', raw)
+            if (interval and Decimal(interval[2]) <= 99) or (upper and Decimal(upper[2]) <= 99):
+                issue('Page 1–3 conflict', 'Age of house: the Page 1 age bound contradicts the over-99 coded bucket.', [probable, house_age])
+        # Otherwise the bucket overlaps the source or supplies no exact comparison.
+    elif raw and _blank(house_age.value):
         issue('Page 1–3 comparison incomplete', 'Age of house: the corresponding coded age is missing.', [probable, house_age])
     elif raw:
-        interval = re.fullmatch(r'(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*(?:years?|yrs?\.?)?', raw)
+        interval = re.fullmatch(r'(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*(?:years?\.?|yrs?\.?)?', raw)
         exact = _years(probable.value)
         if interval or exact is not None:
             low, high = (Decimal(interval[1]), Decimal(interval[2])) if interval else (exact, exact)
@@ -300,7 +399,7 @@ def find_issues(survey: dict[str, Any]) -> list[dict[str, Any]]:
             elif not low <= age <= high:
                 issue('Page 1–3 conflict', 'Coded age of house is outside the Page 1 probable-age interval.', [probable, house_age], f'{low} <= AGE OF HOUSE <= {high}')
         else:
-            bound = re.fullmatch(r'(over|under|more than|less than)\s+(\d+(?:\.\d+)?)\s*(?:years?|yrs?\.?)?', raw)
+            bound = re.fullmatch(r'(over|under|more than|less than)\s+(\d+(?:\.\d+)?)\s*(?:years?\.?|yrs?\.?)?', raw)
             age = _years(house_age.value)
             if bound and age is not None:
                 threshold = Decimal(bound[2])

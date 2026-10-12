@@ -1,3 +1,4 @@
+"""Resolve the supplied upstream main schema without losing source locations."""
 from __future__ import annotations
 from copy import deepcopy
 from typing import Any
@@ -32,14 +33,14 @@ CODED_FIELDS = {
     'TOTAL NO. RESIDENT MEMBERS': [('total_resident_members',)],
     'NUMBER UNDER 5': [('number_under_5',)],
     'NUMBER 5-10': [('number_5_to_10',)],
-    ('NUMBER OVER 10', 'M'): [('number_over_10_m',)],
-    ('NUMBER OVER 10', 'F'): [('number_over_10_f',)],
+    ('NUMBER OVER 10', 'M'): [('number_over_10_m',), ('number_over_10_male',)],
+    ('NUMBER OVER 10', 'F'): [('number_over_10_f',), ('number_over_10_female',)],
     'CHILDREN UNDER 14': [('children_under_14',)],
-    'NO. OF BOARDERS': [('boarders',)],
-    'NO. OF PARTICIPATING MEMBERS': [('participating_members',)],
-    'NO. OF ADULT M. BREADWINNERS': [('adult_m_breadwinners',)],
-    'NO. OF ADULT F. BREADWINNERS': [('adult_f_breadwinners',)],
-    'NO. OF JUVENILE BREADWINNERS (UNDER 21)': [('juvenile_breadwinners_under_21',)],
+    'NO. OF BOARDERS': [('boarders',), ('no_of_boarders',)],
+    'NO. OF PARTICIPATING MEMBERS': [('participating_members',), ('no_of_participating_members',)],
+    'NO. OF ADULT M. BREADWINNERS': [('adult_m_breadwinners',), ('no_of_adult_male_breadwinners',)],
+    'NO. OF ADULT F. BREADWINNERS': [('adult_f_breadwinners',), ('no_of_adult_female_breadwinners',)],
+    'NO. OF JUVENILE BREADWINNERS (UNDER 21)': [('juvenile_breadwinners_under_21',), ('no_of_juvenile_breadwinners',)],
     'PERSONS SHARING': [('persons_sharing',)],
     'RETIRED AND INDEP. PERSONS': [('retired_and_indep_persons',)],
     'HOME DUTIES': [('home_duties',)],
@@ -49,9 +50,9 @@ CODED_FIELDS = {
     'AGE OF HOUSE': [('age_of_house',)],
     'LENGTH OF RESIDENCE': [('length_of_residence',)],
     'CHILDREN OTHER THAN THOSE AT HOME': [('children_other_than_those_at_home',)],
-    ('CHILDREN OF H. OR WIFE', 'LIVING'): [('children_of_h_or_wife_living',)],
-    ('CHILDREN OF H. OR WIFE', 'DEAD'): [('children_of_h_or_wife_dead',)],
-    ('CHILDREN OF H. OR WIFE', 'TOTAL'): [('children_of_h_or_wife_total',)],
+    ('CHILDREN OF H. OR WIFE', 'LIVING'): [('children_of_h_or_wife_living',), ('children_of_head_or_wife_living',)],
+    ('CHILDREN OF H. OR WIFE', 'DEAD'): [('children_of_h_or_wife_dead',), ('children_of_head_or_wife_dead',)],
+    ('CHILDREN OF H. OR WIFE', 'TOTAL'): [('children_of_h_or_wife_total',), ('children_of_head_or_wife_total',)],
 }
 
 
@@ -122,7 +123,7 @@ def normalize_survey(survey: dict[str, Any]):
             if not isinstance(resident,dict):
                 raise ValueError('Every main.residents entry must be an object')
             person = {'PERSONAL': {}}
-            # Preserve whether a column is populated, including non-personal cells.
+            # Preserve whether the resident column contains personal source data.
             # The upstream prompt defines residents by personal cells, not income/occupation.
             person['SOURCE_CONTENT'] = {key: resident.get(key) for key in ('relationship', 'age', 'earning_status')}
             for stable, raw in PERSONAL_FIELDS.items():

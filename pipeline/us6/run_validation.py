@@ -5,9 +5,11 @@ import json
 from copy import deepcopy
 from pathlib import Path
 if __package__:
+    from .codebook import load_dictionary, find_codebook_issues
     from .input_adapter import normalize_survey
     from .validator import find_issues, validate_document as validate_legacy, _get, MISSING, _has_content
 else:
+    from codebook import load_dictionary, find_codebook_issues
     from input_adapter import normalize_survey
     from validator import find_issues, validate_document as validate_legacy, _get, MISSING, _has_content
 
@@ -27,21 +29,31 @@ def _label(path):
     return ('Page 1' if category=='main' else 'Page 3')+': '+suffix
 
 
-def validate_survey(main: dict, coded: dict, *, notes=None, survey_id=None) -> dict:
+def validate_survey(main: dict, coded: dict, *, notes=None, survey_id=None, codebook_path=None) -> dict:
     """Call immediately after both structured page JSONs for ONE survey exist.
 
     Returns original page data with flags/status and a compact relationship list.
-    No files, network calls, global state or input mutations.
+    Reads the optional local codebook; no network calls or input mutations.
     """
     document={'survey_id':survey_id,'main':main,'coded':coded}
     if notes is not None:
         document['notes']=notes
-    return validate_record(document)
+    return validate_record(document, codebook_path=codebook_path)
 
 
-def validate_record(document:dict) -> dict:
+def validate_record(document:dict, *, codebook_path=None) -> dict:
     normal,mapping,warnings=normalize_survey(document)
     issues=find_issues(normal)
+    for issue in issues:
+        for field in issue['fields']:
+            field['path'] = _source_path(field['path'], mapping)
+    dictionary, codebook_warnings = load_dictionary(codebook_path)
+    warnings.extend(codebook_warnings)
+    for field, special_codes in [('age_of_head', {0}), ('age_of_house', {0, 98}), ('length_of_residence', {99})]:
+        value = document['coded'].get(field)
+        if isinstance(value, (str, int)) and not isinstance(value, bool) and str(value).strip().isdigit() and int(str(value).strip()) in special_codes:
+            warnings.append(f'coded.{field} uses a valid unknown/no-exact-value code; exact cross-page age/duration comparison is not performed.')
+    issues.extend(find_codebook_issues(document, dictionary))
     output=deepcopy(document)
     compact=[]
     statuses=[]
@@ -50,7 +62,7 @@ def validate_record(document:dict) -> dict:
         item={k:v for k,v in issue.items() if k!='fields'}
         item['fields']={}
         for field in issue['fields']:
-            path=_source_path(field['path'],mapping)
+            path=field['path']
             raw=_get(document,path)
             if raw is MISSING:
                 value='<missing>'
@@ -74,19 +86,19 @@ def validate_record(document:dict) -> dict:
     return output
 
 
-def validate_document(document):
+def validate_document(document, *, codebook_path=None):
     if isinstance(document,list):
-        return [validate_document(s) for s in document]
+        return [validate_document(s, codebook_path=codebook_path) for s in document]
     if not isinstance(document,dict):
         raise ValueError('Input must be a survey object or a survey array')
     if 'surveys' in document:
         if not isinstance(document['surveys'],list):
             raise ValueError('surveys must be a list')
-        return {**deepcopy(document),'surveys':validate_document(document['surveys'])}
+        return {**deepcopy(document),'surveys':validate_document(document['surveys'], codebook_path=codebook_path)}
     if 'pages' in document:
         # Existing package format remains supported without schema conversion.
         return validate_legacy(document)[0]
-    return validate_record(document)
+    return validate_record(document, codebook_path=codebook_path)
 
 
 def flags_only(document):
@@ -104,6 +116,7 @@ def main():
     parser.add_argument('--coded',help='Structured Page 3 JSON')
     parser.add_argument('--notes',help='Optional notes JSON, preserved without value checks')
     parser.add_argument('--survey-id')
+    parser.add_argument('--codebook', type=Path, help='Override repository-root data_dict.json')
     parser.add_argument('--output-dir',type=Path)
     args=parser.parse_args()
     if args.input and any((args.main_file,args.coded,args.notes)):
@@ -126,7 +139,7 @@ def main():
             document={'survey_id':args.survey_id,'main':load(args.main_file),'coded':load(args.coded)}
             if args.notes:
                 document['notes']=load(args.notes)
-        result=validate_document(document)
+        result=validate_document(document, codebook_path=args.codebook)
         compact=flags_only(result)
         # Entire batch is checked before generating any outputs.
         texts=[json.dumps(v,ensure_ascii=False,indent=2)+'\n' for v in (result,compact)]
