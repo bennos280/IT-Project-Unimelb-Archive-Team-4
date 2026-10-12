@@ -349,3 +349,7 @@
 /* Model choices inside the transcription dialog. */
 .transcription-model { display: flex; flex-direction: column; gap: 8px; margin: 18px 0; }
 .transcription-model select, .transcription-model input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff; color: #222; }
+
+.model-table-dialog { width: min(1100px, 94vw); max-width: 94vw; }
+.model-table-scroll { overflow-x: auto; max-height: 60vh; }
+.model-table-scroll table { min-width: 800px; }

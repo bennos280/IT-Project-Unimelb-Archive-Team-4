@@ -7,25 +7,38 @@ import {
   type Bundle,
   type ProgressPage,
 } from "./progressData";
-import { backendRequest } from "./backend";
+import { backendRequest, type AvailableBundle } from "./backend";
 import "./progress.css";
+import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
+type DashboardBundle = Bundle & { source?: AvailableBundle };
 const pageSize = 9;
 
 // Shows the bundle overview or the selected bundle’s pages using saved US8 data.
 export default function ProgressDashboard() {
   // Null means data has not loaded yet; an empty array means no bundles were returned.
-  const [bundles, setBundles] = useState<Bundle[] | null>(null);
+  const [bundles, setBundles] = useState<DashboardBundle[] | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [starting, setStarting] = useState<string | null>(null);
+  const [jobError, setJobError] = useState("");
+  const [transcribing, setTranscribing] = useState<AvailableBundle | null>(null);
   useEffect(() => {
     let active = true;
     let latest = 0;
     async function refresh() {
       const request = ++latest;
       try {
-        const data = await backendRequest<Bundle[]>("/progress");
+        const [data, available] = await Promise.all([
+          backendRequest<Bundle[]>("/progress"),
+          backendRequest<AvailableBundle[]>("/bundles"),
+        ]);
         if (!active || request !== latest) return;
-        setBundles(data);
+        const merged = new Map<string, DashboardBundle>(data.map((b) => [b.id, b]));
+        for (const source of available) {
+          const existing = merged.get(source.bundle);
+          merged.set(source.bundle, { ...existing, id: source.bundle, name: source.name, pages: existing?.pages ?? [], source });
+        }
+        setBundles([...merged.values()].sort((a, b) => (a.name ?? a.id).localeCompare(b.name ?? b.id, undefined, { numeric: true })));
         setError("");
       } catch (cause) {
         if (!active || request !== latest) return;
@@ -35,11 +48,13 @@ export default function ProgressDashboard() {
       }
     }
     void refresh();
+    const timer = window.setInterval(refresh, 5000);
     window.addEventListener("focus", refresh);
     window.addEventListener("pageshow", refresh);
     // Remove the focus listener when this effect is replaced or the dashboard closes.
     return () => {
       active = false;
+      window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
       window.removeEventListener("pageshow", refresh);
     };
@@ -63,6 +78,9 @@ export default function ProgressDashboard() {
     (b) =>
       `${b.name ?? ""} ${b.id}`.includes(query.trim()) &&
       (status === "All" ||
+        (status === "Awaiting transcription" && b.source && !b.source.loaded) ||
+        (status === "Transcription in progress" && b.source && !b.source.loaded &&
+          b.source.job?.status === "running") ||
         (status === "Reviewed"
           ? b.pages.length > 0 && b.pages.every((p) => p.status === "Reviewed")
           : b.pages.some((p) => p.status === status))),
@@ -88,6 +106,19 @@ export default function ProgressDashboard() {
     setQuery("");
     setStatus("All");
     setPageNumber(0);
+  }
+  async function startTranscription(source: AvailableBundle, choice: ModelChoice) {
+    if (starting) return;
+    setStarting(source.pdf);
+    setJobError("");
+    try {
+      await backendRequest("/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pdf: source.pdf, ...choice }) });
+      setBundles((current) => current?.map((b) => b.source?.pdf === source.pdf ? { ...b, source: { ...b.source, job: { status: "waiting", step: null, donePages: 0, totalPages: 0, error: null } } } : b) ?? null);
+      setAttempt((n) => n + 1);
+      setTranscribing(null);
+    } catch (e) {
+      setJobError(e instanceof Error ? e.message : "Could not start transcription.");
+    } finally { setStarting(null); }
   }
   // Open US7 at the exact survey and page selected through Review or View.
   function reviewLink(p: ProgressPage) {
@@ -138,6 +169,7 @@ export default function ProgressDashboard() {
             <button onClick={() => setAttempt((a) => a + 1)}>Try again</button>
           </div>
         )}
+        {jobError && !transcribing && <p role="alert">{jobError}</p>}
         {!bundles && !error && <p role="status">Loading review progress…</p>}
         {bundles && (
           <>
@@ -180,6 +212,7 @@ export default function ProgressDashboard() {
               >
                 {[
                   "All",
+                  ...(!bundle ? ["Transcription in progress"] : []),
                   "Awaiting transcription",
                   "Ready to review",
                   "Reviewed",
@@ -284,7 +317,16 @@ export default function ProgressDashboard() {
                                 </div>
                               </td>
                               <td>
-                                {c.ready ? (
+                                {b.source && !b.source.loaded ? (
+                                  <div>
+                                    {b.source.job?.status === "waiting" || b.source.job?.status === "running" ? (
+                                      <><button disabled>Transcription in progress</button><small> {b.source.job.donePages}/{b.source.job.totalPages} pages</small></>
+                                    ) : (
+                                      <><span>{b.source.job?.status === "failed" ? "Transcription failed" : "Not transcribed"}</span>{" "}<button disabled={starting !== null} onClick={() => { setJobError(""); setTranscribing(b.source!); }}>{starting === b.source.pdf ? "Starting…" : b.source.job?.status === "failed" ? "Retry transcription" : "Transcribe"}</button></>
+                                    )}
+                                    {b.source.job?.error && <small>{b.source.job.error}</small>}
+                                  </div>
+                                ) : c.ready ? (
                                   <button onClick={() => openBundle(b.id)}>
                                     Review <ArrowRight size={16} />
                                   </button>
@@ -349,6 +391,8 @@ export default function ProgressDashboard() {
           </>
         )}
       </main>
+      {transcribing && <TranscriptionDialog source={transcribing} busy={starting !== null} error={jobError}
+        onClose={() => { setTranscribing(null); setJobError(""); }} onStart={(choice) => void startTranscription(transcribing, choice)} />}
     </div>
   );
 }

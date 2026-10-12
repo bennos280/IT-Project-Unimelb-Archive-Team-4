@@ -33,6 +33,7 @@ class Run:
     transcripts: dict[str, dict] = field(default_factory=dict)  # reusable completed page results
     preprocess_options: SimpleNamespace | None = None    # Preprocessing settings, if provided.
     texts: dict[str, str] | None = None                  # the prompt and templates to read with (a job: the db's); None: the files
+    transcription_config: dict[str, str] | None = None
     sorting_model: Path | None = None                    # retrained page sorting's weights; None: the shipped model
     progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
 
@@ -185,7 +186,7 @@ def step_transcribe(run: Run) -> None:
     """Each labelled page -> out/transcribe/<file>.json, READERS at a time, each saved as soon as it is read (paid: only
     with --transcribe). A failed page stops the step once the reads under way are saved."""
     from backend.pipeline.transcribe.transcribe import read_texts, transcribe
-    config = settings()
+    config = {**settings(), **(run.transcription_config or {})}
     texts = run.texts or read_texts()
     folder = run.out / "transcribe"
     folder.mkdir(parents=True, exist_ok=True)

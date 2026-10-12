@@ -400,6 +400,9 @@ def set_active_sorting_model(payload: ActiveModelRequest, db: Session = Depends(
 
 #--PIPELINE JOBS--# (queued here, done by backend/worker.py)
 class StartJobRequest(BaseModel):
+    model: str | None = None
+    provider: str | None = None
+    effort: str | None = None
     pdf: str #as listed by GET /bundles
 
 #every survey PDF under DATA in .env, and each of the archive's bundles whose PDF isn't there, as
@@ -448,7 +451,17 @@ def start_job(payload: StartJobRequest, db: Session = Depends(get_db)):
     if db.query(models.Job).filter(models.Job.pdf == payload.pdf, models.Job.status.in_(("waiting", "running"))).first():
         raise HTTPException(status_code=409, detail="This bundle is already waiting or running.")
 
-    job = models.Job(pdf=payload.pdf)
+    config = settings()
+    model = (payload.model if payload.model is not None else config["MODEL"]).strip()
+    provider = (payload.provider if payload.provider is not None else config["PROVIDER"]).strip()
+    effort = (payload.effort if payload.effort is not None else config["EFFORT"]).strip()
+    if not model or len(model) > 200 or any(c.isspace() for c in model) or model.startswith("-"):
+        raise HTTPException(status_code=400, detail="Enter a valid model name.")
+    if provider not in ("claude", "codex"):
+        raise HTTPException(status_code=400, detail="Choose Claude or Codex.")
+    if not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
+        raise HTTPException(status_code=400, detail="Enter a valid effort level.")
+    job = models.Job(pdf=payload.pdf, transcription_model=model, transcription_provider=provider, transcription_effort=effort)
     db.add(job)
     db.commit()
     return job_json(job)
@@ -466,3 +479,18 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 def get_progress(db: Session = Depends(get_db)):
     from backend.api.progress import review_progress
     return review_progress(db)
+
+
+@app.get("/transcription-models")
+def get_transcription_models(db: Session = Depends(get_db)):
+    config = settings()
+    columns = (models.Page.provider, models.Page.model, models.Page.effort,
+               models.Page.prompt_version_id, models.Page.template_version_id)
+    rows = (db.query(*columns, func.count(models.Page.page_id), func.avg(models.Page.runtime))
+            .filter(models.Page.model.is_not(None)).group_by(*columns)
+            .order_by(models.Page.provider, models.Page.model, models.Page.effort))
+    return {"configured": {"model": config["MODEL"], "effort": config["EFFORT"], "provider": config["PROVIDER"]},
+            "models": [{"provider": provider, "model": model, "effort": effort,
+                        "promptVersion": prompt, "templateVersion": template,
+                        "pages": pages, "averageSeconds": float(seconds) if seconds is not None else None}
+                       for provider, model, effort, prompt, template, pages, seconds in rows]}
