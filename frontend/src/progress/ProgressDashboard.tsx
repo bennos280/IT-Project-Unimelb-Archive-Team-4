@@ -1,14 +1,13 @@
 // Bundle overview and page list
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Search, Upload } from "lucide-react";
 import ExportDialog from "../export/ExportDialog";
 import {
   counts,
-  bundleFromSurvey,
   type Bundle,
   type ProgressPage,
 } from "./progressData";
-import { getSurvey, getReviews } from "../review-screen/api";
+import { backendRequest } from "./backend";
 import "./progress.css";
 const pageSize = 9;
 
@@ -24,14 +23,9 @@ export default function ProgressDashboard() {
     async function refresh() {
       const request = ++latest;
       try {
-        //todo Currently connects survey 216417_1 in bundle 216417; real bundle discovery is still to be added.
-        const [survey, saved] = await Promise.all([
-          getSurvey("216417_1"),
-          getReviews("216417_1"),
-        ]);
+        const data = await backendRequest<Bundle[]>("/progress");
         if (!active || request !== latest) return;
-        // A page counts as reviewed only when every field has a saved review.
-        setBundles([bundleFromSurvey(survey, saved.reviews, "216417")]);
+        setBundles(data);
         setError("");
       } catch (cause) {
         if (!active || request !== latest) return;
@@ -58,9 +52,6 @@ export default function ProgressDashboard() {
   const [status, setStatus] = useState("All");
   const [pageNumber, setPageNumber] = useState(0);
 
-  const dialog = useRef<HTMLDialogElement>(null);
-  const [transcriptionModel, setTranscriptionModel] = useState("sonnet");
-  const [customModel, setCustomModel] = useState("");
   const bundle = (bundles ?? []).find((b) => b.id === bundleId);
 
   // Summary cards cover the selected bundle or all loaded pages, regardless of filters.
@@ -70,7 +61,7 @@ export default function ProgressDashboard() {
   // Reviewed requires every page; other statuses match bundles with pending pages.
   const matchingBundles = (bundles ?? []).filter(
     (b) =>
-      b.id.includes(query.trim()) &&
+      `${b.name ?? ""} ${b.id}`.includes(query.trim()) &&
       (status === "All" ||
         (status === "Reviewed"
           ? b.pages.length > 0 && b.pages.every((p) => p.status === "Reviewed")
@@ -98,10 +89,6 @@ export default function ProgressDashboard() {
     setStatus("All");
     setPageNumber(0);
   }
-  // Show a placeholder until transcription is connected; this starts no backend job.
-  function openTranscription() {
-    dialog.current?.showModal();
-  }
   // Open US7 at the exact survey and page selected through Review or View.
   function reviewLink(p: ProgressPage) {
     return `/?survey=${encodeURIComponent(p.surveyId!)}&page=${encodeURIComponent(p.reviewPageId!)}`;
@@ -123,7 +110,7 @@ export default function ProgressDashboard() {
         <div className="progress-title">
           <div>
             <h2>
-              {bundle ? `Bundle Number · ${bundle.id}` : "All survey bundles"}
+              {bundle ? `Bundle Number · ${bundle.name ?? bundle.id}` : "All survey bundles"}
             </h2>
             <p>
               {bundle
@@ -133,7 +120,7 @@ export default function ProgressDashboard() {
           </div>
           {/* Reuse US12 export and open the import screen. */}
           <div className="progress-actions">
-            <ExportDialog surveyId="216417_1" hasDrafts={false} />
+            <ExportDialog key={bundleId ?? "all"} surveyId={bundle?.pages.find((p) => p.surveyId)?.surveyId ?? ""} hasDrafts={false} />
             <button
               type="button"
               onClick={() => {
@@ -202,9 +189,7 @@ export default function ProgressDashboard() {
                   </option>
                 ))}
               </select>
-              {bundle && (
-                <button onClick={openTranscription}>Transcribe bundle</button>
-              )}
+
             </div>
             {/* The same table shows bundle summaries or individual page details. */}
             <div className="progress-table-wrap">
@@ -245,9 +230,7 @@ export default function ProgressDashboard() {
                           </td>
                           <td>
                             {p.status === "Awaiting transcription" ? (
-                              <button onClick={openTranscription}>
-                                Transcribe
-                              </button>
+                              <span>Awaiting transcription</span>
                             ) : p.surveyId ? (
                               <a
                                 className="progress-link-button"
@@ -259,7 +242,7 @@ export default function ProgressDashboard() {
                             ) : (
                               <button
                                 disabled
-                                title="This illustrative page is not connected to a survey"
+                                title="This page has no survey assignment"
                               >
                                 Review
                               </button>
@@ -282,7 +265,7 @@ export default function ProgressDashboard() {
                                   className="progress-bundle"
                                   onClick={() => openBundle(b.id)}
                                 >
-                                  {b.id}
+                                  {b.name ?? b.id}
                                 </button>
                               </td>
                               <td>{c.total}</td>
@@ -310,9 +293,7 @@ export default function ProgressDashboard() {
                                     View <ArrowRight size={16} />
                                   </button>
                                 ) : (
-                                  <button onClick={openTranscription}>
-                                    Transcribe
-                                  </button>
+                                  <button onClick={() => openBundle(b.id)}>View</button>
                                 )}
                               </td>
                             </tr>
@@ -368,47 +349,6 @@ export default function ProgressDashboard() {
           </>
         )}
       </main>
-      <dialog
-        className="progress-dialog"
-        ref={dialog}
-        aria-labelledby="progress-dialog-title"
-      >
-        <h2 id="progress-dialog-title">Transcribe scans</h2>
-        <p>Choose the model to transcribe your scans.</p>
-        <label className="transcription-model">
-          Transcription model
-          <select
-            autoFocus
-            value={transcriptionModel}
-            onChange={(event) => setTranscriptionModel(event.target.value)}
-          >
-            <option value="sonnet">Claude Sonnet</option>
-            <option value="opus">Claude Opus</option>
-            <option value="haiku">Claude Haiku</option>
-            <option value="custom">Custom model</option>
-          </select>
-        </label>
-        {transcriptionModel === "custom" && (
-          <label className="transcription-model">
-            Model name
-            <input
-              value={customModel}
-              placeholder="Enter the configured model name"
-              onChange={(event) => setCustomModel(event.target.value)}
-            />
-          </label>
-        )}
-        {/* Pass the selected model to the job endpoint when US8 provides it. */}
-        <p id="transcription-availability">
-          Starting transcription is not available yet.
-        </p>
-        <div className="progress-dialog-actions">
-          <button onClick={() => dialog.current?.close()}>Cancel</button>
-          <button disabled aria-describedby="transcription-availability">
-            Start transcription
-          </button>
-        </div>
-      </dialog>
     </div>
   );
 }

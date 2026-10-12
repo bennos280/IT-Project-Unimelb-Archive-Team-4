@@ -460,3 +460,9 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
     if job is None:
         raise HTTPException(status_code=404, detail="No such job.")
     return job_json(job)
+
+
+@app.get("/progress")
+def get_progress(db: Session = Depends(get_db)):
+    from backend.api.progress import review_progress
+    return review_progress(db)

@@ -13,7 +13,7 @@ export type ProgressPage = {
   surveyId?: string;
   reviewPageId?: string;
 };
-export type Bundle = { id: string; pages: ProgressPage[] };
+export type Bundle = { id: string; name?: string; pages: ProgressPage[] };
 
 // A page is complete only when every field has a persisted review, including blanks.
 export function bundleFromSurvey(

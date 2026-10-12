@@ -38,6 +38,8 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
 
+    if (path === "/api/progress") return route.fulfill({ json: [{ id: "216417", pages: survey.pages.map((p, i) => ({ id: p.id, label: `Pg ${i + 1}`, category: p.type, status: "Ready to review", flagCount: p.flags.length, surveyId: survey.id, reviewPageId: p.id })) }] });
+    if (path === "/api/bundles") return route.fulfill({ json: [] });
     if (path === "/api/survey/216417_1") {
       return route.fulfill({ json: survey });
     }
@@ -131,6 +133,7 @@ test("Import opens its screen and Export opens its dialog", async ({
   ).toBeVisible();
 
   await page.goto("/");
+  await page.getByRole("button", { name: "216417", exact: true }).click();
   await page.getByRole("button", { name: "Export", exact: true }).click();
 
   await expect(
