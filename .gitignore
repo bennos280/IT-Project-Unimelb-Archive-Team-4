@@ -20,22 +20,13 @@ source-pre/
 node_modules/
 dist/
 
-# Local US7 demo databases and SQLite sidecar files
-backend/us7-demo*.sqlite
-backend/us7-demo*.sqlite-*
-
-# Frontend test output
-frontend/playwright-report/
-frontend/test-results/
-frontend/coverage/
-frontend/tests/integration/report.json
-
-
-# Shared US7 test outputs
-tests/playwright-report/
-tests/test-results/
-tests/coverage/
-tests/integration/ui-reviewscreen/report.json
 
 # US8 database
 backend/wilfprestsurvey.db
+# Database
+# SQLite's file for a write in progress
+*.db-journal
+# the running worker's lock file
+backend/worker.lock
+# copies of the db made before a migration changes it
+backend/db/wilfprestsurvey-backup-*.db

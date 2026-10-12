@@ -78,6 +78,8 @@ export function buildSurveyExport(survey: Survey, reviews: SavedReviews) {
 
 // Response from GET /export; the backend selects the latest saved values.
 export type SurveyExport = {
+  bundleId?: string;
+  unassignedPages?: Array<{ pageId: string; status: string }>;
   surveys: Array<{
     surveyId: string;
     status: "Reviewed" | "ToBeReviewed";

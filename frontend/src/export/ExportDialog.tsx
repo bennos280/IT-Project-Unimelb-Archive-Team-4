@@ -5,18 +5,21 @@ import { useRef, useState } from "react";
 
 import { CheckCircle2, Download, X, AlertTriangle } from "lucide-react";
 
-import { loadSurveyExport } from "./exportService";
+import {
+  loadSurveyExport,
+  loadBundleExport,
+  loadExportBundles,
+} from "./exportService";
 
 import "./export.css";
 
 // Defines the available export scope options shown in the dialog.
-type Scope = "all" | "bundle" | "survey";
+type Scope = "bundle" | "survey";
 
 /**
  * Displays the export button and modal dialog.
  *
- * Currently only single-survey JSON exports are supported because the
- * backend currently provides individual survey endpoints.
+ * Downloads a survey or loaded bundle from persisted backend data.
  */
 
 export default function ExportDialog({
@@ -36,6 +39,10 @@ export default function ExportDialog({
   const [requestedId, setRequestedId] = useState(surveyId);
 
   // Prevents repeated actions while an export is being prepared.
+  const [bundleId, setBundleId] = useState("");
+  const [bundles, setBundles] = useState<Array<{ id: string; name: string }>>(
+    [],
+  );
   const [busy, setBusy] = useState(false);
 
   // Stores any error message produced during the export.
@@ -58,18 +65,21 @@ export default function ExportDialog({
    * and downloads the result as a JSON file.
    */
   async function exportFile() {
-    if (busy || scope !== "survey" || !requestedId.trim()) return;
+    if (busy || !(scope === "survey" ? requestedId.trim() : bundleId)) return;
     setBusy(true);
     setFailure("");
     setResult(null);
 
     try {
-      const id = requestedId.trim();
+      const id = scope === "survey" ? requestedId.trim() : bundleId;
       // Always read saved values from US8; never export the session's drafts.
-      const payload = await loadSurveyExport(id);
-      const record = payload.surveys[0];
+      const payload = await (scope === "survey"
+        ? loadSurveyExport(id)
+        : loadBundleExport(id));
+      const pages = payload.surveys.flatMap((record) => record.pages);
+      const unassigned = payload.unassignedPages ?? [];
 
-      const filename = `survey-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}-export.json`;
+      const filename = `${scope}-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}-export.json`;
       const url = URL.createObjectURL(
         new Blob([JSON.stringify(payload, null, 2)], {
           type: "application/json",
@@ -88,8 +98,10 @@ export default function ExportDialog({
       // Store export details so the success message can be displayed.
       setResult({
         filename,
-        pages: record.pages.length,
-        pending: record.pages.filter((p) => p.status === "ToBeReviewed").length,
+        pages: pages.length + unassigned.length,
+        pending:
+          pages.filter((p) => p.status === "ToBeReviewed").length +
+          unassigned.length,
       });
     } catch (error) {
       // Display a useful error message if loading or exporting fails.
@@ -158,26 +170,7 @@ export default function ExportDialog({
             <fieldset disabled={busy} className="export-choices">
               <legend className="export-sr">Export scope</legend>
 
-              {/* Full archive export option. Not yet implemented. */}
-              <label className="export-option">
-                <input
-                  type="radio"
-                  name="scope"
-                  checked={scope === "all"}
-                  onChange={() => {
-                    setScope("all");
-                    setResult(null);
-                    setFailure("");
-                  }}
-                />
-
-                <span>
-                  <strong>Export all</strong>
-                  <small>Export every survey and incomplete record.</small>
-                </span>
-              </label>
-
-              {/* Bundle export option. Not yet implemented. */}
+              {/* Bundle export option. */}
               <label className="export-option">
                 <input
                   type="radio"
@@ -185,6 +178,9 @@ export default function ExportDialog({
                   checked={scope === "bundle"}
                   onChange={() => {
                     setScope("bundle");
+                    void loadExportBundles()
+                      .then(setBundles)
+                      .catch((e) => setFailure(e.message));
                     setResult(null);
                     setFailure("");
                   }}
@@ -196,14 +192,26 @@ export default function ExportDialog({
                 </span>
               </label>
 
-              {/* Bundle number will become available after database integration. */}
+              {/* Choose a loaded bundle from the database. */}
               {scope === "bundle" && (
                 <label className="export-input">
                   Bundle number
-                  <input
-                    disabled
-                    placeholder="Requires bundle export support"
-                  />
+                  <select
+                    value={bundleId}
+                    required
+                    onChange={(e) => {
+                      setBundleId(e.target.value);
+                      setResult(null);
+                      setFailure("");
+                    }}
+                  >
+                    <option value="">Choose a loaded bundle</option>
+                    {bundles.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} · {b.id}
+                      </option>
+                    ))}
+                  </select>
                 </label>
               )}
 
@@ -247,15 +255,8 @@ export default function ExportDialog({
               )}
             </fieldset>
 
-            {/* Explain why unsupported export scopes cannot yet be used. */}
-            {scope !== "survey" ? (
-              <p className="export-notice" role="status">
-                Export is not yet available for{" "}
-                {scope === "all" ? "the full archive" : "a bundle"}. Individual
-                survey export is available.
-              </p>
-            ) : (
-              /* Explain how single-survey export values are chosen. */
+            {/* Explain which saved values are exported. */}
+            {
               <div className="export-policy">
                 <span>JSON · Latest saved values</span>
 
@@ -273,7 +274,7 @@ export default function ExportDialog({
                   </p>
                 )}
               </div>
-            )}
+            }
 
             {/* Display an export failure to the user. */}
             {failure && (
@@ -306,10 +307,6 @@ export default function ExportDialog({
             )}
 
             {/* Notes that the current export behaviour is still subject to stakeholder confirmation. */}
-            <p className="export-footnote">
-              JSON and final values only are working defaults, pending Archives’
-              confirmation.
-            </p>
           </div>
 
           {/* Dialog actions. */}
@@ -321,7 +318,9 @@ export default function ExportDialog({
             <button
               className="export-submit"
               type="submit"
-              disabled={busy || scope !== "survey" || !requestedId.trim()}
+              disabled={
+                busy || !(scope === "survey" ? requestedId.trim() : bundleId)
+              }
             >
               {busy ? "Preparing…" : "Export JSON"}
             </button>

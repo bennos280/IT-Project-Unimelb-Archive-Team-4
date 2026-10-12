@@ -1,0 +1,533 @@
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from functools import cache
+import json
+from backend.db import database, instructions, loader, models
+from backend.db.loader import CODED_DICT, stored_path
+from backend import scans
+from backend.api.sections import groupings_main, groupings_coded
+from datetime import datetime, timezone
+from backend.common import ROOT, settings
+
+app = FastAPI()
+
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://localhost:3000"],
+                   allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+#takes the db's write lock now, so another save can't land between a check and the write it guards (freed at commit)
+def write_lock(db):
+    db.connection().exec_driver_sql("UPDATE pages SET page_id = page_id WHERE 0")
+
+#db session dependency generator
+def get_db():
+    db = database.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+#request bodies
+class CreateReviewerRequest(BaseModel):
+    id: int | None = None #None: the next free id
+    name: str
+
+class Review(BaseModel):
+    value: str | None #None: the reviewer cleared the field
+    reviewer: str | None = None #needed only for a new reviewer
+    reviewerId: int
+
+class SaveReviewsRequest(BaseModel):
+    reviews: dict[str, dict[str, Review]] #(pageid, (field_id, review)), one page per save
+    revisions: dict[str, int] #(pageid, its revision_no after this save: the one the edits were made on, plus 1)
+
+#each field's printed label, from data_dict.json
+@cache
+def printed_labels(category):
+    pages = json.loads(CODED_DICT.read_text(encoding="utf-8"))["pages"]
+    fields = pages.get({"main": "1", "coded": "3"}.get(category), {}).get("fields", {})
+    return {title: field["label_text"] for title, field in fields.items() if "label_text" in field}
+
+#shown on a page of unknown type (stored as other)
+OTHER_PAGE = ("The computer couldn't tell what this page is, so it wasn't read. It is in this survey because it comes "
+              "after the survey's main form in the scan: check it belongs here, and type anything worth keeping.")
+
+#a page's fields as the review screen shows them: id, label, group, value
+def page_fields(db, p):
+    fields_list = []
+    for f in db.query(models.Field).filter(models.Field.page_id == p.page_id):
+        #nested fields go under their parent, others by sections.py
+        parent, _, leaf = f.field_title.rpartition(".")
+        group = (parent.replace('_', ' ').capitalize() if parent
+                 else (groupings_coded if p.category == "coded" else groupings_main).get(leaf, "Miscellaneous"))
+        fields_list.append({"id": f.field_title, "label": leaf.replace('_', ' ').capitalize(),
+                            "labelText": printed_labels(p.category).get(f.field_title), "group": group, "value": f.text_raw,
+                            "decoded": f.decoded_value})
+
+    residents = db.query(models.ResidentField).filter(models.ResidentField.page_id == p.page_id)
+    for rf in residents.order_by(models.ResidentField.resident_no):
+        fields_list.append({"id": f"residents.{rf.resident_no}.{rf.resident_field_title}",
+                            "label": rf.resident_field_title.replace('_', ' ').capitalize(),
+                            "labelText": printed_labels("main").get("residents." + rf.resident_field_title),
+                            "group": f"Residents {rf.resident_no + 1}", "value": rf.text_raw})
+
+    children = db.query(models.OtherChild).filter(models.OtherChild.page_id == p.page_id)
+    for c in children.order_by(models.OtherChild.residence, models.OtherChild.child_no):
+        fields_list.append({"id": f"other_children.{c.residence}.{c.child_no}",
+                            "label": "Other children: " + c.residence.replace('_', ' '),
+                            "labelText": printed_labels("main").get("other_children." + c.residence),
+                            "group": "Other children", "value": c.text_raw})
+
+    annotations = db.query(models.Annotation).filter(models.Annotation.page_id == p.page_id)
+    for a in annotations.order_by(models.Annotation.annotation_no):
+        fields_list.append({"id": f"annotations.{a.annotation_no}", "label": "Annotation", "labelText": None,
+                            "group": "Annotations", "value": a.text_raw, "location": a.location})
+    return fields_list
+
+#what to check on a page: stored flags, unreadable ([?]) text, and an other page
+def page_flags(db, p, fields_list):
+    flags = [{"id": f"flag-{fl.flag_id}", "fieldId": fl.field_title, "kind": fl.kind, "reason": fl.reason}
+             for fl in db.query(models.Flag).filter(models.Flag.page_id == p.page_id).order_by(models.Flag.flag_id)]
+    flags += [{"id": f"unreadable-{f['id']}", "fieldId": f["id"], "kind": "uncertain",
+               "reason": "The model couldn't read part of this ([?]): compare it with the scan."}
+              for f in fields_list if "[?]" in (f["value"] or "")]
+    if p.category == loader.OTHER_CAT:
+        flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain", "reason": OTHER_PAGE})
+    return flags
+
+#a survey's pages in scan order, with fields, flags and scan URL; an other page shows as an empty notes page
+@app.get("/survey/{survey_id}")
+def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
+    if not db.get(models.Survey, survey_id):
+        raise HTTPException(status_code=404, detail="Survey not found")
+
+    pages_list = []
+    for p in db.query(models.Page).filter(models.Page.survey_id == survey_id).order_by(models.Page.page_id):
+        fields_list = page_fields(db, p)
+        pages_list.append({
+            "id": p.page_id,
+            "type": "notes" if p.category == loader.OTHER_CAT else p.category,
+            "imageUrl": str(request.url_for("page_image", page_id=p.page_id)),
+            "fields": fields_list,
+            "flags": page_flags(db, p, fields_list),
+        })
+    return {"id":survey_id, "title":"Wilfred Prest Survey", "pages":pages_list}
+
+#a page's scan: the one this computer's pipeline run made, else the archive's
+@app.get("/pages/{page_id}/image", name="page_image")
+def page_image(page_id: str, db: Session = Depends(get_db)):
+    page = db.get(models.Page, page_id)
+    scan = page and scans.page_scan(page.import_path, db.get(models.Bundle, page.bundle_id).source_pdf, page_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="No scan for this page.")
+    return FileResponse(scan)
+
+
+#returns list of {id, name}
+@app.get("/reviewers")
+def get_reviewers(db: Session = Depends(get_db)):
+    return [{"id": r.reviewer_id, "name": r.name} for r in db.query(models.Reviewer).order_by(models.Reviewer.reviewer_id)]
+
+#inserts reviewer into db; a name already there is that reviewer
+@app.post("/reviewers")
+def create_reviewer(payload: CreateReviewerRequest, db: Session = Depends(get_db)):
+    clean_name = payload.name.strip()
+    if not clean_name: #if empty
+        raise HTTPException(status_code=400, detail="Enter a reviewer name.")
+
+    write_lock(db)
+    existing = db.query(models.Reviewer).filter(models.Reviewer.name == clean_name).first()
+    if existing:
+        return {"id": existing.reviewer_id, "name": existing.name}
+
+    id = payload.id if payload.id is not None else (db.query(func.max(models.Reviewer.reviewer_id)).scalar() or 0) + 1
+    if db.get(models.Reviewer, id):
+        raise HTTPException(status_code=400, detail="Reviewer id already exists.")
+
+    db.add(models.Reviewer(reviewer_id=id, name=clean_name))
+    db.commit()
+    return {"id": id, "name": clean_name}
+
+#the review screen's id for an edit, and the value the model read
+def edited_field(db, e):
+    if e.field_title is not None:
+        return e.field_title, db.query(models.Field.text_raw).filter_by(
+            page_id=e.page_id, field_title=e.field_title).scalar()
+    if e.resident_no is not None:
+        return f"residents.{e.resident_no}.{e.resident_field_title}", db.query(models.ResidentField.text_raw).filter_by(
+            page_id=e.page_id, resident_no=e.resident_no, resident_field_title=e.resident_field_title).scalar()
+    if e.child_no is not None:
+        return f"other_children.{e.child_residence}.{e.child_no}", db.query(models.OtherChild.text_raw).filter_by(
+            page_id=e.page_id, residence=e.child_residence, child_no=e.child_no).scalar()
+    return f"annotations.{e.annotation_no}", db.query(models.Annotation.text_raw).filter_by(
+        page_id=e.page_id, annotation_no=e.annotation_no).scalar()
+
+#the edit columns for a review screen id
+def edit_target(field_id):
+    match field_id.split("."):
+        case ["residents", no, title] if no.isascii() and no.isdigit():
+            return {"resident_no": int(no), "resident_field_title": title}
+        case ["other_children", residence, no] if no.isascii() and no.isdigit():
+            return {"child_residence": residence, "child_no": int(no)}
+        case ["annotations", no] if no.isascii() and no.isdigit():
+            return {"annotation_no": int(no)}
+    return {"field_title": field_id}
+
+#each page's revision number and the latest edit of each field (a coded field's with its meaning)
+@app.get("/reviews/{survey_id}")
+def get_reviews(survey_id: str, db: Session = Depends(get_db)):
+    pages = db.query(models.Page).filter(models.Page.survey_id == survey_id).order_by(models.Page.page_id).all()
+    reviews_dict = {p.page_id: {} for p in pages} #page_id, (field id, review)
+    coded = {p.page_id for p in pages if p.category == "coded"}
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    #oldest first, so a later edit of a field replaces an earlier one
+    for e in db.query(models.Edit).filter(models.Edit.page_id.in_(reviews_dict)).order_by(models.Edit.edit_id):
+        field_id, original = edited_field(db, e)
+        reviews_dict[e.page_id][field_id] = {
+            "value": e.edit_text,
+            "decoded": loader.decode(field_id, e.edit_text) if e.page_id in coded else None,
+            "original": original,
+            "reviewer": names.get(e.reviewer_id),
+            "reviewerId": e.reviewer_id,
+            "savedAt": e.time.replace(tzinfo=timezone.utc).isoformat() if e.time else "",
+        }
+    return {"reviews": reviews_dict, "revisions": {p.page_id: p.revision_no for p in pages}}
+
+#saves edits to one page, all or nothing, only if the page is still at the revision they were made on
+@app.post("/reviews/{survey_id}")
+def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depends(get_db)):
+    if len(payload.reviews) != 1:
+        raise HTTPException(status_code=400, detail="Save one page at a time.")
+    [(page_id, reviews)] = payload.reviews.items()
+    if not db.query(models.Page).filter(models.Page.page_id == page_id, models.Page.survey_id == survey_id).first():
+        raise HTTPException(status_code=404, detail=f"Page {page_id} is not in this survey.")
+    if page_id not in payload.revisions:
+        raise HTTPException(status_code=400, detail="Page not in revisions.")
+    revision = payload.revisions[page_id]
+
+    timestamp = datetime.now(timezone.utc)
+    try:
+        #only the first of two saves on the same revision counts
+        if not db.query(models.Page).filter(models.Page.page_id == page_id, models.Page.revision_no == revision - 1).update(
+                {"revision_no": revision, "checked_revision": revision}):
+            raise HTTPException(status_code=409, detail="Revision number is outdated.")
+        for field_id, review in reviews.items():
+            if not db.get(models.Reviewer, review.reviewerId):
+                if review.reviewer is None:
+                    raise HTTPException(status_code=400, detail=f"Unknown reviewer {review.reviewerId}.")
+                db.add(models.Reviewer(reviewer_id=review.reviewerId, name=review.reviewer))
+                db.flush() #the reviewer must exist before their edits
+            db.add(models.Edit(page_id=page_id, edit_text=review.value, reviewer_id=review.reviewerId, time=timestamp,
+                               **edit_target(field_id)))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="An edit is on a field that isn't on its page.")
+    except HTTPException:
+        db.rollback()
+        raise
+    return {"revision": revision, "savedAt": timestamp.isoformat()}
+
+
+#--TRANSCRIPTION PROMPT AND TEMPLATES--# (backend/db/instructions.py: saved as versions; jobs use the newest of each)
+class InstructionRequest(BaseModel):
+    body: str
+    basedOn: int | None #the version the edit started from (None: a page type's first template); refused if a newer one was saved since
+    reviewerId: int
+    note: str | None = None
+
+def version_json(v, names):
+    return {"id": v.version_id, "kind": v.kind, "body": v.body, "reviewerId": v.reviewer_id, "reviewer": names.get(v.reviewer_id),
+            "note": v.note, "createdAt": v.created_at.replace(tzinfo=timezone.utc).isoformat() if v.created_at else ""}
+
+#the newest prompt, and the newest template of each page type
+@app.get("/instructions")
+def get_instructions(db: Session = Depends(get_db)):
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    return {kind: version_json(v, names) for kind, v in instructions.newest(db).items()}
+
+#every version of the prompt or of one template, newest first
+@app.get("/instructions/{kind}")
+def get_instruction_versions(kind: str, db: Session = Depends(get_db)):
+    versions = (db.query(models.InstructionVersion).filter(models.InstructionVersion.kind == kind)
+                .order_by(models.InstructionVersion.version_id.desc()).all())
+    if not versions:
+        raise HTTPException(status_code=404, detail=f"No prompt or template called {kind}.")
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    return [version_json(v, names) for v in versions]
+
+#saves a new version of the prompt or of a page type's template (other has none), used from the next job on; checked first
+@app.post("/instructions/{kind}", status_code=201)
+def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depends(get_db)):
+    write_lock(db)
+    current = instructions.newest(db)
+    if kind != instructions.PROMPT and (kind == loader.OTHER_CAT or not db.get(models.PageType, kind)):
+        raise HTTPException(status_code=404, detail=f"No prompt or page type called {kind}.")
+    reviewer = db.get(models.Reviewer, payload.reviewerId)
+    if reviewer is None:
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    if payload.basedOn != (current[kind].version_id if kind in current else None):
+        raise HTTPException(status_code=409, detail="Someone saved a newer version: reload it and make your change again.")
+    if kind in current and payload.body.replace("\r\n", "\n") == current[kind].body.replace("\r\n", "\n"):
+        raise HTTPException(status_code=400, detail="Nothing changed.")
+    if found := instructions.problems(kind, payload.body, {k: v.body for k, v in current.items()}):
+        raise HTTPException(status_code=400, detail=found)
+    version = models.InstructionVersion(kind=kind, body=payload.body, sha256=instructions.sha256(payload.body),
+                                        reviewer_id=reviewer.reviewer_id, note=payload.note)
+    db.add(version)
+    db.commit()
+    return version_json(version, {reviewer.reviewer_id: reviewer.name})
+
+
+#--PAGE TYPES--# (the four built in, and any added here; a page type's pages are read with its template)
+class PageTypeRequest(BaseModel):
+    name: str
+    reviewerId: int
+
+class PageTypeChange(BaseModel):
+    pageType: str
+    reviewerId: int
+
+RESERVED = {instructions.PROMPT, "blank", "review"} #the prompt's kind, and what page sorting answers for no page type
+
+#the page types, each with its newest template's version (None: it has none, so its pages aren't read)
+@app.get("/page-types")
+def get_page_types(db: Session = Depends(get_db)):
+    templates = instructions.newest(db)
+    return [{"name": t.name, "builtIn": t.built_in, "templateVersion": templates[t.name].version_id if t.name in templates else None}
+            for t in db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)]
+
+#adds a page type; POST /instructions/{name} gives it a template, and only then can pages be read as it
+@app.post("/page-types", status_code=201)
+def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
+    name = payload.name.strip()
+    write_lock(db)
+    if not instructions.KEY.fullmatch(name) or name in RESERVED:
+        raise HTTPException(status_code=400, detail="A page type's name is lower-case letters, digits and _, starting with a letter.")
+    if db.get(models.PageType, name):
+        raise HTTPException(status_code=409, detail=f"There is already a page type called {name}.")
+    if not db.get(models.Reviewer, payload.reviewerId):
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    db.add(models.PageType(name=name, reviewer_id=payload.reviewerId))
+    db.commit()
+    return {"name": name, "builtIn": False, "templateVersion": None}
+
+#reads a page again as another page type, replacing what was read off it: queued for the worker, or for other done now (an
+#empty page to type into). A page with saved reviews keeps its type, as reading it again would lose them.
+@app.put("/pages/{page_id}/type")
+def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depends(get_db)):
+    write_lock(db)
+    page = db.get(models.Page, page_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    if not db.get(models.PageType, payload.pageType):
+        raise HTTPException(status_code=400, detail=f"No page type called {payload.pageType}.")
+    if not db.get(models.Reviewer, payload.reviewerId):
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    if payload.pageType == page.category:
+        raise HTTPException(status_code=400, detail="The page is already that type.")
+    if db.query(models.Edit).filter(models.Edit.page_id == page_id).first():
+        raise HTTPException(status_code=409, detail="This page has saved reviews, which reading it again would lose.")
+    if db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="This page is already waiting to be read again.")
+    if payload.pageType == loader.OTHER_CAT:
+        loader.clear_content(page_id, db.connection())
+        loader.insert_content(page_id, None, loader.OTHER_CAT, db.connection())
+        page.category, page.revision_no = loader.OTHER_CAT, (page.revision_no or 0) + 1
+        page.provider = page.model = page.effort = page.runtime = page.prompt_version_id = page.template_version_id = None
+        db.commit()
+        return {"pageType": page.category, "job": None}
+    if payload.pageType not in instructions.newest(db):
+        raise HTTPException(status_code=400, detail=f"Give {payload.pageType} a template first.")
+    job = models.Job(kind="page", page_id=page_id, page_type=payload.pageType, reviewer_id=payload.reviewerId)
+    db.add(job)
+    db.commit()
+    return {"pageType": page.category, "job": job_json(job)}
+
+
+#--PAGE SORTING--# (retrained with the pages reviewers settled; new bundles are sorted by the active model, else the shipped one)
+class TrainRequest(BaseModel):
+    reviewerId: int
+
+class ActiveModelRequest(BaseModel):
+    modelId: int | None #None: back to the shipped model
+    reviewerId: int
+
+def sorting_model_json(m, names):
+    return {"id": m.model_id, "pageTypes": m.page_types.split(","), "pages": m.pages, "answered": m.answered, "wrong": m.wrong,
+            "passed": m.passed, "active": m.active, "note": m.note, "reviewer": names.get(m.reviewer_id),
+            "createdAt": m.created_at.replace(tzinfo=timezone.utc).isoformat() if m.created_at else ""}
+
+#every retraining, newest first, with its check: pages each sorted by a model that never saw them, answered, wrong
+@app.get("/sorting-models")
+def get_sorting_models(db: Session = Depends(get_db)):
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    return [sorting_model_json(m, names) for m in db.query(models.SortingModel).order_by(models.SortingModel.model_id.desc())]
+
+#queues a retraining for the worker; a model that passes its check becomes the active one
+@app.post("/sorting-models", status_code=202)
+def train_sorting_model(payload: TrainRequest, db: Session = Depends(get_db)):
+    if not db.get(models.Reviewer, payload.reviewerId):
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    write_lock(db)
+    if db.query(models.Job).filter(models.Job.kind == "train", models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="Page sorting is already waiting to be retrained.")
+    job = models.Job(kind="train", reviewer_id=payload.reviewerId)
+    db.add(job)
+    db.commit()
+    return job_json(job)
+
+#makes a model that passed its check the one new bundles use, or (None) goes back to the shipped model
+@app.put("/sorting-models/active")
+def set_active_sorting_model(payload: ActiveModelRequest, db: Session = Depends(get_db)):
+    if not db.get(models.Reviewer, payload.reviewerId):
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    chosen = payload.modelId is not None and db.get(models.SortingModel, payload.modelId)
+    if payload.modelId is not None and not chosen:
+        raise HTTPException(status_code=404, detail="No such model.")
+    if chosen and not chosen.passed:
+        raise HTTPException(status_code=400, detail="That model failed its check, so it wasn't kept.")
+    db.query(models.SortingModel).update({"active": False})
+    if chosen:
+        chosen.active = True
+    db.commit()
+    return {"active": payload.modelId}
+
+
+#--PIPELINE JOBS--# (queued here, done by backend/worker.py)
+class StartJobRequest(BaseModel):
+    pdf: str #as listed by GET /bundles
+
+#every survey PDF under DATA in .env, and each of the archive's bundles whose PDF isn't there, as
+#DATA/<bundle number>/<its PDF> (running it downloads the PDF)
+def pdfs():
+    data = ROOT / settings()["DATA"]
+    here = list(data.rglob("*.pdf"))
+    names = {p.name for p in here}
+    return sorted(here + [p for p in (data / pdf for pdf in scans.ARCHIVE_PDFS) if p.name not in names])
+
+def job_json(job):
+    return {"id": job.job_id, "kind": job.kind, "pdf": job.pdf, "pageId": job.page_id, "pageType": job.page_type,
+            "status": job.status, "step": job.step,
+            "donePages": job.done_pages, "totalPages": job.total_pages, "error": job.error,
+            "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
+
+#every runnable PDF, with its loaded survey ids and latest job; name is the bundle number (the PDF's folder)
+@app.get("/bundles")
+def get_bundles(db: Session = Depends(get_db)):
+    loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id)}
+    surveys = {}
+    for survey_id, bundle_id in (db.query(models.Page.survey_id, models.Page.bundle_id)
+                                 .filter(models.Page.survey_id.is_not(None))
+                                 .group_by(models.Page.survey_id, models.Page.bundle_id)
+                                 .order_by(func.min(models.Page.page_id))):
+        surveys.setdefault(bundle_id, []).append(survey_id)
+    latest = {job.pdf: job for job in db.query(models.Job).order_by(models.Job.job_id)}
+    data = ROOT / settings()["DATA"]
+    bundles = []
+    for p in pdfs():
+        job = latest.get(stored_path(p))
+        bundles.append({"pdf": stored_path(p), "bundle": p.stem, "name": p.stem if p.parent == data else p.parent.name,
+                        "loaded": p.stem in loaded, "surveys": surveys.get(p.stem, []), "job": job_json(job) if job else None})
+    return bundles
+
+#queues a pipeline run of one PDF; the worker picks it up
+@app.post("/jobs", status_code=202)
+def start_job(payload: StartJobRequest, db: Session = Depends(get_db)):
+    pdf = next((p for p in pdfs() if stored_path(p) == payload.pdf), None)
+    if pdf is None:
+        raise HTTPException(status_code=404, detail="No such PDF in DATA or on the archive.")
+    write_lock(db)
+    #a rerun could lose saved reviews
+    if db.query(models.Bundle).filter(models.Bundle.bundle_id == pdf.stem).first():
+        raise HTTPException(status_code=409, detail="This bundle is already loaded.")
+    if db.query(models.Job).filter(models.Job.pdf == payload.pdf, models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="This bundle is already waiting or running.")
+
+    job = models.Job(pdf=payload.pdf)
+    db.add(job)
+    db.commit()
+    return job_json(job)
+
+#one job of any kind, so a screen can follow it until it is done or failed
+@app.get("/jobs/{job_id}")
+def get_job(job_id: int, db: Session = Depends(get_db)):
+    job = db.get(models.Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No such job.")
+    return job_json(job)
+
+
+def export_survey(survey_id: str, request: Request, db: Session):
+    survey_id = survey_id.strip()
+    if not survey_id:
+        raise HTTPException(status_code=400, detail="Enter a survey ID.")
+    survey = get_survey(survey_id, request, db)
+    reviews = get_reviews(survey_id, db)["reviews"]
+    pages = []
+    for page in survey["pages"]:
+        fields = []
+        for field in page["fields"]:
+            saved = reviews.get(page["id"], {}).get(field["id"])
+            reviewed = bool(saved and saved.get("savedAt"))
+            fields.append({
+                **field,
+                "value": saved["value"] if reviewed else field["value"],
+                **({"decoded": saved.get("decoded")} if reviewed and "decoded" in field else {}),
+                "status": "Reviewed" if reviewed else "ToBeReviewed",
+            })
+        pages.append({
+            "pageId": page["id"],
+            "label": page["type"],
+            "sourceImage": page["imageUrl"],
+            "status": "Reviewed" if fields and all(
+                field["status"] == "Reviewed" for field in fields
+            ) else "ToBeReviewed",
+            "fields": fields,
+            "flags": page["flags"],
+        })
+    return {"surveys": [{
+        "surveyId": survey_id,
+        "status": "Reviewed" if pages and all(
+            page["status"] == "Reviewed" for page in pages
+        ) else "ToBeReviewed",
+        "pages": pages,
+    }]}
+
+
+@app.get("/export/bundles")
+def export_bundles(db: Session = Depends(get_db)):
+    from pathlib import PurePosixPath
+    return [{"id": b.bundle_id, "name": PurePosixPath(b.source_pdf.replace("\\", "/")).parent.name or b.bundle_id}
+            for b in db.query(models.Bundle).order_by(models.Bundle.bundle_id)]
+
+
+@app.get("/export")
+def download_export(request: Request, survey_id: str | None = None, bundle_id: str | None = None,
+                    db: Session = Depends(get_db)):
+    if (survey_id is None) == (bundle_id is None):
+        raise HTTPException(status_code=400, detail="Choose a survey ID or a bundle.")
+    if survey_id is not None:
+        return export_survey(survey_id, request, db)
+    bundle_id = bundle_id.strip()
+    if not bundle_id:
+        raise HTTPException(status_code=400, detail="Choose a bundle.")
+    if not db.get(models.Bundle, bundle_id):
+        raise HTTPException(status_code=404, detail="Bundle not found.")
+    surveys = []
+    for (sid,) in db.query(models.Survey.survey_id).filter_by(bundle_id=bundle_id).order_by(models.Survey.survey_id):
+        surveys.extend(export_survey(sid, request, db)["surveys"])
+    # Unassigned pages have no saved survey reviews, but remain in the download.
+    unassigned = []
+    for page in db.query(models.Page).filter_by(bundle_id=bundle_id, survey_id=None).order_by(models.Page.page_id):
+        fields = page_fields(db, page)
+        unassigned.append({"pageId": page.page_id, "label": page.category,
+                           "sourceImage": str(request.url_for("page_image", page_id=page.page_id)),
+                           "status": "ToBeReviewed", "reason": "No survey assignment",
+                           "fields": [{**f, "status": "ToBeReviewed"} for f in fields],
+                           "flags": page_flags(db, page, fields)})
+    return {"bundleId": bundle_id, "surveys": surveys, "unassignedPages": unassigned}

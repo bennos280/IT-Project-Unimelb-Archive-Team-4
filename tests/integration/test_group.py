@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from pipeline.run import Run, step_group
+from backend.pipeline.run import Run, step_group
 
 BUNDLES = Path(__file__).parent / "group"  # real bundles: stored transcripts + Ash's hand grouping of their first surveys
 BASELINE = 585  # of Ash's 589 surveys grouped exactly as he did; fail below it

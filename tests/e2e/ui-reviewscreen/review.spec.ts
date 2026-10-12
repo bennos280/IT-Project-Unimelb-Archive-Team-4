@@ -94,7 +94,7 @@ const test = base.extend<{ api: State }>({
       reviews: {},
       revisions: {},
     };
-    const people = [{ reviewer_id: 1, name: "Test reviewer" }];
+    const people = [{ id: 1, name: "Test reviewer" }];
     // Serve a predictable image so viewer tests do not depend on demo scan files.
     await page.route("**/test-images/*.jpg", (route) =>
       route.fulfill({
@@ -114,7 +114,10 @@ const test = base.extend<{ api: State }>({
       if (path === "/api/reviewers") {
         if (request.method() === "POST") {
           const payload = request.postDataJSON();
-          const person = { reviewer_id: payload.id, name: payload.name };
+          const person = {
+            id: Math.max(0, ...people.map((person) => person.id)) + 1,
+            name: payload.name,
+          };
           people.push(person);
           return reply(person);
         }
@@ -571,4 +574,36 @@ test.describe("Unsaved navigation", () => {
 
     expect(dialogType).toBe("beforeunload");
   });
+});
+
+test("adds a reviewer inside the field editor without losing the draft", async ({
+  page,
+}) => {
+  await page.getByRole("button", { name: "Edit Address", exact: true }).click();
+  const dialog = page
+    .locator("dialog.edit-dialog")
+    .filter({
+      has: page.getByRole("heading", { name: "Edit field", exact: true }),
+    });
+  await dialog
+    .getByLabel("Reviewed value", { exact: true })
+    .fill("Draft address");
+  await dialog
+    .getByLabel("Reviewer *", { exact: true })
+    .selectOption("__add__");
+  await dialog.getByLabel("New reviewer name").fill("Editor reviewer");
+  await expect(
+    dialog.getByRole("button", { name: "Apply review" }),
+  ).toBeDisabled();
+  await dialog
+    .getByRole("button", { name: "Add reviewer", exact: true })
+    .click();
+  await expect(dialog.getByLabel("Reviewer *", { exact: true })).toHaveValue(
+    "Editor reviewer",
+  );
+  await expect(
+    dialog.getByLabel("Reviewed value", { exact: true }),
+  ).toHaveValue("Draft address");
+  await dialog.getByRole("button", { name: "Apply review" }).click();
+  await expect(dialog).not.toBeVisible();
 });

@@ -9,3 +9,12 @@ export async function loadSurveyExport(
   if (!id) throw new Error("Enter a survey ID.");
   return request<SurveyExport>(`/export?survey_id=${encodeURIComponent(id)}`);
 }
+
+export function loadExportBundles(): Promise<Array<{ id: string; name: string }>> {
+  return request("/export/bundles");
+}
+export function loadBundleExport(bundleId: string): Promise<SurveyExport> {
+  const id = bundleId.trim();
+  if (!id) throw new Error("Choose a bundle.");
+  return request(`/export?bundle_id=${encodeURIComponent(id)}`);
+}

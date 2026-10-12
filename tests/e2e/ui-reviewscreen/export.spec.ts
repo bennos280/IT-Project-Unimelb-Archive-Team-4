@@ -2,16 +2,51 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 const demo = {
-  id: "export-test", title: "Export test", pages: [{
-    id: "page0", type: "main", imageUrl: "/scan.png", flags: [],
-    fields: [{ id: "address", label: "Address", group: "Address", value: "Original" }],
-  }],
+  id: "export-test",
+  title: "Export test",
+  pages: [
+    {
+      id: "page0",
+      type: "main",
+      imageUrl: "/scan.png",
+      flags: [],
+      fields: [
+        {
+          id: "address",
+          label: "Address",
+          group: "Address",
+          value: "Original",
+        },
+      ],
+    },
+  ],
 };
-const exported = { surveys: [{ surveyId: demo.id, status: "Reviewed", pages: [{
-  pageId: "page0", label: "main", sourceImage: "scans/original.png", status: "Reviewed",
-  flags: [], fields: [{ id: "address", label: "Address", group: "Address",
-    value: "Saved address", status: "Reviewed" }],
-}] }] };
+const exported = {
+  surveys: [
+    {
+      surveyId: demo.id,
+      status: "Reviewed",
+      pages: [
+        {
+          pageId: "page0",
+          label: "main",
+          sourceImage: "scans/original.png",
+          status: "Reviewed",
+          flags: [],
+          fields: [
+            {
+              id: "address",
+              label: "Address",
+              group: "Address",
+              value: "Saved address",
+              status: "Reviewed",
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
 
 test("downloads backend correction instead of an unsaved on-screen edit", async ({
   page,
@@ -21,7 +56,7 @@ test("downloads backend correction instead of an unsaved on-screen edit", async 
     if (url === "/api/export") return route.fulfill({ json: exported });
     if (url.startsWith("/api/survey/")) return route.fulfill({ json: demo });
     if (url === "/api/reviewers")
-      return route.fulfill({ json: [{ reviewer_id: 1, name: "Reviewer" }] });
+      return route.fulfill({ json: [{ id: 1, name: "Reviewer" }] });
     return route.fulfill({
       json: {
         reviews: {
@@ -67,9 +102,10 @@ test("shows backend export failure and permits retry", async ({ page }) => {
     const url = new URL(route.request().url()).pathname;
     if (url.startsWith("/api/survey/")) return route.fulfill({ json: demo });
     if (url === "/api/reviewers") return route.fulfill({ json: [] });
-    if (url === "/api/export") return fail
-      ? route.fulfill({ status: 500, json: { detail: "Export unavailable" } })
-      : route.fulfill({ json: exported });
+    if (url === "/api/export")
+      return fail
+        ? route.fulfill({ status: 500, json: { detail: "Export unavailable" } })
+        : route.fulfill({ json: exported });
     return route.fulfill({ json: { reviews: {}, revisions: {} } });
   });
   await page.goto(`/?survey=${demo.id}`);
@@ -82,4 +118,36 @@ test("shows backend export failure and permits retry", async ({ page }) => {
   await page.getByRole("button", { name: "Export JSON", exact: true }).click();
   await downloaded;
   await expect(page.getByText("Export file prepared")).toBeVisible();
+});
+
+test("downloads a selected bundle as JSON", async ({ page }) => {
+  await page.route("**/api/**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/export/bundles")
+      return route.fulfill({ json: [{ id: "bundle-test", name: "123" }] });
+    if (url.pathname === "/api/export") {
+      expect(url.searchParams.get("bundle_id")).toBe("bundle-test");
+      return route.fulfill({
+        json: { bundleId: "bundle-test", ...exported, unassignedPages: [] },
+      });
+    }
+    if (url.pathname.startsWith("/api/survey/"))
+      return route.fulfill({ json: demo });
+    if (url.pathname === "/api/reviewers") return route.fulfill({ json: [] });
+    return route.fulfill({ json: { reviews: {}, revisions: {} } });
+  });
+  await page.goto(`/?survey=${demo.id}`);
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("radio", { name: /Export bundle JSON/ }).check();
+  await expect(
+    page.getByRole("button", { name: "Export JSON", exact: true }),
+  ).toBeDisabled();
+  await page.getByLabel("Bundle number").selectOption("bundle-test");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export JSON", exact: true }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe("bundle-bundle-test-export.json");
+  expect(JSON.parse(readFileSync((await file.path())!, "utf8")).bundleId).toBe(
+    "bundle-test",
+  );
 });

@@ -1,6 +1,6 @@
 # Test suite for the Wilfred Prest survey pipeline
 
-**206 tests runs in ~160s.**
+**298 tests runs in ~160s.**
 
 ```bash
 uv run pytest tests
@@ -14,6 +14,5 @@ See README in each folder for a more comprehensive list of tests.
 Run all US7 checks:
 
 ```bash
-cd tests
-npm run test:all
+npm --prefix tests run test:all
 ```

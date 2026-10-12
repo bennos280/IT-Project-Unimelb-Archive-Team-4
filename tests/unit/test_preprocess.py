@@ -1,4 +1,4 @@
-"""Unit tests for pipeline/preprocess.py"""
+"""Unit tests for backend/pipeline/preprocess/preprocess.py"""
 import argparse
 
 import cv2
@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 import json
 
-from pipeline import common
-from pipeline.preprocess import preprocess
-from pipeline.preprocess.options import add_arguments, resolve_options
+from backend import common
+from backend.pipeline.preprocess import preprocess
+from backend.pipeline.preprocess.options import add_arguments, resolve_options
 
 # Helper: parse test command-line flags and configuration using the real option parser.
 def options(*flags, config=None):
@@ -284,6 +284,6 @@ def test_progress_lines_name_each_file_and_its_detected_skew(tmp_path, capsys):
     assert "binary, skew" in out
     assert "Report:" in out
 
-from pipeline.preprocess.preprocess import (binarize, deskew, estimate_bg_color,
+from backend.pipeline.preprocess.preprocess import (binarize, deskew, estimate_bg_color,
                                             preprocessed_name, process_image,
                                             rectify_page, transform_array)
