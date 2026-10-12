@@ -25,6 +25,7 @@ export default function ReviewScreen({
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
+  const [creatingReviewer, setCreatingReviewer] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selection, setSelection] = useState<{
     pageId: string;
@@ -418,7 +419,7 @@ export default function ReviewScreen({
                   {saving ? "Saving…" : "Save Page Transcript"}
                 </button>
               </div>
-              {adding && (
+              {adding && !editing && (
                 <form
                   className="add-reviewer"
                   onSubmit={(e) => {
@@ -489,7 +490,7 @@ export default function ReviewScreen({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            applyEdit();
+            if (!adding && !creatingReviewer) applyEdit();
           }}
         >
           <h2>Edit field</h2>
@@ -522,8 +523,15 @@ export default function ReviewScreen({
           <label htmlFor="edit-reviewer">Reviewer *</label>
           <select
             id="edit-reviewer"
-            value={reviewer}
-            onChange={(e) => setReviewer(e.target.value)}
+            value={adding ? "__add__" : reviewer}
+            disabled={creatingReviewer}
+            onChange={(e) => {
+              if (e.target.value === "__add__") setAdding(true);
+              else {
+                setAdding(false);
+                setReviewer(e.target.value);
+              }
+            }}
           >
             <option value="">Select reviewer</option>
             {reviewers.map((person) => (
@@ -531,12 +539,39 @@ export default function ReviewScreen({
                 {person.name}
               </option>
             ))}
+            <option value="__add__">+ Add reviewer…</option>
           </select>
-          {!reviewers.length && (
-            <p className="edit-help">
-              Close this window and use Add reviewer below the scan first.
-            </p>
+          {adding && (
+            <div className="add-reviewer">
+              <input
+                autoFocus
+                aria-label="New reviewer name"
+                placeholder="Enter reviewer name"
+                maxLength={80}
+                value={newName}
+                disabled={creatingReviewer}
+                onChange={(event) => setNewName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.preventDefault();
+                }}
+              />
+              <button
+                type="button"
+                disabled={creatingReviewer || !newName.trim()}
+                onClick={async () => {
+                  setCreatingReviewer(true);
+                  try { await addReviewer(); }
+                  finally { setCreatingReviewer(false); }
+                }}
+              >
+                {creatingReviewer ? "Adding…" : "Add reviewer"}
+              </button>
+              <button type="button" disabled={creatingReviewer} onClick={() => setAdding(false)}>
+                Cancel adding
+              </button>
+            </div>
           )}
+          <p role="status">{message}</p>
           <div className="dialog-actions">
             <button
               type="button"
@@ -547,7 +582,7 @@ export default function ReviewScreen({
             >
               Cancel
             </button>
-            <button type="submit" disabled={!reviewer}>
+            <button type="submit" disabled={!reviewer || adding || creatingReviewer}>
               Apply review
             </button>
           </div>

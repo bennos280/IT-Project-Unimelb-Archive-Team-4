@@ -1,0 +1,651 @@
+{
+
+  "__comments":"Data look up for validation of data... Note if a field value doesn't have a codebook refrence then its 'possible_values' and 'data_type' fields are marked as N/A in this case only use raw values, also if a data_type was an integer then 'possible_values' is also N/A. Note: Some 'possible_values' have a range eg(00-27), some fields also have a max range eg '(0) for over 11'",  
+  "pages": {
+    "1": {
+        "title": "Main survey form",
+        "fields": {
+            "date_of_interview": {"label_text": "Date of Interview"},
+            "signature_of_investigator": {"label_text": "Signature of Investigator"},
+            "address": {"label_text": "Address"},
+            "municipality": {"label_text": "Municipality"},
+            "number_of_families_in_dwelling": {"label_text": "No. of Families in Dwelling"},
+            "number": {"label_text": "Number"},
+            "type_of_dwelling": {"label_text": "Type of Dwelling"},
+            "structural_material": {"label_text": "Structural Material"},
+            "number_of_storeys": {"label_text": "No. of Storeys"},
+            "probable_age": {"label_text": "Probable Age"},
+            "yard_or_uncultivated_space": {"label_text": "Is there any yard or uncultivated space?"},
+            "cultivated_garden": {"label_text": "Is there any cultivated garden?"},
+            "weekly_value_of_fruit_and_vegetables_grown": {"label_text": "Approx. weekly value of fruit and vegetables grown?"},
+            "weekly_value_of_fruit_and_vegetables_sold": {"label_text": "Approx. weekly value of fruit and vegetables sold?"},
+            "other_commercial_activities_on_premises": {"label_text": "Indicate any other commercial activities conducted on premises."},
+            "tenure": {"label_text": "Tenure"},
+            "weekly_rent_or_instalments": {"label_text": "Weekly Rent (or Instalments)"},
+            "furnished_or_unfurnished": {"label_text": "Furnished or Unfurnished."},
+            "length_of_residence": {"label_text": "Length of Residence."},
+            "residents.relationship": {"label_text": "Relationship"},
+            "residents.age": {"label_text": "Age"},
+            "residents.earning_status": {"label_text": "Earning Status"},
+            "other_children.died": {"label_text": "Other Children: Died"},
+            "other_children.living_elsewhere": {"label_text": "Other Children: Living Elsewhere"},
+            "residents.unearned_income_weekly_amount": {"label_text": "Unearned Income: Weekly Amount"},
+            "residents.unearned_income_source": {"label_text": "Unearned Income: Source"},
+            "residents.industry": {"label_text": "Industry"},
+            "residents.craft": {"label_text": "Craft"},
+            "residents.regularity_of_work": {"label_text": "Regularity of Work"},
+            "residents.employer": {"label_text": "Employer"},
+            "residents.employers_address": {"label_text": "Employer's Address"},
+            "residents.weekly_cost_transport": {"label_text": "Wkly. Cost Transport"},
+            "residents.residential_preference": {"label_text": "Residential Pref."},
+            "residents.earnings_last_week": {"label_text": "Earnings last week"},
+            "residents.full_time_earnings_excluding_overtime": {"label_text": "Full-time Earnings exclud. overtime"},
+            "residents.weekly_contribution_to_board": {"label_text": "Wkly. Cont. to Board"},
+            "residents.weekly_payments_to_relatives_living_elsewhere": {"label_text": "Wkly. Payments to rel. liv'g elsewhere"},
+            "residents.pre_war_occupation": {"label_text": "Pre-War: Occupation"},
+            "residents.pre_war_normal_weekly_earnings": {"label_text": "Pre-War: Norm. Wkly. Earn's"},
+            "residents.pre_war_place_of_work_if_outside_melbourne": {"label_text": "Pre-War: Place of work if outside Melbourne"},
+            "residents.pre_war_occupational_preference": {"label_text": "Pre-War: Occupational Pref."},
+            "rooms.number_of_separate_bedrooms": {"label_text": "No of Separate Bedrooms"},
+            "rooms.number_of_living_rooms": {"label_text": "No. of Living Rooms"},
+            "rooms.state_if_used_as_bedrooms": {"label_text": "State if used as Bedrooms"},
+            "rooms.rooms_not_in_daily_use": {"label_text": "Rooms not in daily use"},
+            "rooms.number_of_sleepouts": {"label_text": "Number of Sleepouts"},
+            "bath.location": {"label_text": "Bath: Location?"},
+            "bath.shared": {"label_text": "Bath: Shared?"},
+            "bath.hot_water_service": {"label_text": "Bath: H.W.S.?"},
+            "wc.internal_or_external": {"label_text": "W.C.: Internal or External?"},
+            "wc.shared": {"label_text": "W.C.: Shared?"},
+            "wash_house": {"label_text": "Wash-house?"},
+            "kitchen.shared": {"label_text": "Kitchen: Is it shared?"},
+            "kitchen.ever_used_as_bedroom": {"label_text": "Kitchen: Is it ever used as a Bedroom?"},
+            "kitchen.meals_can_be_taken_there": {"label_text": "Kitchen: Can meals be taken there?"},
+            "kitchen.sink_and_water_tap": {"label_text": "Kitchen: Sink and Water Tap?"},
+            "kitchen.hot_water_service": {"label_text": "Kitchen: H.W.S.?"},
+            "kitchen.cooking_facilities": {"label_text": "Kitchen: Cooking facilities?"},
+            "kitchen.food_storage": {"label_text": "Kitchen: Food Storage?"},
+            "kitchen.facilities_for_cooking_and_water_supply_in_other_rooms": {"label_text": "Kitchen: What facilities available for cooking and water supply in other rooms?"}
+        }
+    },
+    "2": {
+      
+    },
+    "3": {
+        "title": "Summary data",
+        "fields": {
+            "municipality":{
+                "label_text": "Municipality",
+                "data_type": "VARCHAR(2)",
+                "possible_values": {
+                    "00": "Box Hill",
+                    "01": "Brighton",
+                    "02": "Brunswick",
+                    "03": "Camberwell",
+                    "04": "Caulfield",
+                    "05": "Chelsea",
+                    "06": "Coburg",
+                    "07": "Collingwood",
+                    "08": "Essendon",
+                    "09": "Fitzroy",
+                    "10": "Footscray",
+                    "11": "Hawthorn",
+                    "12": "Heidelberg",
+                    "13": "Kew",
+                    "14": "Malvern",
+                    "15": "Melbourne",
+                    "16": "Moorabbin",
+                    "17": "Mordialloc",
+                    "18": "Northcote",
+                    "19": "Oakleigh",
+                    "20": "Port Melbourne",
+                    "21": "Prahran",
+                    "22": "Preston",
+                    "23": "Richmond",
+                    "24": "Sandringham",
+                    "25": "South Melbourne",
+                    "26": "St. Kilda",
+                    "27": "Williamstown",
+                    "28": "Braybrook",
+                    "29": "Various",
+                    "30": "Outside Metrop. area",
+                    "31": "Working on premises",
+                    "32": "Not known",
+                    "99": "Not applicable"
+
+                }
+            },
+             "number_of_dwelling": {
+                "label_text": "Number of Dwelling",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "number_of_household": {
+                "label_text": "Number of Household",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "type_of_family": {
+                "label_text": "Type of Family",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "Other",
+                    "1": "Complete simple family",
+                    "2": "Complete simple family and relatives or others",
+                    "3": "Complete simple family and broken family",
+                    "4": "Two simple complete families",
+                    "5": "Broken family",
+                    "6": "Broken family and others",
+                    "7": "Broken family and another incomplete family",
+                    "8": "Non-parent families"
+            }
+            },
+            "total_number_resident_members": {
+                "label_text": "Total No. Resident Members",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "number_under_5": {
+                "label_text": "Number under 5",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "number_5_to_10": {
+                "label_text": "Number 5 - 10",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "number_over_10_male": {
+                "label_text": "Number over 10 M.",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "number_over_10_female": {
+                "label_text": "Number over 10 F.",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "military_service": {
+                "label_text": "Military Service",
+                "data_type": "N/A",
+                "possible_values": "N/A"
+            },
+            "number_of_boarders": {
+                "label_text": "No. of Boarders",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "number_of_participating_members": {
+                "label_text": "No. of Participating Members",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "number_of_adult_male_breadwinners": {
+                "label_text": "No. of Adult M. Breadwinners",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "number_of_adult_female_breadwinners": {
+                "label_text": "No. of Adult F. Breadwinners",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "number_of_juvenile_breadwinners_under_21": {
+                "label_text": "No. of Juvenile Breadwinners (under 21)",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "children_under_14": {
+                "label_text": "Children under 14",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "retired_and_independent_persons": {
+                "label_text": "Retired and Indep. Persons",
+                "data_type": "N/A",
+                "possible_values": "N/A"
+            },
+            "home_duties": {
+                "label_text": "Home Duties",
+                "data_type": "N/A",
+                "possible_values": "N/A"
+            },
+            "other": {
+                "label_text": "Other",
+                "data_type": "N/A",
+                "possible_values": "N/A"
+            },
+            "normal_household_income": {
+                "label_text": "Normal Household I.",
+                "data_type": "VARCHAR(3)",
+                "possible_values": {
+                    "000-996": "Exact amount in shillings",
+                    "997": "Unknown because information refused or vague",
+                    "998": "Unknown because information not obtained",
+                    "999": "Unknown because over £10"
+                }
+            },
+            "weekly_rent": {
+                "label_text": "Weekly Rent",
+                "data_type": "VARCHAR(2)",
+                "possible_values": {
+                    "00": "Free",
+                    "01": "Rates unknown (owner)",
+                    "02": "Rent vague or unknown",
+                    "03-99": "Exact amount in shillings"
+                }
+            },
+            "total_available_income": {
+                "label_text": "Total Available I.",
+                "data_type": "VARCHAR(3)",
+                "possible_values": {
+                    "000-996": "Exact amount in shillings",
+                    "997": "Unknown because information refused or vague",
+                    "998": "Unknown because information not obtained",
+                    "999": "Unknown because over £10"
+            }
+            },
+            "earnings_of_head": {
+                "label_text": "Earnings of Head",
+                "data_type": "VARCHAR(3)",
+                "possible_values": {
+                    "000-996": "Exact amount in shillings",
+                    "997": "Unknown because information refused or vague",
+                    "998": "Unknown because information not obtained",
+                    "999": "Unknown because over £10"
+                }
+            },
+            "heads_unearned_income": {
+                "label_text": "Head's Unearned I.",
+                "data_type": "VARCHAR(2)",
+                "possible_values": {
+                    "00": "None",
+                    "01": "Amount not known",
+                    "02-99": "Exact amount in shillings"
+                }
+            },
+            "main_source_of_heads_unearned_income": {
+                "label_text": "Main Source of Head's Unearned I.",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "None",
+                    "1": "Child endowment",
+                    "2": "Pensions",
+                    "3": "Military allotments",
+                    "4": "Property (rent or interest)",
+                    "5": "Subletting and lodgers",
+                    "6": "Superannuation",
+                    "7": "Living on capital",
+                    "8": "Relatives",
+                    "9": "Other or not known"
+                }
+            },
+            "subsidiary_source_of_heads_income": {
+                "label_text": "Subsidiary Source of Head's I.",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "None",
+                    "1": "Child endowment",
+                    "2": "Pensions",
+                    "3": "Military allotments",
+                    "4": "Property (rent or interest)",
+                    "5": "Subletting and lodgers",
+                    "6": "Superannuation",
+                    "7": "Living on capital",
+                    "8": "Relatives",
+                    "9": "Other or not known"
+                }
+            },
+            "industry_of_head": {
+                "label_text": "Industry of H.",
+                "data_type": "N/A",
+                "possible_values": "N/A"
+            },
+            "occupation_of_head": {
+                "label_text": "Occupation of H.",
+                "data_type": "N/A",
+                "possible_values": "N/A"
+            },
+            "grade_of_occupation_of_head": {
+                "label_text": "Grade of Occup. of H.",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "Employer",
+                    "1": "Worker on own account",
+                    "2": "Employee",
+                    "3": "Unemployed",
+                    "4": "Not known",
+                    "9": "Not applicable"
+                }
+            },
+            "place_of_work": {
+                "label_text": "Place of Work",
+                "data_type": "N/A",
+                "possible_values": "N/A"
+            },
+            "age_of_head": {
+                "label_text": "Age of Head",
+                "data_type": "VARCHAR(2)",
+                "possible_values": {
+                    "00": "Not known",
+                    "01-99": "Exact age in years"
+                }
+            },
+            "sex_of_head": {
+                "label_text": "Sex of Head",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "Male",
+                    "1": "Female"
+                }
+            },
+            "regularity_of_work": {
+                "label_text": "Regularity of Work",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "Regular",
+                    "1": "Previously unemployed, now regular",
+                    "2": "Seasonal",
+                    "3": "Casual",
+                    "4": "Irregular because of ill-health",
+                    "5": "Regular: various employers",
+                    "6": "Other",
+                    "7": "Temporary",
+                    "8": "Working on own account",
+                    "9": "Not applicable"
+                }
+            },
+            "pre_war_occupation": {
+                "label_text": "Pre-war Occupation",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "No indication",
+                    "1": "No change",
+                    "2": "Change from civil to defence",
+                    "3": "Change from country to city",
+                    "4": "Own business",
+                    "5": "Previously home duties",
+                    "6": "Any other change",
+                    "7": "Unemployed",
+                    "8": "Retired",
+                    "9": "Not applicable"
+                }
+            },
+            "removal": {
+                "label_text": "Removal",
+                "data_type": "N/A",
+                "possible_values": "N/A"
+            },
+            "type_of_dwelling": {
+                "label_text": "Type of Dwelling",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "Other",
+                    "1": "Detached, one storey",
+                    "2": "Detached, two or more storeys",
+                    "3": "Semi-detached, one storey",
+                    "4": "Semi-detached, two or more storeys",
+                    "5": "Terrace, one storey",
+                    "6": "Terrace, two or more storeys",
+                    "7": "Attached to B.P. one storey",
+                    "8": "Attached to B.P. two or more storeys",
+                    "9": "Self-contained flat"
+                }
+            },
+            "structural_material": {
+                "label_text": "Structural Material",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "Other",
+                    "1": "Wood",
+                    "2": "Brick",
+                    "3": "Brick veneer",
+                    "4": "Wood and fibre",
+                    "5": "Cement and wood",
+                    "6": "Stone",
+                    "7": "Brick and wood"
+                }
+            },
+            "age_of_house": {
+                "label_text": "Age of House",
+                "data_type": "VARCHAR(2)",
+                "possible_values": {
+                    "00": "No indication",
+                    "01-97": "Exact age in years",
+                    "98": "Old with no indication of age",
+                    "99": "Over 99 years"
+                }
+            },
+            "garden": {
+                "label_text": "Garden",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "None",
+                    "1": "House on or near street, back yard",
+                    "2": "Space available, but none cultivated",
+                    "3": "Some cultivated space",
+                    "4": "Good garden, incl. fruit, vegetables and poultry (over 100x100)",
+                    "5": "Commercial activities",
+                    "6": "Space available, no indication as to use"
+                }
+            },
+            "state_of_repair": {
+                "label_text": "State of Repair",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "No indication",
+                    "1": "Good or fair repair",
+                    "2": "In need of repair (general or unspecified or W.C. in bad repair)",
+                    "3": "Very poor repair (including damp)",
+                    "4": "Verminous",
+                    "5": "Condemned but still occupied"
+                }
+            },
+            "tenure": {
+                "label_text": "Tenure",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "Other",
+                    "1": "Owner",
+                    "2": "Purchasing owner",
+                    "3": "Tenant, unfurnished",
+                    "4": "Tenant, furnished",
+                    "5": "Sub-tenant, unfurnished",
+                    "6": "Sub-tenant, furnished",
+                    "7": "Free",
+                    "8": "Joint tenant",
+                    "9": "Owned by another member of family on premises"
+                }
+            },
+            "length_of_residence": {
+                "label_text": "Length of Residence",
+                "data_type": "VARCHAR(2)",
+                "possible_values": {
+                    "00": "Under one year",
+                    "01-98": "Exact years",
+                    "99": "Unknown or vague"
+                }
+            },
+            "total_number_of_rooms": {
+                "label_text": "Total Number of Rooms",
+                "data_type": "INTEGER",
+                "possible_values": {
+                    "0": "Over 11"
+                }
+            },
+            "number_of_bedrooms": {
+                "label_text": "Number of Bedrooms",
+                "data_type": "INTEGER",
+                "possible_values": {
+                    "0": "Over 11"
+                }
+            },
+            "number_of_living_rooms": {
+            "label_text": "Number of Living Rooms",
+            "data_type": "INTEGER",
+            "possible_values": {
+                "0": "Over 11"
+            }
+            },
+            "whether_used_as_bedrooms": {
+                "label_text": "Whether used as Bedrooms",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "5": "Kitchen",
+                    "6": "Passage",
+                    "7": "Washhouse",
+                    "8": "Other"
+                }
+            },
+            "rooms_not_in_daily_use": {
+                "label_text": "Rooms not in Daily Use",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "None",
+                    "1-9": "Count of rooms not in daily use"
+                }
+            },
+            "number_of_sleepouts": {
+                "label_text": "Number of Sleepouts",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "None",
+                    "1": "Verandah",
+                    "2": "Balcony",
+                    "3": "Outhouse",
+                    "4": "Two or more sleepouts"
+                }
+            },
+            "bathroom": {
+                "label_text": "Bathroom",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "No facilities",
+                    "1": "Bath in laundry",
+                    "2": "Bath in kitchen",
+                    "3": "Bath unusable",
+                    "4": "Bathroom, no heater",
+                    "5": "Bathroom, heating appliance",
+                    "6": "Bathroom, external",
+                    "7": "Bath unusable or no water",
+                    "8": "More than 1 bathroom"
+                }
+            },
+            "wc": {
+                "label_text": "W.C",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "External",
+                    "1": "Internal",
+                    "2": "Not sewered",
+                    "3": "More than one W.C.",
+                    "4": "None"
+                }
+            },
+            "washouse": {
+                "label_text": "Washouse",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "Inadequate",
+                    "1": "In separate laundry",
+                    "2": "In kitchen",
+                    "3": "In bathroom",
+                    "4": "External excess",
+                    "5": "Other"
+                }
+            },
+            "kitchen": {
+                "label_text": "Kitchen",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "No kitchen",
+                    "1": "Kitchenette or kitchen where meals cannot be taken",
+                    "2": "Kitchen where meals can be taken",
+                    "3": "Kitchen with distributed facilities",
+                    "4": "Kitchenette with distributed facilities",
+                    "5": "Other"
+                }
+            },
+            "sink_and_water_service": {
+                "label_text": "Sink and Water Service",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "None on premises",
+                    "1": "External (incl. gully trap)",
+                    "2": "Internal (in kitchen or kitchenette)",
+                    "3": "Internal but not in kitchen",
+                    "4": "Internal with H.W.S.",
+                    "5": "Tap and no sink"
+                }
+            },
+            "cooking_facilities": {
+                "label_text": "Cooking Facilities",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "1": "Wood only",
+                    "2": "Gas, or gas and wood (no indication of ownership)",
+                    "3": "Gas, or gas and wood (L)",
+                    "4": "Gas (T) only",
+                    "5": "Gas (T), Wood (L)",
+                    "6": "Electric",
+                    "7": "Gas ring",
+                    "8": "Kerosene or other",
+                    "9": "Electric and gas"
+                }
+            },
+            "food_storage": {
+                "label_text": "Food Storage",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "No indication",
+                    "1": "Icechest",
+                    "2": "Refrigerator",
+                    "3": "Cupboards",
+                    "4": "Pantry or Larder",
+                    "5": "Safe or cabinet",
+                    "6": "Fixtures and tenant's fridge",
+                    "7": "Other"
+                }
+            },
+            "rooms_shared": {
+                "label_text": "Rooms Shared",
+                "data_type": "CHAR(1)",
+                "possible_values": {
+                    "0": "No facilities shared",
+                    "1": "Kitchen, W., B., and W.C. shares",
+                    "2": "Kitchen and W. shared",
+                    "3": "Bathroom and W.C. shared",
+                    "4": "Bathroom, washhouse and W.C. shared",
+                    "5": "Washhouse only shared",
+                    "6": "W.C. only shared",
+                    "7": "Washhouse and W.C. shared"
+                }
+            },
+            "persons_sharing": {
+                "label_text": "Persons Sharing",
+                "data_type": "N/A",
+                "possible_values": "N/A"
+            },
+            "children_other_than_those_at_home": {
+                "label_text": "Children other than those at home",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "children_of_head_or_wife_living": {
+                "label_text": "Children of H. or Wife: Living",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "children_of_head_or_wife_dead": {
+                "label_text": "Children of H. or Wife: Dead",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            },
+            "children_of_head_or_wife_total": {
+                "label_text": "Children of H. or Wife: Total",
+                "data_type": "INTEGER",
+                "possible_values": "N/A"
+            }
+        }
+    }
+  }
+}

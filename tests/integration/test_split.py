@@ -1,11 +1,12 @@
-"""PDF page images are replaced together, only after every page renders."""
+"""PDF page images are replaced together, only after every page renders; a PDF not on this computer is downloaded
+from the archive."""
 from pathlib import Path
 
 import pymupdf
 import pytest
 from PIL import Image
 
-from pipeline.run import Run, step_split
+from backend.pipeline.run import Run, step_split
 
 
 def make_pdf(path, pages, text="original"):
@@ -132,3 +133,42 @@ def test_image_folder_is_used_without_changes(tmp_path):
     assert {path.name: path.read_bytes() for path in source.iterdir()} == before
     assert not output.exists()
     assert (run.images or run.input) == source
+
+
+def test_pdf_not_on_this_computer_is_downloaded_from_the_archive_and_kept(tmp_path, archive):
+    source = tmp_path / "source.pdf"
+    make_pdf(source, 2)
+    archive.add("216441", {1: ("11", b"jpeg")}, pdf=("10", source.read_bytes()))
+    pdf = tmp_path / "data" / "216441" / "10_bundle.pdf"  # as the archive names it: <file id>_<name>
+    output = tmp_path / "output"
+
+    step_split(Run(pdf, output))
+
+    assert pdf.read_bytes() == source.read_bytes()  # kept in DATA, so the next run downloads nothing
+    assert archive.requests == ["/nodes/download/216441", "/assets/downloadwiz/10"]
+    assert [p.name for p in sorted((output / "pages").iterdir())] == ["10_bundle_00001.png", "10_bundle_00002.png"]
+    assert [p.name for p in pdf.parent.iterdir()] == ["10_bundle.pdf"]  # no part-downloads left behind
+
+
+def test_pdf_the_archive_cannot_send_stops_the_run_and_keeps_nothing(tmp_path, archive):
+    archive.add("216441", {}, pdf=("10", b"%PDF-1.5 ..." * 1000))
+    archive.cut_short.add("10")
+    output = tmp_path / "output"
+    for pdf in (tmp_path / "data" / "216441" / "10_bundle.pdf",  # broken off halfway
+                tmp_path / "data" / "216499" / "11_bundle.pdf"):  # not on the archive
+        with pytest.raises(SystemExit, match=f"bundle {pdf.parent.name}'s PDF isn't on this computer, and the archive couldn't send it"):
+            step_split(Run(pdf, output))
+    assert list((tmp_path / "data" / "216441").iterdir()) == []  # neither the broken-off PDF nor its part-download
+    assert not (output / "pages").exists()
+
+
+def test_a_long_pdf_is_split_on_every_core_in_page_order(tmp_path):
+    source = tmp_path / "survey.pdf"
+    make_pdf(source, 40)  # more than one 16-page chunk, so several processes draw it
+    run = Run(source, tmp_path / "output")
+    step_split(run)
+
+    assert sorted(path.name for path in run.images.iterdir()) == [f"survey_{n:05d}.png" for n in range(1, 41)]
+    with pymupdf.open(source) as pdf:  # page 33 drawn alone, the same way
+        pdf[32].get_pixmap(dpi=200, alpha=False).save(tmp_path / "page33.png")
+    assert (run.images / "survey_00033.png").read_bytes() == (tmp_path / "page33.png").read_bytes()

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Minus, Maximize, Search } from "lucide-react";
 import type { SurveyPage } from "./model";
 import { pageNames as names } from "./model";
-import { fieldLocations } from "./fieldLocations";
+import { getSourceRegion } from "./fieldLocations";
 
 // Render the source scan with zoom, drag-to-pan, fit, fullscreen and a mapped-field overlay.
 
@@ -19,9 +19,10 @@ export default function ImageViewer({
   const image = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
   const selectedField = page.fields.find((f) => f.id === selection?.fieldId);
-  const region = selectedField
-    ? fieldLocations[page.type][selectedField.id]
-    : undefined;
+  const region = useMemo(
+    () => selectedField ? getSourceRegion(page.type, selectedField.id) : undefined,
+    [page.type, selectedField],
+  );
   // Zoom first, then centre the selected region after the resized image has rendered.
   useEffect(() => {
     if (!selection || !region || !loaded || page.type === "notes") return;
@@ -123,7 +124,7 @@ export default function ImageViewer({
       >
         {error ? (
           <div className="empty">
-            The source image could not be loaded. Check its URL in US8.
+            The source image could not be loaded. Check its URL in database.
           </div>
         ) : (
           <div className="scan-stage" ref={stage} style={{ width: `${zoom}%` }}>

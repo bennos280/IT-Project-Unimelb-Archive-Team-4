@@ -1,9 +1,9 @@
-"""Unit tests for pipeline/identify/fingerprint.py"""
+"""Unit tests for backend/pipeline/identify/fingerprint.py"""
 
 import numpy as np
 from PIL import Image
 
-from pipeline.identify.fingerprint import SIZE, fingerprint
+from backend.pipeline.identify.fingerprint import SIZE, fingerprint
 
 
 def test_fingerprint_empty_list(monkeypatch):
@@ -15,7 +15,7 @@ def test_fingerprint_empty_list(monkeypatch):
         calls.append(views)
         return np.zeros((5, 3), dtype=np.float32)
 
-    monkeypatch.setattr("pipeline.identify.fingerprint._clip", fake_clip)
+    monkeypatch.setattr("backend.pipeline.identify.fingerprint._clip", fake_clip)
 
     result = fingerprint([])
 
@@ -33,7 +33,7 @@ def test_fingerprint_builds_5_correctly_sized_views(tmp_path, monkeypatch):
         calls.append(views)
         return np.zeros((5, 3), dtype=np.float32)
 
-    monkeypatch.setattr("pipeline.identify.fingerprint._clip", fake_clip)
+    monkeypatch.setattr("backend.pipeline.identify.fingerprint._clip", fake_clip)
 
     fingerprint([img_path])
 
@@ -44,7 +44,7 @@ def test_fingerprint_builds_5_correctly_sized_views(tmp_path, monkeypatch):
 
 
 def test_fingerprint_crops_correct_quadrants(tmp_path, monkeypatch):
-    from pipeline.identify.fingerprint import TILE_RENDER
+    from backend.pipeline.identify.fingerprint import TILE_RENDER
     w, h = TILE_RENDER
     img = Image.new("RGB", (w, h))
     img.paste(Image.new("RGB", (w // 2, h // 2), (255, 0, 0)), (0, 0))
@@ -60,7 +60,7 @@ def test_fingerprint_crops_correct_quadrants(tmp_path, monkeypatch):
         calls.append(views)
         return np.zeros((5, 3), dtype=np.float32)
 
-    monkeypatch.setattr("pipeline.identify.fingerprint._clip", fake_clip)
+    monkeypatch.setattr("backend.pipeline.identify.fingerprint._clip", fake_clip)
 
     fingerprint([img_path])
 

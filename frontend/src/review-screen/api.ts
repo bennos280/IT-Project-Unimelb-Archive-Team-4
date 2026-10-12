@@ -9,7 +9,7 @@ export type Reviewer = {
 };
 
 type BackendReviewer = {
-  reviewer_id: number;
+  id: number;
   name: string;
 };
 
@@ -104,7 +104,6 @@ export async function getSurvey(id: string, signal?: AbortSignal) {
       }));
 
       // Allows data to load while image serving is not connected.
-      // This does not convert a filesystem path into a working URL.
       if (
         typeof page.imageUrl !== "string" ||
         !/^(https?:\/\/|\/[^/])/.test(page.imageUrl)
@@ -117,12 +116,12 @@ export async function getSurvey(id: string, signal?: AbortSignal) {
   return parseSurvey(data, id);
 }
 
-// Load reviewers and map the backend reviewer id to frontend id
+// Load reviewers using the IDs returned by the backend.
 export async function getReviewers(): Promise<Reviewer[]> {
   const people = await request<BackendReviewer[]>("/reviewers");
 
   return people.map((person) => ({
-    id: person.reviewer_id,
+    id: person.id,
     name: person.name,
   }));
 }
@@ -142,19 +141,18 @@ export async function createReviewer(name: string): Promise<Reviewer> {
     return existing;
   }
 
-  // The current US8 endpoint expects the frontend to supply an ID.
-  const id = Math.max(0, ...people.map((person) => person.id)) + 1;
+  // The backend assigns the new reviewer ID.
 
   const person = await request<BackendReviewer>("/reviewers", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ id, name: clean }),
+    body: JSON.stringify({ name: clean }),
   });
 
   return {
-    id: person.reviewer_id,
+    id: person.id,
     name: person.name,
   };
 }

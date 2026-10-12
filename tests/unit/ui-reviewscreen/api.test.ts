@@ -147,9 +147,9 @@ describe("getSurvey", () => {
   });
 });
 
-// Checks that the backend's reviewer_id becomes the frontend's id.
-it("maps reviewer_id into the frontend id", async () => {
-  fetchMock.mockResolvedValueOnce(json([{ reviewer_id: 2, name: "Lachlan" }]));
+// Checks that the backend's id becomes the frontend's id.
+it("maps id into the frontend id", async () => {
+  fetchMock.mockResolvedValueOnce(json([{ id: 2, name: "Lachlan" }]));
 
   expect(await getReviewers()).toEqual([{ id: 2, name: "Lachlan" }]);
 });
@@ -157,7 +157,7 @@ it("maps reviewer_id into the frontend id", async () => {
 // Checks that surrounding whitespace is removed and an existing
 // reviewer is reused without making a second request.
 it("reuses an existing reviewer without creating another", async () => {
-  fetchMock.mockResolvedValueOnce(json([{ reviewer_id: 2, name: "Lachlan" }]));
+  fetchMock.mockResolvedValueOnce(json([{ id: 2, name: "Lachlan" }]));
   expect(await createReviewer(" Lachlan ")).toEqual({ id: 2, name: "Lachlan" });
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
@@ -189,7 +189,7 @@ describe("saveReviews", () => {
     fetchMock.mockImplementation(async (url, options) => {
       if (String(url).includes("/survey/")) return json(source);
       if (url === "/api/reviewers")
-        return json([{ reviewer_id: 1, name: "Test reviewer" }]);
+        return json([{ id: 1, name: "Test reviewer" }]);
       if (options?.method === "POST")
         return json({ revision: 3, savedAt: "2026-10-05T00:00:00Z" });
       throw new Error(`Unexpected request ${url}`);
@@ -274,4 +274,15 @@ describe("saveReviews", () => {
       fetchMock.mock.calls.some(([, options]) => options?.method === "POST"),
     ).toBe(false);
   });
+});
+
+
+it("uses the backend-assigned reviewer ID and sends only the name", async () => {
+  fetchMock.mockResolvedValueOnce(json([]));
+  fetchMock.mockResolvedValueOnce(json({ id: 42, name: "New reviewer" }));
+  expect(await createReviewer(" New reviewer ")).toEqual({ id: 42, name: "New reviewer" });
+  const [url, options] = fetchMock.mock.calls[1];
+  expect(url).toBe("/api/reviewers");
+  expect(options?.method).toBe("POST");
+  expect(JSON.parse(options?.body as string)).toEqual({ name: "New reviewer" });
 });

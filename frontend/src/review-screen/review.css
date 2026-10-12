@@ -627,11 +627,12 @@ thead {
 }
 .source-highlight {
   position: absolute;
-  border: 3px solid #ca7700;
-  background: #ffbf0024;
+  border: none;
+  border-radius: 8px;
+  background: rgba(0, 120, 255, 0.18);
   pointer-events: none;
   box-sizing: border-box;
-  box-shadow: 0 0 0 1px #fff9;
+  box-shadow: none;
 }
 .field {
   cursor: pointer;
@@ -674,14 +675,20 @@ thead {
   text-align: left;
 }
 
-/* Table filters without boxes; keep the native dropdown arrows. */
+/* Keep one dropdown arrow inside each filter column. */
 select.status-filter,
 select.flag-filter {
   border: none;
-  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 4px center;
   box-shadow: none;
   border-radius: 0;
-  padding: 0;
+  padding: 0 24px 0 0;
   font: inherit;
   color: inherit;
   cursor: pointer;

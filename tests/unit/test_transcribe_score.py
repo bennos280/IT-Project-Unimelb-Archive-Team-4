@@ -1,12 +1,12 @@
-"""Unit tests for pipeline/transcribe/score.py -- how a transcription is graded. do wee reallllyy need this. :(("""
+"""Unit tests for backend/pipeline/transcribe/score.py -- how a transcription is graded. do wee reallllyy need this. :(("""
 
 
 import json
 
 import pytest
 
-from pipeline.transcribe import score as score_module
-from pipeline.transcribe.score import STAMPS, flatten, norm, score_page, scorable
+from backend.pipeline.transcribe import score as score_module
+from backend.pipeline.transcribe.score import STAMPS, flatten, norm, score_page, scorable
 
 
 # ---------------------------------------------------------------- flatten()
