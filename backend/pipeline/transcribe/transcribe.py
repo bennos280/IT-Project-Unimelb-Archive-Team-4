@@ -1,8 +1,9 @@
-"""Transcribe one card image to JSON with a vision LLM. Prompt = prompt.txt + templates/<kind>.json.
+"""Transcribe one page image to JSON with a vision LLM. Prompt = the prompt + the page type's template: a job's come
+from the db's newest versions, otherwise prompt.txt and templates/<kind>.json.
 
-    survey transcribe tests/transcribe/pages/coded/216412_p003.jpg [--model M] [--effort E] [--engine claude|codex]
+    survey transcribe tests/integration/transcribe/pages/coded/216412_p003.jpg [--model M] [--effort E] [--provider claude|codex]
 
-Output: results/transcribe/<model>-<effort>/<page>.json; `survey score` compares it with tests/transcribe/truth.
+Output: results/transcribe/<model>-<effort>/<page>.json; `survey score` compares it with tests/integration/transcribe/truth.
 """
 import json
 import os
@@ -12,7 +13,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from pipeline.common import ROOT, settings
+from backend.common import ROOT, settings
 
 HERE = Path(__file__).resolve().parent
 TIMEOUT = 1800  # seconds one page may take before we give up on it
@@ -39,12 +40,15 @@ def run_cli(command, label, **kwargs):
         sys.exit(f"{label} CLI not found: install it and sign in")
 
 
+def claude_args(image, prompt, template, model, effort):
+    """Only the Read tool, and none of the user's own setup: CLAUDE.md, plugins, hooks, skills, MCP servers, memory."""
+    return ["claude", "-p", f"{prompt}\n\nThe image is at: {image}", "--model", model, "--effort", effort,
+            "--tools", "Read", "--strict-mcp-config", "--safe-mode", "--allowedTools", "Read", "--output-format", "json",
+            "--json-schema", json.dumps(schema_for(template))]
+
+
 def run_claude(image, prompt, template, model, effort):
-    out = run_cli(
-        ["claude", "-p", f"{prompt}\n\nThe image is at: {image}", "--model", model, "--effort", effort,
-         "--allowedTools", "Read", "--output-format", "json",
-         "--json-schema", json.dumps(schema_for(template))],
-        "claude")
+    out = run_cli(claude_args(image, prompt, template, model, effort), "claude")
     try:
         reply = json.loads(out.stdout)
     except ValueError:
@@ -75,19 +79,31 @@ def run_codex(image, prompt, template, model, effort):
         sys.exit(f"codex gave no JSON back:\n{raw[:500]}")
 
 
-def transcribe(image, kind, model=None, effort=None, engine=None):
+#the prompt and each template as in the files, byte for byte: {"prompt": ..., "main": ..., ...}
+def read_texts():
+    return {"prompt": (HERE / "prompt.txt").read_bytes().decode("utf-8"),
+            **{path.stem: path.read_bytes().decode("utf-8") for path in sorted((HERE / "templates").glob("*.json"))}}
+
+
+#what the model is told: the prompt, then the page type's blank template
+def full_prompt(prompt, template):
+    return f"{prompt.replace('\r\n', '\n').strip()}\n\n{json.dumps(template, indent=2)}"
+
+
+def transcribe(image, kind, provider=None, model=None, effort=None, texts=None):
     """One card image of the given kind (main / notes / coded) -> the filled template as a dict,
-    stamped with engine, model, effort and seconds. Defaults come from .env."""
+    stamped with provider, model, effort and seconds. Defaults come from .env; texts default to the files."""
+    provider = provider or settings()["PROVIDER"]
+    if provider not in ("claude", "codex"):
+        sys.exit(f"PROVIDER must be claude or codex, not {provider!r}")
     model = model or settings()["MODEL"]
     effort = effort or settings()["EFFORT"]
-    engine = engine or ("codex" if model.startswith("gpt") else "claude")
-    if engine not in ("claude", "codex"):
-        sys.exit(f"--engine must be claude or codex, not {engine!r}")
-    template = json.loads((HERE / "templates" / f"{kind}.json").read_text(encoding="utf-8"))
-    prompt = f"{(HERE / 'prompt.txt').read_text(encoding='utf-8').strip()}\n\n{json.dumps(template, indent=2)}"
+    texts = texts or read_texts()
+    template = json.loads(texts[kind])
+    prompt = full_prompt(texts["prompt"], template)
 
     started = time.perf_counter()
-    if engine == "codex":
+    if provider == "codex":
         answer, version = run_codex(image, prompt, template, model, effort)
     else:
         answer, version = run_claude(image, prompt, template, model, effort)
@@ -102,7 +118,7 @@ def transcribe(image, kind, model=None, effort=None, engine=None):
         except ValueError:
             pass
 
-    answer["engine"] = engine
+    answer["provider"] = provider
     answer["model"] = version or model
     answer["effort"] = effort
     answer["seconds"] = seconds
@@ -117,7 +133,7 @@ def main(args):
     option = lambda name, default: args[args.index(name) + 1] if name in args else default
     model = option("--model", settings()["MODEL"])
     effort = option("--effort", settings()["EFFORT"])
-    answer = transcribe(image, image.parent.name, model, effort, option("--engine", None))
+    answer = transcribe(image, image.parent.name, provider=option("--provider", None), model=model, effort=effort)
     dest = ROOT / "results" / "transcribe" / f"{model}-{effort}" / f"{image.stem}.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(json.dumps(answer, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

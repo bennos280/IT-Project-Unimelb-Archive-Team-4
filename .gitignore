@@ -15,3 +15,11 @@ Thumbs.db
 
 # Preprocessed copies of source/, rebuilt by pipeline/preprocess.py
 source-pre/
+
+# Database
+# SQLite's file for a write in progress
+*.db-journal
+# the running worker's lock file
+backend/worker.lock
+# copies of the db made before a migration changes it
+backend/db/wilfprestsurvey-backup-*.db

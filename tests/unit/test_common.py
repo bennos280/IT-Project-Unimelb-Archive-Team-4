@@ -1,8 +1,8 @@
-"""Unit tests for pipeline/common.py: reading .env settings and finding page images."""
+"""Unit tests for backend/common.py: reading .env settings and finding page images."""
 
 import pytest
 
-from pipeline import common
+from backend import common
 
 
 def write_env(folder, text):
@@ -23,6 +23,7 @@ def test_settings_reads_keys_and_defaults_output(tmp_path, monkeypatch):
     assert config["EFFORT"] == "high"
     # OUTPUT was never written to the file, so the built-in default is used.
     assert config["OUTPUT"] == "output"
+    assert config["PROVIDER"] == "claude"  # also a default
 
 
 def test_settings_strips_comments_whitespace_and_bom(tmp_path, monkeypatch):

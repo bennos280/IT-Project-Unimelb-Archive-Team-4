@@ -1,4 +1,4 @@
-"""Unit tests for pipeline/transcribe/run.py schema building and engine handling"""
+"""Unit tests for backend/pipeline/transcribe/transcribe.py schema building and provider handling"""
 
 import json
 import subprocess
@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from pipeline.transcribe import run as transcription
-from pipeline.transcribe.run import run_claude, run_cli, run_codex, schema_for, transcribe
+from backend.pipeline.transcribe import transcribe as transcription
+from backend.pipeline.transcribe.transcribe import run_claude, run_cli, run_codex, schema_for, transcribe
 
 
 @pytest.fixture
@@ -153,7 +153,9 @@ def test_run_claude_builds_the_command_with_the_image_path_and_schema(monkeypatc
     assert "/scans/page.jpg" in command[2]              # the prompt mentions the image
     assert command[command.index("--model") + 1] == "opus"
     assert command[command.index("--effort") + 1] == "low"
-    assert "Read" in command                            # the Read tool is allowed
+    assert command[command.index("--tools") + 1] == "Read"  # and is the only tool
+    assert "--strict-mcp-config" in command             # none of the user's MCP servers
+    assert "--safe-mode" in command                     # nor their CLAUDE.md, plugins, hooks, skills or memory
     assert json.loads(command[command.index("--json-schema") + 1])["type"] == "object"
 
 def test_run_claude_exits_when_the_reply_is_not_json(monkeypatch):
@@ -269,62 +271,47 @@ def test_run_codex_exits_when_the_answer_file_holds_no_json(monkeypatch):
 
 
 # ---------------------------------------------------------------- transcribe()
-@pytest.mark.parametrize("model,expected_engine", [
-    ("gpt-5", "codex"), ("gpt-4.1", "codex"),
-    ("sonnet", "claude"), ("opus", "claude"), ("haiku", "claude"),
-])
-def test_transcribe_picks_the_engine_from_the_model_name(prompt_files, monkeypatch,
-                                                         model, expected_engine):
-    """Any model starting with "gpt" goes through codex; everything else via claude.
-    """
+@pytest.mark.parametrize("provider,model", [("claude", "sonnet"), ("codex", "o3")])
+def test_transcribe_reads_with_the_provider_it_is_given(prompt_files, monkeypatch, provider, model):
+    """The provider picks the CLI, whatever the model is called (an OpenAI o3 isn't named gpt-*)."""
     used = []
     for name in ("run_claude", "run_codex"):
         monkeypatch.setattr(transcription, name,
                             lambda *a, _n=name, **k: (used.append(_n) or ({"text": "x"}, "v")))
 
-    answer = transcribe("page.jpg", "main", model=model, effort="high")
+    answer = transcribe("page.jpg", "main", provider=provider, model=model, effort="high")
 
-    assert used == [f"run_{expected_engine}"]
-    assert answer["engine"] == expected_engine
-
-def test_transcribe_honours_an_explicit_engine_override(prompt_files, monkeypatch):
-    """`engine="claude"` wins even for a gpt-* model, for A/B comparisons."""
-    monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: ({"text": "x"}, "v"))
-    monkeypatch.setattr(transcription, "run_codex",
-                        lambda *a, **k: pytest.fail("codex must not be used"))
-
-    assert transcribe("p.jpg", "main", model="gpt-5", effort="high",
-                      engine="claude")["engine"] == "claude"
+    assert used == [f"run_{provider}"]
+    assert answer["provider"] == provider
 
 
-def test_transcribe_rejects_an_unknown_engine(prompt_files):
-    """A typo in --engine fails immediately with the valid choices."""
-    with pytest.raises(SystemExit, match="must be claude or codex"):
-        transcribe("p.jpg", "main", model="sonnet", effort="high", engine="anAiModelThatSucks")
+def test_transcribe_refuses_an_unknown_provider(prompt_files):
+    with pytest.raises(SystemExit, match="PROVIDER must be claude or codex, not 'chatgpt'"):
+        transcribe("page.jpg", "main", provider="chatgpt", model="gpt-5", effort="high")
 
 def test_transcribe_stamps_every_answer_with_provenance(prompt_files, monkeypatch):
-    """engine, model, effort and seconds are added to the returned dict.
+    """provider, model, effort and seconds are added to the returned dict.
     """
     monkeypatch.setattr(transcription, "run_claude",
                         lambda *a, **k: ({"text": "Smith"}, "claude-sonnet-4"))
 
-    answer = transcribe("page.jpg", "main", model="sonnet", effort="high")
+    answer = transcribe("page.jpg", "main", provider="claude", model="sonnet", effort="high")
 
     assert answer["text"] == "Smith"
-    assert answer["engine"] == "claude"
+    assert answer["provider"] == "claude"
     assert answer["model"] == "claude-sonnet-4"      # the reported version, not the alias
     assert answer["effort"] == "high"
     assert isinstance(answer["seconds"], float) and answer["seconds"] >= 0
 
 def test_transcribe_falls_back_to_the_requested_model_name(prompt_files, monkeypatch):
-    """If the engine reports no version, the requested name is recorded instead.
+    """If the provider reports no version, the requested name is recorded instead.
 
     `answer["model"] = version or model` -- an empty string from `"+".join({})`
     is falsy, so the alias is kept rather than saving a blank field.
     """
     monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: ({"text": "x"}, ""))
 
-    assert transcribe("page.jpg", "main", model="sonnet", effort="high")["model"] == "sonnet"
+    assert transcribe("page.jpg", "main", provider="claude", model="sonnet", effort="high")["model"] == "sonnet"
 
 
 def test_transcribe_unwraps_a_notes_answer_returned_as_a_json_string(prompt_files, monkeypatch):
@@ -334,7 +321,7 @@ def test_transcribe_unwraps_a_notes_answer_returned_as_a_json_string(prompt_file
     nested = json.dumps({"text": "the real note", "page": "3"})
     monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: ({"text": nested}, "v"))
 
-    answer = transcribe("page.jpg", "notes", model="sonnet", effort="high")
+    answer = transcribe("page.jpg", "notes", provider="claude", model="sonnet", effort="high")
 
     assert answer["text"] == "the real note"
     assert answer["page"] == "3"
@@ -349,7 +336,7 @@ def test_transcribe_leaves_ordinary_text_untouched(prompt_files, monkeypatch, te
     """
     monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: ({"text": text}, "v"))
 
-    assert transcribe("page.jpg", "notes", model="sonnet", effort="high")["text"] == text
+    assert transcribe("page.jpg", "notes", provider="claude", model="sonnet", effort="high")["text"] == text
 
 def test_transcribe_sends_the_template_inside_the_prompt(prompt_files, monkeypatch):
     """The prompt is prompt.txt plus the pretty-printed template for that page kind.
@@ -361,19 +348,34 @@ def test_transcribe_sends_the_template_inside_the_prompt(prompt_files, monkeypat
         return {"text": "x"}, "v"
 
     monkeypatch.setattr(transcription, "run_claude", fake_run_claude)
-    transcribe("page.jpg", "coded", model="sonnet", effort="high")
+    transcribe("page.jpg", "coded", provider="claude", model="sonnet", effort="high")
 
     assert captured["prompt"].startswith("Read the card.")
     assert '"text": null' in captured["prompt"]
     assert captured["template"] == {"text": None}
 
 def test_transcribe_defaults_model_and_effort_from_env(prompt_files, monkeypatch):
-    """Called without model/effort, the values come from .env.
+    """Called without provider/model/effort, the values come from .env.
     """
     monkeypatch.setattr(transcription, "settings",
-                        lambda: {"MODEL": "haiku", "EFFORT": "low"})
+                        lambda: {"PROVIDER": "claude", "MODEL": "haiku", "EFFORT": "low"})
     monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: ({"text": "x"}, ""))
 
     answer = transcribe("page.jpg", "main")
 
-    assert answer["model"] == "haiku" and answer["effort"] == "low"
+    assert (answer["provider"], answer["model"], answer["effort"]) == ("claude", "haiku", "low")
+
+
+def test_transcribe_reads_with_the_texts_it_is_given(prompt_files, monkeypatch):
+    """A job passes the db's newest prompt and templates; Windows line endings in the prompt reach the model as plain ones."""
+    captured = {}
+
+    def fake_run_claude(image, prompt, template, model, effort):
+        captured.update(prompt=prompt, template=template)
+        return {"text": "x"}, "v"
+
+    monkeypatch.setattr(transcription, "run_claude", fake_run_claude)
+    transcribe("page.jpg", "followup", provider="claude", model="sonnet", effort="high",
+               texts={"prompt": "Read it.\r\nCarefully.\r\n", "followup": '{"text": null}'})
+
+    assert captured == {"prompt": 'Read it.\nCarefully.\n\n{\n  "text": null\n}', "template": {"text": None}}

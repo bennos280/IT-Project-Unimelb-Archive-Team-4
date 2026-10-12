@@ -1,4 +1,4 @@
-"""Integration tests for pipeline/preprocess.py: full pipeline calls, real fixture images, pipeline handoff (no model calls)."""
+"""Integration tests for backend/pipeline/preprocess/preprocess.py: full pipeline calls, real fixture images, pipeline handoff (no model calls)."""
 import argparse
 import json
 from pathlib import Path
@@ -7,9 +7,9 @@ import cv2
 import numpy as np
 import pytest
 
-from pipeline import run
-from pipeline.preprocess import preprocess
-from pipeline.preprocess.options import add_arguments, resolve_options
+from backend.pipeline import run
+from backend.pipeline.preprocess import preprocess
+from backend.pipeline.preprocess.options import add_arguments, resolve_options
 
 # Folder containing the real image fixtures; tmp_path holds generated test outputs.
 FIXTURES = Path(__file__).parent / "preprocess"
