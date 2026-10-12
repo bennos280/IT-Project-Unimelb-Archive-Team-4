@@ -1,14 +1,14 @@
 # Unit tests
 
-**193 tests. Runs in ~16s.**
+**175 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
 ```
 
-## `test_preprocess.py` — 25 tests
+## `test_preprocess.py` — 6 tests
 
-preprocessing steps tests and CLI/config option handling for `backend.pipeline.preprocess`.
+The image steps of `backend.pipeline.preprocess` (skew detection, straightening, card edges), which make the review screen's cleaned-up view.
 
 | Test  | What it checks |
 |---|---|
@@ -16,22 +16,6 @@ preprocessing steps tests and CLI/config option handling for `backend.pipeline.p
 | `test_deskew_uses_agreeing_card_edges_and_corrects_direction`  | Detection uses the `card_edges` method, picks the right sign, and residual tilt after `deskew()` is under 0.25°. |
 | `test_boundary_skew_rejects_blank_and_single_edge`  | A blank image and a single detected edge both return `None` — not enough evidence to guess. |
 | `test_boundary_skew_rejects_disagreeing_edges`  | Two edges at conflicting angles return `None` rather than an unreliable average. |
-| `test_defaults_and_cli_overrides`  | Precedence order: defaults < config values < command-line flags. |
-| `test_invalid_cli_options`  | A bad number and conflicting colour modes both exit with argparse code 2. |
-| `test_single_image_without_output_writes_beside_the_source` | Without `--output`, the preprocessed image is written beside the source with a `_preprocessed` suffix, while the original remains unchanged. |
-| `test_single_image_with_output_keeps_the_original_filename` | With `--output`, the processed image keeps its original filename rather than adding the `_preprocessed` suffix. |
-| `test_report_records_the_settings_that_were_actually_used` | The JSON report correctly records the selected grayscale, binarize, colour, crop, deskew, and adaptive-C settings, along with the report schema version and page mode. |
-| `test_a_non_image_file_is_a_usage_error` | Unsupported single-file extensions such as `.txt`, `.pdf`, and `.zip` raise an argparse usage error with exit code 2. |
-| `test_a_missing_input_path_is_a_usage_error` | A nonexistent input path is rejected as a usage error with exit code 2 before processing starts. |
-| `test_folder_mode_processes_every_image_including_subfolders` | Folder input recursively processes images in subfolders and preserves the input directory structure in the output directory. |
-| `test_folder_mode_ignores_files_it_has_already_produced` | Files ending in `_preprocessed` are skipped so previously generated outputs are not processed again. |
-| `test_folder_mode_ignores_unsupported_file_types` | Unsupported files such as `.txt` and `.pdf` inside a folder are quietly ignored while supported images are processed. |
-| `test_folder_with_no_supported_images_is_a_usage_error` | An empty or image-free folder raises a usage error with exit code 2 instead of producing an empty report. |
-| `test_output_folder_inside_the_input_folder_is_rejected` | An output directory that is the input folder or nested inside it is rejected with exit code 2 to prevent outputs from being processed as new inputs. |
-| `test_an_existing_report_stops_the_run_before_any_processing` | An existing preprocessing report prevents the run from overwriting it and ensures no output image is created. |
-| `test_one_bad_image_does_not_stop_the_others_but_changes_the_exit_code` | A failed image does not stop the remaining images from processing; the failure is recorded in the report and the command returns exit code 1. |
-| `test_invalid_config_value_becomes_a_usage_error` | An invalid `PREPROCESS_*` configuration value is converted into an argparse usage error with exit code 2 rather than producing a traceback. |
-| `test_progress_lines_name_each_file_and_its_detected_skew` | Console progress output names each processed file, shows its mode and detected skew, and includes the final report location. |
 
 ## `test_identify.py` — 20 tests
 
@@ -148,7 +132,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 | `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP. |
 | `test_fingerprint_crops_correct_quadrants` | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
 
-## `test_backend_api.py` — 17 tests
+## `test_backend_api.py` — 19 tests
 |Test|What it checks|
 |---|---|
 |`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
@@ -167,6 +151,8 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_a_page_scan_is_served_by_its_page_id`|`GET /pages/<page id>/image` returns the scan's bytes; an unknown page id returns 404.|
 |`test_a_page_scan_not_on_this_computer_comes_from_the_archive_and_is_kept`|A page whose scan isn't on this computer is downloaded from the archive (faked here) once and kept; a page the archive hasn't got, returns 404.|
 |`test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_again_for_a_while`|A page download the archive breaks off is not kept (404); the archive isn't asked about that bundle again for `RETRY` seconds, and after that the page is downloaded and served.|
+|`test_a_page_scan_can_be_had_straightened_and_black_and_white`|`GET /pages/<id>/image?preprocessed=true` returns a real main form straightened, cropped and black and white (only black and white pixels), made once into `OUTPUT/preprocessed/<page id>.png` and served from there after; the plain `/image` still returns the scan unchanged.|
+|`test_a_scan_that_cannot_be_cleaned_up_is_sent_as_it_is`|A scan the preprocessing can't read is returned as it is instead of an error.|
 |`test_survey_flags_grouping_problems_unreadable_text_and_other_pages`|A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.|
 
 ## `test_loader.py` — 3 tests
@@ -215,7 +201,7 @@ The pipeline and loader are faked: no model calls. Job state is read through a s
 |---|---|
 |`test_a_job_reads_with_the_newest_prompt_and_templates`|A job hands the pipeline the newest version of the prompt and of each template, as the job starts.|
 |`test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys`|The worker runs the oldest waiting job, commits each step and page count while it runs, keeps the page count once the run moves on, loads the run's manifest.json and marks the job done.|
-|`test_a_job_is_a_full_run_every_step_but_the_optional_preprocess`|A job runs split, identify, transcribe and group: every step in the pipeline's `STEPS` but the optional preprocess.|
+|`test_a_job_runs_every_step`|A job runs split, identify, transcribe and group.|
 |`test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing`|A failed model call marks the job failed with its reason, and nothing is loaded.|
 |`test_pdf_with_no_pages_fails_instead_of_loading_nothing`|A PDF with no pages fails with a reason instead of ending done with nothing loaded.|
 |`test_stopping_the_worker_marks_its_job_failed`|Ctrl+C during a job marks it failed, so it doesn't show as running forever.|
