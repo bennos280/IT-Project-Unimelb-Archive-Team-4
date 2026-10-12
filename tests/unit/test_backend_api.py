@@ -214,7 +214,10 @@ def test_accuracy_counts_every_changed_field_on_saved_pages_against_the_model_th
     add_in_order(db, models.Survey(survey_id="s", bundle_id="6789"),
                  *[models.Page(page_id=page, survey_id="s", category="main", import_path="x.png", bundle_id="6789",
                                model=model, effort="low") for page, model in pages],
-                 *[models.Field(page_id=page, field_title=title, text_raw=value) for page, title, value in fields])
+                 *[models.Field(page_id=page, field_title=title, text_raw=value) for page, title, value in fields],
+                 models.Page(page_id="p5", survey_id="s", category="coded", import_path="x.png", bundle_id="6789",
+                             model="opus", effort="low"),
+                 models.Field(page_id="p5", field_title="washouse", text_raw="1"))
     db.commit()
 
     def save(page, edits):
@@ -223,11 +226,13 @@ def test_accuracy_counts_every_changed_field_on_saved_pages_against_the_model_th
     assert save("p1", {"rooms": review("44"), "address": review("5 Peel St.")}) == 200  # one change; one re-typed as it was
     assert save("p2", {}) == 200  # checked: all correct
     assert save("p4", {"address": review("1 low st.")}) == 200  # any change counts, even just capitals
+    assert save("p5", {}) == 200  # a coded card: counted apart from the main forms
     # p3 was never saved, so it isn't counted
     versions = {"promptVersion": None, "templateVersion": None}  # read before prompt and template versions
     assert client.get("/accuracy").json() == [
-        {"model": "opus", "effort": "low", **versions, "pages": 2, "fields": 5, "changed": 1, "accuracy": 80.0},
-        {"model": "sonnet", "effort": "low", **versions, "pages": 1, "fields": 1, "changed": 1, "accuracy": 0.0}]
+        {"model": "opus", "effort": "low", "pageType": "coded", **versions, "pages": 1, "fields": 1, "changed": 0, "accuracy": 100.0},
+        {"model": "opus", "effort": "low", "pageType": "main", **versions, "pages": 2, "fields": 5, "changed": 1, "accuracy": 80.0},
+        {"model": "sonnet", "effort": "low", "pageType": "main", **versions, "pages": 1, "fields": 1, "changed": 1, "accuracy": 0.0}]
 
 
 #------------------------------------------------- page_image(), and what the reviewer is asked to check
