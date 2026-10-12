@@ -123,10 +123,11 @@ def test_run_cli_passes_capture_and_timeout_settings_through(monkeypatch):
 
 # ---------------------------------------------------------------- run_claude()
 def test_run_claude_returns_the_structured_output_and_model_name(monkeypatch):
-    """A successful reply yields (answer, model-name-actually-used).
+    """A successful reply yields (answer, the model that wrote it); the small model Claude Code has title the
+    session is left out.
     """
     reply = {"structured_output": {"text": "Smith"},
-             "modelUsage": {"claude-sonnet-4": {"tokens": 10}}}
+             "modelUsage": {"claude-haiku-4-5-20251001": {"outputTokens": 12}, "claude-sonnet-4": {"outputTokens": 900}}}
     monkeypatch.setattr(transcription, "run_cli",
                         lambda *a, **k: SimpleNamespace(stdout=json.dumps(reply),
                                                         stderr="", returncode=0))

@@ -44,6 +44,9 @@ def insert_page(page_id, page_p, src_img_p:str, category:str, survey_id:str | No
     data = json.loads(page_p.read_text(encoding="utf-8")) if page_p else None
     if data and "engine" in data: #older runs call the provider engine
         data["provider"] = data.pop("engine")
+    if data and "+" in (data.get("model") or ""): #older runs list every model Claude Code used: the reading one, and Haiku titling the session
+        models = data["model"].split("+")
+        data["model"] = next((m for m in models if "haiku" not in m), models[0])
     versions = [version_id(con, kind, (request or {}).get(key)) for kind, key in (("prompt", "prompt"), (category, "template"))]
     con.exec_driver_sql("INSERT INTO pages(page_id, import_path, survey_id, bundle_id, category, provider, model, effort, runtime,"
                         " prompt_version_id, template_version_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

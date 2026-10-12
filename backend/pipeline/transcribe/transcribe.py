@@ -50,7 +50,9 @@ def run_claude(image, prompt, template, model, effort):
         sys.exit(f"claude gave no JSON back (exit {out.returncode}):\n{(out.stderr or out.stdout)[:500]}")
     if reply.get("is_error") or "structured_output" not in reply:
         sys.exit(f"claude failed: {str(reply.get('result') or out.stderr)[:500]}")
-    return reply["structured_output"], "+".join(reply.get("modelUsage", {}))
+    #the model that wrote the reading (Claude Code also has a small model title the session)
+    usage = reply.get("modelUsage") or {}
+    return reply["structured_output"], max(usage, key=lambda m: usage[m].get("outputTokens", 0), default=None)
 
 
 def run_codex(image, prompt, template, model, effort):
