@@ -1,6 +1,6 @@
 # Test suite for the Wilfred Prest survey pipeline
 
-**298 tests runs in ~160s.**
+**265 tests runs in ~160s.**
 
 ```bash
 uv run pytest tests
