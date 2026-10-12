@@ -63,7 +63,7 @@ def test_a_job_is_a_full_run_every_step_but_the_optional_preprocess(db, tmp_path
                         lambda run, names: asked.append(names) or run.pages.append({"file": "a_00001.png"}))
     monkeypatch.setattr(worker.loader, "dump_into_db", lambda manifest: None)
     worker.work_once(db)
-    assert asked == [["split", "identify", "transcribe", "group"]]
+    assert asked == [["split", "identify", "transcribe", "group", "validate"]]
 
 
 def test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing(db, committed, tmp_path, monkeypatch):

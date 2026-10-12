@@ -1,6 +1,6 @@
 # Unit tests
 
-**225 tests. Runs in ~16s.**
+**281 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
@@ -103,7 +103,7 @@ Unit tests for `.env` configuration parsing and page-image discovery in `backend
 | `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images. |
 
 
-## `test_transcribe.py` — 35 tests
+## `test_transcribe.py` — 34 tests
 
 unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generation, CLI handling, Claude/Codex provider behaviour, response processing, and transcription metadata.
 
@@ -120,56 +120,22 @@ unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generat
 | `test_run_cli_turns_a_hang_into_a_readable_exit` | Converts a CLI timeout into a readable exit message instead of exposing a raw `TimeoutExpired` traceback. |
 | `test_run_cli_explains_a_missing_cli_instead_of_crashing` | Converts a missing Claude/Codex executable into a clear "CLI not found" message. |
 | `test_run_cli_passes_capture_and_timeout_settings_through` | Verifies subprocess output capture, timeout, replacement-character decoding, working directory, and command arguments are passed correctly. |
-| `test_run_claude_returns_the_structured_output_and_model_name` | Parses a successful Claude response and returns both the structured answer and the actual model version reported by the CLI. |
+| `test_run_claude_returns_the_structured_output` | Parses a successful Claude response and returns the structured answer. |
 | `test_run_claude_builds_the_command_with_the_image_path_and_schema` | Builds the Claude command with the image path, selected model and effort, Read as the only tool, none of the user's MCP servers, `--safe-mode` (none of their CLAUDE.md, plugins, hooks, skills or memory), and JSON schema arguments. |
 | `test_run_claude_exits_when_the_reply_is_not_json` | Rejects non-JSON CLI output and exits with a useful message containing the raw response. |
 | `test_run_claude_exits_when_the_reply_is_an_error_or_incomplete` | Rejects both explicit Claude errors and valid JSON responses missing `structured_output`. |
-| `test_run_codex_reads_the_answer_from_the_output_file` | Reads and parses the JSON answer written by Codex to its `--output-last-message` file and returns the requested model name. |
+| `test_run_codex_reads_the_answer_from_the_output_file` | Reads and parses the JSON answer written by Codex to its `--output-last-message` file. |
 | `test_run_codex_extracts_json_surrounded_by_chatter` | Extracts valid JSON from Codex output even when explanatory text appears before or after the JSON object. |
 | `test_run_codex_runs_read_only_and_ephemeral` | Verifies Codex uses an ephemeral session, ignores user configuration, runs with a read-only sandbox, and receives the image path. |
 | `test_run_codex_exits_on_a_bad_exit_code_or_a_missing_answer_file` | Rejects either a non-zero Codex exit code or a missing output file instead of treating the result as a valid empty transcription. |
 | `test_run_codex_exits_when_the_answer_file_holds_no_json` | Rejects an output file containing prose without a JSON object and exits with a clear message. |
 | `test_transcribe_reads_with_the_provider_it_is_given` | 2 cases: `PROVIDER` picks the CLI (`claude` or `codex`) whatever the model is called, and the answer is stamped with it; an OpenAI `o3` goes to Codex though it isn't named gpt-*. |
 | `test_transcribe_refuses_an_unknown_provider` | A provider other than `claude` or `codex` stops with "PROVIDER must be claude or codex". |
-| `test_transcribe_stamps_every_answer_with_provenance` | Adds provider, actual model version, effort, and elapsed seconds to every transcription result. |
-| `test_transcribe_falls_back_to_the_requested_model_name` | Uses the requested model name when the provider does not report an actual model version. |
+| `test_transcribe_stamps_every_answer_with_provenance` | Adds provider, model and effort (as given, else from `.env`) and elapsed seconds to every transcription result. |
 | `test_transcribe_unwraps_a_notes_answer_returned_as_a_json_string` | Repairs notes responses where the complete transcription object has incorrectly been returned as a JSON string inside the `text` field. |
 | `test_transcribe_leaves_ordinary_text_untouched` | Leaves normal text and invalid JSON-looking text unchanged when the notes JSON-unwrapping repair does not apply. |
 | `test_transcribe_sends_the_template_inside_the_prompt` | Includes the page template alongside `prompt.txt` in the model prompt and passes the same template to the provider's model call. |
 | `test_transcribe_defaults_model_and_effort_from_env` | When model and effort are omitted, uses the corresponding `MODEL` and `EFFORT` values from the environment configuration. |
-
-
-## `test_transcribe_score.py` — 35 tests
-
-unit tests for `backend.pipeline.transcribe.score`, covering JSON flattening, value normalisation, scorable fields, page-level scoring, invented values, character similarity, and leaderboard reporting.
-
-| Test | What it checks |
-|---|---|
-| `test_flatten_turns_nested_objects_into_dotted_paths` | Flattens nested objects into dotted paths so individual fields can be compared separately. |
-| `test_flatten_indexes_list_items_by_position` | Flattens list items using positional paths such as `notes[0]` and `notes[1]`. |
-| `test_flatten_handles_lists_of_objects` | Correctly combines list indexing and nested object paths, such as `annotations[0].raw`. |
-| `test_flatten_keeps_none_and_empty_values` | Preserves `None` and empty-string values so blank fields can be distinguished from missing fields and invented values can be detected. |
-| `test_flatten_of_a_bare_value_uses_an_empty_key` | Handles a scalar at the top level by representing it with an empty key rather than raising an error. |
-| `test_norm_treats_these_as_the_same_answer` | Treats differences in case, surrounding whitespace, repeated spaces, newlines, and `None` versus an empty string as equivalent. |
-| `test_norm_keeps_punctuation_because_it_carries_meaning` | Preserves meaningful punctuation so values such as `30/-` versus `30/` and `St.` versus `St` remain different. |
-| `test_norm_converts_non_strings_before_comparing` | Converts non-string values such as numbers and booleans to strings before comparison. |
-| `test_provenance_stamps_are_not_graded` | Excludes engine, model, effort, seconds, and other provenance stamps from scoring. |
-| `test_annotation_paths_are_excluded_from_grading` | Excludes fields under `annotations[...]` from grading while still grading normal fields containing the word "annotation". |
-| `test_ordinary_card_fields_are_graded` | Confirms ordinary card fields and nested household fields are included in scoring. |
-| `test_score_page_counts_exact_matches_as_hits` | Counts fields whose normalised answers exactly match the truth as hits. |
-| `test_score_page_lists_the_fields_that_were_missed` | Records the paths of fields where the transcription does not match the truth. |
-| `test_score_page_only_grades_fields_the_card_actually_has` | Excludes blank truth fields from the graded total while tracking them separately as blanks. |
-| `test_score_page_reports_invented_values_for_blank_fields` | Detects and records values supplied by the model for fields that were blank on the original card. |
-| `test_score_page_does_not_count_a_blank_answer_as_invented` | Confirms that correctly leaving a blank field blank is not treated as an invented value. |
-| `test_score_page_treats_a_missing_field_as_a_miss_not_a_crash` | Treats an omitted answer field as a miss rather than raising an exception. |
-| `test_score_page_character_similarity_rewards_near_misses` | Records character-level similarity so exact matches, near-misses, and substantially different answers can be distinguished. |
-| `test_score_page_ignores_stamps_and_annotations_end_to_end` | Verifies end-to-end that provenance stamps and annotation fields do not affect the graded totals while timing information is retained. |
-| `test_score_page_grades_nested_structures_field_by_field` | Scores nested objects field by field, allowing partial credit when some nested fields are correct. |
-| `test_score_page_of_an_empty_key_is_zero_not_an_error` | Handles a truth record with no gradeable fields by returning zero totals without dividing or crashing. |
-| `test_main_exits_when_there_are_no_results_yet` | When no transcription results exist, exits with a clear message explaining that results must be generated first. |
-| `test_main_prints_a_row_per_model_and_page_kind` | Prints a leaderboard row for each model and page type with the correct exact-match percentage and hit/total fraction. |
-| `test_main_counts_pages_with_no_answer_as_missing` | Counts truth pages without corresponding model answers as missing rather than silently excluding them from the results. |
-| `test_main_skips_a_kind_with_no_answers_at_all` | Omits page types that the model never attempted instead of displaying them as zero-score results. |
 
 
 ## `test_identify_fingerprint.py` — 3 tests
@@ -182,7 +148,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 | `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP. |
 | `test_fingerprint_crops_correct_quadrants` | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
 
-## `test_backend_api.py` — 16 tests
+## `test_backend_api.py` — 17 tests
 |Test|What it checks|
 |---|---|
 |`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
@@ -197,6 +163,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_saved_edits_come_back_with_what_they_replaced`|The page lists its fields in order (a field, a resident's field `residents.0.age`, an other child `other_children.living_elsewhere.0`, an annotation `annotations.0`). Edits to each are saved, including a field that was empty and a child cleared with `null`; a second save of the same field, by a reviewer known only by id, replaces the first; `GET /reviews` returns the latest value of each with the original it replaced, the reviewer and the same `savedAt` the save returned, and the page's revision.|
 |`test_save_refuses_pages_and_fields_that_are_not_there`|Saving to a survey the page isn't in returns 404; no revision for the page, two pages in one save, or an unknown reviewer id with no name returns 400 with the reason; an edit on a field not on its page (`residents.3.age`, `annotations.²`, or one followed by an edit from a new reviewer) returns 400; nothing is saved.|
 |`test_an_edited_code_comes_back_with_its_own_meaning`|A coded field edited from 1 to 2 comes back from `GET /reviews` with the meaning of 2 ("In kitchen"), not of what the model read.|
+|`test_accuracy_counts_every_changed_field_on_saved_pages_against_the_model_that_read_them`|Each model's accuracy counts only pages a reviewer has saved (a save with no edits means all correct): any changed field, even just its capitals, counts as wrong, a field re-typed as it was doesn't, and an unsaved page isn't counted (opus 4 of 5 = 80%, sonnet 0 of 1 = 0%), and each row names its page type, so a coded card is counted apart from the main forms (opus coded 1 of 1 = 100%).|
 |`test_a_page_scan_is_served_by_its_page_id`|`GET /pages/<page id>/image` returns the scan's bytes; an unknown page id returns 404.|
 |`test_a_page_scan_not_on_this_computer_comes_from_the_archive_and_is_kept`|A page whose scan isn't on this computer is downloaded from the archive (faked here) once and kept; a page the archive hasn't got, returns 404.|
 |`test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_again_for_a_while`|A page download the archive breaks off is not kept (404); the archive isn't asked about that bundle again for `RETRY` seconds, and after that the page is downloaded and served.|
@@ -207,7 +174,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |---|---|
 |`test_each_page_records_the_prompt_and_template_versions_that_read_it`|A page whose manifest entry has the hashes of a stored prompt and template version is stored with those versions; a hash no version has, or a page that wasn't read, leaves them empty.|
 |`test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`|A page read as a page type the db has no record of is stored as `other`, not refused.|
-|`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field.|
+|`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field, and an older model label listing every model Claude Code used (`claude-haiku-4-5-20251001+claude-opus-5-5`) is stored as the one the run asked for in its manifest (`opus`).|
 
 ## `test_schema.py` — 5 tests
 The test db is built from `backend/db/models.py` with foreign keys checked, as in the real db.
@@ -248,14 +215,14 @@ The pipeline and loader are faked: no model calls. Job state is read through a s
 |---|---|
 |`test_a_job_reads_with_the_newest_prompt_and_templates`|A job hands the pipeline the newest version of the prompt and of each template, as the job starts.|
 |`test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys`|The worker runs the oldest waiting job, commits each step and page count while it runs, keeps the page count once the run moves on, loads the run's manifest.json and marks the job done.|
-|`test_a_job_is_a_full_run_every_step_but_the_optional_preprocess`|A job runs split, identify, transcribe and group: every step in the pipeline's `STEPS` but the optional preprocess.|
+|`test_a_job_is_a_full_run_every_step_but_the_optional_preprocess`|A job runs split, identify, transcribe, group and validate: every step in the pipeline's `STEPS` but the optional preprocess.|
 |`test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing`|A failed model call marks the job failed with its reason, and nothing is loaded.|
 |`test_pdf_with_no_pages_fails_instead_of_loading_nothing`|A PDF with no pages fails with a reason instead of ending done with nothing loaded.|
 |`test_stopping_the_worker_marks_its_job_failed`|Ctrl+C during a job marks it failed, so it doesn't show as running forever.|
 |`test_job_cut_off_by_a_stopped_worker_can_be_run_again`|A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.|
 |`test_only_one_worker_runs_at_a_time`|A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.|
 
-## `test_instructions.py` — 19 tests
+## `test_instructions.py` — 20 tests
 
 The transcription prompt and templates as versions in the db (`backend/db/instructions.py` and `/instructions`).
 
@@ -267,14 +234,16 @@ The transcription prompt and templates as versions in the db (`backend/db/instru
 |`test_an_empty_prompt_is_refused`|A blank prompt is refused.|
 |`test_a_saved_template_becomes_the_newest_version_and_the_old_one_is_kept`|`POST /instructions/main` saves a new version with its reviewer and note; it becomes the newest (what the next job reads with) and the history lists both, newest first.|
 |`test_a_save_is_refused_when_unknown_unchanged_invalid_or_based_on_an_old_version`|An unknown kind (404) or reviewer (400), no change, or a template with problems (400, listing them) is refused; a save based on a version that is no longer the newest is refused (409).|
+|`test_accuracy_is_kept_apart_for_each_prompt_and_template_version`|`GET /accuracy` gives a row per prompt and template version, so versions can be compared.|
 
-## `test_page_types.py` — 6 tests
+## `test_page_types.py` — 7 tests
 
 Page types added from the review screen, and a page read again as another type.
 
 | Test | What it checks |
 |---|---|
 |`test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was`|A model answer the db can't take fails the job, and the page keeps its fields, type and revision: the swap is all or nothing.|
+|`test_a_page_read_again_counts_for_accuracy_only_once_a_reviewer_saves_it`|A page read again isn't counted by `GET /accuracy` until a reviewer saves it.|
 |`test_a_new_page_type_needs_a_template_before_pages_are_read_as_it`|`GET /page-types` lists the built-in four with their templates; a new type needs a lower-case name that isn't taken or reserved (`blank`) and a known reviewer; a page can't be read as it until it has a template (`other` can't have one); then `PUT /pages/{id}/type` queues a page job, once.|
 |`test_a_page_made_other_is_emptied_at_once`|Making a page `other` empties it to one blank text field at once and moves its revision on.|
 |`test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`|An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).|
@@ -296,3 +265,67 @@ Page sorting retrained from the review screen; page fingerprints are made up, so
 |`test_a_model_that_fails_its_check_is_recorded_but_not_used`|A model that fails is recorded with its check, but not kept or used.|
 |`test_a_bundle_job_sorts_with_the_active_model`|A bundle job sorts pages with the active model's weights; if that file is gone, the job fails saying so.|
 |`test_sorting_models_are_trained_listed_and_chosen_through_the_api`|`POST /sorting-models` queues one training (409 while waiting; 400 for an unknown reviewer); the list is newest first; `PUT /sorting-models/active` refuses an unknown (404) or failed (400) model, makes a passed one the only active one, and `null` goes back to the shipped model.|
+
+## `test_validate_rules.py` — 22 tests
+Covers the page 1 / page 3 consistency rules on the sample survey, with a consistent baseline that each test then breaks in one place. No model calls.
+
+|Test|What it checks|
+|---|---|
+|`test_consistent_sample_no_flags`|The unmodified consistent sample survey produces no issues.|
+|`test_isolated_unreadable_ignored`|An unreadable `[?]` in a field that has no counterpart on the other page is not flagged.|
+|`test_no_codebook_mapping_guessed`|With no codebook supplied, a municipality name on page 1 and a code on page 3 are not compared, so no issue is raised.|
+|`test_children_from_ages_8_and_7`|Children aged 8 and 7 count towards "children under 14", and a page 3 value of 1 instead of 2 is flagged as a page 1-3 conflict.|
+|`test_age_boundaries`|Ages 4, 5, 10, 11, 13 and 14 fall into the correct under-5, 5-10, over-10 and under-14 counts, and the matching page 3 values raise no issue.|
+|`test_corresponding_missing_markers`|A missing bedrooms value on page 3 (None, empty, space, `/` or `[?]`) while page 1 has one is flagged as an incomplete comparison.|
+|`test_absent_field_has_location`|A field deleted from page 3 is reported as `<missing>` with its page location in the compact output, and the full output marks it `ToBeReviewed` without adding the field.|
+|`test_both_corresponding_blank_no_crosspage_issue`|When the dwelling number is blank on page 1 and `/` on page 3, no cross-page issue is raised.|
+|`test_unknown_age_not_silently_zero`|A resident age of `[?]` is not counted as 0, and "children under 14" is flagged as incomplete.|
+|`test_unknown_sex_not_guessed_from_head`|A head with no sex recorded is not assumed to be male or female, so the residents-over-10 check raises nothing.|
+|`test_empty_template_columns_not_residents`|A personnel column with no age and a `/` relationship is not counted as a resident.|
+|`test_page3_age_sum_reason`|A page 3 resident total of 5 that disagrees with the age-band counts is flagged as a page 3 internal conflict that mentions age bands.|
+|`test_children_arithmetic`|A children total of 3 against 2 living and 0 dead is flagged as a page 3 conflict about living plus dead.|
+|`test_combined_rooms`|A total room count of 4 that is smaller than separate bedrooms plus living rooms is flagged.|
+|`test_page1_conflict`|Bedrooms used as living rooms combined with zero living rooms on page 1 is flagged as a page 1 internal conflict.|
+|`test_equivalent_count_text`|"None" and 0 for rooms not in daily use, and "01" and 1 for the dwelling number, are treated as equal.|
+|`test_probable_age_range`|A page 3 house age of 61 outside the page 1 probable-age interval is flagged.|
+|`test_children_elsewhere_bound`|Resident children plus children elsewhere that exceed the children total are flagged.|
+|`test_legacy_other_children_is_not_used`|The old "other children" died count on the head's personnel entry is ignored, so it raises no head's-other-children issue.|
+|`test_negative_only_flagged_in_relationship`|A negative value is flagged only in a field that is part of a cross-page relationship (bedrooms), not in an unrelated one (removal).|
+|`test_preserves_input_and_deterministic_batch`|Validating a batch leaves the input unchanged, gives identical output on a repeat run, and the consistent survey gets no flags.|
+|`test_missing_page_is_input_error`|A survey with no coded page raises `ValueError`.|
+
+## `test_validate_codebook.py` — 19 test functions / 51 cases
+Covers codebook value ranges, special codes, municipality mapping, house-age and residence codes, and codebook file loading, using the example main and coded surveys. No model calls.
+
+|Test|What it checks|
+|---|---|
+|`test_unspecified_head_sex_accepts_feasible_assignments`|With an unspecified head sex and a 71-year-old head and 69-year-old wife, male/female counts of 1/1 and 0/2 are accepted.|
+|`test_unspecified_head_sex_still_rejects_impossible_assignments`|For the same couple, counts of 2/0, 1/2 and 0/0 are flagged as a page 1-3 conflict on residents over 10.|
+|`test_sleepout_count_and_category_compatible`|Sleepout counts and page 3 categories that fit together (0 with 0, 1 with 1/2/3, 2 or 9 with 4, "Balcony" with 2) raise no sleepouts issue.|
+|`test_sleepout_count_and_category_conflict`|Sleepout counts and categories that do not fit (0 with 1, 1 with 4, 2 with 2, "Balcony" with 1) are flagged as a page 1-3 conflict.|
+|`test_shared_facility_code_is_not_a_room_count`|A rooms-shared code of 7 is accepted as a facility code, and 8 is flagged as a codebook conflict.|
+|`test_declared_codebook_domains`|For each listed field, a value inside the codebook range raises no codebook conflict and a value just outside it does.|
+|`test_municipality_uses_actual_mapping`|Essendon with code 08, Brunswick with 2 and Box Hill with 00 match the codebook mapping and raise no flags.|
+|`test_municipality_mismatch_is_explained`|Essendon on page 1 with code 2 (Brunswick) is flagged with a reason saying the code means Brunswick, marked `ToBeReviewed`, and the page 3 value is left unchanged and listed in the compact output.|
+|`test_missing_municipality_counterpart_is_incomplete`|A page 3 municipality of None, `/` or `[?]` against a named page 1 municipality is flagged as an incomplete comparison.|
+|`test_no_reference_fields_and_special_money_codes_not_reinterpreted`|Industry and occupation codes, an unreadable removal, unmapped military-service text and an income code of 997 are not checked or reinterpreted, so no flags result.|
+|`test_zero_room_code_accepts_over_eleven`|With bedrooms coded 0 and total rooms coded 0, an exact page 1 bedroom count of 12 or 18 is accepted.|
+|`test_over_eleven_bedrooms_cannot_fit_in_five_rooms`|A bedroom count of 12 with a page 3 bedrooms code of 0 is flagged as a page 3 conflict because the bedrooms and living rooms cannot fit.|
+|`test_house_special_codes_not_treated_as_exact_ages`|House-age codes 00, 98 and 99 against "55", "old", "105 years." and "over 99 years." are not compared as exact ages.|
+|`test_over_ninety_nine_house_code_conflicts_with_fifteen`|A house-age code of 99 (over 99 years) against a page 1 age of 15 years is flagged as a page 1-3 conflict.|
+|`test_residence_special_codes`|Length of residence "0.5 years" with code 00 and "22 years" with code 99 raise no residence issue.|
+|`test_codebook_aliases_preserve_original_paths`|Fields stored under alternative codebook names are still checked, the flag reports the original field name, and the original names are not added to the output.|
+|`test_explicit_missing_dictionary_fails`|An explicitly supplied codebook path that does not exist raises `FileNotFoundError`.|
+|`test_malformed_dictionary_fails_before_validation`|A codebook file with no usable content raises `ValueError` before any validation runs.|
+|`test_missing_default_dictionary_preserves_standalone_api`|When the default codebook file cannot be found, validation still runs with no flags and returns a warning that codebook checks were not run.|
+
+## `test_validate_regressions.py` — 5 test functions / 16 cases
+Covers head-relationship parsing, year-unit punctuation, age ranges and annotated child relationships, using the example main and coded surveys. No model calls.
+
+|Test|What it checks|
+|---|---|
+|`test_female_head_is_identified_and_sex_is_explicit`|A head written as "Head (F)", "head (female)", "H. (F)", "H (f)" or " Head ( F ) " is recognised as the head and taken as female, and an age of head of 75 is then flagged as a conflict.|
+|`test_head_prefix_does_not_identify_unrelated_labels`|"headache", "head boarder" and "head of son" are not recognised as the head.|
+|`test_period_after_year_unit_is_accepted`|"15 years.", "15 year.", "15 yrs." and "15 y." are all read as 15 years for house age and length of residence, with no flags.|
+|`test_age_ranges_and_bounds_allow_period`|"50-60 years.", "over 50 years." and "under 60 years." are accepted as probable-age values with a trailing period, with no flags.|
+|`test_annotated_son_and_daughter_count_as_resident_children`|"Son (M)" and "Daughter (F)" count as resident children, and a page 3 living-children total of 1 is flagged because the resident sons and daughters exceed it.|

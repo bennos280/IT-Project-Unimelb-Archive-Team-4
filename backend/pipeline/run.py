@@ -1,4 +1,4 @@
-"""The `survey` command: split ->  identify -> preprocess -> transcribe -> group -> validate on each PDF. A step is one function on run.pages."""
+"""The `survey` command: split -> identify -> preprocess -> transcribe -> group -> validate on each PDF. A step is one function on run.pages."""
 import argparse
 import hashlib
 import json
@@ -296,7 +296,7 @@ def step_group(run: Run) -> None:
 
 def step_validate(run: Run) -> None:
     """US6: compare grouped page transcripts and publish field review flags."""
-    from pipeline.us6.pipeline_step import step_validate as validate
+    from backend.pipeline.validate.pipeline_step import step_validate as validate
     validate(run)
 
 
@@ -348,17 +348,11 @@ def main(argv=None) -> int:
     if args[:1] == ["preprocess"]:
         from backend.pipeline.preprocess.preprocess import main as preprocess
         return preprocess(args[1:])
-    if args[:1] == ["transcribe"]:
-        from backend.pipeline.transcribe.transcribe import main as transcribe
-        return transcribe(args[1:])
     if args[:1] == ["validate"]:
-        from pipeline.us6.pipeline_step import main as validate
+        from backend.pipeline.validate.pipeline_step import main as validate
         return validate(args[1:])
-    if args[:1] == ["score"]:
-        from backend.pipeline.transcribe.score import main as score
-        return score(show_pages="--pages" in args)
 
-    parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train | transcribe <card> | validate <manifest.json> | score [--pages]")
+    parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train | validate <manifest.json>")
     parser.add_argument("inputs", nargs="*", type=Path, help="PDFs or folders of page images; default: unprocessed PDFs in DATA")
     parser.add_argument("--transcribe", action="store_true", help="also transcribe (paid)")
     parser.add_argument("--preprocess",action="store_true", help="Crop, straighten, and binarize images before transcription",)
