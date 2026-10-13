@@ -238,7 +238,7 @@ export default function ProgressDashboard() {
   }
   // Open US7 at the exact survey and page selected through Review or View.
   function reviewLink(p: ProgressPage) {
-    return `/?survey=${encodeURIComponent(p.surveyId!)}&page=${encodeURIComponent(p.reviewPageId!)}`;
+    return `/?survey=${encodeURIComponent(p.surveyId!)}&page=${encodeURIComponent(p.reviewPageId!)}${p.status === "Awaiting transcription" ? "&action=transcribe" : ""}`;
   }
   return (
     <div className="progress-app">
@@ -427,14 +427,12 @@ export default function ProgressDashboard() {
                           <td>
                             {bundle.source && !bundle.source.loaded ? (
                               <span>Unavailable at the moment</span>
-                            ) : p.status === "Awaiting transcription" ? (
-                              <span>Awaiting transcription</span>
                             ) : p.surveyId ? (
                               <a
                                 className="progress-link-button"
                                 href={reviewLink(p)}
                               >
-                                {p.status === "Reviewed" ? "View" : "Review"}
+                                {p.status === "Awaiting transcription" ? "Transcribe" : p.status === "Reviewed" ? "View" : "Review"}
                                 <ArrowRight size={16} />
                               </a>
                             ) : (

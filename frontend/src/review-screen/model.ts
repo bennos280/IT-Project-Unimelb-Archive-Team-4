@@ -1,5 +1,5 @@
 // Defines the three possible survey card/page types shown in the review screen.
-export type PageType = "main" | "notes" | "coded";
+export type PageType = "main" | "notes" | "coded" | "other";
 
 // Represents a validation flag attached to a particular extracted field.
 // Flags are used to tell the reviewer why a field may need attention.
@@ -34,6 +34,7 @@ export type Field = {
 export type SurveyPage = {
   id: string;
   type: PageType;
+  needsTranscription?: boolean;
   imageUrl: string;
   fields: Field[];
   flags: Flag[];
@@ -64,7 +65,7 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
     if (
       !p.id ||
       ids.has(p.id) ||
-      !["main", "notes", "coded"].includes(p.type) ||
+      !["main", "notes", "coded", "other"].includes(p.type) ||
       typeof p.imageUrl !== "string" ||
       !/^(https?:\/\/|\/[^/])/.test(p.imageUrl) ||
       !Array.isArray(p.fields) ||
@@ -100,5 +101,6 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
 export const pageNames = {
   main: "Main page",
   notes: "Notes page",
-  coded: "Coded page",
+  coded: "Coded",
+  other: "Other",
 };

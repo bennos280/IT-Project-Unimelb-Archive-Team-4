@@ -30,7 +30,7 @@ export function bundleFromSurvey(
   reviews: SavedReviews,
   bundleId: string,
 ): Bundle {
-  const categories = { main: "Main page", notes: "Notes", coded: "Coded" };
+  const categories = { main: "Main page", notes: "Notes", coded: "Coded", other: "Other" };
   return {
     id: bundleId,
     pages: survey.pages.map((page, index) => ({

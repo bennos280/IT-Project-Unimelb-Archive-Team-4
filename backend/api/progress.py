@@ -40,7 +40,7 @@ def review_progress(db):
         if p.category == "other":
             flagged[p.page_id].add("text")
         pages = bundles[p.bundle_id]["pages"]
-        status = ("Awaiting transcription" if not fields[p.page_id] else
+        status = ("Awaiting transcription" if p.needs_transcription or not fields[p.page_id] else
                   "Reviewed" if fields[p.page_id] <= reviewed[p.page_id] else "Ready to review")
         pages.append({"id": p.page_id, "label": f"Pg {len(pages) + 1}",
                       "category": {"main": "Main page", "notes": "Notes", "coded": "Coded", "other": "Notes"}.get(p.category, p.category),

@@ -286,3 +286,11 @@ npm --prefix tests run test:unit
 These frontend tests run separately from `uv run pytest tests/unit`.
 They check request construction and response handling; the integration runner
 checks the adapter against the real backend and database.
+
+## `test_page_transcription.py` — 6 tests
+
+Checks classification without starting a job, same-type retranscription of reviewed pages with archived history, preservation on model failure, and rejection of replacement after concurrent edits.
+
+The page transcription tests also reject invalid types, unknown reviewers, stale revisions, invalid model settings and page types without a template.
+
+- `test_page_history.py`: read-only, page-scoped history, archived reviews, moves, empty history and missing pages.

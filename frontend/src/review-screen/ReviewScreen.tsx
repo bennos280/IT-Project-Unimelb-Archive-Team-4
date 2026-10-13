@@ -1,3 +1,4 @@
+import PageActions from "./PageActions";
 // Main review screen: field table on the left, scan viewer on the right.
 
 import React, { useState } from "react";
@@ -22,6 +23,7 @@ export default function ReviewScreen({
 }: {
   session: ReturnType<typeof useReviewSession>;
 }) {
+  const [transcribeToolbar, setTranscribeToolbar] = useState<HTMLDivElement | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
@@ -107,9 +109,9 @@ export default function ReviewScreen({
         ) : (
           <div className="review-grid">
             <section className="extracted">
-              <div className="page-heading">
+              <div className="page-heading" data-page-id={page.id}>
                 <h2>
-                  {page.id} · {names[page.type]}
+                  {survey.id} · {names[page.type]}
                 </h2>
                 <span className="review-progress">
                   {page.fields.length
@@ -120,11 +122,7 @@ export default function ReviewScreen({
                     : 0}
                   % reviewed
                 </span>
-                {/* TODO:support page-category changes
-                <button disabled title="Change page category not implemented yet">
-                  Change page category
-                </button>
-                */}
+                <PageActions key={page.id} session={session} toolbar={transcribeToolbar} />
               </div>
               <div className="filters">
                 <label className="search">
@@ -366,9 +364,10 @@ export default function ReviewScreen({
                     </button>
                   </nav>
                 </div>
+                <div className="page-transcription-toolbar"><div ref={setTranscribeToolbar} />
                 <button type="button" disabled title="Export coming soon">
                   <Download size={16} /> Export
-                </button>
+                </button></div>
               </div>
               <ImageViewer
                 key={page.id}

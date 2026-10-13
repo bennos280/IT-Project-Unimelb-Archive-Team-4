@@ -89,3 +89,7 @@ Related backend coverage lives in `tests/unit/test_progress.py` (3 tests): model
 ### US7 → US9 review round trip — 3 browser tests
 
 `review round trip: saved/unsaved/failed save updates progress only after persistence` opens a page from US9, reviews all fields in US7, and returns through Back to all bundles. An accepted save updates the reviewed count, ready count, percentage, page status, flags and View action, including after refresh. Unsaved drafts and rejected saves leave progress unchanged. These tests use a stateful mock API; they verify the screen-to-screen flow, not real database persistence.
+
+## `page-actions.spec.ts` — 3 tests
+
+Checks same-bundle moves, immediate type changes without queuing, persistence of the transcription prompt after refresh, and separate transcription with or without a preceding type change. Also checks editable model selection and the model table.

@@ -95,7 +95,7 @@ def page_flags(db, p, fields_list):
     flags += [{"id": f"unreadable-{f['id']}", "fieldId": f["id"], "kind": "uncertain",
                "reason": "The model couldn't read part of this ([?]): compare it with the scan."}
               for f in fields_list if "[?]" in (f["value"] or "")]
-    if p.category == loader.OTHER_CAT:
+    if p.category == loader.OTHER_CAT and any(f["id"] == "text" for f in fields_list):
         flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain", "reason": OTHER_PAGE})
     return flags
 
@@ -110,7 +110,8 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
         fields_list = page_fields(db, p)
         pages_list.append({
             "id": p.page_id,
-            "type": "notes" if p.category == loader.OTHER_CAT else p.category,
+            "type": p.category,
+            "needsTranscription": p.needs_transcription,
             "imageUrl": str(request.url_for("page_image", page_id=p.page_id)),
             "fields": fields_list,
             "flags": page_flags(db, p, fields_list),
@@ -119,7 +120,7 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
 #and black and white (the scan itself if that fails)
-@app.get("/pages/{page_id}/image", name="page_image")
+@app.get("/pages/{page_id:path}/image", name="page_image")
 def page_image(page_id: str, preprocessed: bool = False, db: Session = Depends(get_db)):
     page = db.get(models.Page, page_id)
     scan = page and scans.page_scan(page.import_path, db.get(models.Bundle, page.bundle_id).source_pdf, page_id)
@@ -316,6 +317,9 @@ class PageTypeRequest(BaseModel):
 class PageTypeChange(BaseModel):
     pageType: str
     reviewerId: int
+    model: str | None = None
+    provider: str | None = None
+    effort: str | None = None
 
 RESERVED = {instructions.PROMPT, "blank", "review"} #the prompt's kind, and what page sorting answers for no page type
 
@@ -343,7 +347,7 @@ def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
 
 #reads a page again as another page type, replacing what was read off it: queued for the worker, or for other done now (an
 #empty page to type into). A page with saved reviews keeps its type, as reading it again would lose them.
-@app.put("/pages/{page_id}/type")
+@app.put("/pages/{page_id:path}/type")
 def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depends(get_db)):
     write_lock(db)
     page = db.get(models.Page, page_id)
@@ -368,7 +372,13 @@ def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depend
         return {"pageType": page.category, "job": None}
     if payload.pageType not in instructions.newest(db):
         raise HTTPException(status_code=400, detail=f"Give {payload.pageType} a template first.")
-    job = models.Job(kind="page", page_id=page_id, page_type=payload.pageType, reviewer_id=payload.reviewerId)
+    if payload.model is not None:
+        if not payload.model.strip() or len(payload.model) > 200 or any(c.isspace() for c in payload.model) or payload.model.startswith("-") or "+" in payload.model:
+            raise HTTPException(400, "Select a valid model.")
+        if payload.provider not in ("claude", "codex") or not payload.effort or len(payload.effort) > 40 or any(c.isspace() for c in payload.effort) or payload.effort.startswith("-"):
+            raise HTTPException(400, "Select a valid provider and effort.")
+    job = models.Job(kind="page", page_id=page_id, page_type=payload.pageType, reviewer_id=payload.reviewerId,
+                     transcription_model=payload.model, transcription_provider=payload.provider, transcription_effort=payload.effort)
     db.add(job)
     db.commit()
     return {"pageType": page.category, "job": job_json(job)}
@@ -560,3 +570,140 @@ def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
         result.append({"id": page_id, "category": category, "status": status,
                        "data": page["data"] if page else None})
     return {"jobId": job_id, "status": job.status, "pages": result}
+
+
+class MovePageRequest(BaseModel):
+    surveyId: str
+    sourceSurveyId: str
+    reviewerId: int
+    revision: int
+    reason: str = ""
+
+@app.get("/page-actions/{page_id:path}")
+def page_action_context(page_id: str, db: Session = Depends(get_db)):
+    page = db.get(models.Page, page_id)
+    if page is None:
+        raise HTTPException(404, "Page not found.")
+    surveys = db.query(models.Survey).filter(models.Survey.bundle_id == page.bundle_id).order_by(models.Survey.survey_id).all()
+    job = db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.kind == "page").order_by(models.Job.job_id.desc()).first()
+    return {"bundleId": page.bundle_id, "surveyId": page.survey_id, "category": page.category,
+            "needsTranscription": page.needs_transcription, "revision": page.revision_no or 0, "hasReviews": bool(db.query(models.Edit).filter_by(page_id=page_id).first()),
+            "job": job_json(job) if job else None,
+            "surveys": [{"id": s.survey_id, "pages": [{"id": p.page_id, "type": p.category} for p in
+                         db.query(models.Page).filter_by(survey_id=s.survey_id).order_by(models.Page.page_id)]} for s in surveys]}
+
+@app.put("/page-moves/{page_id:path}")
+def move_page(page_id: str, payload: MovePageRequest, db: Session = Depends(get_db)):
+    write_lock(db)
+    page = db.get(models.Page, page_id)
+    target = db.get(models.Survey, payload.surveyId)
+    if page is None or target is None:
+        raise HTTPException(404, "Page or destination survey not found.")
+    if not db.get(models.Reviewer, payload.reviewerId):
+        raise HTTPException(400, "Select a valid reviewer.")
+    if target.bundle_id != page.bundle_id:
+        raise HTTPException(400, "Pages can only move within the same bundle.")
+    if target.survey_id == page.survey_id:
+        raise HTTPException(400, "Choose a different survey.")
+    if page.survey_id != payload.sourceSurveyId or (page.revision_no or 0) != payload.revision:
+        raise HTTPException(409, "This page changed. Refresh before moving it.")
+    if db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(409, "Wait for this page's transcription to finish before moving it.")
+    db.add(models.PageMove(page_id=page_id, from_survey=page.survey_id, to_survey=target.survey_id,
+                           reviewer_id=payload.reviewerId, reason=payload.reason.strip()))
+    page.survey_id = target.survey_id
+    if page.checked_revision == (page.revision_no or 0):
+        page.checked_revision = (page.revision_no or 0) + 1
+    page.revision_no = (page.revision_no or 0) + 1
+    db.commit()
+    return {"surveyId": page.survey_id, "pageId": page_id}
+
+
+class PageClassificationRequest(BaseModel):
+    pageType: str
+    reviewerId: int
+    revision: int
+
+class PageTranscriptionRequest(BaseModel):
+    reviewerId: int
+    revision: int
+    model: str
+    provider: str
+    effort: str
+
+def actionable_page(db, page_id, reviewer_id, revision):
+    write_lock(db)
+    page = db.get(models.Page, page_id)
+    if page is None:
+        raise HTTPException(404, "Page not found.")
+    if not db.get(models.Reviewer, reviewer_id):
+        raise HTTPException(400, "Select a valid reviewer.")
+    if (page.revision_no or 0) != revision:
+        raise HTTPException(409, "This page changed. Refresh and try again.")
+    if db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(409, "This page already has a queued or running transcription.")
+    return page
+
+@app.put("/page-classification/{page_id:path}")
+def classify_page(page_id: str, payload: PageClassificationRequest, db: Session = Depends(get_db)):
+    page = actionable_page(db, page_id, payload.reviewerId, payload.revision)
+    if payload.pageType not in ("main", "notes", "coded", "other"):
+        raise HTTPException(400, "Choose a supported page type.")
+    if payload.pageType == page.category:
+        raise HTTPException(400, "The page is already that type.")
+    from backend.db.page_history import snapshot
+    snapshot(db, page_id, payload.reviewerId, "change_type")
+    page.category = payload.pageType
+    page.needs_transcription = True
+    page.revision_no = (page.revision_no or 0) + 1
+    page.checked_revision = None
+    db.commit()
+    return {"pageType": page.category, "needsTranscription": True}
+
+@app.post("/page-transcription/{page_id:path}")
+def transcribe_page(page_id: str, payload: PageTranscriptionRequest, db: Session = Depends(get_db)):
+    page = actionable_page(db, page_id, payload.reviewerId, payload.revision)
+    if page.category not in instructions.newest(db):
+        raise HTTPException(400, f"No transcription template is configured for {page.category}. Choose a page type with a template first.")
+    if not payload.model.strip() or len(payload.model) > 200 or any(c.isspace() for c in payload.model) or payload.model.startswith("-") or "+" in payload.model:
+        raise HTTPException(400, "Enter a valid model name.")
+    if payload.provider not in ("claude", "codex") or not payload.effort or len(payload.effort) > 40 or any(c.isspace() for c in payload.effort) or payload.effort.startswith("-"):
+        raise HTTPException(400, "Enter a valid provider and effort.")
+    job = models.Job(kind="page", page_id=page_id, page_type=page.category, reviewer_id=payload.reviewerId,
+                     base_revision=page.revision_no or 0, transcription_model=payload.model,
+                     transcription_provider=payload.provider, transcription_effort=payload.effort)
+    db.add(job)
+    db.commit()
+    return {"job": job_json(job)}
+
+
+@app.get("/page-history/{page_id:path}")
+def get_page_history(page_id: str, db: Session = Depends(get_db)):
+    """Read-only timeline. Snapshots describe content BEFORE the recorded action."""
+    page = db.get(models.Page, page_id)
+    if not page:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    events = []
+    def event(kind, identity, time, reviewer, title, details, snapshot=None, changes=None):
+        events.append(dict(id=f"{kind}-{identity}", time=time.replace(tzinfo=timezone.utc).isoformat() if time else None,
+                           reviewer=names.get(reviewer, "Unknown reviewer"), title=title, details=details, snapshot=snapshot, changes=changes or []))
+    for version in db.query(models.PageVersion).filter_by(page_id=page_id):
+        content = json.loads(version.snapshot)
+        previous = next(iter(content.get("pages", [])), {})
+        event("version", version.version_id, version.time, version.reviewer_id,
+              "Page type changed" if version.action == "change_type" else "Page retranscribed",
+              f"Previous page type: {previous.get('category', 'Unknown')}. Previous revision: {previous.get('revision_no', 'Unknown')}.", content)
+    for move in db.query(models.PageMove).filter_by(page_id=page_id):
+        event("move", move.move_id, move.time, move.reviewer_id, "Moved to another survey",
+              f"{move.from_survey or 'Unassigned'} → {move.to_survey}" + (f". Reason: {move.reason}" if move.reason else ""))
+    previous_values = {}
+    for edit in db.query(models.Edit).filter_by(page_id=page_id).order_by(models.Edit.edit_id):
+        field, original = edited_field(db, edit)
+        previous = previous_values.get(field, original)
+        previous_values[field] = edit.edit_text
+        event("edit", edit.edit_id, edit.time, edit.reviewer_id, "Field review saved",
+              f"{field}: {previous or '—'} → {edit.edit_text or '—'}",
+              changes=[{"field": field, "previous": previous, "saved": edit.edit_text}])
+    events.sort(key=lambda item: (item["time"] or "", item["id"]), reverse=True)
+    return {"pageId": page_id, "revision": page.revision_no, "events": events}
