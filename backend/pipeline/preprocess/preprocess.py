@@ -1,24 +1,16 @@
-"""Crop and straighten survey cards, binarise colour by default.
-
-python backend/pipeline/preprocess/preprocess.py source --output source-pre
-
-optional enhancements:
---greyscale converts to greyscale; --binarize converts to black and white.
---no-deskew skips residual line-based rotation; --no-crop skips boundary rectification.
---c num (i.e. --c 12) sets the adaptive threshold constant. 
-
-Originals are never overwritten.
-"""
+"""Straighten, crop and turn a survey card black and white, for the review screen's cleaned-up view of a page
+(GET /pages/{id}/image?preprocessed=true). The scan itself is never changed."""
  
-import argparse
-import json
 import math
+import tempfile
 from pathlib import Path
+from types import SimpleNamespace
  
 import cv2
 import numpy as np
+
+from backend.common import ROOT, settings
  
-SUPPORTED = {".png", ".jpg", ".jpeg", ".jfif", ".bmp", ".tif", ".tiff", ".webp"}
  
  
 def rectify_page(img):
@@ -303,12 +295,6 @@ def transform_array(img, do_deskew=True, keep_color=True, do_binarize=True, sour
     return result, report
  
  
-def preprocessed_name(source):
-    """Use lossless PNG and include the source extension to avoid name collisions."""
-    return f"{source.name}_preprocessed.png"
-
- 
- 
 def process_image(source, destination, args):
     # Decode from bytes so paths containing non-ASCII characters work too.
     image = cv2.imdecode(np.frombuffer(source.read_bytes(), dtype=np.uint8), cv2.IMREAD_COLOR)
@@ -335,94 +321,22 @@ def process_image(source, destination, args):
     report["mode"] = "binary" if args.binarize else "greyscale" if args.greyscale else "color"
     report["deskew_enabled"] = not args.no_deskew
     return report
- 
- 
-def main(argv=None):
-    from backend.common import settings
-    from backend.pipeline.preprocess.options import add_arguments, resolve_options
 
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("input", type=Path, help="One image or a folder of images")
-    parser.add_argument("--output", type=Path, help="Folder to write results into")
-    add_arguments(parser)
-    args = parser.parse_args(argv)
+
+OPTIONS = SimpleNamespace(no_deskew=False, no_crop=False, greyscale=False, binarize=True, c=20)
+
+
+#a page's scan straightened, cropped and black and white, made once into OUTPUT/preprocessed; the scan itself if that fails
+def cleaned(scan, page_id):
+    dest = ROOT / settings()["OUTPUT"] / "preprocessed" / f"{page_id}.png"
+    if dest.is_file():
+        return dest
     try:
-        options = resolve_options(args, settings())
-    except ValueError as exc:
-        parser.error(str(exc))
-    vars(args).update(vars(options))
-
-    source = args.input.resolve()
-    if not source.exists():
-        parser.error(f"Input does not exist: {source}")
- 
-    if source.is_dir():
-        # Find supported images, including those in subfolders.
-        images = sorted(p for p in source.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED and not p.stem.endswith("_preprocessed"))
-        if not images:
-            parser.error("No supported image files found.")
-
-        # Reject an output folder nested inside the input folder.
-        output_root = args.output.resolve() if args.output else None
-        if output_root and (output_root == source or source in output_root.parents):
-            parser.error("Output folder must be outside the input folder.")
-
-        # Match each image to its output path, keeping the subfolder structure.
-        pairs = []
-        for p in images:
-            out_dir = (output_root / p.relative_to(source).parent) if output_root else p.parent
-            pairs.append((p, out_dir / (p.name if output_root else preprocessed_name(p))))
-        report_path = (output_root or source) / "preprocessing_report.json"
-    else:
-        # Check the single image and choose its output paths.
-        if source.suffix.lower() not in SUPPORTED:
-            parser.error("Input must be an image file or a folder of images")
-        out_dir = args.output.resolve() if args.output else source.parent
-        pairs = [(source, out_dir / (source.name if args.output else preprocessed_name(source)))]
-        report_path = out_dir / f"{source.stem}_preprocessed.json"
-
-
- # Avoid overwriting an existing report.
-    if report_path.exists():
-        parser.error(f"Report already exists: {report_path}")
- 
-    reports, errors = [], []
-    for index, (original, destination) in enumerate(pairs, 1):
-        try:
-            report = process_image(original, destination, args)
-            reports.append(report)
-            print(f"[{index}/{len(pairs)}] {original.name} -> {destination.name}: "
-                  f"{report['mode']}, skew {report['deskew_angle_degrees']} degrees")
-        except (OSError, ValueError, cv2.error) as exc:
-                    # Continue with the remaining images if one fails.
-            errors.append({"source": str(original), "error": str(exc)})
-            print(f"[{index}/{len(pairs)}] FAILED {original.name}: {exc}")
- # Create the report folder and collect settings and results.
-
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    summary = {
-        "schema_version": 1,
-        "preprocessing_version": "2.0",
-        "input": str(source),
-        "settings": {"crop_page": not args.no_crop, "deskew": not args.no_deskew,
-                     "color": not (args.greyscale or args.binarize),
-                     "grayscale": args.greyscale, "binarize": args.binarize,
-                     "adaptive_block_fraction": 0.045, "adaptive_C": args.c},
-        "processed": len(reports), "failed": len(errors),
-        "pages": reports, "errors": errors,
-    }
-
-    # Save a new JSON report without overwriting an existing file.
-
-    with report_path.open("x", encoding="utf-8") as stream:
-        json.dump(summary, stream, indent=2, ensure_ascii=False)
-        stream.write("\n")
-    print(f"Report: {report_path}")
-
-    # Return 1 if any image failed, otherwise 0.
-
-    return 1 if errors else 0
- 
- 
-if __name__ == "__main__":
-    raise SystemExit(main())
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=dest.parent) as work:
+            pending = Path(work) / dest.name
+            process_image(Path(scan), pending, OPTIONS)
+            pending.replace(dest)
+    except (OSError, ValueError, cv2.error):
+        return scan
+    return dest
