@@ -3,7 +3,7 @@
 The whole system behind a pipeline job: the API, the worker, the pipeline, the loader and the real database tables
 (built by the migrations). Only page sorting (a GPU model) and the paid model call are faked, so these run in CI.
 
-**1 test**
+**1 Python pipeline test**, plus the Playwright browser tests documented below.
 
 ```bash
 uv run pytest tests/e2e
@@ -11,8 +11,8 @@ uv run pytest tests/e2e
 
 ## `test_pipeline_job.py` — 1 test
 
-| Test | What it checks |
-|---|---|
+| Test                                       | What it checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `test_queued_bundle_comes_back_as_surveys` | A 4-page PDF (two surveys, numbered 7 and 9) is listed by `GET /bundles`, queued with `POST /jobs`, and run by the worker through the real split, group and loader steps into tables built by the migrations. It then shows as loaded with a done job of 4/4 pages and its surveys in scan order (`bundle-7`, `bundle-9`). `GET /survey/bundle-9` returns its main form and coded card, the main form's `imageUrl` serves a PNG scan, and the address field holds the transcribed "9 Peel St."; running the bundle again is refused (409). |
 
 ## Manual check with the real model (paid)
@@ -25,9 +25,9 @@ Before a demo, or after changing the pipeline, run one real bundle. A 130-page b
 4. Open `http://127.0.0.1:8000/survey/<one of those survey ids>`: it should list its main form, notes and coded card.
 5. Optional: press Ctrl+C mid-run, run `uv run app` again and queue the bundle again. The job is marked failed when stopped, then carries on without paying again for pages already read.
 
-## Review UI browser tests
+## UI browser tests
 
-Tests the review screen in a real browser using Playwright.
+Tests the review screen, progress dashboard and export dialog in a real browser using Playwright.
 Each test uses a sample survey, mock images and an isolated mock API.
 No running backend or database is needed.
 
@@ -59,6 +59,33 @@ npm --prefix tests run test:e2e
 | `test("Leaving the website warns about unsaved reviews", async ({ page }) => ...)`                   | Leaving with unsaved changes triggers the browser warning.                                      |
 | `test("adds a reviewer inside the field editor without losing the draft", async ({ page }) => ...)`  | Adding a reviewer inside the editor preserves the draft value.                                  |
 
-These tests use mocked API responses. The integration runner separately
-checks the real frontend adapter, backend and database.
-The highlight test checks visibility and zoom, not coordinate accuracy.
+## `progress.spec.ts` — 21 tests (US9: track progress)
+
+Located in `tests/e2e/ui-reviewscreen/progress.spec.ts`. Run only these tests from the project folder:
+
+```bash
+npm --prefix tests run test:e2e -- progress.spec.ts
+```
+
+| Test                                                                     | What it checks                                                                                                                                                                    |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `searches bundles and clears an empty result`                            | Bundle search finds a match; an unmatched search shows an empty state; Clear filters restores the list.                                                                           |
+| `disables pagination for one bundle and filters by status`               | Next is disabled for a single bundle, and Reviewed/Ready to review filters return the expected results.                                                                           |
+| `opens bundle pages with matching review targets`                        | Opening a bundle shows its pages and the correct survey/page review link; Back returns to all bundles.                                                                            |
+| `Import opens its screen and Export opens its dialog`                    | Import navigation works and the selected bundle's export dialog enables JSON export.                                                                                              |
+| `Pg 1/2/3 opens its matching US7 page` — 3 tests                         | Each page's Review link opens the matching page in the review screen.                                                                                                             |
+| `page table keeps actions visible at 936/640/375px` — 3 tests            | Flags and review actions remain visible without horizontal table overflow at desktop, tablet and phone widths.                                                                    |
+| `untouched bundle prompts Transcribe and shows zero progress`            | A bundle without pages or a job shows 0% progress, the not-started message and an enabled Transcribe button beside the filters.                                                   |
+| `partial bundle shows model and completion action without review access` | A failed partial bundle offers Retry transcription and error details; its page list shows the incomplete notice, Complete transcription and the saved model, with no Review link. |
+| `waiting job disables duplicate transcription`                           | A queued job disables the transcription button and keeps the incomplete notice visible.                                                                                           |
+| `running job disables duplicate transcription`                           | A running job disables the transcription button and keeps the incomplete notice visible.                                                                                          |
+| `loaded bundle shows model or dash and hides incomplete notice`          | The Model column shows saved model information or a dash; completed bundles hide the incomplete notice and transcription action.                                                  |
+| `pagination changes rows and searching resets to first page`             | Eleven pages span two table pages; searching from the second page resets pagination and shows matching rows.                                                                      |
+| `failed progress request can be retried`                                 | A failed request displays its error; Try again restores the dashboard after the API recovers.                                                                                     |
+| `polling updates review counts without a reload`                         | Updated API data changes the displayed reviewed count and percentage automatically.                                                                                               |
+
+Related backend coverage lives in `tests/unit/test_progress.py` (3 tests): model/status/flag response data and review targets, saved versus unsaved reviews, and reviews of resident, child and annotation fields. Run it with `uv run pytest tests/unit/test_progress.py`.
+
+### US7 → US9 review round trip — 3 browser tests
+
+`review round trip: saved/unsaved/failed save updates progress only after persistence` opens a page from US9, reviews all fields in US7, and returns through Back to all bundles. An accepted save updates the reviewed count, ready count, percentage, page status, flags and View action, including after refresh. Unsaved drafts and rejected saves leave progress unchanged. These tests use a stateful mock API; they verify the screen-to-screen flow, not real database persistence.

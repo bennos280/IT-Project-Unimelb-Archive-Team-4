@@ -515,3 +515,44 @@ def get_transcription_models(db: Session = Depends(get_db)):
                         "promptVersion": prompt, "templateVersion": template,
                         "pages": pages, "averageSeconds": float(seconds) if seconds is not None else None}
                        for provider, model, effort, prompt, template, pages, seconds in rows]}
+
+
+@app.get("/jobs/{job_id}/transcripts")
+def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
+    """Read completed, checksum-verified page outputs without loading a partial bundle."""
+    from pathlib import Path
+    from backend.pipeline.run import read_manifest, digest
+    job = db.get(models.Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No such job.")
+    if job.kind != "bundle" or not job.pdf:
+        raise HTTPException(status_code=400, detail="This job is not a bundle transcription.")
+    folder = ROOT / settings()["OUTPUT"] / Path(job.pdf).stem
+    manifest = read_manifest(folder)
+    pages = []
+    for name, saved in (manifest.get("transcripts") or {}).items():
+        if not isinstance(saved, dict) or Path(name).name != name:
+            continue
+        path = folder / "transcribe" / f"{Path(name).stem}.json"
+        try:
+            if digest(path) != saved.get("result"):
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        pages.append({"id": Path(name).stem, "category": saved.get("request", {}).get("label"), "data": data})
+    completed = {page["id"]: page for page in pages}
+    identified = {Path(page["file"]).stem: page for page in manifest.get("pages", []) if page.get("file")}
+    # Published page images are available before identification completes.
+    extracted = {path.stem for path in (folder / "pages").glob("*.png")}
+    result = []
+    for page_id in sorted(extracted | identified.keys() | completed.keys()):
+        page = completed.get(page_id)
+        category = identified.get(page_id, {}).get("label") or (page or {}).get("category") or "unidentified"
+        status = ("Transcribed — not grouped" if page else
+                  "Not required" if category == "blank" else
+                  "Needs identification" if category in ("unidentified", "review", "other") else
+                  "Awaiting transcription")
+        result.append({"id": page_id, "category": category, "status": status,
+                       "data": page["data"] if page else None})
+    return {"jobId": job_id, "status": job.status, "pages": result}

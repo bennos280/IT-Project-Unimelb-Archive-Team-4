@@ -1,20 +1,29 @@
 import type { Survey } from "../review-screen/model";
 import type { SavedReviews } from "../export/exportData";
+// Covers both processing stages and review states shown in the page list.
 export type PageStatus =
   | "Awaiting transcription"
   | "Ready to review"
-  | "Reviewed";
+  | "Reviewed"
+  | "Transcribed — not grouped"
+  | "Needs identification"
+  | "Not required";
+// One dashboard row. Partial processing results may not have a survey/review target yet.
 export type ProgressPage = {
   id: string;
   label: string;
   category: string;
   status: PageStatus;
   flagCount: number;
+  model?: string | null;
+  // Raw transcript data can be available before grouping and database loading finish.
+  savedData?: Record<string, unknown>;
   surveyId?: string;
   reviewPageId?: string;
 };
 export type Bundle = { id: string; name?: string; pages: ProgressPage[] };
 
+// Converts a survey and its saved reviews into dashboard rows without changing either input.
 // A page is complete only when every field has a persisted review, including blanks.
 export function bundleFromSurvey(
   survey: Survey,
@@ -36,6 +45,7 @@ export function bundleFromSurvey(
           .filter((flag) => !reviews[page.id]?.[flag.fieldId]?.savedAt)
           .map((flag) => flag.fieldId),
       ).size,
+      // Check for no fields first: every() would otherwise treat an empty page as reviewed.
       status:
         page.fields.length === 0
           ? "Awaiting transcription"
@@ -47,6 +57,7 @@ export function bundleFromSurvey(
     })),
   };
 }
+// Total includes every status; only the two review states contribute to the other counters.
 // Ready excludes pages without extracted fields and fully reviewed pages.
 export function counts(pages: ProgressPage[]) {
   return {

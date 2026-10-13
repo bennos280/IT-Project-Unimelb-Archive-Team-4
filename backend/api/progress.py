@@ -44,6 +44,6 @@ def review_progress(db):
                   "Reviewed" if fields[p.page_id] <= reviewed[p.page_id] else "Ready to review")
         pages.append({"id": p.page_id, "label": f"Pg {len(pages) + 1}",
                       "category": {"main": "Main page", "notes": "Notes", "coded": "Coded", "other": "Notes"}.get(p.category, p.category),
-                      "status": status, "flagCount": len(flagged[p.page_id] - reviewed[p.page_id]),
+                      "status": status, "model": p.model, "flagCount": len(flagged[p.page_id] - reviewed[p.page_id]),
                       "surveyId": p.survey_id, "reviewPageId": p.page_id})
     return list(bundles.values())
