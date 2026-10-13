@@ -7,7 +7,7 @@ Fixture data (`identify/`, `preprocess/`, `group/`, `archive/`, `validate/`) liv
 in this folder, and `backend.pipeline.identify.identify` reads its labelled pages
 from here directly.
 
-**96 test cases ~140s**
+**92 test cases ~140s**
 
 ```bash
 uv run pytest tests/integration
@@ -104,27 +104,23 @@ code that reads it is checked against the archive's own markup, not only the tes
 | `test_a_migration_that_breaks_a_link_is_undone` | A later migration that leaves rows pointing at nothing (deletes a bundle its pages belong to) stops with an error, and the db is left as it was before it. |
 | `test_version_1_of_the_prompt_and_templates_is_the_files_byte_for_byte` | Migration 001 stores `prompt.txt` and each template as version 1 byte for byte, with the files' hashes, so transcripts already made from the files are reused, not read (and paid for) again. |
 
-## `test_validate.py` — 15 tests
+## `test_validate.py` — 11 tests
 
-Survey consistency check (`validate_survey`, `validate_document`, the CLI) on the example main form and coded card: no model calls.
+Survey consistency check (`validate_survey`) on the example main form and coded card, which agree: no model calls.
 
 | Test | What it checks |
 |---|---|
-| `test_real_main_schema_adapter` | The example main form and coded card, which agree, give no flags, and the dwelling number reads as '99'. |
-| `test_native_nested_statuses_and_preserved_values` | A coded bedroom count of 4 against a main form saying 3 flags the field and marks it ToBeReviewed, keeps the main form's value of '3', and leaves the input unchanged. |
-| `test_native_age_derivation` | Two children aged 8 and 7 agree with the coded age counts, and lowering the coded under-14 count to 1 raises a Page 1–3 conflict and marks the age ToBeReviewed. |
-| `test_missing_native_location` | A coded card with no bedrooms field is flagged, with the Page 3 value shown as '<missing>'. |
-| `test_blank_upstream_template_is_not_zero_known_residents` | A blank main form compared with an all-null coded card gives no flags, but the same blank form against the filled example card does. |
-| `test_unrecognised_coded_schema_is_not_silent_success` | A coded card with no recognised fields raises a ValueError instead of passing. |
-| `test_conflicting_coded_aliases_are_rejected` | A coded card giving the bedroom count under two names with different values raises a ValueError. |
-| `test_number_does_not_fallback_without_definition` | A main form with no dwelling number is flagged with the Page 1 value shown as '<missing>'. |
-| `test_notes_and_unknown_fields_preserved` | Notes and an extra handwritten field on the main form come through to the result unchanged and raise no flags. |
-| `test_other_children_list_not_guessed_count` | Children who died written as free text ('two children') give a warning and no flag, because no count is guessed from the text. |
-| `test_cli_two_page_files` | Running the command line with separate main and coded files exits cleanly and writes a flags-only file with the survey id and no flags. |
-| `test_cli_grouped_file` | Running the command line on one grouped survey file exits cleanly, writes a full output with no flags, and keeps the notes text. |
-| `test_batch_separates_surveys` | In a two-survey batch, the survey whose card has a different dwelling number is flagged and the other is not, and the flags-only output lists both. |
-| `test_missing_page_fails_before_output` | A document with a main form but no coded card raises a ValueError. |
-| `test_package_import` | The `backend.pipeline.validate` package exposes `validate_survey`, which gives no flags on the example pair. |
+| `test_example_survey_has_no_flags` | The example main form and coded card give no flags, and the result carries the survey id. |
+| `test_conflict_names_the_nested_field_and_changes_nothing` | A coded bedroom count of 4 against a main form saying 3 is flagged naming `Page 1: rooms.number_of_separate_bedrooms`, and the main form is left unchanged. |
+| `test_native_age_derivation` | Residents aged 8 and 7 agree with the coded age counts; lowering the coded under-14 count to 1 is a page 1–3 conflict naming `Page 1: residents[2].age`. |
+| `test_missing_native_location` | A coded bedroom count that isn't there is flagged as `Page 3: number_of_bedrooms`: `<missing>`. |
+| `test_blank_upstream_template_is_not_zero_known_residents` | The blank main form template with the blank coded template gives no flags (its empty resident columns are unknown, not zero residents); with the example coded card it does. |
+| `test_unrecognised_coded_card_is_not_silent_success` | A coded card reading without `number_of_dwelling` (empty, other fields only, wrapped in `fields`, or the old uppercase labels) raises a ValueError instead of passing. |
+| `test_number_does_not_fallback_without_definition` | A main form without `number_of_dwelling` is flagged with it `<missing>`; the form's `number` field isn't used instead. |
+| `test_unknown_fields_are_ignored` | An extra handwritten field on the main form raises no flags. |
+| `test_other_children_list_not_guessed_count` | An entry in the main form's `other_children` list adds a warning and no flags: it isn't counted. |
+| `test_missing_page_fails_before_output` | A survey without a coded card raises a ValueError. |
+| `test_package_import` | `backend.pipeline.validate` exports `validate_survey`, which finds no flags on the example. |
 
 ## `test_validate_pipeline.py` — 10 tests
 
@@ -139,6 +135,6 @@ Survey consistency check run over a pipeline manifest (`validate_manifest`) with
 | `test_missing_transcript_reported` | A survey whose coded card transcript file is missing is counted as skipped. |
 | `test_unassigned_page_reported` | A main page not assigned to any survey gives a partial status. |
 | `test_letter_dwelling_numbers` | A main form dwelling number '024 a' matches a coded '24A', and a coded '24B' is flagged as a NUMBER OF DWELLING Page 1–3 conflict. |
-| `test_actual_coded_all_null_schema` | The blank main form and the all-null coded schema together give no flags. |
+| `test_actual_coded_all_null_schema` | The blank main form and coded card templates together give no flags. |
 | `test_explicit_margin_codes_compare` | An industry-of-head code '0802' matches coded '802', and a coded '803' is flagged as an INDUSTRY OF HEAD CODE conflict. |
 | `test_nonpersonal_metadata_not_resident` | A resident row holding only a stray annotation, with no relationship, age or earning status, is not counted as a resident and gives no flags. |

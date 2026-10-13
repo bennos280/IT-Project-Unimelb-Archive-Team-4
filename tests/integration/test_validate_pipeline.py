@@ -5,6 +5,7 @@ import json
 import tempfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parent / 'validate'
+TEMPLATES = Path(__file__).resolve().parents[2] / 'backend' / 'pipeline' / 'transcribe' / 'templates'
 
 class TestUs6Pipeline:
 
@@ -86,8 +87,8 @@ class TestUs6Pipeline:
         assert any(('NUMBER OF DWELLING' in f['reason'] and f['type'] == 'Page 1–3 conflict' for f in validate_survey(m, c)['validation_flags']))
 
     def test_actual_coded_all_null_schema(self):
-        m = json.loads((ROOT / 'main_schema.json').read_text(encoding='utf-8'))
-        c = json.loads((ROOT / 'coded_schema.json').read_text(encoding='utf-8'))
+        m = json.loads((TEMPLATES / 'main.json').read_text(encoding='utf-8'))
+        c = json.loads((TEMPLATES / 'coded.json').read_text(encoding='utf-8'))
         assert not validate_survey(m, c)['has_flags']
 
     def test_explicit_margin_codes_compare(self):

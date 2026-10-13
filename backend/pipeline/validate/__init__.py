@@ -1,3 +1,3 @@
-"""US6 survey consistency validation."""
-from .run_validation import validate_survey, validate_record, validate_document, flags_only
-__all__ = ['validate_survey', 'validate_record', 'validate_document', 'flags_only']
+"""US6: consistency checks between a survey's main form and coded card."""
+from .run_validation import validate_survey
+__all__ = ['validate_survey']

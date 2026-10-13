@@ -20,7 +20,7 @@ def test_female_head_is_identified_and_sex_is_explicit(relationship):
     main, coded = survey()
     main['residents'][0]['relationship'] = relationship
     main['residents'][0].pop('sex')
-    coded.update(number_over_10_m='1', number_over_10_f='3')
+    coded.update(number_over_10_male='1', number_over_10_female='3')
     result = validate_survey(main, coded)
     assert result['validation_flags'] == []
     coded['age_of_head'] = '75'
@@ -53,6 +53,6 @@ def test_annotated_son_and_daughter_count_as_resident_children():
     main['residents'][2]['relationship'] = 'Son (M)'
     main['residents'][3]['relationship'] = 'Daughter (F)'
     assert validate_survey(main, coded)['validation_flags'] == []
-    coded.update(children_of_h_or_wife_living='1', children_of_h_or_wife_total='1')
+    coded.update(children_of_head_or_wife_living='1', children_of_head_or_wife_total='1')
     assert any('resident sons/daughters exceed' in f['reason']
                for f in validate_survey(main, coded)['validation_flags'])

@@ -5,30 +5,8 @@ import json
 import re
 from pathlib import Path
 
-if __package__:
-    from .validator import _blank, _count, _get, _text, MISSING
-else:
-    from validator import _blank, _count, _get, _text, MISSING
+from .validator import _blank, _count, _get, _text, MISSING
 
-# Dictionary spellings differ from the actual transcriber template.
-ALIASES = {
-    'number_of_dwellings': ('number_of_dwelling',),
-    'number_of_households': ('number_of_household',),
-    'number_over_10_male': ('number_over_10_m',),
-    'number_over_10_female': ('number_over_10_f',),
-    'no_of_boarders': ('boarders',),
-    'no_of_participating_members': ('participating_members',),
-    'no_of_adult_male_breadwinners': ('adult_m_breadwinners',),
-    'no_of_adult_female_breadwinners': ('adult_f_breadwinners',),
-    'no_of_juvenile_breadwinners': ('juvenile_breadwinners_under_21',),
-    'main_source_of_heads_unearned_income': ('main_source_heads_unearned_income',),
-    'subsidiary_source_of_heads_income': ('subsidiary_source_heads_income',),
-    'pre_war_occupation': ('prewar_occupation',),
-    'washouse': ('washhouse',),
-    'children_of_head_or_wife_living': ('children_of_h_or_wife_living',),
-    'children_of_head_or_wife_dead': ('children_of_h_or_wife_dead',),
-    'children_of_head_or_wife_total': ('children_of_h_or_wife_total',),
-}
 ROOM_COUNTS = {'total_number_of_rooms', 'number_of_bedrooms', 'number_of_living_rooms'}
 
 
@@ -76,23 +54,17 @@ def find_codebook_issues(document, fields):
 
     def issue(kind, reason, paths, comparison):
         issues.append({'type': kind, 'reason': reason, 'comparison': comparison,
-                       'fields': [{'path': path} for path in paths]})
+                       'fields': list(paths)})
 
     for name, spec in fields.items():
-        candidates = (name, *ALIASES.get(name, ()))
-        present = [key for key in candidates if key in coded]
-        if len(present) > 1 and any(coded[key] != coded[present[0]] for key in present[1:]):
-            raise ValueError(f'Conflicting codebook aliases for coded.{name}: {present}')
-        if not present:
+        if name not in coded:
             continue
-        key = present[0]
-        value = coded[key]
+        value = coded[name]
         if _blank(value):
             continue
         choices = spec['possible_values']
-        # The plural dictionary label is not a count in the transcriber: this
-        # is a dwelling identifier, including letters. Do not redefine it here.
-        if name in ('number_of_dwelling', 'number_of_dwellings', 'number_of_households'):
+        # a dwelling identifier, letters included (24A), not a count
+        if name == 'number_of_dwelling':
             continue
         # 0: no room used as a bedroom (not listed in the codebook)
         if name == 'whether_used_as_bedrooms' and _text(value) == '0':
@@ -110,7 +82,7 @@ def find_codebook_issues(document, fields):
         else:
             continue
         if not valid:
-            issue('Page 3 codebook conflict', f'{key}: value is outside the domain declared in data_dict.json.', [('coded', key)], expression)
+            issue('Page 3 codebook conflict', f'{name}: value is outside the domain declared in data_dict.json.', [('coded', name)], expression)
 
     # Municipality names have an explicit, unambiguous mapping in this file.
     spec = fields.get('municipality', {})

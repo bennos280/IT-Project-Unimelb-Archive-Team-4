@@ -1,10 +1,11 @@
 """Codebook boundaries, special codes, and review false-positive regressions."""
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
-from backend.pipeline.validate.run_validation import validate_survey, flags_only
+from backend.pipeline.validate.run_validation import validate_survey
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -26,7 +27,7 @@ def age_flags(result):
 def test_unspecified_head_sex_accepts_feasible_assignments(male, female):
     main, coded = records()
     main['residents'] = [{'relationship': 'Head', 'age': '71'}, {'relationship': 'Wife', 'age': '69'}]
-    coded.update(number_over_10_m=male, number_over_10_f=female)
+    coded.update(number_over_10_male=male, number_over_10_female=female)
     assert age_flags(validate(main, coded)) == []
 
 
@@ -34,14 +35,14 @@ def test_unspecified_head_sex_accepts_feasible_assignments(male, female):
 def test_unspecified_head_sex_still_rejects_impossible_assignments(male, female):
     main, coded = records()
     main['residents'] = [{'relationship': 'Head', 'age': '71'}, {'relationship': 'Wife', 'age': '69'}]
-    coded.update(number_over_10_m=male, number_over_10_f=female)
+    coded.update(number_over_10_male=male, number_over_10_female=female)
     assert any(f['type'] == 'Page 1–3 conflict' for f in age_flags(validate(main, coded)))
 
 
 @pytest.mark.parametrize('count,code', [('0', '0'), ('1', '1'), ('1', '2'), ('1', '3'), ('2', '4'), ('9', '4'), ('Balcony', '2')])
 def test_sleepout_count_and_category_compatible(count, code):
     main, coded = records()
-    main['rooms']['sleepouts'] = count
+    main['rooms']['number_of_sleepouts'] = count
     coded['number_of_sleepouts'] = code
     assert not any(f['reason'].startswith('Sleepouts:') for f in validate(main, coded)['validation_flags'])
 
@@ -49,7 +50,7 @@ def test_sleepout_count_and_category_compatible(count, code):
 @pytest.mark.parametrize('count,code', [('0', '1'), ('1', '4'), ('2', '2'), ('Balcony', '1')])
 def test_sleepout_count_and_category_conflict(count, code):
     main, coded = records()
-    main['rooms']['sleepouts'] = count
+    main['rooms']['number_of_sleepouts'] = count
     coded['number_of_sleepouts'] = code
     assert any(f['type'] == 'Page 1–3 conflict' and f['reason'].startswith('Sleepouts:') for f in validate(main, coded)['validation_flags'])
 
@@ -74,7 +75,7 @@ def test_shared_facility_code_is_not_a_room_count():
     ('whether_used_as_bedrooms', '5', '1'),
     ('cooking_facilities', '9', '0'),
     ('age_of_house', '99', '100'),
-    ('washhouse', '5', '6'),
+    ('washouse', '5', '6'),
 ])
 def test_declared_codebook_domains(field, valid, invalid):
     main, coded = records()
@@ -98,11 +99,11 @@ def test_municipality_mismatch_is_explained():
     main, coded = records()
     main['municipality'] = 'Essendon'
     coded['municipality'] = '2'
+    before = deepcopy((main, coded))
     result = validate(main, coded)
     assert any('means Brunswick' in f['reason'] for f in result['validation_flags'])
-    assert result['main']['municipality_review_status'] == 'ToBeReviewed'
-    assert result['coded']['municipality'] == '2'
-    assert 'Page 3: municipality' in flags_only(result)['flags'][0]['fields']
+    assert (main, coded) == before
+    assert 'Page 3: municipality' in result['validation_flags'][0]['fields']
 
 
 @pytest.mark.parametrize('missing', [None, '/', '[?]'])
@@ -155,16 +156,6 @@ def test_residence_special_codes(source, code):
     main['length_of_residence'] = source
     coded['length_of_residence'] = code
     assert not any(f['reason'].startswith('Length of residence:') for f in validate(main, coded)['validation_flags'])
-
-
-def test_codebook_aliases_preserve_original_paths():
-    main, coded = records()
-    coded['no_of_boarders'] = coded.pop('boarders')
-    coded['number_over_10_male'] = coded.pop('number_over_10_m')
-    coded['no_of_boarders'] = '-1'
-    result = validate(main, coded)
-    assert any('Page 3: no_of_boarders' in f['fields'] for f in result['validation_flags'])
-    assert 'boarders' not in result['coded']
 
 
 def test_explicit_missing_dictionary_fails(tmp_path):

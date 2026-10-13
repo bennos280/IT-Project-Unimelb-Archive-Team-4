@@ -5,10 +5,8 @@ import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
-if __package__:
-    from .run_validation import validate_survey, flags_only
-else:
-    from run_validation import validate_survey, flags_only
+
+from .run_validation import validate_survey
 
 
 def _write(path, data):
@@ -29,7 +27,6 @@ def step_validate(run):
     surveys = {}
     loose = []
     for page in run.pages:
-        page.pop('validation', None)
         if page.get('label') not in ('main', 'coded', 'notes'):
             continue
         if page.get('survey') is None:
@@ -41,7 +38,6 @@ def step_validate(run):
     for page in loose:
         reason = 'US6 not run: page has no survey assignment; resolve grouping first'
         run.flag(page, 'validate', reason)
-        page['validation'] = {'status': 'NotValidated', 'reason': reason}
         skipped.append({'survey_id': None, 'files': [page.get('file')], 'reason': reason})
     root = Path(run.out).resolve()
     for survey_id, pages in surveys.items():
@@ -50,7 +46,7 @@ def step_validate(run):
         reason = None
         if len(mains) != 1 or len(cards) != 1:
             reason = (f'US6 not run: survey has {len(mains)} main sheets and {len(cards)} coded cards; '
-                      'exactly one of each is required by the current sheet adapter')
+                      'exactly one of each is needed to compare them')
 
         def load(page):
             transcript = page.get('transcript')
@@ -66,24 +62,16 @@ def step_validate(run):
 
         if reason is None:
             try:
-                main, coded = load(mains[0]), load(cards[0])
-                notes = [{'file': p['file'], 'data': load(p)} for p in pages if p['label'] == 'notes']
-                result = validate_survey(main, coded, notes=notes, survey_id=survey_id)
+                result = validate_survey(load(mains[0]), load(cards[0]), survey_id=survey_id)
             except (ValueError, OSError) as error:
                 reason = f'US6 not run: {error}'
         if reason:
             skipped.append({'survey_id': survey_id, 'files': [p.get('file') for p in pages], 'reason': reason})
-            for p in pages:
-                p['validation'] = {'status': 'NotValidated', 'reason': reason}
             run.flag(pages[0], 'validate', reason)
             continue
-        result['page_files'] = {'main': mains[0]['file'], 'coded': cards[0]['file'], 'notes': [n['file'] for n in notes]}
+        result['page_files'] = {'main': mains[0]['file'], 'coded': cards[0]['file'],
+                                'notes': [p['file'] for p in pages if p['label'] == 'notes']}
         results.append(result)
-        affected = {category for category, prefix in [('main', 'Page 1:'), ('coded', 'Page 3:')]
-                    if any(any(k.startswith(prefix) for k in issue['fields']) for issue in result['validation_flags'])}
-        for p in pages:
-            p['validation'] = {'status': 'ToBeReviewed' if p['label'] in affected else 'Validated',
-                               'result': 'validation/output_flagged.json', 'survey_id': survey_id}
         for issue in result['validation_flags']:
             involved = []
             if any(k.startswith('Page 1:') for k in issue['fields']):
@@ -94,10 +82,7 @@ def step_validate(run):
                 run.flag(p, 'validate', f"survey {survey_id}: {issue['type']}: {issue['reason']}")
     summary = {'status': 'partial' if skipped else 'completed', 'validated_surveys': len(results),
                'skipped_surveys': len(skipped), 'surveys_with_flags': sum(s['has_flags'] for s in results)}
-    full = {**summary, 'surveys': results, 'not_validated': skipped}
-    compact = {**summary, 'surveys': [flags_only(s) for s in results], 'not_validated': skipped}
-    _write(root / 'validation' / 'output_flagged.json', full)
-    _write(root / 'validation' / 'output_flags_only.json', compact)
+    _write(root / 'validation' / 'output_flagged.json', {**summary, 'surveys': results, 'not_validated': skipped})
     return summary
 
 
@@ -121,9 +106,6 @@ def validate_manifest(path):
     run.flag = lambda page, step, reason: run.review.append({'file': page['file'], 'step': step, 'reason': reason})
     start = time.perf_counter()
     summary = step_validate(run)
-    log = manifest.get('steps', [])
-    if not isinstance(log, list):
-        raise ValueError('manifest.steps must be a list')
     log = [entry for entry in log if entry.get('step') != 'validate']
     log.append({'step': 'validate', 'seconds': round(time.perf_counter() - start, 1), 'pages': len(run.pages),
                 'flagged': sum(r.get('step') == 'validate' for r in run.review), **summary})
@@ -143,7 +125,3 @@ def main(argv=None):
     except (ValueError, OSError) as error:
         parser.exit(2, f'US6 manifest error: {error}\n')
     return 0
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())

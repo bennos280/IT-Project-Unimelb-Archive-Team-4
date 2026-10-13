@@ -21,8 +21,8 @@
   "probable_age": "50-60 years",
   "yard_or_uncultivated_space": null,
   "cultivated_garden": null,
-  "weekly_value_fruit_and_vegetables_grown": null,
-  "weekly_value_fruit_and_vegetables_sold": null,
+  "weekly_value_of_fruit_and_vegetables_grown": null,
+  "weekly_value_of_fruit_and_vegetables_sold": null,
   "other_commercial_activities_on_premises": null,
   "tenure": null,
   "weekly_rent_or_instalments": null,
@@ -60,7 +60,7 @@
     "number_of_living_rooms": "2",
     "state_if_used_as_bedrooms": "No",
     "rooms_not_in_daily_use": "1",
-    "sleepouts": "0"
+    "number_of_sleepouts": "0"
   },
   "bath": {
     "location": null,

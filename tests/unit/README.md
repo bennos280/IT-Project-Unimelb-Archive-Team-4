@@ -1,6 +1,6 @@
 # Unit tests
 
-**282 tests. Runs in ~16s.**
+**283 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
@@ -278,11 +278,11 @@ Covers the page 1 / page 3 consistency rules on the sample survey, with a consis
 |`test_children_from_ages_8_and_7`|Children aged 8 and 7 count towards "children under 14", and a page 3 value of 1 instead of 2 is flagged as a page 1-3 conflict.|
 |`test_age_boundaries`|Ages 4, 5, 10, 11, 13 and 14 fall into the correct under-5, 5-10, over-10 and under-14 counts, and the matching page 3 values raise no issue.|
 |`test_corresponding_missing_markers`|A missing bedrooms value on page 3 (None, empty, space, `/` or `[?]`) while page 1 has one is flagged as an incomplete comparison.|
-|`test_absent_field_has_location`|A field deleted from page 3 is reported as `<missing>` with its page location in the compact output, and the full output marks it `ToBeReviewed` without adding the field.|
+|`test_absent_field_has_location`|A field deleted from the coded card is flagged with its location and the value `<missing>` (`Page 3: number_of_bedrooms`).|
 |`test_both_corresponding_blank_no_crosspage_issue`|When the dwelling number is blank on page 1 and `/` on page 3, no cross-page issue is raised.|
 |`test_unknown_age_not_silently_zero`|A resident age of `[?]` is not counted as 0, and "children under 14" is flagged as incomplete.|
 |`test_unknown_sex_not_guessed_from_head`|A head with no sex recorded is not assumed to be male or female, so the residents-over-10 check raises nothing.|
-|`test_empty_template_columns_not_residents`|A personnel column with no age and a `/` relationship is not counted as a resident.|
+|`test_empty_template_columns_not_residents`|A resident column with no age and a `/` relationship is not counted as a resident.|
 |`test_page3_age_sum_reason`|A page 3 resident total of 5 that disagrees with the age-band counts is flagged as a page 3 internal conflict that mentions age bands.|
 |`test_children_arithmetic`|A children total of 3 against 2 living and 0 dead is flagged as a page 3 conflict about living plus dead.|
 |`test_combined_rooms`|A total room count of 4 that is smaller than separate bedrooms plus living rooms is flagged.|
@@ -290,12 +290,12 @@ Covers the page 1 / page 3 consistency rules on the sample survey, with a consis
 |`test_equivalent_count_text`|"None" and 0 for rooms not in daily use, and "01" and 1 for the dwelling number, are treated as equal.|
 |`test_probable_age_range`|A page 3 house age of 61 outside the page 1 probable-age interval is flagged.|
 |`test_children_elsewhere_bound`|Resident children plus children elsewhere that exceed the children total are flagged.|
-|`test_legacy_other_children_is_not_used`|The old "other children" died count on the head's personnel entry is ignored, so it raises no head's-other-children issue.|
+|`test_legacy_other_children_is_not_used`|An other-children count on a resident, or a died entry in the main form's `other_children` list, raises no head's-other-children issue.|
 |`test_negative_only_flagged_in_relationship`|A negative value is flagged only in a field that is part of a cross-page relationship (bedrooms), not in an unrelated one (removal).|
-|`test_preserves_input_and_deterministic_batch`|Validating a batch leaves the input unchanged, gives identical output on a repeat run, and the consistent survey gets no flags.|
+|`test_preserves_input_and_deterministic_batch`|Checking a survey twice gives the same result and leaves both readings unchanged, and the consistent sample has no rule issues.|
 |`test_missing_page_is_input_error`|A survey with no coded page raises `ValueError`.|
 
-## `test_validate_codebook.py` — 19 test functions / 51 cases
+## `test_validate_codebook.py` — 18 test functions / 50 cases
 Covers codebook value ranges, special codes, municipality mapping, house-age and residence codes, and codebook file loading, using the example main and coded surveys. No model calls.
 
 |Test|What it checks|
@@ -307,7 +307,7 @@ Covers codebook value ranges, special codes, municipality mapping, house-age and
 |`test_shared_facility_code_is_not_a_room_count`|A rooms-shared code of 7 is accepted as a facility code, and 8 is flagged as a codebook conflict.|
 |`test_declared_codebook_domains`|For each listed field, a value inside the codebook range raises no codebook conflict and a value just outside it does.|
 |`test_municipality_uses_actual_mapping`|Essendon with code 08, Brunswick with 2 and Box Hill with 00 match the codebook mapping and raise no flags.|
-|`test_municipality_mismatch_is_explained`|Essendon on page 1 with code 2 (Brunswick) is flagged with a reason saying the code means Brunswick, marked `ToBeReviewed`, and the page 3 value is left unchanged and listed in the compact output.|
+|`test_municipality_mismatch_is_explained`|Essendon on page 1 with code 2 (Brunswick) is flagged with a reason saying the code means Brunswick, naming `Page 3: municipality`, and both readings are left unchanged.|
 |`test_missing_municipality_counterpart_is_incomplete`|A page 3 municipality of None, `/` or `[?]` against a named page 1 municipality is flagged as an incomplete comparison.|
 |`test_no_reference_fields_and_special_money_codes_not_reinterpreted`|Industry and occupation codes, an unreadable removal, unmapped military-service text and an income code of 997 are not checked or reinterpreted, so no flags result.|
 |`test_zero_room_code_accepts_over_eleven`|With bedrooms coded 0 and total rooms coded 0, an exact page 1 bedroom count of 12 or 18 is accepted.|
@@ -315,7 +315,6 @@ Covers codebook value ranges, special codes, municipality mapping, house-age and
 |`test_house_special_codes_not_treated_as_exact_ages`|House-age codes 00, 98 and 99 against "55", "old", "105 years." and "over 99 years." are not compared as exact ages.|
 |`test_over_ninety_nine_house_code_conflicts_with_fifteen`|A house-age code of 99 (over 99 years) against a page 1 age of 15 years is flagged as a page 1-3 conflict.|
 |`test_residence_special_codes`|Length of residence "0.5 years" with code 00 and "22 years" with code 99 raise no residence issue.|
-|`test_codebook_aliases_preserve_original_paths`|Fields stored under alternative codebook names are still checked, the flag reports the original field name, and the original names are not added to the output.|
 |`test_explicit_missing_dictionary_fails`|An explicitly supplied codebook path that does not exist raises `FileNotFoundError`.|
 |`test_malformed_dictionary_fails_before_validation`|A codebook file with no usable content raises `ValueError` before any validation runs.|
 |`test_missing_default_dictionary_preserves_standalone_api`|When the default codebook file cannot be found, validation still runs with no flags and returns a warning that codebook checks were not run.|
@@ -330,3 +329,12 @@ Covers head-relationship parsing, year-unit punctuation, age ranges and annotate
 |`test_period_after_year_unit_is_accepted`|"15 years.", "15 year.", "15 yrs." and "15 y." are all read as 15 years for house age and length of residence, with no flags.|
 |`test_age_ranges_and_bounds_allow_period`|"50-60 years.", "over 50 years." and "under 60 years." are accepted as probable-age values with a trailing period, with no flags.|
 |`test_annotated_son_and_daughter_count_as_resident_children`|"Son (M)" and "Daughter (F)" count as resident children, and a page 3 living-children total of 1 is flagged because the resident sons and daughters exceed it.|
+
+## `test_validate_fields.py` — 2 tests
+The consistency check reads fields by their template names: a field renamed in a template fails here instead of
+switching a check off quietly. No model calls.
+
+|Test|What it checks|
+|---|---|
+|`test_every_field_the_rules_read_is_in_the_templates`|Running every rule on readings with every template field filled in, each field the rules look up (residents' optional `sex`/`gender` aside) is in `main.json` or `coded.json`.|
+|`test_every_codebook_field_is_a_coded_template_field`|Every field in the codebook (`data_dict.json` page 3) is a field of the coded card's template.|

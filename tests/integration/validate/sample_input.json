@@ -1,274 +1,227 @@
 {
-  "survey_id": "mock-survey-001",
-  "pages": {
-    "main": {
-      "page_category": "main",
-      "label": "216412/pg1",
-      "fields": {
-        "DATE OF INTERVIEW": "8 April 1942",
-        "SIGNATURE OF INVESTIGATOR": "B. Quin",
-        "ADDRESS": "No. 9 Abbotsford Street",
-        "MUNICIPALITY": "Abbotsford",
-        "NO. OF FAMILIES IN DWELLING": "1",
-        "NUMBER": "1",
-        "TYPE OF DWELLING": "S.D.",
-        "STRUCTURAL MATERIAL": "B.",
-        "NO. OF STOREYS": "1",
-        "PROBABLE AGE": "50-60 years",
-        "IS THERE ANY YARD OR UNCULTIVATED SPACE?": "Small garden",
-        "IS THERE ANY CULTIVATED GARDEN?": null,
-        "APPROX. WEEKLY VALUE OF FRUIT AND VEGETABLES GROWN": null,
-        "APPROX. WEEKLY VALUE OF FRUIT AND VEGETABLES SOLD": null,
-        "OTHER COMMERCIAL ACTIVITIES CONDUCTED ON PREMISES": null,
-        "TENURE": "O",
-        "WEEKLY RENT (OR INSTALMENTS)": "[?]",
-        "FURNISHED OR UNFURNISHED": "Unfurnished",
-        "LENGTH OF RESIDENCE": "22 years",
-        "PERSONNEL": [
-          {
-            "PERSONAL": {
-              "RELATIONSHIP": "Head",
-              "AGE": "76",
-              "EARNING STATUS": "/"
-            },
-            "OTHER CHILDREN": {
-              "DIED": null,
-              "LIVING ELSEWHERE": null
-            },
-            "UNEARNED INCOME": {
-              "WEEKLY AMOUNT": "4-17-6",
-              "SOURCE": "around 5 houses"
-            },
-            "OCCUPATION": {
-              "INDUSTRY": null,
-              "CRAFT": null,
-              "REGULARITY OF WORK": null,
-              "EMPLOYER": null,
-              "EMPLOYER'S ADDRESS": null,
-              "WKLY. COST TRANSPORT": null,
-              "RESIDENTIAL PREF.": null
-            },
-            "EARNINGS": {
-              "EARNINGS LAST WEEK": null,
-              "FULL-TIME EARNINGS EXCLUDING OVERTIME": null,
-              "WKLY. CONT. TO BOARD": null,
-              "WKLY. PAYMENTS TO REL. LIVING ELSEWHERE": null
-            },
-            "PRE-WAR": {
-              "OCCUPATION": null,
-              "NORMAL WKLY. EARN'S.": null,
-              "PLACE OF WORK IF OUTSIDE MELBOURNE": null,
-              "OCCUPATIONAL PREF.": null
-            }
-          },
-          {
-            "PERSONAL": {
-              "RELATIONSHIP": "Wife",
-              "AGE": "70",
-              "EARNING STATUS": "H.D."
-            },
-            "OTHER CHILDREN": {
-              "DIED": null,
-              "LIVING ELSEWHERE": null
-            },
-            "UNEARNED INCOME": {
-              "WEEKLY AMOUNT": null,
-              "SOURCE": null
-            },
-            "OCCUPATION": {
-              "INDUSTRY": null,
-              "CRAFT": null,
-              "REGULARITY OF WORK": null,
-              "EMPLOYER": null,
-              "EMPLOYER'S ADDRESS": null,
-              "WKLY. COST TRANSPORT": null,
-              "RESIDENTIAL PREF.": null
-            },
-            "EARNINGS": {
-              "EARNINGS LAST WEEK": null,
-              "FULL-TIME EARNINGS EXCLUDING OVERTIME": null,
-              "WKLY. CONT. TO BOARD": null,
-              "WKLY. PAYMENTS TO REL. LIVING ELSEWHERE": null
-            },
-            "PRE-WAR": {
-              "OCCUPATION": null,
-              "NORMAL WKLY. EARN'S.": null,
-              "PLACE OF WORK IF OUTSIDE MELBOURNE": null,
-              "OCCUPATIONAL PREF.": null
-            }
-          },
-          {
-            "PERSONAL": {
-              "RELATIONSHIP": "Son",
-              "AGE": "28",
-              "EARNING STATUS": "B"
-            },
-            "OTHER CHILDREN": {
-              "DIED": null,
-              "LIVING ELSEWHERE": null
-            },
-            "UNEARNED INCOME": {
-              "WEEKLY AMOUNT": null,
-              "SOURCE": null
-            },
-            "OCCUPATION": {
-              "INDUSTRY": "Journeyman",
-              "CRAFT": "Miner",
-              "REGULARITY OF WORK": "Regular",
-              "EMPLOYER": "S.E.C.",
-              "EMPLOYER'S ADDRESS": "Bendigo",
-              "WKLY. COST TRANSPORT": null,
-              "RESIDENTIAL PREF.": null
-            },
-            "EARNINGS": {
-              "EARNINGS LAST WEEK": null,
-              "FULL-TIME EARNINGS EXCLUDING OVERTIME": null,
-              "WKLY. CONT. TO BOARD": null,
-              "WKLY. PAYMENTS TO REL. LIVING ELSEWHERE": null
-            },
-            "PRE-WAR": {
-              "OCCUPATION": null,
-              "NORMAL WKLY. EARN'S.": null,
-              "PLACE OF WORK IF OUTSIDE MELBOURNE": null,
-              "OCCUPATIONAL PREF.": null
-            }
-          },
-          {
-            "PERSONAL": {
-              "RELATIONSHIP": "Daughter",
-              "AGE": "42",
-              "EARNING STATUS": "B"
-            },
-            "OTHER CHILDREN": {
-              "DIED": null,
-              "LIVING ELSEWHERE": null
-            },
-            "UNEARNED INCOME": {
-              "WEEKLY AMOUNT": null,
-              "SOURCE": null
-            },
-            "OCCUPATION": {
-              "INDUSTRY": "Teaching",
-              "CRAFT": "School teacher",
-              "REGULARITY OF WORK": "Regular",
-              "EMPLOYER": "Department of Public Instruction",
-              "EMPLOYER'S ADDRESS": null,
-              "WKLY. COST TRANSPORT": "2/6 weekly",
-              "RESIDENTIAL PREF.": null
-            },
-            "EARNINGS": {
-              "EARNINGS LAST WEEK": null,
-              "FULL-TIME EARNINGS EXCLUDING OVERTIME": null,
-              "WKLY. CONT. TO BOARD": "30/-",
-              "WKLY. PAYMENTS TO REL. LIVING ELSEWHERE": null
-            },
-            "PRE-WAR": {
-              "OCCUPATION": "Teacher",
-              "NORMAL WKLY. EARN'S.": null,
-              "PLACE OF WORK IF OUTSIDE MELBOURNE": "Kyneton",
-              "OCCUPATIONAL PREF.": null
-            }
-          }
-        ],
-        "NO. OF SEPARATE BEDROOMS": "3",
-        "NO. OF LIVING ROOMS": "2",
-        "STATE IF USED AS BEDROOMS": "No",
-        "ROOMS NOT IN DAILY USE": "1",
-        "NUMBER OF SLEEPOUTS": "0",
-        "BATH - LOCATION": "Outside",
-        "BATH - SHARED": null,
-        "BATH - H.W.S.": null,
-        "W.C. - INTERNAL OR EXTERNAL": "External",
-        "W.C. - SHARED": null,
-        "WASH-HOUSE": "Trough, copper",
-        "KITCHEN - IS IT SHARED?": "No",
-        "KITCHEN - IS IT EVER USED AS A BEDROOM?": "No",
-        "KITCHEN - CAN MEALS BE TAKEN THERE?": "No",
-        "KITCHEN - SINK AND WATER TAP?": "No",
-        "KITCHEN - H.W.S.?": null,
-        "KITCHEN - COOKING FACILITIES?": "Gas stove",
-        "KITCHEN - FOOD STORAGE?": "Cupboard",
-        "FACILITIES FOR COOKING AND WATER SUPPLY IN OTHER ROOMS": "None"
+  "main": {
+    "date_of_interview": "8 April 1942",
+    "signature_of_investigator": "B. Quin",
+    "address": "No. 9 Abbotsford Street",
+    "municipality": "Abbotsford",
+    "number_of_families_in_dwelling": "1",
+    "number_of_dwelling": "1",
+    "type_of_dwelling": "S.D.",
+    "structural_material": "B.",
+    "number_of_storeys": "1",
+    "probable_age": "50-60 years",
+    "yard_or_uncultivated_space": "Small garden",
+    "cultivated_garden": null,
+    "weekly_value_of_fruit_and_vegetables_grown": null,
+    "weekly_value_of_fruit_and_vegetables_sold": null,
+    "other_commercial_activities_on_premises": null,
+    "tenure": "O",
+    "weekly_rent_or_instalments": "[?]",
+    "furnished_or_unfurnished": "Unfurnished",
+    "length_of_residence": "22 years",
+    "wash_house": "Trough, copper",
+    "residents": [
+      {
+        "relationship": "Head",
+        "age": "76",
+        "earning_status": "/",
+        "unearned_income_weekly_amount": "4-17-6",
+        "unearned_income_source": "around 5 houses",
+        "industry": null,
+        "craft": null,
+        "regularity_of_work": null,
+        "employer": null,
+        "employers_address": null,
+        "weekly_cost_transport": null,
+        "residential_preference": null,
+        "earnings_last_week": null,
+        "full_time_earnings_excluding_overtime": null,
+        "weekly_contribution_to_board": null,
+        "weekly_payments_to_relatives_living_elsewhere": null,
+        "pre_war_occupation": null,
+        "pre_war_normal_weekly_earnings": null,
+        "pre_war_place_of_work_if_outside_melbourne": null,
+        "pre_war_occupational_preference": null
       },
-      "annotations": [
-        "Red pencil R",
-        "Faint arithmetic in right margin"
-      ]
+      {
+        "relationship": "Wife",
+        "age": "70",
+        "earning_status": "H.D.",
+        "unearned_income_weekly_amount": null,
+        "unearned_income_source": null,
+        "industry": null,
+        "craft": null,
+        "regularity_of_work": null,
+        "employer": null,
+        "employers_address": null,
+        "weekly_cost_transport": null,
+        "residential_preference": null,
+        "earnings_last_week": null,
+        "full_time_earnings_excluding_overtime": null,
+        "weekly_contribution_to_board": null,
+        "weekly_payments_to_relatives_living_elsewhere": null,
+        "pre_war_occupation": null,
+        "pre_war_normal_weekly_earnings": null,
+        "pre_war_place_of_work_if_outside_melbourne": null,
+        "pre_war_occupational_preference": null
+      },
+      {
+        "relationship": "Son",
+        "age": "28",
+        "earning_status": "B",
+        "unearned_income_weekly_amount": null,
+        "unearned_income_source": null,
+        "industry": "Journeyman",
+        "craft": "Miner",
+        "regularity_of_work": "Regular",
+        "employer": "S.E.C.",
+        "employers_address": "Bendigo",
+        "weekly_cost_transport": null,
+        "residential_preference": null,
+        "earnings_last_week": null,
+        "full_time_earnings_excluding_overtime": null,
+        "weekly_contribution_to_board": null,
+        "weekly_payments_to_relatives_living_elsewhere": null,
+        "pre_war_occupation": null,
+        "pre_war_normal_weekly_earnings": null,
+        "pre_war_place_of_work_if_outside_melbourne": null,
+        "pre_war_occupational_preference": null
+      },
+      {
+        "relationship": "Daughter",
+        "age": "42",
+        "earning_status": "B",
+        "unearned_income_weekly_amount": null,
+        "unearned_income_source": null,
+        "industry": "Teaching",
+        "craft": "School teacher",
+        "regularity_of_work": "Regular",
+        "employer": "Department of Public Instruction",
+        "employers_address": null,
+        "weekly_cost_transport": "2/6 weekly",
+        "residential_preference": null,
+        "earnings_last_week": null,
+        "full_time_earnings_excluding_overtime": null,
+        "weekly_contribution_to_board": "30/-",
+        "weekly_payments_to_relatives_living_elsewhere": null,
+        "pre_war_occupation": "Teacher",
+        "pre_war_normal_weekly_earnings": null,
+        "pre_war_place_of_work_if_outside_melbourne": "Kyneton",
+        "pre_war_occupational_preference": null
+      }
+    ],
+    "other_children": {
+      "died": [],
+      "living_elsewhere": []
     },
-    "coded": {
-      "page_category": "coded",
-      "label": "216412/pg3",
-      "fields": {
-        "MUNICIPALITY": "01",
-        "NUMBER OF DWELLING": "9",
-        "NUMBER OF HOUSEHOLD": "1",
-        "TYPE OF FAMILY": "2",
-        "TOTAL NO. RESIDENT MEMBERS": "5",
-        "NUMBER UNDER 5": "0",
-        "NUMBER 5-10": "0",
-        "NUMBER OVER 10": {
-          "M": "2",
-          "F": "2"
-        },
-        "MILITARY SERVICE": "0",
-        "NO. OF BOARDERS": "0",
-        "NO. OF PARTICIPATING MEMBERS": "3",
-        "NO. OF ADULT M. BREADWINNERS": "3",
-        "NO. OF ADULT F. BREADWINNERS": "2",
-        "NO. OF JUVENILE BREADWINNERS (UNDER 21)": "1",
-        "CHILDREN UNDER 14": "0",
-        "RETIRED AND INDEP. PERSONS": "1",
-        "HOME DUTIES": "1",
-        "OTHER": "0",
-        "NORMAL HOUSEHOLD I.": "201",
-        "WEEKLY RENT": "0",
-        "TOTAL AVAILABLE I.": "201",
-        "EARNINGS OF HEAD": "0",
-        "HEAD'S UNEARNED I.": "97",
-        "MAIN SOURCE OF HEAD'S UNEARNED INCOME": "1",
-        "SUBSIDIARY SOURCE OF HEAD'S INCOME": "0",
-        "INDUSTRY OF H.": "802",
-        "OCCUPATION OF H.": "5500",
-        "GRADE OF OCCUP. OF H.": "9",
-        "PLACE OF WORK": "90",
-        "AGE OF HEAD": "76",
-        "SEX OF HEAD": "1",
-        "REGULARITY OF WORK": "9",
-        "PRE-WAR OCCUPATION": "9",
-        "REMOVAL": "1",
-        "TYPE OF DWELLING": "1",
-        "STRUCTURAL MATERIAL": "2",
-        "AGE OF HOUSE": "55",
-        "GARDEN": "1",
-        "STATE OF REPAIR": "1",
-        "TENURE": "1",
-        "LENGTH OF RESIDENCE": "22",
-        "TOTAL NUMBER OF ROOMS": "5",
-        "NUMBER OF BEDROOMS": "4",
-        "NUMBER OF LIVING ROOMS": "2",
-        "WHETHER USED AS BEDROOMS": "0",
-        "ROOMS NOT IN DAILY USE": "1",
-        "NUMBER OF SLEEPOUTS": "0",
-        "BATHROOM": "6",
-        "W.C.": "0",
-        "WASHHOUSE": "1",
-        "KITCHEN": "1",
-        "SINK AND WATER SERVICE": "1",
-        "COOKING FACILITIES": "2",
-        "FOOD STORAGE": "3",
-        "ROOMS SHARED": "-1",
-        "PERSONS SHARING": "0",
-        "CHILDREN OTHER THAN THOSE AT HOME": "2",
-        "CHILDREN OF H. OR WIFE": {
-          "LIVING": "3",
-          "DEAD": "0",
-          "TOTAL": "4"
-        }
+    "rooms": {
+      "number_of_separate_bedrooms": "3",
+      "number_of_living_rooms": "2",
+      "state_if_used_as_bedrooms": "No",
+      "rooms_not_in_daily_use": "1",
+      "number_of_sleepouts": "0"
+    },
+    "bath": {
+      "location": "Outside",
+      "shared": null,
+      "hot_water_service": null
+    },
+    "wc": {
+      "internal_or_external": "External",
+      "shared": null
+    },
+    "kitchen": {
+      "shared": "No",
+      "ever_used_as_bedroom": "No",
+      "meals_can_be_taken_there": "No",
+      "sink_and_water_tap": "No",
+      "hot_water_service": null,
+      "cooking_facilities": "Gas stove",
+      "food_storage": "Cupboard",
+      "facilities_for_cooking_and_water_supply_in_other_rooms": "None"
+    },
+    "annotations": [
+      {
+        "raw": "Red pencil R",
+        "location": null
       },
-      "annotations": [
-        "Red pencil R",
-        "Blue circled 8"
-      ]
-    }
+      {
+        "raw": "Faint arithmetic in right margin",
+        "location": null
+      }
+    ]
+  },
+  "coded": {
+    "municipality": "01",
+    "number_of_dwelling": "9",
+    "number_of_household": "1",
+    "type_of_family": "2",
+    "total_number_resident_members": "5",
+    "number_under_5": "0",
+    "number_5_to_10": "0",
+    "military_service": "0",
+    "number_of_boarders": "0",
+    "number_of_participating_members": "3",
+    "number_of_adult_male_breadwinners": "3",
+    "number_of_adult_female_breadwinners": "2",
+    "number_of_juvenile_breadwinners_under_21": "1",
+    "children_under_14": "0",
+    "retired_and_independent_persons": "1",
+    "home_duties": "1",
+    "other": "0",
+    "normal_household_income": "201",
+    "weekly_rent": "0",
+    "total_available_income": "201",
+    "earnings_of_head": "0",
+    "heads_unearned_income": "97",
+    "main_source_of_heads_unearned_income": "1",
+    "subsidiary_source_of_heads_income": "0",
+    "industry_of_head": "802",
+    "occupation_of_head": "5500",
+    "grade_of_occupation_of_head": "9",
+    "place_of_work": "90",
+    "age_of_head": "76",
+    "sex_of_head": "1",
+    "regularity_of_work": "9",
+    "pre_war_occupation": "9",
+    "removal": "1",
+    "type_of_dwelling": "1",
+    "structural_material": "2",
+    "age_of_house": "55",
+    "garden": "1",
+    "state_of_repair": "1",
+    "tenure": "1",
+    "length_of_residence": "22",
+    "total_number_of_rooms": "5",
+    "number_of_bedrooms": "4",
+    "number_of_living_rooms": "2",
+    "whether_used_as_bedrooms": "0",
+    "rooms_not_in_daily_use": "1",
+    "number_of_sleepouts": "0",
+    "bathroom": "6",
+    "wc": "0",
+    "washouse": "1",
+    "kitchen": "1",
+    "sink_and_water_service": "1",
+    "cooking_facilities": "2",
+    "food_storage": "3",
+    "rooms_shared": "-1",
+    "persons_sharing": "0",
+    "children_other_than_those_at_home": "2",
+    "number_over_10_male": "2",
+    "number_over_10_female": "2",
+    "children_of_head_or_wife_living": "3",
+    "children_of_head_or_wife_dead": "0",
+    "children_of_head_or_wife_total": "4",
+    "annotations": [
+      {
+        "raw": "Red pencil R",
+        "location": null
+      },
+      {
+        "raw": "Blue circled 8",
+        "location": null
+      }
+    ]
   }
 }
