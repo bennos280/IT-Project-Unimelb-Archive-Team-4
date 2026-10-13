@@ -40,6 +40,7 @@ type SaveResult = {
 };
 
 type SurveyResponse = {
+  bundleId?: string;
   id: string;
   title: string;
   pages: Array<{

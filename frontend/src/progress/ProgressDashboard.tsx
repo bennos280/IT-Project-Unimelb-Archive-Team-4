@@ -1,6 +1,7 @@
+import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Search, Upload, Download } from "lucide-react";
+import { ArrowLeft, ArrowRight, Search, Upload } from "lucide-react";
 import {
   counts,
   type Bundle,
@@ -267,11 +268,19 @@ export default function ProgressDashboard() {
                 : `Track review progress across ${(bundles ?? []).length} bundles`}
             </p>
           </div>
-          {/* Import and export will be implemented separately. */}
           <div className="progress-actions">
-            <button type="button" disabled title="Export coming soon">
-              <Download size={16} /> Export
-            </button>
+            <ExportDialog
+              surveyId={
+                bundle?.pages.find((page) => page.surveyId)?.surveyId ?? ""
+              }
+              initialBundleId={
+                bundle && (!bundle.source || bundle.source.loaded)
+                  ? bundle.id
+                  : undefined
+              }
+              defaultScope="bundle"
+              hasDrafts={false}
+            />
             <button type="button" disabled title="Import coming soon">
               <Upload size={16} /> Import
             </button>

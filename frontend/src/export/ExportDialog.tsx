@@ -1,7 +1,7 @@
 // Displays the export dialog for downloading saved survey data as JSON,
 // with validation and success or error messages.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CheckCircle2, Download, X, AlertTriangle } from "lucide-react";
 
@@ -14,7 +14,7 @@ import {
 import "./export.css";
 
 // Defines the available export scope options shown in the dialog.
-type Scope = "bundle" | "survey";
+type Scope = "bundle" | "survey" | "current";
 
 /**
  * Displays the export button and modal dialog.
@@ -25,25 +25,73 @@ type Scope = "bundle" | "survey";
 export default function ExportDialog({
   surveyId,
   hasDrafts,
+  initialBundleId = "",
+  defaultScope = "survey",
 }: {
   surveyId: string;
   hasDrafts: boolean;
+  initialBundleId?: string;
+  defaultScope?: Scope;
 }) {
   // Reference to the native HTML dialog so it can be opened and closed.
   const dialog = useRef<HTMLDialogElement>(null);
 
   // Stores the selected export scope.
-  const [scope, setScope] = useState<Scope>("survey");
+  const [scope, setScope] = useState<Scope>(defaultScope);
 
   // Stores the survey ID entered by the user.
   const [requestedId, setRequestedId] = useState(surveyId);
 
   // Prevents repeated actions while an export is being prepared.
-  const [bundleId, setBundleId] = useState("");
+  const [bundleId, setBundleId] = useState(initialBundleId);
   const [bundles, setBundles] = useState<Array<{ id: string; name: string }>>(
     [],
   );
   const [busy, setBusy] = useState(false);
+
+  const [open, setOpen] = useState(false);
+  const [reviewCheck, setReviewCheck] = useState<{
+    key: string;
+    pending: boolean;
+  } | null>(null);
+  const selectedId = (scope === "survey" ? requestedId : bundleId).trim();
+  const selectionKey = `${scope}:${selectedId}`;
+
+  // Check persisted data for this selection; ignore responses from older selections.
+  useEffect(() => {
+    if (!open || !selectedId) return;
+    let active = true;
+    const timer = setTimeout(() => {
+      void (
+        scope === "survey"
+          ? loadSurveyExport(selectedId)
+          : loadBundleExport(selectedId)
+      )
+        .then((payload) => {
+          const pending =
+            payload.surveys.some(
+              (survey) =>
+                survey.status !== "Reviewed" ||
+                survey.pages.some(
+                  (page) =>
+                    page.status !== "Reviewed" ||
+                    page.fields.some((field) => field.status !== "Reviewed"),
+                ),
+            ) ||
+            (payload.unassignedPages ?? []).some(
+              (page) => page.status !== "Reviewed",
+            );
+          if (active) setReviewCheck({ key: selectionKey, pending });
+        })
+        .catch(() => {
+          if (active) setReviewCheck(null);
+        });
+    }, 200);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [open, scope, selectedId, selectionKey]);
 
   // Stores any error message produced during the export.
   const [failure, setFailure] = useState("");
@@ -51,6 +99,7 @@ export default function ExportDialog({
   // Stores information about a successfully generated export.
   const [result, setResult] = useState<{
     filename: string;
+    surveys: number;
     pages: number;
     pending: number;
   } | null>(null);
@@ -79,7 +128,7 @@ export default function ExportDialog({
       const pages = payload.surveys.flatMap((record) => record.pages);
       const unassigned = payload.unassignedPages ?? [];
 
-      const filename = `${scope}-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}-export.json`;
+      const filename = `${scope === "survey" ? "survey" : "bundle"}-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}-export.json`;
       const url = URL.createObjectURL(
         new Blob([JSON.stringify(payload, null, 2)], {
           type: "application/json",
@@ -97,6 +146,7 @@ export default function ExportDialog({
 
       // Store export details so the success message can be displayed.
       setResult({
+        surveys: payload.surveys.length,
         filename,
         pages: pages.length + unassigned.length,
         pending:
@@ -120,9 +170,16 @@ export default function ExportDialog({
       {/* Opens the export dialog and resets previous messages. */}
       <button
         onClick={() => {
+          setOpen(true);
+          setReviewCheck(null);
           setResult(null);
           setFailure("");
           setRequestedId(surveyId);
+          setScope(defaultScope);
+          setBundleId(initialBundleId);
+          void loadExportBundles()
+            .then(setBundles)
+            .catch((error) => setFailure(error.message));
           dialog.current?.showModal();
         }}
       >
@@ -132,6 +189,7 @@ export default function ExportDialog({
       {/* Native modal containing all export controls and feedback. */}
       <dialog
         ref={dialog}
+        onClose={() => setOpen(false)}
         className="export-dialog"
         aria-labelledby="export-title"
         aria-describedby="export-description"
@@ -169,6 +227,29 @@ export default function ExportDialog({
             {/* Export scope selection. */}
             <fieldset disabled={busy} className="export-choices">
               <legend className="export-sr">Export scope</legend>
+
+              {initialBundleId && (
+                <label className="export-option">
+                  <input
+                    type="radio"
+                    name="scope"
+                    checked={scope === "current"}
+                    onChange={() => {
+                      setScope("current");
+                      setBundleId(initialBundleId);
+                      setResult(null);
+                      setFailure("");
+                    }}
+                  />
+                  <span>
+                    <strong>Current bundle</strong>
+                    <small>
+                      Export all surveys and unassigned pages in bundle{" "}
+                      {initialBundleId}.
+                    </small>
+                  </span>
+                </label>
+              )}
 
               {/* Bundle export option. */}
               <label className="export-option">
@@ -255,26 +336,24 @@ export default function ExportDialog({
               )}
             </fieldset>
 
-            {/* Explain which saved values are exported. */}
-            {
-              <div className="export-policy">
-                <span>JSON · Latest saved values</span>
-
+            {/* Only warn when the selected saved data contains unreviewed records. */}
+            {reviewCheck?.key === selectionKey && reviewCheck.pending && (
+              <div className="export-policy" role="status">
+                <span>Contains unreviewed data</span>
                 <p>
-                  Includes fields still awaiting review, with a status. Blank
-                  values, “/” and “[?]” are preserved.
+                  This contains fields that are still awaiting review. Be aware
+                  that unreviewed values may contain transcription errors and
+                  have not been verified by a reviewer.
                 </p>
-
-                {/* Warn that unsaved review edits are excluded. */}
-                {hasDrafts && (
-                  <p className="export-draft">
-                    <AlertTriangle size={15} />
-                    Unsaved edits are excluded. Save your pages first to include
-                    them.
-                  </p>
-                )}
               </div>
-            }
+            )}
+            {hasDrafts && (
+              <p className="export-draft">
+                <AlertTriangle size={15} />
+                Unsaved edits are excluded. Save your pages first to include
+                them.
+              </p>
+            )}
 
             {/* Display an export failure to the user. */}
             {failure && (
@@ -299,8 +378,8 @@ export default function ExportDialog({
                   <p>{result.filename}</p>
 
                   <p>
-                    1 survey · {result.pages} pages · {result.pending} pages
-                    awaiting review included.
+                    {result.surveys} surveys · {result.pages} pages ·{" "}
+                    {result.pending} pages awaiting review included.
                   </p>
                 </div>
               </div>
