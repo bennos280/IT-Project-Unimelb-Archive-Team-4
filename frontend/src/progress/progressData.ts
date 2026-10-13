@@ -1,5 +1,5 @@
 import type { Survey } from "../review-screen/model";
-import type { SavedReviews } from "../export/exportData";
+type SavedReviews = Record<string, Record<string, { value: string | null; savedAt?: string }>>;
 // Covers both processing stages and review states shown in the page list.
 export type PageStatus =
   | "Awaiting transcription"

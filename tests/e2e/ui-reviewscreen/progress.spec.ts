@@ -278,27 +278,10 @@ test.describe("Progress navigation and layout", () => {
     ).toBeVisible();
   });
 
-  test("Import opens its screen and Export opens its dialog", async ({
-    page,
-  }) => {
+  test("Import and Export remain disabled placeholders", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Import", exact: true }).click();
-
-    await expect(
-      page.getByRole("heading", { name: "Import survey bundles" }),
-    ).toBeVisible();
-
-    await page.goto("/");
-    await page.getByRole("button", { name: "216417", exact: true }).click();
-    await page.getByRole("button", { name: "Export", exact: true }).click();
-
-    await expect(
-      page.getByRole("dialog", { name: "Export", exact: true }),
-    ).toBeVisible();
-
-    await expect(
-      page.getByRole("button", { name: "Export JSON", exact: true }),
-    ).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Import", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeDisabled();
   });
 
   for (const [label, pageId] of [
