@@ -232,6 +232,27 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
         raise
     return {"revision": revision, "savedAt": timestamp.isoformat()}
 
+#each model's accuracy on the pages reviewers have saved since they were last read, per page type, prompt and template version: a field
+#whose final edit differs from what the model read counts as wrong, every other field on those pages as right
+@app.get("/accuracy")
+def get_accuracy(db: Session = Depends(get_db)):
+    scores = {}
+    for p in db.query(models.Page).filter(models.Page.checked_revision == models.Page.revision_no, models.Page.model.is_not(None)):
+        final = {}
+        for e in db.query(models.Edit).filter(models.Edit.page_id == p.page_id).order_by(models.Edit.edit_id):
+            field_id, original = edited_field(db, e)
+            final[field_id] = (e.edit_text or "") != (original or "")
+        score = scores.setdefault((p.model, p.effort, p.category, p.prompt_version_id, p.template_version_id), {
+            "model": p.model, "effort": p.effort, "pageType": p.category,
+            "promptVersion": p.prompt_version_id, "templateVersion": p.template_version_id,
+            "pages": 0, "fields": 0, "changed": 0})
+        score["pages"] += 1
+        score["fields"] += len(page_fields(db, p))
+        score["changed"] += sum(final.values())
+    for score in scores.values():
+        score["accuracy"] = round(100 * (score["fields"] - score["changed"]) / score["fields"], 1) if score["fields"] else None
+    return sorted(scores.values(), key=lambda score: -(score["accuracy"] or 0))
+
 
 #--TRANSCRIPTION PROMPT AND TEMPLATES--# (backend/db/instructions.py: saved as versions; jobs use the newest of each)
 class InstructionRequest(BaseModel):

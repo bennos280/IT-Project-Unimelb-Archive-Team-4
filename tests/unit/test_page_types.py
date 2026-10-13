@@ -116,3 +116,12 @@ def test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was(setup, 
     assert setup.query(models.Job).one().status == "failed"
     page = setup.get(models.Page, PAGE)
     assert (page.category, page.revision_no, fields(setup)) == ("main", 0, {"number_of_dwelling": "13"})
+
+
+def test_a_page_read_again_counts_for_accuracy_only_once_a_reviewer_saves_it(client, setup, queued, monkeypatch):
+    monkeypatch.setattr(transcription, "transcribe", lambda image, kind, texts: {"text": "moved", "model": "sonnet", "effort": "low"})
+    worker.work_once(setup)
+    assert client.get("/accuracy").json() == []  # read again, but nobody has checked it
+    assert client.post("/reviews/s", json={"reviews": {PAGE: {}}, "revisions": {PAGE: 2}}).status_code == 200
+    assert [(row["model"], row["templateVersion"], row["pages"]) for row in client.get("/accuracy").json()] == [
+        ("sonnet", queued.version_id, 1)]

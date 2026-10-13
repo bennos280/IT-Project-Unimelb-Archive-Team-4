@@ -10,7 +10,7 @@ def run_folder(tmp_path):
     a page in no survey, a blank page, and grouping's problem with the survey."""
     out = tmp_path / "output" / "216412"
     (out / "transcribe").mkdir(parents=True)
-    meta = {"engine": "claude", "model": "claude-opus-5-5", "effort": "low", "seconds": 1.0}  # as runs before the rename say it
+    meta = {"engine": "claude", "model": "claude-haiku-4-5-20251001+claude-opus-5-5", "effort": "low", "seconds": 1.0}  # as older runs say it
     transcripts = {
         "216412_00001": {"address": "5 Raeburn Cres.", "number_of_dwelling": "3",
                          "residents": [{"relationship": "Head"}, {"relationship": "Wife"}],
@@ -25,7 +25,8 @@ def run_folder(tmp_path):
         {"file": f"{stem}.png", "path": str(out / "pages" / f"{stem}.png"), "label": label,
          "transcript": f"transcribe\\{stem}.json", "survey": survey} for stem, label, survey in pages]
         + [{"file": "216412_00004.png", "path": str(out / "pages" / "216412_00004.png"), "label": "blank", "survey": "216412-3"},
-           {"file": "216412_00005.png", "path": str(out / "pages" / "216412_00005.png"), "label": "review", "survey": "216412-3"}]}
+           {"file": "216412_00005.png", "path": str(out / "pages" / "216412_00005.png"), "label": "review", "survey": "216412-3"}],
+        "transcripts": {f"{stem}.png": {"request": {"model": "opus"}} for stem, _, _ in pages}}  #the model .env asked for
     (out / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (out / "review.json").write_text(json.dumps([
         {"file": "216412_00005.png", "step": "identify", "reason": "unlike any known page type"},
@@ -48,7 +49,7 @@ def test_run_loads_into_its_surveys(tmp_path, monkeypatch):
         ("216412_00001", "216412-3", "main"), ("216412_00002", "216412-3", "coded"), ("216412_00003", None, "notes"),
         ("216412_00005", "216412-3", "other")]
     assert db.execute("SELECT field_title, text_raw FROM fields WHERE page_id = '216412_00005'").fetchall() == [("text", None)]
-    assert db.execute("SELECT DISTINCT provider FROM pages WHERE model IS NOT NULL").fetchall() == [("claude",)]
+    assert db.execute("SELECT DISTINCT provider, model FROM pages WHERE model IS NOT NULL").fetchall() == [("claude", "claude-opus-5-5")]
     assert db.execute("SELECT * FROM fields WHERE field_title = 'engine'").fetchall() == []  # not mistaken for a field
     assert db.execute("SELECT resident_no, text_raw FROM resident_fields ORDER BY resident_no").fetchall() == [
         (0, "Head"), (1, "Wife")]
