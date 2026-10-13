@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import logging
 import os
 import re
 import sys
@@ -19,6 +20,7 @@ from backend.common import ROOT, find_images, settings
 from backend.pipeline.identify.classifier import REVIEW
 from backend.pipeline.preprocess.options import add_arguments, resolve_options
 
+log = logging.getLogger("pipeline")
 READERS = 16  # pages transcribed at once
 
 
@@ -55,11 +57,18 @@ def write(path: Path, data) -> None:
 
 
 def read_manifest(out: Path) -> dict:
+    path = out / "manifest.json"
     try:
-        saved = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
-    except (FileNotFoundError, ValueError):
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        problem = None if isinstance(saved, dict) else "not a JSON object"
+    except FileNotFoundError:
         return {}
-    return saved if isinstance(saved, dict) else {}
+    except ValueError as error:
+        problem = f"not JSON: {error}"
+    if problem:
+        log.warning("%s can't be read (%s), so this run starts again from the beginning", path, problem)
+        return {}
+    return saved
 
 
 def completed(out: Path, steps: list[str]) -> bool:
@@ -78,11 +87,17 @@ def text_digest(text: str) -> str:
 
 # ---------------------------------------------------------------- steps
 def render(pdf_path: Path, numbers: range, folder: Path) -> None:
-    """Draws these pages (counting from 0) of a PDF as PNGs in folder."""
+    """Draws these pages (counting from 0) of a PDF as PNGs in folder. A failure is a RuntimeError naming the page:
+    PyMuPDF's own errors hold C objects, which a worker process can't send back."""
     import pymupdf
-    with pymupdf.open(pdf_path) as pdf:
-        for n in numbers:
-            pdf[n].get_pixmap(dpi=200, alpha=False).save(folder / f"{pdf_path.stem}_{n + 1:05d}.png")
+    n = None
+    try:
+        with pymupdf.open(pdf_path) as pdf:
+            for n in numbers:
+                pdf[n].get_pixmap(dpi=200, alpha=False).save(folder / f"{pdf_path.stem}_{n + 1:05d}.png")
+    except Exception as error:
+        where = "opening it" if n is None else f"page {n + 1}"
+        raise RuntimeError(f"{pdf_path.name}, {where}: {type(error).__name__}: {error}") from None
 
 
 def step_split(run: Run) -> None:
