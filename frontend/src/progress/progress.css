@@ -351,5 +351,30 @@
 .transcription-model select, .transcription-model input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff; color: #222; }
 
 .model-table-dialog { width: min(1100px, 94vw); max-width: 94vw; }
-.model-table-scroll { overflow-x: auto; max-height: 60vh; }
-.model-table-scroll table { min-width: 800px; }
+.model-table-scroll { overflow-x: auto; }
+/* Keep review and dashboard column sizing out of the seven-column model table. */
+.progress-app .model-table-scroll .progress-table {
+  table-layout: auto;
+  min-width: 800px;
+  height: auto;
+}
+.progress-app .model-table-scroll .progress-table thead {
+  position: static;
+}
+.progress-app .model-table-scroll .progress-table tr {
+  height: auto;
+}
+.progress-app .model-table-scroll .progress-table th,
+.progress-app .model-table-scroll .progress-table td {
+  width: auto;
+  height: auto;
+  padding: 12px;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+.progress-app .model-table-scroll .progress-table td:first-child {
+  overflow-wrap: anywhere;
+  min-width: 180px;
+}
+.model-table-dialog { max-height: 90dvh; overflow-y: auto; box-sizing: border-box; }
