@@ -1,6 +1,6 @@
 # Unit tests
 
-**281 tests. Runs in ~16s.**
+**282 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
@@ -169,10 +169,11 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_again_for_a_while`|A page download the archive breaks off is not kept (404); the archive isn't asked about that bundle again for `RETRY` seconds, and after that the page is downloaded and served.|
 |`test_survey_flags_grouping_problems_unreadable_text_and_other_pages`|A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.|
 
-## `test_loader.py` — 3 tests
+## `test_loader.py` — 4 tests
 |Test|What it checks|
 |---|---|
 |`test_each_page_records_the_prompt_and_template_versions_that_read_it`|A page whose manifest entry has the hashes of a stored prompt and template version is stored with those versions; a hash no version has, or a page that wasn't read, leaves them empty.|
+|`test_consistency_conflicts_become_flags_on_the_fields_they_name`|A conflict in the run's consistency check (validation/output_flagged.json) becomes an `inconsistency` flag ("Consistency: ...") on each field it names that the page has, on the main form and the coded card; a resident's field, which isn't a page field, is skipped, and a "comparison incomplete" result makes no flag.|
 |`test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`|A page read as a page type the db has no record of is stored as `other`, not refused.|
 |`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field, and an older model label listing every model Claude Code used (`claude-haiku-4-5-20251001+claude-opus-5-5`) is stored as the one the run asked for in its manifest (`opus`).|
 
