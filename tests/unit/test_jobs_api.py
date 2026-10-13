@@ -15,7 +15,7 @@ def data(tmp_path, monkeypatch):
     for number, stem in (("216441", "a"), ("216444", "b")):
         (tmp_path / number).mkdir()
         (tmp_path / number / f"{stem}.pdf").write_bytes(b"%PDF")
-    monkeypatch.setattr(main, "settings", lambda: {"DATA": str(tmp_path)})
+    monkeypatch.setattr(main, "settings", lambda: {"DATA": str(tmp_path), "MODEL": "sonnet", "PROVIDER": "claude", "EFFORT": "high"})
     return tmp_path
 
 
@@ -49,7 +49,7 @@ def test_pdfs_inside_the_repo_are_named_relative_to_it(client, data, monkeypatch
     from backend.db import loader
     monkeypatch.setattr(main, "ROOT", data.parent)
     monkeypatch.setattr(loader, "ROOT", data.parent)
-    monkeypatch.setattr(main, "settings", lambda: {"DATA": data.name})
+    monkeypatch.setattr(main, "settings", lambda: {"DATA": data.name, "MODEL": "sonnet", "PROVIDER": "claude", "EFFORT": "high"})
     pdf = f"{data.name}/216441/a.pdf"
     assert client.get("/bundles").json()[0]["pdf"] == pdf
     assert client.post("/jobs", json={"pdf": pdf}).json()["pdf"] == pdf

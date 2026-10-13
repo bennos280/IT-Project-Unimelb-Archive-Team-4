@@ -1,8 +1,8 @@
-import ExportDialog from "../export/ExportDialog";
 // Main review screen: field table on the left, scan viewer on the right.
 
 import React, { useState } from "react";
 import {
+  Download,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -366,12 +366,9 @@ export default function ReviewScreen({
                     </button>
                   </nav>
                 </div>
-                <ExportDialog
-                  surveyId={survey.id}
-                  hasDrafts={Object.values(session.reviews).some((fields) =>
-                    Object.values(fields).some((review) => !review.savedAt),
-                  )}
-                />
+                <button type="button" disabled title="Export coming soon">
+                  <Download size={16} /> Export
+                </button>
               </div>
               <ImageViewer
                 key={page.id}

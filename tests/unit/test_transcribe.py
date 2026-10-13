@@ -122,19 +122,15 @@ def test_run_cli_passes_capture_and_timeout_settings_through(monkeypatch):
 
 
 # ---------------------------------------------------------------- run_claude()
-def test_run_claude_returns_the_structured_output_and_model_name(monkeypatch):
-    """A successful reply yields (answer, model-name-actually-used).
+def test_run_claude_returns_the_structured_output(monkeypatch):
+    """A successful reply yields its structured answer.
     """
-    reply = {"structured_output": {"text": "Smith"},
-             "modelUsage": {"claude-sonnet-4": {"tokens": 10}}}
+    reply = {"structured_output": {"text": "Smith"}}
     monkeypatch.setattr(transcription, "run_cli",
                         lambda *a, **k: SimpleNamespace(stdout=json.dumps(reply),
                                                         stderr="", returncode=0))
 
-    answer, model = run_claude("page.jpg", "prompt", {"text": None}, "sonnet", "high")
-
-    assert answer == {"text": "Smith"}
-    assert model == "claude-sonnet-4"
+    assert run_claude("page.jpg", "prompt", {"text": None}, "sonnet", "high") == {"text": "Smith"}
 
 def test_run_claude_builds_the_command_with_the_image_path_and_schema(monkeypatch):
     """The image path is embedded in the prompt and the schema is passed as JSON.
@@ -196,10 +192,7 @@ def test_run_codex_reads_the_answer_from_the_output_file(monkeypatch, tmp_path):
 
     monkeypatch.setattr(transcription, "run_cli", fake_run_cli)
 
-    answer, model = run_codex("page.jpg", "prompt", {"text": None}, "gpt-5", "medium")
-
-    assert answer == {"text": "Jones"}
-    assert model == "gpt-5"
+    assert run_codex("page.jpg", "prompt", {"text": None}, "gpt-5", "medium") == {"text": "Jones"}
 
 
 def test_run_codex_extracts_json_surrounded_by_chatter(monkeypatch):
@@ -216,7 +209,7 @@ def test_run_codex_extracts_json_surrounded_by_chatter(monkeypatch):
 
     monkeypatch.setattr(transcription, "run_cli", fake_run_cli)
 
-    assert run_codex("p.jpg", "prompt", {"text": None}, "gpt-5", "low")[0] == {"text": "Brown"}
+    assert run_codex("p.jpg", "prompt", {"text": None}, "gpt-5", "low") == {"text": "Brown"}
 
 def test_run_codex_runs_read_only_and_ephemeral(monkeypatch):
     """The sandbox is read-only and the session is ephemeral.
@@ -277,7 +270,7 @@ def test_transcribe_reads_with_the_provider_it_is_given(prompt_files, monkeypatc
     used = []
     for name in ("run_claude", "run_codex"):
         monkeypatch.setattr(transcription, name,
-                            lambda *a, _n=name, **k: (used.append(_n) or ({"text": "x"}, "v")))
+                            lambda *a, _n=name, **k: (used.append(_n) or {"text": "x"}))
 
     answer = transcribe("page.jpg", "main", provider=provider, model=model, effort="high")
 
@@ -293,33 +286,22 @@ def test_transcribe_stamps_every_answer_with_provenance(prompt_files, monkeypatc
     """provider, model, effort and seconds are added to the returned dict.
     """
     monkeypatch.setattr(transcription, "run_claude",
-                        lambda *a, **k: ({"text": "Smith"}, "claude-sonnet-4"))
+                        lambda *a, **k: {"text": "Smith"})
 
-    answer = transcribe("page.jpg", "main", provider="claude", model="sonnet", effort="high")
+    answer = transcribe("page.jpg", "main", provider="claude", model="claude-sonnet-4", effort="high")
 
     assert answer["text"] == "Smith"
     assert answer["provider"] == "claude"
-    assert answer["model"] == "claude-sonnet-4"      # the reported version, not the alias
+    assert answer["model"] == "claude-sonnet-4"
     assert answer["effort"] == "high"
     assert isinstance(answer["seconds"], float) and answer["seconds"] >= 0
-
-def test_transcribe_falls_back_to_the_requested_model_name(prompt_files, monkeypatch):
-    """If the provider reports no version, the requested name is recorded instead.
-
-    `answer["model"] = version or model` -- an empty string from `"+".join({})`
-    is falsy, so the alias is kept rather than saving a blank field.
-    """
-    monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: ({"text": "x"}, ""))
-
-    assert transcribe("page.jpg", "main", provider="claude", model="sonnet", effort="high")["model"] == "sonnet"
-
 
 def test_transcribe_unwraps_a_notes_answer_returned_as_a_json_string(prompt_files, monkeypatch):
     """Sometimes a model puts the whole object inside the "text" field as a string. test that code
     fixes it
     """
     nested = json.dumps({"text": "the real note", "page": "3"})
-    monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: ({"text": nested}, "v"))
+    monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: {"text": nested})
 
     answer = transcribe("page.jpg", "notes", provider="claude", model="sonnet", effort="high")
 
@@ -334,7 +316,7 @@ def test_transcribe_leaves_ordinary_text_untouched(prompt_files, monkeypatch, te
     """
     A note that genuinely begins with "{" must not be mangled or crash the run;
     """
-    monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: ({"text": text}, "v"))
+    monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: {"text": text})
 
     assert transcribe("page.jpg", "notes", provider="claude", model="sonnet", effort="high")["text"] == text
 
@@ -345,7 +327,7 @@ def test_transcribe_sends_the_template_inside_the_prompt(prompt_files, monkeypat
 
     def fake_run_claude(image, prompt, template, model, effort):
         captured.update(prompt=prompt, template=template)
-        return {"text": "x"}, "v"
+        return {"text": "x"}
 
     monkeypatch.setattr(transcription, "run_claude", fake_run_claude)
     transcribe("page.jpg", "coded", provider="claude", model="sonnet", effort="high")
@@ -359,7 +341,7 @@ def test_transcribe_defaults_model_and_effort_from_env(prompt_files, monkeypatch
     """
     monkeypatch.setattr(transcription, "settings",
                         lambda: {"PROVIDER": "claude", "MODEL": "haiku", "EFFORT": "low"})
-    monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: ({"text": "x"}, ""))
+    monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: {"text": "x"})
 
     answer = transcribe("page.jpg", "main")
 
@@ -372,7 +354,7 @@ def test_transcribe_reads_with_the_texts_it_is_given(prompt_files, monkeypatch):
 
     def fake_run_claude(image, prompt, template, model, effort):
         captured.update(prompt=prompt, template=template)
-        return {"text": "x"}, "v"
+        return {"text": "x"}
 
     monkeypatch.setattr(transcription, "run_claude", fake_run_claude)
     transcribe("page.jpg", "followup", provider="claude", model="sonnet", effort="high",

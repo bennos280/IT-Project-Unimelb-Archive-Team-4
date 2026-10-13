@@ -117,13 +117,17 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
         })
     return {"id":survey_id, "title":"Wilfred Prest Survey", "pages":pages_list}
 
-#a page's scan: the one this computer's pipeline run made, else the archive's
+#a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
+#and black and white (the scan itself if that fails)
 @app.get("/pages/{page_id}/image", name="page_image")
-def page_image(page_id: str, db: Session = Depends(get_db)):
+def page_image(page_id: str, preprocessed: bool = False, db: Session = Depends(get_db)):
     page = db.get(models.Page, page_id)
     scan = page and scans.page_scan(page.import_path, db.get(models.Bundle, page.bundle_id).source_pdf, page_id)
     if not scan:
         raise HTTPException(status_code=404, detail="No scan for this page.")
+    if preprocessed:
+        from backend.pipeline.preprocess.preprocess import cleaned
+        scan = cleaned(scan, page_id)
     return FileResponse(scan)
 
 
@@ -231,6 +235,27 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
         db.rollback()
         raise
     return {"revision": revision, "savedAt": timestamp.isoformat()}
+
+#each model's accuracy on the pages reviewers have saved since they were last read, per page type, prompt and template version: a field
+#whose final edit differs from what the model read counts as wrong, every other field on those pages as right
+@app.get("/accuracy")
+def get_accuracy(db: Session = Depends(get_db)):
+    scores = {}
+    for p in db.query(models.Page).filter(models.Page.checked_revision == models.Page.revision_no, models.Page.model.is_not(None)):
+        final = {}
+        for e in db.query(models.Edit).filter(models.Edit.page_id == p.page_id).order_by(models.Edit.edit_id):
+            field_id, original = edited_field(db, e)
+            final[field_id] = (e.edit_text or "") != (original or "")
+        score = scores.setdefault((p.model, p.effort, p.category, p.prompt_version_id, p.template_version_id), {
+            "model": p.model, "effort": p.effort, "pageType": p.category,
+            "promptVersion": p.prompt_version_id, "templateVersion": p.template_version_id,
+            "pages": 0, "fields": 0, "changed": 0})
+        score["pages"] += 1
+        score["fields"] += len(page_fields(db, p))
+        score["changed"] += sum(final.values())
+    for score in scores.values():
+        score["accuracy"] = round(100 * (score["fields"] - score["changed"]) / score["fields"], 1) if score["fields"] else None
+    return sorted(scores.values(), key=lambda score: -(score["accuracy"] or 0))
 
 
 #--TRANSCRIPTION PROMPT AND TEMPLATES--# (backend/db/instructions.py: saved as versions; jobs use the newest of each)
@@ -400,6 +425,9 @@ def set_active_sorting_model(payload: ActiveModelRequest, db: Session = Depends(
 
 #--PIPELINE JOBS--# (queued here, done by backend/worker.py)
 class StartJobRequest(BaseModel):
+    model: str | None = None
+    provider: str | None = None
+    effort: str | None = None
     pdf: str #as listed by GET /bundles
 
 #every survey PDF under DATA in .env, and each of the archive's bundles whose PDF isn't there, as
@@ -448,7 +476,17 @@ def start_job(payload: StartJobRequest, db: Session = Depends(get_db)):
     if db.query(models.Job).filter(models.Job.pdf == payload.pdf, models.Job.status.in_(("waiting", "running"))).first():
         raise HTTPException(status_code=409, detail="This bundle is already waiting or running.")
 
-    job = models.Job(pdf=payload.pdf)
+    config = settings()
+    model = (payload.model if payload.model is not None else config["MODEL"]).strip()
+    provider = (payload.provider if payload.provider is not None else config["PROVIDER"]).strip()
+    effort = (payload.effort if payload.effort is not None else config["EFFORT"]).strip()
+    if not model or len(model) > 200 or any(c.isspace() for c in model) or model.startswith("-"):
+        raise HTTPException(status_code=400, detail="Enter a valid model name.")
+    if provider not in ("claude", "codex"):
+        raise HTTPException(status_code=400, detail="Choose Claude or Codex.")
+    if not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
+        raise HTTPException(status_code=400, detail="Enter a valid effort level.")
+    job = models.Job(pdf=payload.pdf, transcription_model=model, transcription_provider=provider, transcription_effort=effort)
     db.add(job)
     db.commit()
     return job_json(job)
@@ -462,72 +500,63 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
     return job_json(job)
 
 
-def export_survey(survey_id: str, request: Request, db: Session):
-    survey_id = survey_id.strip()
-    if not survey_id:
-        raise HTTPException(status_code=400, detail="Enter a survey ID.")
-    survey = get_survey(survey_id, request, db)
-    reviews = get_reviews(survey_id, db)["reviews"]
+@app.get("/progress")
+def get_progress(db: Session = Depends(get_db)):
+    from backend.api.progress import review_progress
+    return review_progress(db)
+
+
+@app.get("/transcription-models")
+def get_transcription_models(db: Session = Depends(get_db)):
+    config = settings()
+    columns = (models.Page.provider, models.Page.model, models.Page.effort,
+               models.Page.prompt_version_id, models.Page.template_version_id)
+    rows = (db.query(*columns, func.count(models.Page.page_id), func.avg(models.Page.runtime))
+            .filter(models.Page.model.is_not(None)).group_by(*columns)
+            .order_by(models.Page.provider, models.Page.model, models.Page.effort))
+    return {"configured": {"model": config["MODEL"], "effort": config["EFFORT"], "provider": config["PROVIDER"]},
+            "models": [{"provider": provider, "model": model, "effort": effort,
+                        "promptVersion": prompt, "templateVersion": template,
+                        "pages": pages, "averageSeconds": float(seconds) if seconds is not None else None}
+                       for provider, model, effort, prompt, template, pages, seconds in rows]}
+
+
+@app.get("/jobs/{job_id}/transcripts")
+def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
+    """Read completed, checksum-verified page outputs without loading a partial bundle."""
+    from pathlib import Path
+    from backend.pipeline.run import read_manifest, digest
+    job = db.get(models.Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No such job.")
+    if job.kind != "bundle" or not job.pdf:
+        raise HTTPException(status_code=400, detail="This job is not a bundle transcription.")
+    folder = ROOT / settings()["OUTPUT"] / Path(job.pdf).stem
+    manifest = read_manifest(folder)
     pages = []
-    for page in survey["pages"]:
-        fields = []
-        for field in page["fields"]:
-            saved = reviews.get(page["id"], {}).get(field["id"])
-            reviewed = bool(saved and saved.get("savedAt"))
-            fields.append({
-                **field,
-                "value": saved["value"] if reviewed else field["value"],
-                **({"decoded": saved.get("decoded")} if reviewed and "decoded" in field else {}),
-                "status": "Reviewed" if reviewed else "ToBeReviewed",
-            })
-        pages.append({
-            "pageId": page["id"],
-            "label": page["type"],
-            "sourceImage": page["imageUrl"],
-            "status": "Reviewed" if fields and all(
-                field["status"] == "Reviewed" for field in fields
-            ) else "ToBeReviewed",
-            "fields": fields,
-            "flags": page["flags"],
-        })
-    return {"surveys": [{
-        "surveyId": survey_id,
-        "status": "Reviewed" if pages and all(
-            page["status"] == "Reviewed" for page in pages
-        ) else "ToBeReviewed",
-        "pages": pages,
-    }]}
-
-
-@app.get("/export/bundles")
-def export_bundles(db: Session = Depends(get_db)):
-    from pathlib import PurePosixPath
-    return [{"id": b.bundle_id, "name": PurePosixPath(b.source_pdf.replace("\\", "/")).parent.name or b.bundle_id}
-            for b in db.query(models.Bundle).order_by(models.Bundle.bundle_id)]
-
-
-@app.get("/export")
-def download_export(request: Request, survey_id: str | None = None, bundle_id: str | None = None,
-                    db: Session = Depends(get_db)):
-    if (survey_id is None) == (bundle_id is None):
-        raise HTTPException(status_code=400, detail="Choose a survey ID or a bundle.")
-    if survey_id is not None:
-        return export_survey(survey_id, request, db)
-    bundle_id = bundle_id.strip()
-    if not bundle_id:
-        raise HTTPException(status_code=400, detail="Choose a bundle.")
-    if not db.get(models.Bundle, bundle_id):
-        raise HTTPException(status_code=404, detail="Bundle not found.")
-    surveys = []
-    for (sid,) in db.query(models.Survey.survey_id).filter_by(bundle_id=bundle_id).order_by(models.Survey.survey_id):
-        surveys.extend(export_survey(sid, request, db)["surveys"])
-    # Unassigned pages have no saved survey reviews, but remain in the download.
-    unassigned = []
-    for page in db.query(models.Page).filter_by(bundle_id=bundle_id, survey_id=None).order_by(models.Page.page_id):
-        fields = page_fields(db, page)
-        unassigned.append({"pageId": page.page_id, "label": page.category,
-                           "sourceImage": str(request.url_for("page_image", page_id=page.page_id)),
-                           "status": "ToBeReviewed", "reason": "No survey assignment",
-                           "fields": [{**f, "status": "ToBeReviewed"} for f in fields],
-                           "flags": page_flags(db, page, fields)})
-    return {"bundleId": bundle_id, "surveys": surveys, "unassignedPages": unassigned}
+    for name, saved in (manifest.get("transcripts") or {}).items():
+        if not isinstance(saved, dict) or Path(name).name != name:
+            continue
+        path = folder / "transcribe" / f"{Path(name).stem}.json"
+        try:
+            if digest(path) != saved.get("result"):
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        pages.append({"id": Path(name).stem, "category": saved.get("request", {}).get("label"), "data": data})
+    completed = {page["id"]: page for page in pages}
+    identified = {Path(page["file"]).stem: page for page in manifest.get("pages", []) if page.get("file")}
+    # Published page images are available before identification completes.
+    extracted = {path.stem for path in (folder / "pages").glob("*.png")}
+    result = []
+    for page_id in sorted(extracted | identified.keys() | completed.keys()):
+        page = completed.get(page_id)
+        category = identified.get(page_id, {}).get("label") or (page or {}).get("category") or "unidentified"
+        status = ("Transcribed — not grouped" if page else
+                  "Not required" if category == "blank" else
+                  "Needs identification" if category in ("unidentified", "review", "other") else
+                  "Awaiting transcription")
+        result.append({"id": page_id, "category": category, "status": status,
+                       "data": page["data"] if page else None})
+    return {"jobId": job_id, "status": job.status, "pages": result}

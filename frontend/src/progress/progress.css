@@ -349,3 +349,62 @@
 /* Model choices inside the transcription dialog. */
 .transcription-model { display: flex; flex-direction: column; gap: 8px; margin: 18px 0; }
 .transcription-model select, .transcription-model input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; background: #fff; color: #222; }
+
+.model-table-dialog { width: min(1100px, 94vw); max-width: 94vw; }
+.model-table-scroll { overflow-x: auto; }
+/* Keep review and dashboard column sizing out of the seven-column model table. */
+.progress-app .model-table-scroll .progress-table {
+  table-layout: auto;
+  min-width: 800px;
+  height: auto;
+}
+.progress-app .model-table-scroll .progress-table thead {
+  position: static;
+}
+.progress-app .model-table-scroll .progress-table tr {
+  height: auto;
+}
+.progress-app .model-table-scroll .progress-table th,
+.progress-app .model-table-scroll .progress-table td {
+  width: auto;
+  height: auto;
+  padding: 12px;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+.progress-app .model-table-scroll .progress-table td:first-child {
+  overflow-wrap: anywhere;
+  min-width: 180px;
+}
+.model-table-dialog { max-height: 90dvh; overflow-y: auto; box-sizing: border-box; }
+
+.progress-incomplete-warning { padding: 16px; border-left: 4px solid #a66a00; background: #fff4dc; color: #553800; }
+.saved-page-fields summary { cursor: pointer; text-decoration: underline; }
+.saved-page-fields pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.saved-page-fields dt { font-weight: 600; margin-top: 12px; }
+.saved-page-fields dd { margin-left: 0; }
+
+.transcription-failure { margin: 8px 0 0; font-size: 13px; }
+.progress-app .progress-table td:last-child .transcription-error-link {
+  display: inline;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Leave room for the model name in the bundle page list. */
+.progress-app .progress-pages-table th:nth-child(1) { width: 9%; }
+.progress-app .progress-pages-table th:nth-child(2) { width: 16%; }
+.progress-app .progress-pages-table th:nth-child(3) { width: 15%; }
+.progress-app .progress-pages-table th:nth-child(4) { width: 24%; }
+.progress-app .progress-pages-table th:nth-child(5) { width: 20%; }
+.progress-app .progress-pages-table th:nth-child(6) { width: 16%; }

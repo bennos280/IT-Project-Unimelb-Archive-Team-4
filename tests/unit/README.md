@@ -1,301 +1,257 @@
 # Unit tests
 
-**225 tests. Runs in ~16s.**
+**175 tests. Runs in ~16s.**
 
 ```bash
 uv run pytest tests/unit
 ```
 
-## `test_preprocess.py` — 25 tests
+## `test_preprocess.py` — 6 tests
 
-preprocessing steps tests and CLI/config option handling for `backend.pipeline.preprocess`.
+The image steps of `backend.pipeline.preprocess` (skew detection, straightening, card edges), which make the review screen's cleaned-up view.
 
-| Test  | What it checks |
-|---|---|
-| `test_estimate_skew_angle_detects_known_tilt`  | Synthetic lines tilted 4° are detected to within 1° (magnitude only). |
-| `test_deskew_uses_agreeing_card_edges_and_corrects_direction`  | Detection uses the `card_edges` method, picks the right sign, and residual tilt after `deskew()` is under 0.25°. |
-| `test_boundary_skew_rejects_blank_and_single_edge`  | A blank image and a single detected edge both return `None` — not enough evidence to guess. |
-| `test_boundary_skew_rejects_disagreeing_edges`  | Two edges at conflicting angles return `None` rather than an unreliable average. |
-| `test_defaults_and_cli_overrides`  | Precedence order: defaults < config values < command-line flags. |
-| `test_invalid_cli_options`  | A bad number and conflicting colour modes both exit with argparse code 2. |
-| `test_single_image_without_output_writes_beside_the_source` | Without `--output`, the preprocessed image is written beside the source with a `_preprocessed` suffix, while the original remains unchanged. |
-| `test_single_image_with_output_keeps_the_original_filename` | With `--output`, the processed image keeps its original filename rather than adding the `_preprocessed` suffix. |
-| `test_report_records_the_settings_that_were_actually_used` | The JSON report correctly records the selected grayscale, binarize, colour, crop, deskew, and adaptive-C settings, along with the report schema version and page mode. |
-| `test_a_non_image_file_is_a_usage_error` | Unsupported single-file extensions such as `.txt`, `.pdf`, and `.zip` raise an argparse usage error with exit code 2. |
-| `test_a_missing_input_path_is_a_usage_error` | A nonexistent input path is rejected as a usage error with exit code 2 before processing starts. |
-| `test_folder_mode_processes_every_image_including_subfolders` | Folder input recursively processes images in subfolders and preserves the input directory structure in the output directory. |
-| `test_folder_mode_ignores_files_it_has_already_produced` | Files ending in `_preprocessed` are skipped so previously generated outputs are not processed again. |
-| `test_folder_mode_ignores_unsupported_file_types` | Unsupported files such as `.txt` and `.pdf` inside a folder are quietly ignored while supported images are processed. |
-| `test_folder_with_no_supported_images_is_a_usage_error` | An empty or image-free folder raises a usage error with exit code 2 instead of producing an empty report. |
-| `test_output_folder_inside_the_input_folder_is_rejected` | An output directory that is the input folder or nested inside it is rejected with exit code 2 to prevent outputs from being processed as new inputs. |
-| `test_an_existing_report_stops_the_run_before_any_processing` | An existing preprocessing report prevents the run from overwriting it and ensures no output image is created. |
-| `test_one_bad_image_does_not_stop_the_others_but_changes_the_exit_code` | A failed image does not stop the remaining images from processing; the failure is recorded in the report and the command returns exit code 1. |
-| `test_invalid_config_value_becomes_a_usage_error` | An invalid `PREPROCESS_*` configuration value is converted into an argparse usage error with exit code 2 rather than producing a traceback. |
-| `test_progress_lines_name_each_file_and_its_detected_skew` | Console progress output names each processed file, shows its mode and detected skew, and includes the final report location. |
+| Test                                                          | What it checks                                                                                                   |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `test_estimate_skew_angle_detects_known_tilt`                 | Synthetic lines tilted 4° are detected to within 1° (magnitude only).                                            |
+| `test_deskew_uses_agreeing_card_edges_and_corrects_direction` | Detection uses the `card_edges` method, picks the right sign, and residual tilt after `deskew()` is under 0.25°. |
+| `test_boundary_skew_rejects_blank_and_single_edge`            | A blank image and a single detected edge both return `None` — not enough evidence to guess.                      |
+| `test_boundary_skew_rejects_disagreeing_edges`                | Two edges at conflicting angles return `None` rather than an unreliable average.                                 |
 
 ## `test_identify.py` — 20 tests
 
 Unit tests for scoring, bookkeeping, fingerprint storage, page identification, and model-result handling in `backend.pipeline.identify`.
 
-| Test | What it checks |
-|---|---|
-|`test_identify_pages_sorts_with_the_weights_it_is_given`|`identify_pages()` loads the weights it is given (a retrained model), or the shipped ones when given none.|
-| `test_score_counts_correct_wrong_and_abstained_separately` | Correctly separates answered pages, wrong answers, and `REVIEW` abstentions when calculating the score. |
-| `test_abstaining_is_never_counted_as_wrong` | `REVIEW` answers are treated as abstentions rather than mistakes, reducing coverage but not increasing the wrong count. |
-| `test_answering_a_other_card_is_always_wrong` | Answering a page whose truth is `other` counts as wrong, while `REVIEW` is accepted. |
-| `test_per_class_counts_answered_out_of_total_for_each_truth` | `per_class` correctly records answered and total counts for each truth label and keeps the labels sorted. |
-| `test_score_of_an_empty_set_is_safe` | An empty input produces zero total pages and zero coverage without causing a division-by-zero error. |
-| `test_coverage_is_the_answered_fraction` | `Score.coverage` correctly calculates the fraction of pages that received an answer. |
-| `test_passes_requires_zero_wrong_and_enough_coverage` | `Score.passes()` requires both zero wrong answers and coverage at or above `MIN_COVERAGE`, including the exact boundary. |
-| `test_summary_lists_the_headline_numbers_and_every_mistake` | The score summary reports the main statistics, wrong pages, and relevant `REVIEW` pages while excluding acceptable abstentions on other pages. |
-| `test_labelled_pages_takes_the_truth_from_the_top_folder` | Page labels are taken from the top-level class folder regardless of deeper subfolder structure, while non-image files are excluded. |
-| `test_labelled_pages_is_deterministic_in_order` | `labelled_pages()` consistently returns pages in sorted order so page paths and their truth labels remain aligned. |
-| `test_stored_tells_you_to_train_when_a_fingerprint_is_missing` | A missing fingerprint raises `FileNotFoundError` with a message identifying the missing pages and the required training command. |
-| `test_stored_loads_fingerprints_by_image_content_not_filename` | Fingerprints are retrieved using image content hashes rather than filenames, with cached `float16` values converted to `float32`. |
-| `test_stored_computes_and_saves_missing_fingerprints` | With `compute=True`, a page whose fingerprint isn't stored yet is fingerprinted, returned, and saved as one `float16` `.npy` file. |
-| `test_identify_pages_on_an_empty_list_does_not_load_the_model` | An empty page list immediately returns an empty result without attempting to load the model. |
-| `test_identify_pages_returns_plain_python_types` | Identification results use ordinary Python `str` and `float` values that can be serialized with `json.dumps`, rather than NumPy scalar types. |
-| `test_min_coverage_is_the_documented_threshold` | `MIN_COVERAGE` remains fixed at 0.5 and the supported label set remains exactly `blank`, `coded`, `main`, and `notes`. |
-
+| Test                                                           | What it checks                                                                                                                                 |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_identify_pages_sorts_with_the_weights_it_is_given`       | `identify_pages()` loads the weights it is given (a retrained model), or the shipped ones when given none.                                     |
+| `test_score_counts_correct_wrong_and_abstained_separately`     | Correctly separates answered pages, wrong answers, and `REVIEW` abstentions when calculating the score.                                        |
+| `test_abstaining_is_never_counted_as_wrong`                    | `REVIEW` answers are treated as abstentions rather than mistakes, reducing coverage but not increasing the wrong count.                        |
+| `test_answering_a_other_card_is_always_wrong`                  | Answering a page whose truth is `other` counts as wrong, while `REVIEW` is accepted.                                                           |
+| `test_per_class_counts_answered_out_of_total_for_each_truth`   | `per_class` correctly records answered and total counts for each truth label and keeps the labels sorted.                                      |
+| `test_score_of_an_empty_set_is_safe`                           | An empty input produces zero total pages and zero coverage without causing a division-by-zero error.                                           |
+| `test_coverage_is_the_answered_fraction`                       | `Score.coverage` correctly calculates the fraction of pages that received an answer.                                                           |
+| `test_passes_requires_zero_wrong_and_enough_coverage`          | `Score.passes()` requires both zero wrong answers and coverage at or above `MIN_COVERAGE`, including the exact boundary.                       |
+| `test_summary_lists_the_headline_numbers_and_every_mistake`    | The score summary reports the main statistics, wrong pages, and relevant `REVIEW` pages while excluding acceptable abstentions on other pages. |
+| `test_labelled_pages_takes_the_truth_from_the_top_folder`      | Page labels are taken from the top-level class folder regardless of deeper subfolder structure, while non-image files are excluded.            |
+| `test_labelled_pages_is_deterministic_in_order`                | `labelled_pages()` consistently returns pages in sorted order so page paths and their truth labels remain aligned.                             |
+| `test_stored_tells_you_to_train_when_a_fingerprint_is_missing` | A missing fingerprint raises `FileNotFoundError` with a message identifying the missing pages and the required training command.               |
+| `test_stored_loads_fingerprints_by_image_content_not_filename` | Fingerprints are retrieved using image content hashes rather than filenames, with cached `float16` values converted to `float32`.              |
+| `test_stored_computes_and_saves_missing_fingerprints`          | With `compute=True`, a page whose fingerprint isn't stored yet is fingerprinted, returned, and saved as one `float16` `.npy` file.             |
+| `test_identify_pages_on_an_empty_list_does_not_load_the_model` | An empty page list immediately returns an empty result without attempting to load the model.                                                   |
+| `test_identify_pages_returns_plain_python_types`               | Identification results use ordinary Python `str` and `float` values that can be serialized with `json.dumps`, rather than NumPy scalar types.  |
+| `test_min_coverage_is_the_documented_threshold`                | `MIN_COVERAGE` remains fixed at 0.5 and the supported label set remains exactly `blank`, `coded`, `main`, and `notes`.                         |
 
 ## `test_identify_classifier.py` — 19 tests
 
 Unit tests for the classifier, prediction safety gates, model persistence, threshold selection, fitting, and cross-validation in `backend.pipeline.identify.classifier`.
 
-| Test | What it checks |
-|---|---|
-| `test_unit_scales_every_row_to_length_one` | Each input row is independently normalised to unit length, preserving direction for cosine-distance calculations. |
-| `test_unit_does_not_divide_by_zero_on_an_all_zero_row` | An all-zero input row remains zero and does not produce NaN values during normalisation. |
-| `test_scores_returns_a_label_a_probability_and_a_distance_per_row` | `scores()` returns a predicted label, softmax confidence, and KNN distance for each input row. |
-| `test_scores_distance_grows_as_a_page_moves_away_from_the_training_set` | A fingerprint farther from the training references receives a larger distance, allowing the distance gate to identify unfamiliar cards. |
-| `test_scores_uses_at_most_knn_neighbours` | The distance calculation uses only the configured number of nearest neighbours rather than all training references. |
-| `test_predict_answers_only_when_both_gates_pass` | A page is labelled only when both the confidence threshold and distance threshold are satisfied; otherwise it returns `REVIEW`. |
-| `test_predict_treats_the_thresholds_as_inclusive_boundaries` | Confidence exactly equal to the probability threshold and distance exactly equal to the distance threshold are both accepted. |
-| `test_predict_with_impossible_thresholds_abstains_on_everything` | Thresholds of probability 1.0 and distance 0.0 cause the model to return `REVIEW` for every page rather than guessing. |
-| `test_save_and_load_round_trip_preserves_predictions` | Saving and loading a model preserves its predictions, classes, thresholds, and reference data types. |
-| `test_save_returns_the_path_it_wrote` | `save()` returns the destination path and successfully creates the model weights file. |
-| `test_load_missing_weights_names_the_fix` | Loading a missing weights file raises `FileNotFoundError` with instructions to run `survey train`. |
-| `test_choose_thresholds_excludes_every_wrong_answer` | Threshold selection prevents rows that would be incorrectly classified from being answered while retaining confident, correct rows. |
-| `test_choose_thresholds_treats_others_as_never_answerable` | Pages with truths outside the supported labels are treated as invalid answers and excluded by the selected thresholds. |
-| `test_choose_thresholds_applies_the_distance_safety_margin` | The selected distance threshold is reduced by `DIST_MARGIN` before being returned. |
-| `test_choose_thresholds_with_no_correct_rows_answers_nothing` | When every training row would be classified incorrectly, threshold selection keeps the safest values so that nothing is answered. |
-| `test_fit_learns_separable_classes_and_stores_the_training_set` | `Model.fit()` correctly learns clearly separated classes and stores a unit-normalised reference for every training page. |
-| `test_fit_trains_the_head_only_on_known_labels` | other cards are not added as a predictable class; instead, they are returned as `REVIEW`. |
-| `test_cross_validate_scores_every_row_including_others` | Cross-validation produces scores for every row, including other cards, while known separable pages receive their correct labels. |
-| `test_regularisation_constant_is_the_documented_value` | The configured model constants remain fixed at the documented values for regularisation, KNN neighbours, distance margin, supported labels, and `REVIEW`. |
-
+| Test                                                                    | What it checks                                                                                                                                            |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_unit_scales_every_row_to_length_one`                              | Each input row is independently normalised to unit length, preserving direction for cosine-distance calculations.                                         |
+| `test_unit_does_not_divide_by_zero_on_an_all_zero_row`                  | An all-zero input row remains zero and does not produce NaN values during normalisation.                                                                  |
+| `test_scores_returns_a_label_a_probability_and_a_distance_per_row`      | `scores()` returns a predicted label, softmax confidence, and KNN distance for each input row.                                                            |
+| `test_scores_distance_grows_as_a_page_moves_away_from_the_training_set` | A fingerprint farther from the training references receives a larger distance, allowing the distance gate to identify unfamiliar cards.                   |
+| `test_scores_uses_at_most_knn_neighbours`                               | The distance calculation uses only the configured number of nearest neighbours rather than all training references.                                       |
+| `test_predict_answers_only_when_both_gates_pass`                        | A page is labelled only when both the confidence threshold and distance threshold are satisfied; otherwise it returns `REVIEW`.                           |
+| `test_predict_treats_the_thresholds_as_inclusive_boundaries`            | Confidence exactly equal to the probability threshold and distance exactly equal to the distance threshold are both accepted.                             |
+| `test_predict_with_impossible_thresholds_abstains_on_everything`        | Thresholds of probability 1.0 and distance 0.0 cause the model to return `REVIEW` for every page rather than guessing.                                    |
+| `test_save_and_load_round_trip_preserves_predictions`                   | Saving and loading a model preserves its predictions, classes, thresholds, and reference data types.                                                      |
+| `test_save_returns_the_path_it_wrote`                                   | `save()` returns the destination path and successfully creates the model weights file.                                                                    |
+| `test_load_missing_weights_names_the_fix`                               | Loading a missing weights file raises `FileNotFoundError` with instructions to run `survey train`.                                                        |
+| `test_choose_thresholds_excludes_every_wrong_answer`                    | Threshold selection prevents rows that would be incorrectly classified from being answered while retaining confident, correct rows.                       |
+| `test_choose_thresholds_treats_others_as_never_answerable`              | Pages with truths outside the supported labels are treated as invalid answers and excluded by the selected thresholds.                                    |
+| `test_choose_thresholds_applies_the_distance_safety_margin`             | The selected distance threshold is reduced by `DIST_MARGIN` before being returned.                                                                        |
+| `test_choose_thresholds_with_no_correct_rows_answers_nothing`           | When every training row would be classified incorrectly, threshold selection keeps the safest values so that nothing is answered.                         |
+| `test_fit_learns_separable_classes_and_stores_the_training_set`         | `Model.fit()` correctly learns clearly separated classes and stores a unit-normalised reference for every training page.                                  |
+| `test_fit_trains_the_head_only_on_known_labels`                         | other cards are not added as a predictable class; instead, they are returned as `REVIEW`.                                                                 |
+| `test_cross_validate_scores_every_row_including_others`                 | Cross-validation produces scores for every row, including other cards, while known separable pages receive their correct labels.                          |
+| `test_regularisation_constant_is_the_documented_value`                  | The configured model constants remain fixed at the documented values for regularisation, KNN neighbours, distance margin, supported labels, and `REVIEW`. |
 
 ## `test_common.py` — 12 tests
 
 Unit tests for `.env` configuration parsing and page-image discovery in `backend/common.py`, including required settings, defaults, comment handling, duplicate keys, supported image formats, and directory traversal behaviour.
 
-| Test | What it checks |
-|---|---|
-| `test_settings_reads_keys_and_defaults_output` | Reads the required `DATA`, `MODEL`, and `EFFORT` settings from `.env` and uses `"output"` as the default when `OUTPUT` is not provided and `"claude"` when `PROVIDER` is not. |
-| `test_settings_strips_comments_whitespace_and_bom` | Removes surrounding whitespace, ignores comments and lines without `=`, and handles a UTF-8 BOM when reading `.env` files. |
-| `test_settings_keeps_hash_when_not_preceded_by_space` | Preserves `#` characters inside values when they are not preceded by a space, rather than treating them as comments. |
-| `test_settings_exits_when_env_file_is_missing` | Raises `SystemExit` with a clear message when the `.env` file does not exist. |
-| `test_settings_exits_when_a_required_key_is_missing` | Verifies that each required setting (`DATA`, `MODEL`, and `EFFORT`) causes `SystemExit` when it is missing.(runs 3 times) |
-| `test_settings_treats_an_empty_value_as_missing` | Treats a required setting with an empty value, such as `DATA=`, as missing and exits with an appropriate error. |
-| `test_settings_last_duplicate_key_wins` | Confirms that when the same `.env` key appears multiple times, the final value overwrites the earlier value. |
-| `test_find_images_returns_only_supported_suffixes_sorted` | Finds only `.jpg`, `.jpeg`, and `.png` files and returns them in sorted order. |
-| `test_find_images_is_not_recursive_and_ignores_subfolders` | Only searches the specified directory and ignores images located inside subdirectories. |
-| `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images. |
+| Test                                                             | What it checks                                                                                                                                                                |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_settings_reads_keys_and_defaults_output`                   | Reads the required `DATA`, `MODEL`, and `EFFORT` settings from `.env` and uses `"output"` as the default when `OUTPUT` is not provided and `"claude"` when `PROVIDER` is not. |
+| `test_settings_strips_comments_whitespace_and_bom`               | Removes surrounding whitespace, ignores comments and lines without `=`, and handles a UTF-8 BOM when reading `.env` files.                                                    |
+| `test_settings_keeps_hash_when_not_preceded_by_space`            | Preserves `#` characters inside values when they are not preceded by a space, rather than treating them as comments.                                                          |
+| `test_settings_exits_when_env_file_is_missing`                   | Raises `SystemExit` with a clear message when the `.env` file does not exist.                                                                                                 |
+| `test_settings_exits_when_a_required_key_is_missing`             | Verifies that each required setting (`DATA`, `MODEL`, and `EFFORT`) causes `SystemExit` when it is missing.(runs 3 times)                                                     |
+| `test_settings_treats_an_empty_value_as_missing`                 | Treats a required setting with an empty value, such as `DATA=`, as missing and exits with an appropriate error.                                                               |
+| `test_settings_last_duplicate_key_wins`                          | Confirms that when the same `.env` key appears multiple times, the final value overwrites the earlier value.                                                                  |
+| `test_find_images_returns_only_supported_suffixes_sorted`        | Finds only `.jpg`, `.jpeg`, and `.png` files and returns them in sorted order.                                                                                                |
+| `test_find_images_is_not_recursive_and_ignores_subfolders`       | Only searches the specified directory and ignores images located inside subdirectories.                                                                                       |
+| `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images.                                                                        |
 
-
-## `test_transcribe.py` — 35 tests
+## `test_transcribe.py` — 34 tests
 
 unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generation, CLI handling, Claude/Codex provider behaviour, response processing, and transcription metadata.
 
-| Test | What it checks |
-|---|---|
-|`test_transcribe_reads_with_the_texts_it_is_given`|Given a job's texts (the db's newest prompt and templates), `transcribe()` reads with them instead of the files, for any page type they have a template for; Windows line endings in the prompt reach the model as plain ones.|
-| `test_schemafor_turns_a_flat_template_into_an_object_schema` | Converts a flat template into an object schema where every field is required and accepts strings or null, with no additional properties. |
-| `test_schemafor_preserves_key_order` | Preserves the original template key order in the schema's required fields. |
-| `test_schemafor_handles_lists_by_describing_their_first_item` | Converts template lists into arrays whose item schema matches the first example element. |
-| `test_schemfor_handles_an_empty_list_without_crashing` | Handles an empty template list without raising an `IndexError`, falling back to string-or-null items. |
-| `test_schemafor_recurses_through_nested_structures` | Correctly builds schemas for nested objects and lists at multiple levels. |
-| `test_schemafor_maps_every_scalar_to_string_or_null` | Maps every scalar template value, including `None`, strings, numbers, and booleans, to a string-or-null schema. |
-| `test_schema_for_output_is_json_serialisable` | Ensures the generated schema can be serialised with `json.dumps()` before being passed to the CLI. |
-| `test_run_cli_turns_a_hang_into_a_readable_exit` | Converts a CLI timeout into a readable exit message instead of exposing a raw `TimeoutExpired` traceback. |
-| `test_run_cli_explains_a_missing_cli_instead_of_crashing` | Converts a missing Claude/Codex executable into a clear "CLI not found" message. |
-| `test_run_cli_passes_capture_and_timeout_settings_through` | Verifies subprocess output capture, timeout, replacement-character decoding, working directory, and command arguments are passed correctly. |
-| `test_run_claude_returns_the_structured_output_and_model_name` | Parses a successful Claude response and returns both the structured answer and the actual model version reported by the CLI. |
+| Test                                                                | What it checks                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_transcribe_reads_with_the_texts_it_is_given`                  | Given a job's texts (the db's newest prompt and templates), `transcribe()` reads with them instead of the files, for any page type they have a template for; Windows line endings in the prompt reach the model as plain ones.         |
+| `test_schemafor_turns_a_flat_template_into_an_object_schema`        | Converts a flat template into an object schema where every field is required and accepts strings or null, with no additional properties.                                                                                               |
+| `test_schemafor_preserves_key_order`                                | Preserves the original template key order in the schema's required fields.                                                                                                                                                             |
+| `test_schemafor_handles_lists_by_describing_their_first_item`       | Converts template lists into arrays whose item schema matches the first example element.                                                                                                                                               |
+| `test_schemfor_handles_an_empty_list_without_crashing`              | Handles an empty template list without raising an `IndexError`, falling back to string-or-null items.                                                                                                                                  |
+| `test_schemafor_recurses_through_nested_structures`                 | Correctly builds schemas for nested objects and lists at multiple levels.                                                                                                                                                              |
+| `test_schemafor_maps_every_scalar_to_string_or_null`                | Maps every scalar template value, including `None`, strings, numbers, and booleans, to a string-or-null schema.                                                                                                                        |
+| `test_schema_for_output_is_json_serialisable`                       | Ensures the generated schema can be serialised with `json.dumps()` before being passed to the CLI.                                                                                                                                     |
+| `test_run_cli_turns_a_hang_into_a_readable_exit`                    | Converts a CLI timeout into a readable exit message instead of exposing a raw `TimeoutExpired` traceback.                                                                                                                              |
+| `test_run_cli_explains_a_missing_cli_instead_of_crashing`           | Converts a missing Claude/Codex executable into a clear "CLI not found" message.                                                                                                                                                       |
+| `test_run_cli_passes_capture_and_timeout_settings_through`          | Verifies subprocess output capture, timeout, replacement-character decoding, working directory, and command arguments are passed correctly.                                                                                            |
+| `test_run_claude_returns_the_structured_output`                     | Parses a successful Claude response and returns the structured answer.                                                                                                                                                                 |
 | `test_run_claude_builds_the_command_with_the_image_path_and_schema` | Builds the Claude command with the image path, selected model and effort, Read as the only tool, none of the user's MCP servers, `--safe-mode` (none of their CLAUDE.md, plugins, hooks, skills or memory), and JSON schema arguments. |
-| `test_run_claude_exits_when_the_reply_is_not_json` | Rejects non-JSON CLI output and exits with a useful message containing the raw response. |
-| `test_run_claude_exits_when_the_reply_is_an_error_or_incomplete` | Rejects both explicit Claude errors and valid JSON responses missing `structured_output`. |
-| `test_run_codex_reads_the_answer_from_the_output_file` | Reads and parses the JSON answer written by Codex to its `--output-last-message` file and returns the requested model name. |
-| `test_run_codex_extracts_json_surrounded_by_chatter` | Extracts valid JSON from Codex output even when explanatory text appears before or after the JSON object. |
-| `test_run_codex_runs_read_only_and_ephemeral` | Verifies Codex uses an ephemeral session, ignores user configuration, runs with a read-only sandbox, and receives the image path. |
-| `test_run_codex_exits_on_a_bad_exit_code_or_a_missing_answer_file` | Rejects either a non-zero Codex exit code or a missing output file instead of treating the result as a valid empty transcription. |
-| `test_run_codex_exits_when_the_answer_file_holds_no_json` | Rejects an output file containing prose without a JSON object and exits with a clear message. |
-| `test_transcribe_reads_with_the_provider_it_is_given` | 2 cases: `PROVIDER` picks the CLI (`claude` or `codex`) whatever the model is called, and the answer is stamped with it; an OpenAI `o3` goes to Codex though it isn't named gpt-*. |
-| `test_transcribe_refuses_an_unknown_provider` | A provider other than `claude` or `codex` stops with "PROVIDER must be claude or codex". |
-| `test_transcribe_stamps_every_answer_with_provenance` | Adds provider, actual model version, effort, and elapsed seconds to every transcription result. |
-| `test_transcribe_falls_back_to_the_requested_model_name` | Uses the requested model name when the provider does not report an actual model version. |
-| `test_transcribe_unwraps_a_notes_answer_returned_as_a_json_string` | Repairs notes responses where the complete transcription object has incorrectly been returned as a JSON string inside the `text` field. |
-| `test_transcribe_leaves_ordinary_text_untouched` | Leaves normal text and invalid JSON-looking text unchanged when the notes JSON-unwrapping repair does not apply. |
-| `test_transcribe_sends_the_template_inside_the_prompt` | Includes the page template alongside `prompt.txt` in the model prompt and passes the same template to the provider's model call. |
-| `test_transcribe_defaults_model_and_effort_from_env` | When model and effort are omitted, uses the corresponding `MODEL` and `EFFORT` values from the environment configuration. |
-
-
-## `test_transcribe_score.py` — 35 tests
-
-unit tests for `backend.pipeline.transcribe.score`, covering JSON flattening, value normalisation, scorable fields, page-level scoring, invented values, character similarity, and leaderboard reporting.
-
-| Test | What it checks |
-|---|---|
-| `test_flatten_turns_nested_objects_into_dotted_paths` | Flattens nested objects into dotted paths so individual fields can be compared separately. |
-| `test_flatten_indexes_list_items_by_position` | Flattens list items using positional paths such as `notes[0]` and `notes[1]`. |
-| `test_flatten_handles_lists_of_objects` | Correctly combines list indexing and nested object paths, such as `annotations[0].raw`. |
-| `test_flatten_keeps_none_and_empty_values` | Preserves `None` and empty-string values so blank fields can be distinguished from missing fields and invented values can be detected. |
-| `test_flatten_of_a_bare_value_uses_an_empty_key` | Handles a scalar at the top level by representing it with an empty key rather than raising an error. |
-| `test_norm_treats_these_as_the_same_answer` | Treats differences in case, surrounding whitespace, repeated spaces, newlines, and `None` versus an empty string as equivalent. |
-| `test_norm_keeps_punctuation_because_it_carries_meaning` | Preserves meaningful punctuation so values such as `30/-` versus `30/` and `St.` versus `St` remain different. |
-| `test_norm_converts_non_strings_before_comparing` | Converts non-string values such as numbers and booleans to strings before comparison. |
-| `test_provenance_stamps_are_not_graded` | Excludes engine, model, effort, seconds, and other provenance stamps from scoring. |
-| `test_annotation_paths_are_excluded_from_grading` | Excludes fields under `annotations[...]` from grading while still grading normal fields containing the word "annotation". |
-| `test_ordinary_card_fields_are_graded` | Confirms ordinary card fields and nested household fields are included in scoring. |
-| `test_score_page_counts_exact_matches_as_hits` | Counts fields whose normalised answers exactly match the truth as hits. |
-| `test_score_page_lists_the_fields_that_were_missed` | Records the paths of fields where the transcription does not match the truth. |
-| `test_score_page_only_grades_fields_the_card_actually_has` | Excludes blank truth fields from the graded total while tracking them separately as blanks. |
-| `test_score_page_reports_invented_values_for_blank_fields` | Detects and records values supplied by the model for fields that were blank on the original card. |
-| `test_score_page_does_not_count_a_blank_answer_as_invented` | Confirms that correctly leaving a blank field blank is not treated as an invented value. |
-| `test_score_page_treats_a_missing_field_as_a_miss_not_a_crash` | Treats an omitted answer field as a miss rather than raising an exception. |
-| `test_score_page_character_similarity_rewards_near_misses` | Records character-level similarity so exact matches, near-misses, and substantially different answers can be distinguished. |
-| `test_score_page_ignores_stamps_and_annotations_end_to_end` | Verifies end-to-end that provenance stamps and annotation fields do not affect the graded totals while timing information is retained. |
-| `test_score_page_grades_nested_structures_field_by_field` | Scores nested objects field by field, allowing partial credit when some nested fields are correct. |
-| `test_score_page_of_an_empty_key_is_zero_not_an_error` | Handles a truth record with no gradeable fields by returning zero totals without dividing or crashing. |
-| `test_main_exits_when_there_are_no_results_yet` | When no transcription results exist, exits with a clear message explaining that results must be generated first. |
-| `test_main_prints_a_row_per_model_and_page_kind` | Prints a leaderboard row for each model and page type with the correct exact-match percentage and hit/total fraction. |
-| `test_main_counts_pages_with_no_answer_as_missing` | Counts truth pages without corresponding model answers as missing rather than silently excluding them from the results. |
-| `test_main_skips_a_kind_with_no_answers_at_all` | Omits page types that the model never attempted instead of displaying them as zero-score results. |
-
+| `test_run_claude_exits_when_the_reply_is_not_json`                  | Rejects non-JSON CLI output and exits with a useful message containing the raw response.                                                                                                                                               |
+| `test_run_claude_exits_when_the_reply_is_an_error_or_incomplete`    | Rejects both explicit Claude errors and valid JSON responses missing `structured_output`.                                                                                                                                              |
+| `test_run_codex_reads_the_answer_from_the_output_file`              | Reads and parses the JSON answer written by Codex to its `--output-last-message` file.                                                                                                                                                 |
+| `test_run_codex_extracts_json_surrounded_by_chatter`                | Extracts valid JSON from Codex output even when explanatory text appears before or after the JSON object.                                                                                                                              |
+| `test_run_codex_runs_read_only_and_ephemeral`                       | Verifies Codex uses an ephemeral session, ignores user configuration, runs with a read-only sandbox, and receives the image path.                                                                                                      |
+| `test_run_codex_exits_on_a_bad_exit_code_or_a_missing_answer_file`  | Rejects either a non-zero Codex exit code or a missing output file instead of treating the result as a valid empty transcription.                                                                                                      |
+| `test_run_codex_exits_when_the_answer_file_holds_no_json`           | Rejects an output file containing prose without a JSON object and exits with a clear message.                                                                                                                                          |
+| `test_transcribe_reads_with_the_provider_it_is_given`               | 2 cases: `PROVIDER` picks the CLI (`claude` or `codex`) whatever the model is called, and the answer is stamped with it; an OpenAI `o3` goes to Codex though it isn't named gpt-\*.                                                    |
+| `test_transcribe_refuses_an_unknown_provider`                       | A provider other than `claude` or `codex` stops with "PROVIDER must be claude or codex".                                                                                                                                               |
+| `test_transcribe_stamps_every_answer_with_provenance`               | Adds provider, model and effort (as given, else from `.env`) and elapsed seconds to every transcription result.                                                                                                                        |
+| `test_transcribe_unwraps_a_notes_answer_returned_as_a_json_string`  | Repairs notes responses where the complete transcription object has incorrectly been returned as a JSON string inside the `text` field.                                                                                                |
+| `test_transcribe_leaves_ordinary_text_untouched`                    | Leaves normal text and invalid JSON-looking text unchanged when the notes JSON-unwrapping repair does not apply.                                                                                                                       |
+| `test_transcribe_sends_the_template_inside_the_prompt`              | Includes the page template alongside `prompt.txt` in the model prompt and passes the same template to the provider's model call.                                                                                                       |
+| `test_transcribe_defaults_model_and_effort_from_env`                | When model and effort are omitted, uses the corresponding `MODEL` and `EFFORT` values from the environment configuration.                                                                                                              |
 
 ## `test_identify_fingerprint.py` — 3 tests
 
 Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, view construction, and quadrant cropping. The CLIP encoder (`_clip`) is mocked throughout, so these run in milliseconds with no model loaded.
 
-| Test | What it checks |
-|---|---|
-| `test_fingerprint_empty_list` | An empty input returns a `(0, 0)` array, and the CLIP encoder is never called. |
-| `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP. |
-| `test_fingerprint_crops_correct_quadrants` | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
+| Test                                              | What it checks                                                                                                      |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `test_fingerprint_empty_list`                     | An empty input returns a `(0, 0)` array, and the CLIP encoder is never called.                                      |
+| `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP.               |
+| `test_fingerprint_crops_correct_quadrants`        | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
 
-## `test_backend_api.py` — 16 tests
-|Test|What it checks|
-|---|---|
-|`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
-|`test_get_survey_success`|A seeded survey comes back with its page in it, the page's field and a resident's field (`residents.20.relationship`) with their values, the page's `imageUrl` (`/pages/<page id>/image`) and no flags.|
-|`test_get_reviewers_empty`|Returns an empty list without crashing if there are no reviewers in the database.|
-|`test_create_reviewer_success`|Saves a reviewer and returns its id and name.|
-|`test_create_reviewer_empty_name`|A name of only spaces returns HTTP 400, "Enter a reviewer name."|
-|`test_create_reviewer_gives_the_next_id_and_a_known_name_its_reviewer`|A reviewer added by name gets the next free id; adding the same name again (spaces trimmed) returns that reviewer; a taken id is refused ("Reviewer id already exists."); `GET /reviewers` lists `{id, name}`.|
-|`test_get_reviews_empty_survey`|A survey with no saved reviews returns `{"reviews": {}, "revisions": {}}` without crashing.|
-|`test_save_reviews_outdated_revision`|Saving with revision 3 on a page already at revision 5 is refused with HTTP 409, "Revision number is outdated."; so is revision 7, more than one ahead.|
-|`test_save_reviews_success`|Saving an edit made on revision 0 (sent as revision 1, the page's revision after the save) returns 200 with the page's new revision (1) and a `savedAt`; sending the same save again (a stale copy) is refused, "Revision number is outdated."|
-|`test_saved_edits_come_back_with_what_they_replaced`|The page lists its fields in order (a field, a resident's field `residents.0.age`, an other child `other_children.living_elsewhere.0`, an annotation `annotations.0`). Edits to each are saved, including a field that was empty and a child cleared with `null`; a second save of the same field, by a reviewer known only by id, replaces the first; `GET /reviews` returns the latest value of each with the original it replaced, the reviewer and the same `savedAt` the save returned, and the page's revision.|
-|`test_save_refuses_pages_and_fields_that_are_not_there`|Saving to a survey the page isn't in returns 404; no revision for the page, two pages in one save, or an unknown reviewer id with no name returns 400 with the reason; an edit on a field not on its page (`residents.3.age`, `annotations.²`, or one followed by an edit from a new reviewer) returns 400; nothing is saved.|
-|`test_an_edited_code_comes_back_with_its_own_meaning`|A coded field edited from 1 to 2 comes back from `GET /reviews` with the meaning of 2 ("In kitchen"), not of what the model read.|
-|`test_a_page_scan_is_served_by_its_page_id`|`GET /pages/<page id>/image` returns the scan's bytes; an unknown page id returns 404.|
-|`test_a_page_scan_not_on_this_computer_comes_from_the_archive_and_is_kept`|A page whose scan isn't on this computer is downloaded from the archive (faked here) once and kept; a page the archive hasn't got, returns 404.|
-|`test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_again_for_a_while`|A page download the archive breaks off is not kept (404); the archive isn't asked about that bundle again for `RETRY` seconds, and after that the page is downloaded and served.|
-|`test_survey_flags_grouping_problems_unreadable_text_and_other_pages`|A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.|
+## `test_backend_api.py` — 19 tests
+
+| Test                                                                                           | What it checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_get_survey_not_found`                                                                    | Returns HTTP 404 if the requested survey id is not in the database.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `test_get_survey_success`                                                                      | A seeded survey comes back with its page in it, the page's field and a resident's field (`residents.20.relationship`) with their values, the page's `imageUrl` (`/pages/<page id>/image`) and no flags.                                                                                                                                                                                                                                                                                                               |
+| `test_get_reviewers_empty`                                                                     | Returns an empty list without crashing if there are no reviewers in the database.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `test_create_reviewer_success`                                                                 | Saves a reviewer and returns its id and name.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `test_create_reviewer_empty_name`                                                              | A name of only spaces returns HTTP 400, "Enter a reviewer name."                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `test_create_reviewer_gives_the_next_id_and_a_known_name_its_reviewer`                         | A reviewer added by name gets the next free id; adding the same name again (spaces trimmed) returns that reviewer; a taken id is refused ("Reviewer id already exists."); `GET /reviewers` lists `{id, name}`.                                                                                                                                                                                                                                                                                                        |
+| `test_get_reviews_empty_survey`                                                                | A survey with no saved reviews returns `{"reviews": {}, "revisions": {}}` without crashing.                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `test_save_reviews_outdated_revision`                                                          | Saving with revision 3 on a page already at revision 5 is refused with HTTP 409, "Revision number is outdated."; so is revision 7, more than one ahead.                                                                                                                                                                                                                                                                                                                                                               |
+| `test_save_reviews_success`                                                                    | Saving an edit made on revision 0 (sent as revision 1, the page's revision after the save) returns 200 with the page's new revision (1) and a `savedAt`; sending the same save again (a stale copy) is refused, "Revision number is outdated."                                                                                                                                                                                                                                                                        |
+| `test_saved_edits_come_back_with_what_they_replaced`                                           | The page lists its fields in order (a field, a resident's field `residents.0.age`, an other child `other_children.living_elsewhere.0`, an annotation `annotations.0`). Edits to each are saved, including a field that was empty and a child cleared with `null`; a second save of the same field, by a reviewer known only by id, replaces the first; `GET /reviews` returns the latest value of each with the original it replaced, the reviewer and the same `savedAt` the save returned, and the page's revision. |
+| `test_save_refuses_pages_and_fields_that_are_not_there`                                        | Saving to a survey the page isn't in returns 404; no revision for the page, two pages in one save, or an unknown reviewer id with no name returns 400 with the reason; an edit on a field not on its page (`residents.3.age`, `annotations.²`, or one followed by an edit from a new reviewer) returns 400; nothing is saved.                                                                                                                                                                                         |
+| `test_an_edited_code_comes_back_with_its_own_meaning`                                          | A coded field edited from 1 to 2 comes back from `GET /reviews` with the meaning of 2 ("In kitchen"), not of what the model read.                                                                                                                                                                                                                                                                                                                                                                                     |
+| `test_accuracy_counts_every_changed_field_on_saved_pages_against_the_model_that_read_them`     | Each model's accuracy counts only pages a reviewer has saved (a save with no edits means all correct): any changed field, even just its capitals, counts as wrong, a field re-typed as it was doesn't, and an unsaved page isn't counted (opus 4 of 5 = 80%, sonnet 0 of 1 = 0%), and each row names its page type, so a coded card is counted apart from the main forms (opus coded 1 of 1 = 100%).                                                                                                                  |
+| `test_a_page_scan_is_served_by_its_page_id`                                                    | `GET /pages/<page id>/image` returns the scan's bytes; an unknown page id returns 404.                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `test_a_page_scan_not_on_this_computer_comes_from_the_archive_and_is_kept`                     | A page whose scan isn't on this computer is downloaded from the archive (faked here) once and kept; a page the archive hasn't got, returns 404.                                                                                                                                                                                                                                                                                                                                                                       |
+| `test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_again_for_a_while` | A page download the archive breaks off is not kept (404); the archive isn't asked about that bundle again for `RETRY` seconds, and after that the page is downloaded and served.                                                                                                                                                                                                                                                                                                                                      |
+| `test_a_page_scan_can_be_had_straightened_and_black_and_white`                                 | `GET /pages/<id>/image?preprocessed=true` returns a real main form straightened, cropped and black and white (only black and white pixels), made once into `OUTPUT/preprocessed/<page id>.png` and served from there after; the plain `/image` still returns the scan unchanged.                                                                                                                                                                                                                                      |
+| `test_a_scan_that_cannot_be_cleaned_up_is_sent_as_it_is`                                       | A scan the preprocessing can't read is returned as it is instead of an error.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `test_survey_flags_grouping_problems_unreadable_text_and_other_pages`                          | A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.                                                                                                                                                                                                                                                                                                            |
 
 ## `test_loader.py` — 3 tests
-|Test|What it checks|
-|---|---|
-|`test_each_page_records_the_prompt_and_template_versions_that_read_it`|A page whose manifest entry has the hashes of a stored prompt and template version is stored with those versions; a hash no version has, or a page that wasn't read, leaves them empty.|
-|`test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`|A page read as a page type the db has no record of is stored as `other`, not refused.|
-|`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field.|
+
+| Test                                                                   | What it checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_each_page_records_the_prompt_and_template_versions_that_read_it` | A page whose manifest entry has the hashes of a stored prompt and template version is stored with those versions; a hash no version has, or a page that wasn't read, leaves them empty.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`        | A page read as a page type the db has no record of is stored as `other`, not refused.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `test_run_loads_into_its_surveys`                                      | A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field, and an older model label listing every model Claude Code used (`claude-haiku-4-5-20251001+claude-opus-5-5`) is stored as the one the run asked for in its manifest (`opus`). |
 
 ## `test_schema.py` — 5 tests
+
 The test db is built from `backend/db/models.py` with foreign keys checked, as in the real db.
 
-|Test|What it checks|
-|---|---|
-|`test_a_row_must_belong_to_something_that_exists`|A survey for a bundle that doesn't exist, a resident's field for a resident that doesn't exist, or a flag on a field that doesn't exist is refused.|
-|`test_a_job_status_is_waiting_running_done_or_failed`|Any other job status is refused.|
-|`test_a_page_has_one_of_the_page_types`|A page whose type isn't in `page_types` is refused.|
-|`test_a_flag_is_an_inconsistency_gibberish_or_uncertain`|A flag of any other kind is refused.|
-|`test_an_edit_fixes_exactly_one_thing`|An edit pointing at nothing, at two things (a field and an other child), at a resident's field without saying whose, or at an other child without saying which list, is refused.|
+| Test                                                     | What it checks                                                                                                                                                                   |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_a_row_must_belong_to_something_that_exists`        | A survey for a bundle that doesn't exist, a resident's field for a resident that doesn't exist, or a flag on a field that doesn't exist is refused.                              |
+| `test_a_job_status_is_waiting_running_done_or_failed`    | Any other job status is refused.                                                                                                                                                 |
+| `test_a_page_has_one_of_the_page_types`                  | A page whose type isn't in `page_types` is refused.                                                                                                                              |
+| `test_a_flag_is_an_inconsistency_gibberish_or_uncertain` | A flag of any other kind is refused.                                                                                                                                             |
+| `test_an_edit_fixes_exactly_one_thing`                   | An edit pointing at nothing, at two things (a field and an other child), at a resident's field without saying whose, or at an other child without saying which list, is refused. |
 
 ## `test_jobs_api.py` — 6 tests
-|Test|What it checks|
-|---|---|
-|`test_bundles_list_each_pdf_whether_it_is_loaded_and_its_surveys`|`GET /bundles` lists every PDF under `DATA` by its bundle number, with whether it is loaded, its survey ids in scan order (by each survey's first page) and its latest job.|
-|`test_started_job_waits_for_the_worker`|`POST /jobs` queues a waiting job (202), with its last update time in UTC, that `GET /bundles` and `GET /jobs/<id>` report (an unknown id is 404), and refuses a second one for the same PDF while it waits.|
-|`test_pdfs_inside_the_repo_are_named_relative_to_it`|With `DATA` inside the repo (the usual setup), PDFs and jobs use a forward-slash path relative to the repo, so the db works on any checkout.|
-|`test_jobs_only_for_unloaded_pdfs_in_data`|A PDF outside `DATA` is refused (404), and a bundle already loaded is refused (409) so its reviews can't be lost.|
-|`test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run`|`GET /bundles` also lists each of the archive's bundles (`backend/archive_pdfs.txt`, faked here) whose PDF isn't in `DATA`, as `DATA/<bundle number>/<its PDF>`, and a job can be queued for it; a PDF already here is listed once.|
-|`test_the_real_archive_list_names_each_bundle_as_the_archive_does`|`backend/archive_pdfs.txt` lists the 45 bundles once each, as `<bundle number>/<file id>_<file name>.pdf`.|
+
+| Test                                                                     | What it checks                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_bundles_list_each_pdf_whether_it_is_loaded_and_its_surveys`        | `GET /bundles` lists every PDF under `DATA` by its bundle number, with whether it is loaded, its survey ids in scan order (by each survey's first page) and its latest job.                                                         |
+| `test_started_job_waits_for_the_worker`                                  | `POST /jobs` queues a waiting job (202), with its last update time in UTC, that `GET /bundles` and `GET /jobs/<id>` report (an unknown id is 404), and refuses a second one for the same PDF while it waits.                        |
+| `test_pdfs_inside_the_repo_are_named_relative_to_it`                     | With `DATA` inside the repo (the usual setup), PDFs and jobs use a forward-slash path relative to the repo, so the db works on any checkout.                                                                                        |
+| `test_jobs_only_for_unloaded_pdfs_in_data`                               | A PDF outside `DATA` is refused (404), and a bundle already loaded is refused (409) so its reviews can't be lost.                                                                                                                   |
+| `test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run` | `GET /bundles` also lists each of the archive's bundles (`backend/archive_pdfs.txt`, faked here) whose PDF isn't in `DATA`, as `DATA/<bundle number>/<its PDF>`, and a job can be queued for it; a PDF already here is listed once. |
+| `test_the_real_archive_list_names_each_bundle_as_the_archive_does`       | `backend/archive_pdfs.txt` lists the 45 bundles once each, as `<bundle number>/<file id>_<file name>.pdf`.                                                                                                                          |
 
 ## `test_serve.py` — 4 tests
 
 The `uv run app` and `uv run api` commands (`backend/serve.py`), with the programs they start faked.
 
-| Test | What it checks |
-|---|---|
-|`test_the_api_stopping_by_itself_stops_the_worker`|It starts uvicorn on `backend.api.main:app` and `backend.worker`; when the API stops by itself (e.g. port 8000 in use), the worker is stopped too.|
-|`test_ctrl_c_waits_for_both_to_stop_themselves`|After Ctrl+C it waits for the API and the worker to stop themselves, and doesn't kill the worker, so a running job is marked failed and resumes next time.|
-|`test_api_runs_just_the_api_restarting_on_backend_code_changes`|`uv run api` runs only the API, reloading when files under `backend/` change.|
-|`test_every_command_points_at_a_function`|Each command in `pyproject.toml` (`survey`, `app`, `api`, `worker`) names a function that exists, so a typo there fails here.|
+| Test                                                            | What it checks                                                                                                                                             |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_the_api_stopping_by_itself_stops_the_worker`              | It starts uvicorn on `backend.api.main:app` and `backend.worker`; when the API stops by itself (e.g. port 8000 in use), the worker is stopped too.         |
+| `test_ctrl_c_waits_for_both_to_stop_themselves`                 | After Ctrl+C it waits for the API and the worker to stop themselves, and doesn't kill the worker, so a running job is marked failed and resumes next time. |
+| `test_api_runs_just_the_api_restarting_on_backend_code_changes` | `uv run api` runs only the API, reloading when files under `backend/` change.                                                                              |
+| `test_every_command_points_at_a_function`                       | Each command in `pyproject.toml` (`survey`, `app`, `api`, `worker`) names a function that exists, so a typo there fails here.                              |
 
 ## `test_worker.py` — 8 tests
+
 The pipeline and loader are faked: no model calls. Job state is read through a second connection, as the API sees it.
 
-|Test|What it checks|
-|---|---|
-|`test_a_job_reads_with_the_newest_prompt_and_templates`|A job hands the pipeline the newest version of the prompt and of each template, as the job starts.|
-|`test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys`|The worker runs the oldest waiting job, commits each step and page count while it runs, keeps the page count once the run moves on, loads the run's manifest.json and marks the job done.|
-|`test_a_job_is_a_full_run_every_step_but_the_optional_preprocess`|A job runs split, identify, transcribe and group: every step in the pipeline's `STEPS` but the optional preprocess.|
-|`test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing`|A failed model call marks the job failed with its reason, and nothing is loaded.|
-|`test_pdf_with_no_pages_fails_instead_of_loading_nothing`|A PDF with no pages fails with a reason instead of ending done with nothing loaded.|
-|`test_stopping_the_worker_marks_its_job_failed`|Ctrl+C during a job marks it failed, so it doesn't show as running forever.|
-|`test_job_cut_off_by_a_stopped_worker_can_be_run_again`|A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.|
-|`test_only_one_worker_runs_at_a_time`|A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.|
+| Test                                                                 | What it checks                                                                                                                                                                            |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_a_job_reads_with_the_newest_prompt_and_templates`              | A job hands the pipeline the newest version of the prompt and of each template, as the job starts.                                                                                        |
+| `test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys`  | The worker runs the oldest waiting job, commits each step and page count while it runs, keeps the page count once the run moves on, loads the run's manifest.json and marks the job done. |
+| `test_a_job_runs_every_step`                                         | A job runs split, identify, transcribe and group.                                                                                                                                         |
+| `test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing` | A failed model call marks the job failed with its reason, and nothing is loaded.                                                                                                          |
+| `test_pdf_with_no_pages_fails_instead_of_loading_nothing`            | A PDF with no pages fails with a reason instead of ending done with nothing loaded.                                                                                                       |
+| `test_stopping_the_worker_marks_its_job_failed`                      | Ctrl+C during a job marks it failed, so it doesn't show as running forever.                                                                                                               |
+| `test_job_cut_off_by_a_stopped_worker_can_be_run_again`              | A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.                                                                           |
+| `test_only_one_worker_runs_at_a_time`                                | A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.                                                |
 
-## `test_instructions.py` — 19 tests
+## `test_instructions.py` — 20 tests
 
 The transcription prompt and templates as versions in the db (`backend/db/instructions.py` and `/instructions`).
 
-| Test | What it checks |
-|---|---|
-|`test_a_prompt_saved_with_only_its_line_endings_changed_is_no_change`|A prompt sent back with plain line endings instead of Windows ones (as a browser's text box does) is no change, so no new version makes jobs read pages again.|
-|`test_todays_prompt_and_templates_pass_the_checks`|Today's `prompt.txt` and templates pass every check.|
-|`test_a_template_that_would_break_the_pipeline_or_the_review_screen_is_refused`|14 cases: a template that isn't JSON or an object or has no fields, lacks `number_of_dwelling` (main, coded) or `text` (notes), has a field the pipeline fills in, `annotations`, `residents` or `other_children` in another shape, a name with a dot or capitals, a field that isn't null or an object, or makes the command line too long for Windows, is refused with that reason.|
-|`test_an_empty_prompt_is_refused`|A blank prompt is refused.|
-|`test_a_saved_template_becomes_the_newest_version_and_the_old_one_is_kept`|`POST /instructions/main` saves a new version with its reviewer and note; it becomes the newest (what the next job reads with) and the history lists both, newest first.|
-|`test_a_save_is_refused_when_unknown_unchanged_invalid_or_based_on_an_old_version`|An unknown kind (404) or reviewer (400), no change, or a template with problems (400, listing them) is refused; a save based on a version that is no longer the newest is refused (409).|
+| Test                                                                               | What it checks                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_a_prompt_saved_with_only_its_line_endings_changed_is_no_change`              | A prompt sent back with plain line endings instead of Windows ones (as a browser's text box does) is no change, so no new version makes jobs read pages again.                                                                                                                                                                                                                        |
+| `test_todays_prompt_and_templates_pass_the_checks`                                 | Today's `prompt.txt` and templates pass every check.                                                                                                                                                                                                                                                                                                                                  |
+| `test_a_template_that_would_break_the_pipeline_or_the_review_screen_is_refused`    | 14 cases: a template that isn't JSON or an object or has no fields, lacks `number_of_dwelling` (main, coded) or `text` (notes), has a field the pipeline fills in, `annotations`, `residents` or `other_children` in another shape, a name with a dot or capitals, a field that isn't null or an object, or makes the command line too long for Windows, is refused with that reason. |
+| `test_an_empty_prompt_is_refused`                                                  | A blank prompt is refused.                                                                                                                                                                                                                                                                                                                                                            |
+| `test_a_saved_template_becomes_the_newest_version_and_the_old_one_is_kept`         | `POST /instructions/main` saves a new version with its reviewer and note; it becomes the newest (what the next job reads with) and the history lists both, newest first.                                                                                                                                                                                                              |
+| `test_a_save_is_refused_when_unknown_unchanged_invalid_or_based_on_an_old_version` | An unknown kind (404) or reviewer (400), no change, or a template with problems (400, listing them) is refused; a save based on a version that is no longer the newest is refused (409).                                                                                                                                                                                              |
+| `test_accuracy_is_kept_apart_for_each_prompt_and_template_version`                 | `GET /accuracy` gives a row per prompt and template version, so versions can be compared.                                                                                                                                                                                                                                                                                             |
 
-## `test_page_types.py` — 6 tests
+## `test_page_types.py` — 7 tests
 
 Page types added from the review screen, and a page read again as another type.
 
-| Test | What it checks |
-|---|---|
-|`test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was`|A model answer the db can't take fails the job, and the page keeps its fields, type and revision: the swap is all or nothing.|
-|`test_a_new_page_type_needs_a_template_before_pages_are_read_as_it`|`GET /page-types` lists the built-in four with their templates; a new type needs a lower-case name that isn't taken or reserved (`blank`) and a known reviewer; a page can't be read as it until it has a template (`other` can't have one); then `PUT /pages/{id}/type` queues a page job, once.|
-|`test_a_page_made_other_is_emptied_at_once`|Making a page `other` empties it to one blank text field at once and moves its revision on.|
-|`test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`|An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).|
-|`test_the_worker_reads_the_page_again_and_swaps_what_was_read`|The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.|
-|`test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`|If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.|
+| Test                                                                       | What it checks                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was`     | A model answer the db can't take fails the job, and the page keeps its fields, type and revision: the swap is all or nothing.                                                                                                                                                                     |
+| `test_a_page_read_again_counts_for_accuracy_only_once_a_reviewer_saves_it` | A page read again isn't counted by `GET /accuracy` until a reviewer saves it.                                                                                                                                                                                                                     |
+| `test_a_new_page_type_needs_a_template_before_pages_are_read_as_it`        | `GET /page-types` lists the built-in four with their templates; a new type needs a lower-case name that isn't taken or reserved (`blank`) and a known reviewer; a page can't be read as it until it has a template (`other` can't have one); then `PUT /pages/{id}/type` queues a page job, once. |
+| `test_a_page_made_other_is_emptied_at_once`                                | Making a page `other` empties it to one blank text field at once and moves its revision on.                                                                                                                                                                                                       |
+| `test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`   | An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).                                                                                                                                                  |
+| `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |
+| `test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`            | If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.                                                                                                                                                                                 |
 
 ## `test_sorting_models.py` — 9 tests
 
 Page sorting retrained from the review screen; page fingerprints are made up, so no model is loaded.
 
-| Test | What it checks |
-|---|---|
-|`test_a_new_page_type_is_left_out_when_too_few_of_its_settled_pages_have_a_scan`|A new type's 10 pages are counted among the settled pages that have a scan; the note says which types were left out and how many pages had no scan.|
-|`test_retraining_keeps_its_fingerprints_apart_from_the_committed_ones`|The real `retrain()` and `stored()` (page fingerprints made up) write the settled pages' fingerprints to their own folder, never touch the committed ones, and reuse them next time.|
-|`test_a_model_learns_a_page_type_beyond_the_four`|Given labels beyond the four, the model learns the new type and sorts its pages into it (or review).|
-|`test_retraining_learns_a_settled_page_type_and_keeps_the_model`|`retrain()` on the labelled pages plus settled pages of a new type passes its held-out check, writes the model, and the model sorts the new type.|
-|`test_a_retraining_that_fails_its_check_is_not_kept`|Settled pages a model can't tell from main forms fail the check, and no model is written.|
-|`test_the_worker_trains_on_settled_pages_and_uses_a_model_that_passes`|A training job uses the pages reviewers settled (not other or unchecked pages, nor a new type with fewer than 10), records the model with its reviewer and a note of what was left out, and makes it the only active one.|
-|`test_a_model_that_fails_its_check_is_recorded_but_not_used`|A model that fails is recorded with its check, but not kept or used.|
-|`test_a_bundle_job_sorts_with_the_active_model`|A bundle job sorts pages with the active model's weights; if that file is gone, the job fails saying so.|
-|`test_sorting_models_are_trained_listed_and_chosen_through_the_api`|`POST /sorting-models` queues one training (409 while waiting; 400 for an unknown reviewer); the list is newest first; `PUT /sorting-models/active` refuses an unknown (404) or failed (400) model, makes a passed one the only active one, and `null` goes back to the shipped model.|
+| Test                                                                             | What it checks                                                                                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_a_new_page_type_is_left_out_when_too_few_of_its_settled_pages_have_a_scan` | A new type's 10 pages are counted among the settled pages that have a scan; the note says which types were left out and how many pages had no scan.                                                                                                                                    |
+| `test_retraining_keeps_its_fingerprints_apart_from_the_committed_ones`           | The real `retrain()` and `stored()` (page fingerprints made up) write the settled pages' fingerprints to their own folder, never touch the committed ones, and reuse them next time.                                                                                                   |
+| `test_a_model_learns_a_page_type_beyond_the_four`                                | Given labels beyond the four, the model learns the new type and sorts its pages into it (or review).                                                                                                                                                                                   |
+| `test_retraining_learns_a_settled_page_type_and_keeps_the_model`                 | `retrain()` on the labelled pages plus settled pages of a new type passes its held-out check, writes the model, and the model sorts the new type.                                                                                                                                      |
+| `test_a_retraining_that_fails_its_check_is_not_kept`                             | Settled pages a model can't tell from main forms fail the check, and no model is written.                                                                                                                                                                                              |
+| `test_the_worker_trains_on_settled_pages_and_uses_a_model_that_passes`           | A training job uses the pages reviewers settled (not other or unchecked pages, nor a new type with fewer than 10), records the model with its reviewer and a note of what was left out, and makes it the only active one.                                                              |
+| `test_a_model_that_fails_its_check_is_recorded_but_not_used`                     | A model that fails is recorded with its check, but not kept or used.                                                                                                                                                                                                                   |
+| `test_a_bundle_job_sorts_with_the_active_model`                                  | A bundle job sorts pages with the active model's weights; if that file is gone, the job fails saying so.                                                                                                                                                                               |
+| `test_sorting_models_are_trained_listed_and_chosen_through_the_api`              | `POST /sorting-models` queues one training (409 while waiting; 400 for an unknown reviewer); the list is newest first; `PUT /sorting-models/active` refuses an unknown (404) or failed (400) model, makes a passed one the only active one, and `null` goes back to the shipped model. |
 
 ## `api.test.ts` — 19 tests
 

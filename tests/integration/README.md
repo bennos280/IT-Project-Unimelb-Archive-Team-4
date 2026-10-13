@@ -3,11 +3,11 @@
 Multiple pieces of the pipeline wired together through their real entry points —
 `run.main`, `step_split`, `process_image`, the shipped identification model, the
 committed transcription results — instead of individual functions in isolation.
-Fixture data (`identify/`, `preprocess/`, `transcribe/`) lives alongside the test files
-in this folder, and `backend.pipeline.identify.identify` / `backend.pipeline.transcribe.score` read it
+Fixture data (`identify/`, `preprocess/`, `group/`, `archive/`) lives alongside the test files
+in this folder, and `backend.pipeline.identify.identify` reads its labelled pages
 from here directly.
 
-**72 test cases ~140s**
+**60 test cases ~140s**
 
 ```bash
 uv run pytest tests/integration
@@ -30,15 +30,13 @@ re-render must never leave a half-updated `pages/` folder.
 | `test_pdf_the_archive_cannot_send_stops_the_run_and_keeps_nothing` | A PDF the archive breaks off halfway (fewer bytes than it announced), or doesn't have, stops the run saying why; nothing is left in `DATA` and no `pages/` folder is published. |
 | `test_a_long_pdf_is_split_on_every_core_in_page_order` | A 40-page PDF, more than one 16-page chunk so several processes draw it, gives all 40 pages named in page order, each the same image as drawing that page alone. |
 
-## `test_preprocessing.py` — 28 tests
+## `test_preprocessing.py` — 17 tests
 
-Preprocessing against the real fixture scans in `preprocess/`, plus its handoff into
-`run.step_preprocess`.
+Preprocessing (the review screen's cleaned-up view) against the real fixture scans in `preprocess/`.
 
 | Test | What it checks |
 |---|---|
-| `test_output_modes_preserve_original`  | Output pixels match the requested mode (colour / greyscale / binary) and the source file is byte-identical afterwards. |
-| `test_pipeline_failure_records_review_without_completion` | An unreadable page raises through `run.step_preprocess`, is logged to `review.json`, leaves the step incomplete, and keeps the original page path. |
+| `test_output_modes_preserve_original`  | Output pixels match the mode (colour, greyscale, or the app's black and white) and the source file is byte-identical afterwards. |
 | `test_skewed_image_detection` | The real `skewed_image_1.jpg` fixture is detected confidently at 1.57° ± 0.3°. |
 | `test_crop`  | Page crop on the real `crop.png`: output matches the independently measured paper size, the returned corners enclose all handwritten content, and dark scanner border pixels at least halve. |
 
@@ -75,14 +73,6 @@ Page-kind classification over every labelled page in `identify/pages/`.
 |---|---|
 | `test_shipped_weights` | The committed model scored against pages it was trained on. Catches a corrupted or mismatched weights file. |
 | `test_held_out` | 5-fold: trains on 4/5 and scores the 1/5 never seen, so every page is judged by a model trained without it. This is the honest accuracy number. |
-
-## `test_transcribe.py` — 1 test
-
-No test doubles — real committed model outputs, real scorer.
-
-| Test | What it checks |
-|---|---|
-| `test_results_score` | Every committed model output under `results/transcribe/` is scored against its truth file in `transcribe/truth/`, asserting `0 <= hits <= total`. Also asserts truth files were found at all, so an empty glob fails loudly instead of vacuously passing. |
 
 ## `test_group.py` — 2 tests
 

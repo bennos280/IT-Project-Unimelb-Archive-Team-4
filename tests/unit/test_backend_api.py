@@ -81,7 +81,7 @@ def test_get_reviews_empty_survey(client):
 
 #------------------------------------------------- save_reviews()
 
-#the revision sent is the page's next one (the one the edits were made on, plus 1)
+#the revision sent is the one the edits were made on; the page must still be at it
 def test_save_reviews_outdated_revision(client, db):
     survey = models.Survey(survey_id="12345", bundle_id="6789")
     #revision no is 5
@@ -206,6 +206,35 @@ def test_an_edited_code_comes_back_with_its_own_meaning(client, db):
     assert client.get("/reviews/12345").json()["reviews"]["q"]["washouse"]["decoded"] == "In kitchen"
 
 
+#------------------------------------------------- get_accuracy()
+def test_accuracy_counts_every_changed_field_on_saved_pages_against_the_model_that_read_them(client, db):
+    pages = [("p1", "opus"), ("p2", "opus"), ("p3", "opus"), ("p4", "sonnet")]
+    fields = [("p1", "address", "5 Peel St."), ("p1", "tenure", "Owner"), ("p1", "rooms", "4"),
+              ("p2", "address", "9 Kent St."), ("p2", "tenure", None), ("p3", "address", "2 Hope St."), ("p4", "address", "1 Low St.")]
+    add_in_order(db, models.Survey(survey_id="s", bundle_id="6789"),
+                 *[models.Page(page_id=page, survey_id="s", category="main", import_path="x.png", bundle_id="6789",
+                               model=model, effort="low") for page, model in pages],
+                 *[models.Field(page_id=page, field_title=title, text_raw=value) for page, title, value in fields],
+                 models.Page(page_id="p5", survey_id="s", category="coded", import_path="x.png", bundle_id="6789",
+                             model="opus", effort="low"),
+                 models.Field(page_id="p5", field_title="washouse", text_raw="1"))
+    db.commit()
+
+    def save(page, edits):
+        return client.post("/reviews/s", json={"reviews": {page: edits}, "revisions": {page: 1}}).status_code
+
+    assert save("p1", {"rooms": review("44"), "address": review("5 Peel St.")}) == 200  # one change; one re-typed as it was
+    assert save("p2", {}) == 200  # checked: all correct
+    assert save("p4", {"address": review("1 low st.")}) == 200  # any change counts, even just capitals
+    assert save("p5", {}) == 200  # a coded card: counted apart from the main forms
+    # p3 was never saved, so it isn't counted
+    versions = {"promptVersion": None, "templateVersion": None}  # read before prompt and template versions
+    assert client.get("/accuracy").json() == [
+        {"model": "opus", "effort": "low", "pageType": "coded", **versions, "pages": 1, "fields": 1, "changed": 0, "accuracy": 100.0},
+        {"model": "opus", "effort": "low", "pageType": "main", **versions, "pages": 2, "fields": 5, "changed": 1, "accuracy": 80.0},
+        {"model": "sonnet", "effort": "low", "pageType": "main", **versions, "pages": 1, "fields": 1, "changed": 1, "accuracy": 0.0}]
+
+
 #------------------------------------------------- page_image(), and what the reviewer is asked to check
 def test_a_page_scan_is_served_by_its_page_id(client, db, tmp_path):
     (tmp_path / "scan.png").write_bytes(b"png")
@@ -248,6 +277,33 @@ def test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_a
     archive.cut_short.clear()
     scans.failed.clear()  # RETRY seconds later
     assert client.get("/pages/x_00004/image").content == b"jpeg of page 4"
+
+
+def test_a_page_scan_can_be_had_straightened_and_black_and_white(client, db, tmp_path, monkeypatch):
+    import cv2
+    import numpy as np
+    from pathlib import Path
+    from backend.pipeline.preprocess import preprocess
+    monkeypatch.setattr(preprocess, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
+    card = Path(__file__).parents[1] / "integration" / "preprocess" / "main.jpg"  #a real main form
+    add_in_order(db, models.Page(page_id="p", category="main", import_path=str(card), bundle_id="6789"))
+    db.commit()
+
+    cleaned = client.get("/pages/p/image", params={"preprocessed": True})
+    image = cv2.imdecode(np.frombuffer(cleaned.content, np.uint8), cv2.IMREAD_UNCHANGED)
+    assert cleaned.status_code == 200 and image.ndim == 2 and set(np.unique(image)) == {0, 255}  #black and white
+    assert (tmp_path / "output" / "preprocessed" / "p.png").read_bytes() == cleaned.content  #made once, then kept
+    assert client.get("/pages/p/image", params={"preprocessed": True}).content == cleaned.content
+    assert client.get("/pages/p/image").content == card.read_bytes()  #the scan itself, unchanged
+
+
+def test_a_scan_that_cannot_be_cleaned_up_is_sent_as_it_is(client, db, tmp_path, monkeypatch):
+    from backend.pipeline.preprocess import preprocess
+    monkeypatch.setattr(preprocess, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
+    (tmp_path / "scan.png").write_bytes(b"not an image")
+    add_in_order(db, models.Page(page_id="p", category="main", import_path=str(tmp_path / "scan.png"), bundle_id="6789"))
+    db.commit()
+    assert client.get("/pages/p/image", params={"preprocessed": True}).content == b"not an image"
 
 
 def test_survey_flags_grouping_problems_unreadable_text_and_other_pages(client, db):

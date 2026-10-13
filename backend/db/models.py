@@ -95,6 +95,9 @@ class Job(Base):
     __table_args__ = (CheckConstraint("status IN ('waiting', 'running', 'done', 'failed')", name="status"),
                       CheckConstraint("kind IN ('bundle', 'page', 'train')", name="kind"))
     job_id = Column(Integer, primary_key=True, autoincrement=True)
+    transcription_model = Column(String, nullable=True)
+    transcription_provider = Column(String, nullable=True)
+    transcription_effort = Column(String, nullable=True)
     kind = Column(String, nullable=False, default="bundle", server_default="bundle")
     pdf = Column(String, nullable=True) #a bundle job's PDF
     page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), nullable=True) #a page job's page...
