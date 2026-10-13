@@ -117,13 +117,17 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
         })
     return {"id":survey_id, "title":"Wilfred Prest Survey", "pages":pages_list}
 
-#a page's scan: the one this computer's pipeline run made, else the archive's
+#a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
+#and black and white (the scan itself if that fails)
 @app.get("/pages/{page_id}/image", name="page_image")
-def page_image(page_id: str, db: Session = Depends(get_db)):
+def page_image(page_id: str, preprocessed: bool = False, db: Session = Depends(get_db)):
     page = db.get(models.Page, page_id)
     scan = page and scans.page_scan(page.import_path, db.get(models.Bundle, page.bundle_id).source_pdf, page_id)
     if not scan:
         raise HTTPException(status_code=404, detail="No scan for this page.")
+    if preprocessed:
+        from backend.pipeline.preprocess.preprocess import cleaned
+        scan = cleaned(scan, page_id)
     return FileResponse(scan)
 
 

@@ -279,6 +279,33 @@ def test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_a
     assert client.get("/pages/x_00004/image").content == b"jpeg of page 4"
 
 
+def test_a_page_scan_can_be_had_straightened_and_black_and_white(client, db, tmp_path, monkeypatch):
+    import cv2
+    import numpy as np
+    from pathlib import Path
+    from backend.pipeline.preprocess import preprocess
+    monkeypatch.setattr(preprocess, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
+    card = Path(__file__).parents[1] / "integration" / "preprocess" / "main.jpg"  #a real main form
+    add_in_order(db, models.Page(page_id="p", category="main", import_path=str(card), bundle_id="6789"))
+    db.commit()
+
+    cleaned = client.get("/pages/p/image", params={"preprocessed": True})
+    image = cv2.imdecode(np.frombuffer(cleaned.content, np.uint8), cv2.IMREAD_UNCHANGED)
+    assert cleaned.status_code == 200 and image.ndim == 2 and set(np.unique(image)) == {0, 255}  #black and white
+    assert (tmp_path / "output" / "preprocessed" / "p.png").read_bytes() == cleaned.content  #made once, then kept
+    assert client.get("/pages/p/image", params={"preprocessed": True}).content == cleaned.content
+    assert client.get("/pages/p/image").content == card.read_bytes()  #the scan itself, unchanged
+
+
+def test_a_scan_that_cannot_be_cleaned_up_is_sent_as_it_is(client, db, tmp_path, monkeypatch):
+    from backend.pipeline.preprocess import preprocess
+    monkeypatch.setattr(preprocess, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
+    (tmp_path / "scan.png").write_bytes(b"not an image")
+    add_in_order(db, models.Page(page_id="p", category="main", import_path=str(tmp_path / "scan.png"), bundle_id="6789"))
+    db.commit()
+    assert client.get("/pages/p/image", params={"preprocessed": True}).content == b"not an image"
+
+
 def test_survey_flags_grouping_problems_unreadable_text_and_other_pages(client, db):
     add_in_order(db, models.Survey(survey_id="12345", bundle_id="6789"),
                  models.Page(page_id="p1", survey_id="12345", category="main", import_path="p1.png", bundle_id="6789"),
