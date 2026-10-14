@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Minus, Maximize, Search } from "lucide-react";
 import type { SurveyPage } from "./model";
-import { pageNames as names } from "./model";
+import { getPageName } from "./model";
 import { getSourceRegion } from "./fieldLocations";
 
 // Render the source scan with zoom, drag-to-pan, fit, fullscreen and a mapped-field overlay.
@@ -20,7 +20,8 @@ export default function ImageViewer({
   const [loaded, setLoaded] = useState(false);
   const selectedField = page.fields.find((f) => f.id === selection?.fieldId);
   const region = useMemo(
-    () => selectedField ? getSourceRegion(page.type, selectedField.id) : undefined,
+    () =>
+      selectedField ? getSourceRegion(page.type, selectedField.id) : undefined,
     [page.type, selectedField],
   );
   // Zoom first, then centre the selected region after the resized image has rendered.
@@ -131,7 +132,7 @@ export default function ImageViewer({
             <img
               ref={image}
               src={page.imageUrl}
-              alt={`Original ${names[page.type]} for survey ${page.id}`}
+              alt={`Original ${getPageName(page.type)} for survey ${page.id}`}
               draggable={false}
               style={{ width: "100%" }}
               onLoad={() => setLoaded(true)}

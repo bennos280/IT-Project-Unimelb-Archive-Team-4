@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import ImageViewer from "./ImageViewer";
 import type { useReviewSession } from "./useReviewSession";
-import { pageNames as names } from "./model";
+import { getPageName } from "./model";
 import "./review.css";
 import { flagCategories, flagLabels } from "./flags";
 
@@ -112,7 +112,7 @@ export default function ReviewScreen({
             <section className="extracted">
               <div className="page-heading">
                 <h2>
-                  {page.id} · {names[page.type]}
+                  {page.id} · {getPageName(page.type)}{" "}
                 </h2>
                 <span className="review-progress">
                   {page.fields.length
@@ -525,7 +525,7 @@ export default function ReviewScreen({
               </div>
             ))}
           <p className="edit-context">
-            {page && names[page.type]} · {editing?.label}
+            {page && getPageName(page.type)} · {editing?.label}{" "}
           </p>
           <label>
             Extracted value
