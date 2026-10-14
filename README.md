@@ -36,19 +36,16 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 
 ## Commands
 
-| Command                                                    | Description                                                                                                                                                                                                                                           |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `uv run survey`                                            | Process new or unfinished PDFs (or folders of page images) in `DATA` → `<OUTPUT>/<name>/manifest.json` + `review.json`                                                                                                                                |
-| `uv run survey x.pdf`                                      | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI (Claude Code 2.1.280+) signed in, or OpenAI's `codex` CLI with `PROVIDER=codex` in `.env`) |
-| `uv run pytest`                                            | Run all tests (see `tests/README.md` for more info) scored                                                                                                                                                                                            |
-| `uv run survey train`                                      | Refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`)                                                                                                                                               |
-| `uv run survey data/x.pdf --preprocess`                    | Identify pages, then crop, straighten, and binarize eligible page images                                                                                                                                                                              |
-| `uv run survey data/x.pdf --preprocess --transcribe`       | Identify and preprocess eligible page images, then transcribe them to JSON                                                                                                                                                                            |
-| `uv run python -m backend.db.loader`                       | Load finished runs in `OUTPUT` into the database (`backend/db/wilfprestsurvey.db`), creating or upgrading it first                                                                                                                                    |
-| `uv run app`                                               | Start the API (every endpoint is listed, and can be tried, at http://127.0.0.1:8000/docs) and the worker that runs the jobs queued with `POST /jobs`; Ctrl+C stops both                                                                               |
-| `uv run api` / `uv run worker`                             | Just one of the two (the API restarts when you save code)                                                                                                                                                                                             |
-| `uv run alembic revision --autogenerate -m "what changed"` | After changing the tables in `backend/db/models.py`; a database upgrades itself on its next load, backed up first                                                                                                                                     |
-| ↳ Optional enhancements                                    | `--greyscale` converts to greyscale; `--binarize` converts to black and white; `--no-deskew` skips deskewing; `--no-crop` skips cropping; `--c <num>` adjusts the adaptive threshold constant (e.g. `--c 12`).                                        |
+| Command                                                          | Description                                                                                                                                                                                                    |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uv run survey`                                                  | Process new or unfinished PDFs (or folders of page images) in `DATA` → `<OUTPUT>/<name>/manifest.json` + `review.json`                                                                                         |
+| `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI (Claude Code 2.1.280+) signed in, or OpenAI's `codex` CLI with `PROVIDER=codex` in `.env`)                                                             |
+| `uv run pytest`                                                  | Run all tests (see `tests/README.md` for more info) scored                                                                                                      |
+| `uv run survey train`                                            | Refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`)                                                                                                        |
+| `uv run python -m backend.db.loader` | Load finished runs in `OUTPUT` into the database (`backend/db/wilfprestsurvey.db`), creating or upgrading it first |
+| `uv run app` | Start the API (every endpoint is listed, and can be tried, at http://127.0.0.1:8000/docs) and the worker that runs the jobs queued with `POST /jobs`; Ctrl+C stops both |
+| `uv run api` / `uv run worker` | Just one of the two (the API restarts when you save code) |
+| `uv run alembic revision --autogenerate -m "what changed"` | After changing the tables in `backend/db/models.py`; a database upgrades itself on its next load, backed up first |
 
 A bundle's PDF, or a page's scan, that isn't on this computer is downloaded from [the archive](https://archives.library.unimelb.edu.au/nodes/view/499420) and kept.
 
@@ -79,7 +76,7 @@ def step_thing(run):
         if unsure:
             run.flag(page, "thing", "why")
 
-STEPS = {"split": step_split, "identify": step_identify,"preprocess": step_preprocess, "thing": step_thing, "transcribe": step_transcribe}
+STEPS = {"split": step_split, "identify": step_identify, "thing": step_thing, "transcribe": step_transcribe, "group": step_group}
 ```
 
 Heavy code goes in `backend/pipeline/thing/`, imported inside the function. Flagged pages land in `review.json`.
