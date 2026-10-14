@@ -195,19 +195,20 @@ The `uv run app` and `uv run api` commands (`backend/serve.py`), with the progra
 | `test_every_command_points_at_a_function`                       | Each command in `pyproject.toml` (`survey`, `app`, `api`, `worker`) names a function that exists, so a typo there fails here.                              |
 
 ## `test_worker.py` — 9 tests
+
 The pipeline and loader are faked: no model calls. Job state is read through a second connection, as the API sees it.
 
-|Test|What it checks|
-|---|---|
-|`test_a_job_reads_with_the_newest_prompt_and_templates`|A job hands the pipeline the newest version of the prompt and of each template, as the job starts.|
-|`test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys`|The worker runs the oldest waiting job, commits each step and page count while it runs, keeps the page count once the run moves on, loads the run's manifest.json and marks the job done.|
-|`test_a_job_runs_every_step`|A job runs split, identify, transcribe and group.|
-|`test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing`|A failed model call marks the job failed with its reason, and nothing is loaded.|
-|`test_a_failed_job_is_logged_with_its_full_error`|The worker logs a job's start and, when it fails, the step it failed during with the full error and traceback (the job keeps just the message).|
-|`test_pdf_with_no_pages_fails_instead_of_loading_nothing`|A PDF with no pages fails with a reason instead of ending done with nothing loaded.|
-|`test_stopping_the_worker_marks_its_job_failed`|Ctrl+C during a job marks it failed, so it doesn't show as running forever.|
-|`test_job_cut_off_by_a_stopped_worker_can_be_run_again`|A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.|
-|`test_only_one_worker_runs_at_a_time`|A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.|
+| Test                                                                 | What it checks                                                                                                                                                                            |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_a_job_reads_with_the_newest_prompt_and_templates`              | A job hands the pipeline the newest version of the prompt and of each template, as the job starts.                                                                                        |
+| `test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys`  | The worker runs the oldest waiting job, commits each step and page count while it runs, keeps the page count once the run moves on, loads the run's manifest.json and marks the job done. |
+| `test_a_job_runs_every_step`                                         | A job runs split, identify, transcribe and group.                                                                                                                                         |
+| `test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing` | A failed model call marks the job failed with its reason, and nothing is loaded.                                                                                                          |
+| `test_a_failed_job_is_logged_with_its_full_error`                    | The worker logs a job's start and, when it fails, the step it failed during with the full error and traceback (the job keeps just the message).                                           |
+| `test_pdf_with_no_pages_fails_instead_of_loading_nothing`            | A PDF with no pages fails with a reason instead of ending done with nothing loaded.                                                                                                       |
+| `test_stopping_the_worker_marks_its_job_failed`                      | Ctrl+C during a job marks it failed, so it doesn't show as running forever.                                                                                                               |
+| `test_job_cut_off_by_a_stopped_worker_can_be_run_again`              | A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.                                                                           |
+| `test_only_one_worker_runs_at_a_time`                                | A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.                                                |
 
 ## `test_instructions.py` — 20 tests
 
@@ -286,3 +287,20 @@ npm --prefix tests run test:unit
 These frontend tests run separately from `uv run pytest tests/unit`.
 They check request construction and response handling; the integration runner
 checks the adapter against the real backend and database.
+
+## `test_transcription_api.py` — 27 cases
+
+Uses a temporary SQLite database and temporary output files. No worker or paid
+transcription service is started, and the review database is not changed.
+
+| Test                                                                 | What it checks                                                                                                                                                          |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_job_persists_model_choices_and_defaults`                       | Explicit model/provider/effort choices are trimmed and saved; omitted or null choices use configuration defaults. A separate database connection sees the saved values. |
+| `test_invalid_model_settings_do_not_queue_a_job`                     | Invalid model/provider/effort values return 400 without creating a job; a corrected request can still succeed.                                                          |
+| `test_model_list_includes_configuration_without_history`             | The model endpoint returns configured defaults when no transcription history exists.                                                                                    |
+| `test_model_history_groups_versions_and_averages_available_runtimes` | History separates template versions, counts pages, averages recorded runtimes, handles missing runtimes and excludes pages with no recorded model.                      |
+| `test_transcripts_require_an_existing_job`                           | An unknown job returns 404.                                                                                                                                             |
+| `test_transcripts_reject_jobs_without_a_bundle`                      | Page jobs, training jobs and bundle jobs without a PDF return 400.                                                                                                      |
+| `test_transcripts_before_output_exists_are_empty`                    | A queued job without output returns an empty page list.                                                                                                                 |
+| `test_partial_transcripts_show_sorted_pages_and_only_verified_data`  | Partial output reports pages in order with their identification/transcription status and checksum-verified transcript data.                                             |
+| `test_unusable_transcripts_are_not_exposed`                          | Missing files, changed checksums, invalid JSON, unsafe filenames and invalid manifest entries do not expose transcript data.                                            |
