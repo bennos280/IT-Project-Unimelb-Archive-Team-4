@@ -27,6 +27,7 @@ re-render must never leave a half-updated `pages/` folder.
 | `test_pdf_not_on_this_computer_is_downloaded_from_the_archive_and_kept` | A PDF not on this computer is downloaded from the archive (faked here) after opening its bundle's download page, saved in `DATA` under the archive's name, then split as usual; no part-downloads are left behind. |
 | `test_pdf_the_archive_cannot_send_stops_the_run_and_keeps_nothing` | A PDF the archive breaks off halfway (fewer bytes than it announced), or doesn't have, stops the run saying why; nothing is left in `DATA` and no `pages/` folder is published. |
 | `test_a_long_pdf_is_split_on_every_core_in_page_order` | A 40-page PDF, more than one 16-page chunk so several processes draw it, gives all 40 pages named in page order, each the same image as drawing that page alone. |
+| `test_a_page_that_fails_to_draw_is_named_in_an_error_a_worker_process_can_send_back` | A page that fails to draw gives a RuntimeError naming the PDF and page ("survey.pdf, page 1: ...") that survives pickling, the way a worker process sends its error back, even when the original error can't be pickled, as PyMuPDF's can't. |
 
 ## `test_preprocessing.py`
 
@@ -61,6 +62,7 @@ if a live transcription model is ever called; everything else runs for real.
 | `test_failed_json_publication_keeps_previous_progress`  | A failed atomic write leaves the old manifest byte-identical and drops no temp files. |
 | `test_a_job_reads_each_page_with_its_texts_and_skips_a_page_type_with_no_template` | Given a job's texts (the db's newest prompt and templates), `step_transcribe` reads each page with them, skips a page type they have no template for, and records the prompt's hash for reuse. |
 | `test_a_run_sorts_its_pages_with_its_sorting_model` | A run given a retrained model's weights sorts its pages with them. |
+| `test_a_damaged_manifest_is_logged_before_the_run_starts_again` | A run's manifest.json that isn't JSON, or isn't a JSON object, reads as empty (the run starts again from the beginning) and logs one warning saying why; a run with no manifest yet logs nothing. |
 
 ## `test_identify.py`
 
@@ -90,6 +92,7 @@ code that reads it is checked against the archive's own markup, not only the tes
 |---|---|
 | `test_the_archives_real_download_page_gives_every_page_its_file` | Reading the real page finds all 227 pages in order, each with its file id (page 1 → 423448, page 227 → 425881). |
 | `test_no_test_reaches_the_internet` | A plain `urllib` request to the archive fails during tests: `tests/conftest.py` blocks every internet lookup but this computer's own. |
+| `test_a_scan_the_archive_cant_send_is_logged_with_the_reason` | A page scan the archive can't send comes back as none and logs one warning naming the bundle, the page and the error, and when the archive is asked again. |
 
 ## `test_migrations.py`
 

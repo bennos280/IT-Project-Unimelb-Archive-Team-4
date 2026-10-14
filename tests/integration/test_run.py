@@ -1,5 +1,6 @@
 """Integration tests of the pipeline's resume, retry and caching: retry unfinished work without skipping surveys or repeating saved transcription calls."""
 import json
+import logging
 import time
 from pathlib import Path
 
@@ -250,3 +251,13 @@ def test_a_run_sorts_its_pages_with_its_sorting_model(tmp_path, monkeypatch):
     monkeypatch.setattr(identify, "identify_pages", lambda images, weights=None: used.append(weights) or labels(images))
     run.step_identify(run.Run(tmp_path / "pages", tmp_path / "out", sorting_model=tmp_path / "model.npz"))
     assert used == [tmp_path / "model.npz"]
+
+
+@pytest.mark.parametrize("saved", ["{cut off half way", "[]"])
+def test_a_damaged_manifest_is_logged_before_the_run_starts_again(tmp_path, caplog, saved):
+    (tmp_path / "manifest.json").write_text(saved, encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="pipeline"):
+        assert run.read_manifest(tmp_path) == {}
+    assert len(caplog.records) == 1 and "manifest.json can't be read" in caplog.records[0].getMessage()
+    assert run.read_manifest(tmp_path / "no run yet") == {}  # no manifest yet: nothing to log
+    assert len(caplog.records) == 1

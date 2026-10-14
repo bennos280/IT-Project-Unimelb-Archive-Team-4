@@ -1,5 +1,6 @@
 """Page scans not on this computer, from the University of Melbourne Archives' website: for the API when a page's scan
 isn't here, and for the pipeline when a bundle's PDF isn't."""
+import logging
 import re
 import shutil
 import tempfile
@@ -15,6 +16,7 @@ AGENT = "prest-survey-pipeline (University of Melbourne COMP30022 Team 4, 2026 S
 #each bundle's PDF on the archive, as <bundle number>/<file id>_<file name>
 ARCHIVE_PDFS = (Path(__file__).parent / "archive_pdfs.txt").read_text(encoding="utf-8").split()
 ARCHIVE_ERRORS = (OSError, HTTPException)  #the archive can't be reached, or broke off
+log = logging.getLogger("scans")
 RETRY = 300  #seconds before asking the archive again for a bundle's pages after it couldn't send one
 failed = {}  #bundle number -> when the archive last couldn't send one of its pages
 
@@ -59,8 +61,10 @@ def archive_scan(bundle, page_no):
             session, pages = archive_bundle(bundle)
             if page_no in pages:
                 archive_download(session, pages[page_no], jpeg)
-        except ARCHIVE_ERRORS:
+        except ARCHIVE_ERRORS as error:
             failed[bundle] = time.monotonic()
+            log.warning("the archive couldn't send bundle %s page %s (%s: %s); asking again in %s s",
+                        bundle, page_no, type(error).__name__, error, RETRY)
     return jpeg if jpeg.is_file() else None
 
 
