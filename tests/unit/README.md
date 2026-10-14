@@ -194,7 +194,7 @@ The `uv run app` and `uv run api` commands (`backend/serve.py`), with the progra
 |`test_api_runs_just_the_api_restarting_on_backend_code_changes`|`uv run api` runs only the API, reloading when files under `backend/` change.|
 |`test_every_command_points_at_a_function`|Each command in `pyproject.toml` (`survey`, `app`, `api`, `worker`) names a function that exists, so a typo there fails here.|
 
-## `test_worker.py` — 8 tests
+## `test_worker.py` — 9 tests
 The pipeline and loader are faked: no model calls. Job state is read through a second connection, as the API sees it.
 
 |Test|What it checks|
@@ -203,6 +203,7 @@ The pipeline and loader are faked: no model calls. Job state is read through a s
 |`test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys`|The worker runs the oldest waiting job, commits each step and page count while it runs, keeps the page count once the run moves on, loads the run's manifest.json and marks the job done.|
 |`test_a_job_runs_every_step`|A job runs split, identify, transcribe and group.|
 |`test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing`|A failed model call marks the job failed with its reason, and nothing is loaded.|
+|`test_a_failed_job_is_logged_with_its_full_error`|The worker logs a job's start and, when it fails, the step it failed during with the full error and traceback (the job keeps just the message).|
 |`test_pdf_with_no_pages_fails_instead_of_loading_nothing`|A PDF with no pages fails with a reason instead of ending done with nothing loaded.|
 |`test_stopping_the_worker_marks_its_job_failed`|Ctrl+C during a job marks it failed, so it doesn't show as running forever.|
 |`test_job_cut_off_by_a_stopped_worker_can_be_run_again`|A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.|

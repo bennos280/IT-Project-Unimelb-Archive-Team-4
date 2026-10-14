@@ -1,4 +1,5 @@
 """backend/worker.py runs queued jobs through the pipeline (faked here: no model calls) and loads their surveys."""
+import logging
 import pytest
 
 from backend.db import models
@@ -75,6 +76,19 @@ def test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing(db, commi
     loaded = fake_pipeline(monkeypatch, steps)
     assert worker.work_once(db)
     assert (committed(job).status, committed(job).error, loaded) == ("failed", "claude failed: usage limit reached", [])
+
+
+def test_a_failed_job_is_logged_with_its_full_error(db, committed, tmp_path, monkeypatch, caplog):
+    job = queue(db, tmp_path)
+
+    def steps(run):
+        raise SystemExit("claude failed: usage limit reached")
+
+    fake_pipeline(monkeypatch, steps)
+    with caplog.at_level(logging.INFO, logger="worker"):
+        worker.work_once(db)
+    assert [r.getMessage() for r in caplog.records] == [f"job {job.job_id} started: bundle {job.pdf}", f"job {job.job_id} failed during None"]
+    assert caplog.records[1].exc_info[0] is SystemExit  # the traceback is kept, not just the message
 
 
 def test_pdf_with_no_pages_fails_instead_of_loading_nothing(db, committed, tmp_path, monkeypatch):
