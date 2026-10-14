@@ -1,4 +1,4 @@
-// Connects the US7 review screen to the US8 backend.
+// Connects the US7 review screen to the backend.
 import { parseSurvey } from "./model";
 
 const API_BASE = "/api";
@@ -126,7 +126,7 @@ export async function getReviewers(): Promise<Reviewer[]> {
   }));
 }
 
-// Trim the name, reuse an existing reviewer or create one through US8.
+// Trim the name, reuse an existing reviewer or create one through backend.
 export async function createReviewer(name: string): Promise<Reviewer> {
   const clean = name.trim();
 
@@ -194,10 +194,10 @@ export async function saveReviews(
     }
 
     if (!person) {
-      throw new Error("Unknown reviewer. Select a reviewer registered in US8.");
+      throw new Error("Unknown reviewer. Select a registered reviewer.");
     }
 
-    // Preserve null values when sending reviews to US8.
+    // Preserve null values when sending reviews to db
     // If the backend rejects the save, the UI keeps the changes unsaved.
 
     pageReviews[fieldId] = {

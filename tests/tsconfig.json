@@ -11,7 +11,7 @@
   },
   "include": [
     "unit/ui-reviewscreen/**/*.ts",
-    "e2e/ui-reviewscreen/**/*.ts",
+    "integration/ui-reviewscreen/**/*.ts",
     "*.config.ts"
   ]
 }

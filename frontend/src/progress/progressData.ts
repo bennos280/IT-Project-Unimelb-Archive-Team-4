@@ -30,13 +30,13 @@ export function bundleFromSurvey(
   reviews: SavedReviews,
   bundleId: string,
 ): Bundle {
-  const categories = { main: "Main page", notes: "Notes", coded: "Coded" };
+  const categories: Record<string, string> = { main: "Main page", notes: "Notes", coded: "Coded" };
   return {
     id: bundleId,
     pages: survey.pages.map((page, index) => ({
       id: page.id,
       label: `Pg ${index + 1}`,
-      category: categories[page.type],
+      category: Object.hasOwn(categories, page.type) ? categories[page.type] : page.type,
       surveyId: survey.id,
       reviewPageId: page.id,
       // Count unresolved fields, not individual flags; saved reviews resolve the count.
