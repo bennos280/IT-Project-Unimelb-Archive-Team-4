@@ -7,8 +7,6 @@ Fixture data (`identify/`, `preprocess/`, `group/`, `archive/`) lives alongside 
 in this folder, and `backend.pipeline.identify.identify` reads its labelled pages
 from here directly.
 
-**75 test cases ~140s**
-
 ```bash
 uv run pytest tests/integration
 ```
@@ -31,15 +29,13 @@ re-render must never leave a half-updated `pages/` folder.
 | `test_a_long_pdf_is_split_on_every_core_in_page_order` | A 40-page PDF, more than one 16-page chunk so several processes draw it, gives all 40 pages named in page order, each the same image as drawing that page alone. |
 | `test_a_page_that_fails_to_draw_is_named_in_an_error_a_worker_process_can_send_back` | A page that fails to draw gives a RuntimeError naming the PDF and page ("survey.pdf, page 1: ...") that survives pickling, the way a worker process sends its error back, even when the original error can't be pickled, as PyMuPDF's can't. |
 
-## `test_preprocessing.py` — 28 tests
+## `test_preprocessing.py` — 17 tests
 
-Preprocessing against the real fixture scans in `preprocess/`, plus its handoff into
-`run.step_preprocess`.
+Preprocessing (the review screen's cleaned-up view) against the real fixture scans in `preprocess/`.
 
 | Test | What it checks |
 |---|---|
-| `test_output_modes_preserve_original`  | Output pixels match the requested mode (colour / greyscale / binary) and the source file is byte-identical afterwards. |
-| `test_pipeline_failure_records_review_without_completion` | An unreadable page raises through `run.step_preprocess`, is logged to `review.json`, leaves the step incomplete, and keeps the original page path. |
+| `test_output_modes_preserve_original`  | Output pixels match the mode (colour, greyscale, or the app's black and white) and the source file is byte-identical afterwards. |
 | `test_skewed_image_detection` | The real `skewed_image_1.jpg` fixture is detected confidently at 1.57° ± 0.3°. |
 | `test_crop`  | Page crop on the real `crop.png`: output matches the independently measured paper size, the returned corners enclose all handwritten content, and dark scanner border pixels at least halve. |
 

@@ -57,7 +57,7 @@ def test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys(db, commit
     assert not worker.work_once(db)  # nothing left waiting
 
 
-def test_a_job_is_a_full_run_every_step_but_the_optional_preprocess(db, tmp_path, monkeypatch):
+def test_a_job_runs_every_step(db, tmp_path, monkeypatch):
     queue(db, tmp_path)
     asked = []
     monkeypatch.setattr(worker.pipeline, "run_steps",

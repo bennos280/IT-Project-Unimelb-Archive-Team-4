@@ -13,8 +13,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Preprocessed copies of source/, rebuilt by pipeline/preprocess.py
-source-pre/
 
 # Database
 # SQLite's file for a write in progress

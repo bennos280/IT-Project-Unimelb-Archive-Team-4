@@ -1,4 +1,4 @@
-"""The `survey` command: split -> identify -> preprocess -> transcribe -> group on each PDF. A step is one function on run.pages."""
+"""The `survey` command: split -> identify -> transcribe -> group on each PDF. A step is one function on run.pages."""
 import argparse
 import hashlib
 import json
@@ -13,12 +13,10 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_compl
 from dataclasses import dataclass, field
 from itertools import repeat
 from pathlib import Path
-from types import SimpleNamespace
 
 from backend import scans
 from backend.common import ROOT, find_images, settings
 from backend.pipeline.identify.classifier import REVIEW
-from backend.pipeline.preprocess.options import add_arguments, resolve_options
 
 log = logging.getLogger("pipeline")
 READERS = 16  # pages transcribed at once
@@ -33,7 +31,6 @@ class Run:
     review: list[dict] = field(default_factory=list)     # pages a human must check
     log: list[dict] = field(default_factory=list)
     transcripts: dict[str, dict] = field(default_factory=dict)  # reusable completed page results
-    preprocess_options: SimpleNamespace | None = None    # Preprocessing settings, if provided.
     texts: dict[str, str] | None = None                  # the prompt and templates to read with (a job: the db's); None: the files
     sorting_model: Path | None = None                    # retrained page sorting's weights; None: the shipped model
     progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
@@ -155,47 +152,6 @@ def step_identify(run: Run) -> None:
         if r["label"] == REVIEW:
             run.flag(page, "identify", "unlike any known page type; check highest distance first")
 
-def step_preprocess(run: Run) -> None:
-    """Prepare page images for transcription, keeping originals unchanged."""
-    import cv2
-    from backend.pipeline.preprocess.preprocess import process_image
-
-    folder = run.out / "preprocessed"
-    folder.mkdir(parents=True, exist_ok=True)
-
-    options = run.preprocess_options
-    if options is None:
-        raise ValueError("Preprocessing options were not configured")
-
-    from backend.pipeline.transcribe.transcribe import read_texts
-    readable = (run.texts or read_texts()).keys() - {"prompt"} #the page types with a template
-    for page in run.pages:
-        if page.get("label") not in readable:
-            continue
-
-        source = Path(page["path"])
-        destination = folder / f"{Path(page['file']).stem}_preprocessed.png"
-
-        try:
-            with tempfile.TemporaryDirectory(
-                prefix=".preprocess-", dir=run.out
-            ) as work:
-                pending = Path(work) / destination.name
-                report = process_image(source, pending, options)
-                pending.replace(destination)
-
-        except (OSError, ValueError, cv2.error) as exc:
-            run.flag(page, "preprocess", str(exc))
-            run.save()
-            raise RuntimeError(
-                f"Preprocessing failed for {page['file']}: {exc}"
-            ) from exc
-
-        report["output"] = str(destination)
-        page["original_path"] = str(source)
-        page["path"] = str(destination)
-        page["preprocessing"] = report
-
 def step_transcribe(run: Run) -> None:
     """Each labelled page -> out/transcribe/<file>.json, READERS at a time, each saved as soon as it is read (paid: only
     with --transcribe). A failed page stops the step once the reads under way are saved."""
@@ -309,8 +265,8 @@ def step_group(run: Run) -> None:
         run.flag(loose[0], "group", f"{len(loose)} page(s) before the first main form belong to no survey")
 
 
-STEPS = {"split": step_split, "identify": step_identify, "preprocess": step_preprocess, "transcribe": step_transcribe, "group": step_group}
-FULL = [step for step in STEPS if step != "preprocess"]  # a full run: what a job does, and what a run needs before it is loaded
+STEPS = {"split": step_split, "identify": step_identify, "transcribe": step_transcribe, "group": step_group}
+FULL = list(STEPS)  # a full run: what a job does, and what a run needs before it is loaded
 
 
 def run_steps(run: Run, steps: list[str]) -> None:
@@ -354,40 +310,16 @@ def main(argv=None) -> int:
     if args[:1] == ["train"]:
         from backend.pipeline.identify.identify import train
         return train()
-    if args[:1] == ["preprocess"]:
-        from backend.pipeline.preprocess.preprocess import main as preprocess
-        return preprocess(args[1:])
 
     parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train")
     parser.add_argument("inputs", nargs="*", type=Path, help="PDFs or folders of page images; default: unprocessed PDFs in DATA")
     parser.add_argument("--transcribe", action="store_true", help="also transcribe (paid)")
-    parser.add_argument("--preprocess",action="store_true", help="Crop, straighten, and binarize images before transcription",)
-    add_arguments(parser)
     opts = parser.parse_args(args)
 
     config = settings()
 
-    if not opts.preprocess and any(
-        value is not None
-        for value in (
-            opts.preprocess_mode,
-            opts.no_deskew,
-            opts.no_crop,
-            opts.c,
-        )
-    ):
-        parser.error("These image options require --preprocess")
-
-    preprocess_options = None
-    if opts.preprocess:
-        try:
-            preprocess_options = resolve_options(opts, config)
-        except ValueError as exc:
-            parser.error(str(exc))
-
     output = (ROOT / config["OUTPUT"]).resolve()
-    steps = [s for s in STEPS if (s != "preprocess" or opts.preprocess) 
-             and (s not in ("transcribe", "group") or opts.transcribe)]  # group reads the transcripts
+    steps = [s for s in STEPS if s not in ("transcribe", "group") or opts.transcribe]  # group reads the transcripts
     inputs = opts.inputs or unprocessed(ROOT / config["DATA"], output, steps)
     if missing := [p for p in inputs if not p.exists()]:
         sys.exit(f"not found: {missing[0]}")
@@ -396,7 +328,7 @@ def main(argv=None) -> int:
         return 0
     print(f"{len(inputs)} to process -> {output}" + (f"   ({config['PROVIDER']}: {config['MODEL']})" if opts.transcribe else ""))
     for path in inputs:
-        run_steps(Run(path.resolve(), output / path.stem, preprocess_options=preprocess_options,),steps,)
+        run_steps(Run(path.resolve(), output / path.stem), steps)
     return 0
 
 
