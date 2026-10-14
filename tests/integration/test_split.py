@@ -1,12 +1,14 @@
 """PDF page images are replaced together, only after every page renders; a PDF not on this computer is downloaded
 from the archive."""
+import pickle
+import threading
 from pathlib import Path
 
 import pymupdf
 import pytest
 from PIL import Image
 
-from backend.pipeline.run import Run, step_split
+from backend.pipeline.run import Run, render, step_split
 
 
 def make_pdf(path, pages, text="original"):
@@ -172,3 +174,20 @@ def test_a_long_pdf_is_split_on_every_core_in_page_order(tmp_path):
     with pymupdf.open(source) as pdf:  # page 33 drawn alone, the same way
         pdf[32].get_pixmap(dpi=200, alpha=False).save(tmp_path / "page33.png")
     assert (run.images / "survey_00033.png").read_bytes() == (tmp_path / "page33.png").read_bytes()
+
+
+def test_a_page_that_fails_to_draw_is_named_in_an_error_a_worker_process_can_send_back(tmp_path, monkeypatch):
+    source = tmp_path / "survey.pdf"
+    make_pdf(source, 3)
+
+    class Unsendable(Exception):  # like PyMuPDF's own errors, which hold a C object
+        def __init__(self):
+            super().__init__(threading.Lock())
+
+    def get_pixmap(page, *args, **kwargs):
+        raise Unsendable
+
+    monkeypatch.setattr(pymupdf.Page, "get_pixmap", get_pixmap)
+    with pytest.raises(RuntimeError, match=r"^survey\.pdf, page 1: Unsendable") as error:
+        render(source, range(3), tmp_path)
+    pickle.loads(pickle.dumps(error.value))  # how a worker process sends its error back

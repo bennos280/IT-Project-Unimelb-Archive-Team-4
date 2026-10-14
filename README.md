@@ -57,13 +57,13 @@ If you replace a PDF that was already completed, pass its path explicitly to rer
 
 Install **Node.js 24.x** (includes npm), alongside the Python setup above. Run these commands from the project folder:
 
-| Command | Description |
-| ------- | ----------- |
-| `npm --prefix frontend ci` | Install frontend dependencies before the first run |
-| `uv run uvicorn backend.api.main:app` | Start the backend on port 8000 |
-| `npm --prefix frontend run dev -- --port 5174 --strictPort` | Start the frontend in a second terminal |
+| Command                                                     | Description                                        |
+| ----------------------------------------------------------- | -------------------------------------------------- |
+| `npm --prefix frontend ci`                                  | Install frontend dependencies before the first run |
+| `uv run app`                                                | Start the backend                                  |
+| `npm --prefix frontend run dev -- --port 5174 --strictPort` | Start the frontend in a second terminal            |
 
-Keep both terminals running and open [the review UI](http://localhost:5174/). To select a survey, add `?survey=<survey_id>` to the URL using an ID from the database.
+Keep both terminals running and open [the review UI](http://localhost:5174/).
 
 ## Add a step
 

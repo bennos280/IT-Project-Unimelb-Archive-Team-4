@@ -1,13 +1,19 @@
-// Defines the three possible survey card/page types shown in the review screen.
-export type PageType = "main" | "notes" | "coded";
+// Defines possible survey card/page types shown in the review screen.
+export type PageType = string;
 
 // Represents a validation flag attached to a particular extracted field.
 // Flags are used to tell the reviewer why a field may need attention.
-// TODO: flag kinds and reason format with the backend contract.
+
 export type Flag = {
   id: string;
   fieldId: string;
-  kind: "inconsistency" | "gibberish" | "uncertain" | "between_page_mismatch" | "total_mismatch" | "count_exceeds_total";
+  kind:
+    | "inconsistency"
+    | "gibberish"
+    | "uncertain"
+    | "between_page_mismatch"
+    | "total_mismatch"
+    | "count_exceeds_total";
   reason: string;
 };
 
@@ -65,7 +71,8 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
     if (
       !p.id ||
       ids.has(p.id) ||
-      !["main", "notes", "coded"].includes(p.type) ||
+      typeof p.type !== "string" ||
+      !p.type.trim() ||
       typeof p.imageUrl !== "string" ||
       !/^(https?:\/\/|\/[^/])/.test(p.imageUrl) ||
       !Array.isArray(p.fields) ||
@@ -90,16 +97,26 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
         !f.id ||
         !fields.has(f.fieldId) ||
         typeof f.reason !== "string" ||
-        !["inconsistency", "gibberish", "uncertain", "between_page_mismatch", "total_mismatch", "count_exceeds_total"].includes(f.kind)
+        ![
+          "inconsistency",
+          "gibberish",
+          "uncertain",
+          "between_page_mismatch",
+          "total_mismatch",
+          "count_exceeds_total",
+        ].includes(f.kind)
       )
         throw new Error("Flag does not match a field on this page.");
   }
   return s;
 }
 
-// Maps internal page types to headings displayed in the UI.
-export const pageNames = {
+// Maps page types to headings displayed in the UI.
+const pageNames: Record<string, string> = {
   main: "Main page",
   notes: "Notes page",
   coded: "Coded page",
 };
+export function getPageName(type: PageType): string {
+  return Object.hasOwn(pageNames, type) ? pageNames[type] : type;
+}
