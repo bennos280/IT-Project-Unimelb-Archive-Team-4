@@ -159,7 +159,7 @@ export function useReviewSession() {
       },
     }));
     setMessage(
-      "All unflagged fields on this page marked reviewed. Check flagged fields one by one, then Save Page Transcript.",
+      "All fields on this page marked reviewed. Save Page Transcript to save this in databsase.",
     );
   }
 

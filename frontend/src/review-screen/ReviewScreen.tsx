@@ -466,7 +466,7 @@ export default function ReviewScreen({
               )}
               <p className="save-help" role="status">
                 {message ||
-                  "Save page transcript saves your reviews. Select a reviewer before applying an edit."}{" "}
+                  "Save page transcript saves your reviews. Select a reviewer before applying an edit."}
               </p>
             </section>
           </div>
