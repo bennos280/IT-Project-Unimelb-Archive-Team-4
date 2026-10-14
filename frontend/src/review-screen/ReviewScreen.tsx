@@ -176,9 +176,13 @@ export default function ReviewScreen({
                           >
                             <option value="all">Flag</option>
                             <option value="flagged">All flagged fields</option>
-                            {Object.entries(flagCategories).map(([value, label]) => (
-                              <option key={value} value={value}>{label}</option>
-                            ))}
+                            {Object.entries(flagCategories).map(
+                              ([value, label]) => (
+                                <option key={value} value={value}>
+                                  {label}
+                                </option>
+                              ),
+                            )}
                           </select>
                         </th>
                         <th>
@@ -305,9 +309,22 @@ export default function ReviewScreen({
                                       {flags.length ? (
                                         <details className="flag-details">
                                           <summary>
-                                            {checked ? <CircleCheck size={18} /> : <TriangleAlert size={18} />}
+                                            {checked ? (
+                                              <CircleCheck size={18} />
+                                            ) : (
+                                              <TriangleAlert size={18} />
+                                            )}
                                             <span>
-                                              {checked ? "Checked" : [...new Set(flags.map((flag) => flagLabels[flag.kind]))].join(", ")}
+                                              {checked
+                                                ? "Checked"
+                                                : [
+                                                    ...new Set(
+                                                      flags.map(
+                                                        (flag) =>
+                                                          flagLabels[flag.kind],
+                                                      ),
+                                                    ),
+                                                  ].join(", ")}
                                             </span>
                                           </summary>
                                           {flags.map((flag) => (
@@ -410,7 +427,7 @@ export default function ReviewScreen({
                   disabled={saving || !reviewer || !page.fields.length}
                   onClick={reviewAll}
                 >
-                  Reviewed all fields on page
+                  Mark all fields as reviewed
                 </button>
                 <button
                   disabled={
@@ -449,7 +466,7 @@ export default function ReviewScreen({
               )}
               <p className="save-help" role="status">
                 {message ||
-                  "Reviews are saved in this browser. Select a reviewer before applying an edit."}
+                  "Save page transcript saves your reviews. Select a reviewer before applying an edit."}{" "}
               </p>
             </section>
           </div>
@@ -499,12 +516,14 @@ export default function ReviewScreen({
         >
           <h2>Edit field</h2>
           {/* Explain each flag on the selected field before the reviewer edits it. */}
-          {page?.flags.filter((flag) => flag.fieldId === editing?.id).map((flag) => (
-            <div className="flag-reason" key={flag.id}>
-              <strong>{flagLabels[flag.kind]}</strong>
-              <p>{flag.reason}</p>
-            </div>
-          ))}
+          {page?.flags
+            .filter((flag) => flag.fieldId === editing?.id)
+            .map((flag) => (
+              <div className="flag-reason" key={flag.id}>
+                <strong>{flagLabels[flag.kind]}</strong>
+                <p>{flag.reason}</p>
+              </div>
+            ))}
           <p className="edit-context">
             {page && names[page.type]} · {editing?.label}
           </p>
@@ -564,13 +583,20 @@ export default function ReviewScreen({
                 disabled={creatingReviewer || !newName.trim()}
                 onClick={async () => {
                   setCreatingReviewer(true);
-                  try { await addReviewer(); }
-                  finally { setCreatingReviewer(false); }
+                  try {
+                    await addReviewer();
+                  } finally {
+                    setCreatingReviewer(false);
+                  }
                 }}
               >
                 {creatingReviewer ? "Adding…" : "Add reviewer"}
               </button>
-              <button type="button" disabled={creatingReviewer} onClick={() => setAdding(false)}>
+              <button
+                type="button"
+                disabled={creatingReviewer}
+                onClick={() => setAdding(false)}
+              >
                 Cancel adding
               </button>
             </div>
@@ -586,13 +612,16 @@ export default function ReviewScreen({
             >
               Cancel
             </button>
-            <button type="submit" disabled={!reviewer || adding || creatingReviewer}>
+            <button
+              type="submit"
+              disabled={!reviewer || adding || creatingReviewer}
+            >
               Apply review
             </button>
           </div>
           <p className="edit-help">
-            Applying a review creates an unsaved change. Save the page to keep
-            it in this browser.
+            Applying a review creates an unsaved change. Save the page to store
+            it permanently.
           </p>
         </form>
       </dialog>

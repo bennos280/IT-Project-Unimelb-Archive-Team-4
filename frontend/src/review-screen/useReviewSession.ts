@@ -113,9 +113,7 @@ export function useReviewSession() {
     }));
     editor.current?.close();
     setEditing(null);
-    setMessage(
-      "Field reviewed. Save Page Transcript to save your changes in this browser.",
-    );
+    setMessage("Field reviewed. Save Page Transcript to save your changes.");
   }
 
   // Create or retrieve a reviewer, update the selector and show any backend error.
@@ -142,17 +140,21 @@ export function useReviewSession() {
       [page.id]: {
         ...r[page.id],
         ...Object.fromEntries(
-        page.fields.filter((field) => !page.flags.some((flag) => flag.fieldId === field.id)).map((field) => [
-          field.id,
-          {
-            value: r[page.id]?.[field.id]
-              ? r[page.id][field.id].value
-              : field.value,
-            original: field.value,
-            reviewer,
-            reviewerId: reviewers.find((r) => r.name === reviewer)!.id,
-          },
-        ]),
+          page.fields
+            .filter(
+              (field) => !page.flags.some((flag) => flag.fieldId === field.id),
+            )
+            .map((field) => [
+              field.id,
+              {
+                value: r[page.id]?.[field.id]
+                  ? r[page.id][field.id].value
+                  : field.value,
+                original: field.value,
+                reviewer,
+                reviewerId: reviewers.find((r) => r.name === reviewer)!.id,
+              },
+            ]),
         ),
       },
     }));
@@ -285,7 +287,11 @@ export function useReviewSession() {
       (f) =>
         (filter === "all" ||
           (!pageReviews[f.id] &&
-            page?.flags.some((flag) => flag.fieldId === f.id && (filter === "flagged" || flag.kind === filter)))) &&
+            page?.flags.some(
+              (flag) =>
+                flag.fieldId === f.id &&
+                (filter === "flagged" || flag.kind === filter),
+            ))) &&
         `${f.label} ${f.value ?? ""} ${f.group}`
           .toLowerCase()
           .includes(query.toLowerCase()),
@@ -293,7 +299,9 @@ export function useReviewSession() {
   const groups = [...new Set(visible.map((f) => f.group))];
   // Flagged fields on this page not yet reviewed, counted like the dashboard's "need checking".
   const flagsLeft = new Set(
-    page?.flags.filter((flag) => !pageReviews[flag.fieldId]).map((flag) => flag.fieldId),
+    page?.flags
+      .filter((flag) => !pageReviews[flag.fieldId])
+      .map((flag) => flag.fieldId),
   ).size;
   return {
     survey,

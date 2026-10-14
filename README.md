@@ -36,19 +36,19 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 
 ## Commands
 
-| Command                                                          | Description                                                                                                                                                                                                    |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `uv run survey`                                                  | Process new or unfinished PDFs (or folders of page images) in `DATA` → `<OUTPUT>/<name>/manifest.json` + `review.json`                                                                                         |
-| `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI (Claude Code 2.1.280+) signed in, or OpenAI's `codex` CLI with `PROVIDER=codex` in `.env`)                                                             |
-| `uv run pytest`                                                  | Run all tests (see `tests/README.md` for more info) scored                                                                                                      |
-| `uv run survey train`                                            | Refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`)                                                                                                        |
-| `uv run survey data/x.pdf --preprocess`                          | Identify pages, then crop, straighten, and binarize eligible page images                                                                                                                                       |
-| `uv run survey data/x.pdf --preprocess --transcribe`             | Identify and preprocess eligible page images, then transcribe them to JSON                                                                                                                                     |
-| `uv run python -m backend.db.loader` | Load finished runs in `OUTPUT` into the database (`backend/db/wilfprestsurvey.db`), creating or upgrading it first |
-| `uv run app` | Start the API (every endpoint is listed, and can be tried, at http://127.0.0.1:8000/docs) and the worker that runs the jobs queued with `POST /jobs`; Ctrl+C stops both |
-| `uv run api` / `uv run worker` | Just one of the two (the API restarts when you save code) |
-| `uv run alembic revision --autogenerate -m "what changed"` | After changing the tables in `backend/db/models.py`; a database upgrades itself on its next load, backed up first |
-| ↳ Optional enhancements                                          | `--greyscale` converts to greyscale; `--binarize` converts to black and white; `--no-deskew` skips deskewing; `--no-crop` skips cropping; `--c <num>` adjusts the adaptive threshold constant (e.g. `--c 12`). |
+| Command                                                    | Description                                                                                                                                                                                                                                           |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uv run survey`                                            | Process new or unfinished PDFs (or folders of page images) in `DATA` → `<OUTPUT>/<name>/manifest.json` + `review.json`                                                                                                                                |
+| `uv run survey x.pdf`                                      | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI (Claude Code 2.1.280+) signed in, or OpenAI's `codex` CLI with `PROVIDER=codex` in `.env`) |
+| `uv run pytest`                                            | Run all tests (see `tests/README.md` for more info) scored                                                                                                                                                                                            |
+| `uv run survey train`                                      | Refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`)                                                                                                                                               |
+| `uv run survey data/x.pdf --preprocess`                    | Identify pages, then crop, straighten, and binarize eligible page images                                                                                                                                                                              |
+| `uv run survey data/x.pdf --preprocess --transcribe`       | Identify and preprocess eligible page images, then transcribe them to JSON                                                                                                                                                                            |
+| `uv run python -m backend.db.loader`                       | Load finished runs in `OUTPUT` into the database (`backend/db/wilfprestsurvey.db`), creating or upgrading it first                                                                                                                                    |
+| `uv run app`                                               | Start the API (every endpoint is listed, and can be tried, at http://127.0.0.1:8000/docs) and the worker that runs the jobs queued with `POST /jobs`; Ctrl+C stops both                                                                               |
+| `uv run api` / `uv run worker`                             | Just one of the two (the API restarts when you save code)                                                                                                                                                                                             |
+| `uv run alembic revision --autogenerate -m "what changed"` | After changing the tables in `backend/db/models.py`; a database upgrades itself on its next load, backed up first                                                                                                                                     |
+| ↳ Optional enhancements                                    | `--greyscale` converts to greyscale; `--binarize` converts to black and white; `--no-deskew` skips deskewing; `--no-crop` skips cropping; `--c <num>` adjusts the adaptive threshold constant (e.g. `--c 12`).                                        |
 
 A bundle's PDF, or a page's scan, that isn't on this computer is downloaded from [the archive](https://archives.library.unimelb.edu.au/nodes/view/499420) and kept.
 
@@ -60,13 +60,13 @@ If you replace a PDF that was already completed, pass its path explicitly to rer
 
 Install **Node.js 24.x** (includes npm), alongside the Python setup above. Run these commands from the project folder:
 
-| Command | Description |
-| ------- | ----------- |
-| `npm --prefix frontend ci` | Install frontend dependencies before the first run |
-| `uv run uvicorn backend.api.main:app` | Start the backend on port 8000 |
-| `npm --prefix frontend run dev -- --port 5174 --strictPort` | Start the frontend in a second terminal |
+| Command                                                     | Description                                        |
+| ----------------------------------------------------------- | -------------------------------------------------- |
+| `npm --prefix frontend ci`                                  | Install frontend dependencies before the first run |
+| `uv run app`                                                | Start the backend                                  |
+| `npm --prefix frontend run dev -- --port 5174 --strictPort` | Start the frontend in a second terminal            |
 
-Keep both terminals running and open [the review UI](http://localhost:5174/). To select a survey, add `?survey=<survey_id>` to the URL using an ID from the database.
+Keep both terminals running and open [the review UI](http://localhost:5174/).
 
 ## Add a step
 
