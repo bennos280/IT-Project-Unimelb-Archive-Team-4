@@ -134,13 +134,15 @@ export function useReviewSession() {
     }
   }
 
-  // Mark every field on the current page as pending review without replacing existing corrections.
+  // Mark every unflagged field on the current page as pending review without replacing existing corrections.
   function reviewAll() {
     if (!page || !reviewer) return;
     setReviews((r) => ({
       ...r,
-      [page.id]: Object.fromEntries(
-        page.fields.map((field) => [
+      [page.id]: {
+        ...r[page.id],
+        ...Object.fromEntries(
+        page.fields.filter((field) => !page.flags.some((flag) => flag.fieldId === field.id)).map((field) => [
           field.id,
           {
             value: r[page.id]?.[field.id]
@@ -151,10 +153,11 @@ export function useReviewSession() {
             reviewerId: reviewers.find((r) => r.name === reviewer)!.id,
           },
         ]),
-      ),
+        ),
+      },
     }));
     setMessage(
-      "All fields on this page marked reviewed. Save Page Transcript to save this in this browser. Flags remain visible.",
+      "All unflagged fields on this page marked reviewed. Check flagged fields one by one, then Save Page Transcript.",
     );
   }
 
@@ -281,12 +284,17 @@ export function useReviewSession() {
     displayFields.filter(
       (f) =>
         (filter === "all" ||
-          page?.flags.some((flag) => flag.fieldId === f.id && (filter === "flagged" || flag.kind === filter))) &&
+          (!pageReviews[f.id] &&
+            page?.flags.some((flag) => flag.fieldId === f.id && (filter === "flagged" || flag.kind === filter)))) &&
         `${f.label} ${f.value ?? ""} ${f.group}`
           .toLowerCase()
           .includes(query.toLowerCase()),
     ) || [];
   const groups = [...new Set(visible.map((f) => f.group))];
+  // Flagged fields on this page not yet reviewed, counted like the dashboard's "need checking".
+  const flagsLeft = new Set(
+    page?.flags.filter((flag) => !pageReviews[flag.fieldId]).map((flag) => flag.fieldId),
+  ).size;
   return {
     survey,
     error,
@@ -300,6 +308,7 @@ export function useReviewSession() {
     surveyId,
     page,
     pageReviews,
+    flagsLeft,
     reviews,
     reviewer,
     setReviewer,

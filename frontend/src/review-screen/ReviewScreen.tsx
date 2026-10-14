@@ -8,6 +8,7 @@ import {
   Search,
   TriangleAlert,
   Download,
+  CircleCheck,
   Pencil,
 } from "lucide-react";
 import ImageViewer from "./ImageViewer";
@@ -43,6 +44,7 @@ export default function ReviewScreen({
     setFilter,
     page,
     pageReviews,
+    flagsLeft,
     reviewer,
     setReviewer,
     reviewers,
@@ -120,6 +122,9 @@ export default function ReviewScreen({
                       )
                     : 0}
                   % reviewed
+                </span>
+                <span className="review-progress">
+                  {flagsLeft ? `${flagsLeft} need checking` : "No flags"}
                 </span>
                 {/* TODO:support page-category changes
                 <button disabled title="Change page category not implemented yet">
@@ -243,10 +248,11 @@ export default function ReviewScreen({
                               const flags = page.flags.filter(
                                 (f) => f.fieldId === field.id,
                               );
+                              const checked = !!pageReviews[field.id];
                               return (
                                 <React.Fragment key={field.id}>
                                   <tr
-                                    className={`field ${flags.length ? "flagged" : ""} ${selection?.pageId === page.id && selection.fieldId === field.id ? "selected-field" : ""}`}
+                                    className={`field ${flags.length && !checked ? "flagged" : ""} ${selection?.pageId === page.id && selection.fieldId === field.id ? "selected-field" : ""}`}
                                     onClick={() =>
                                       setSelection({
                                         pageId: page.id,
@@ -299,9 +305,9 @@ export default function ReviewScreen({
                                       {flags.length ? (
                                         <details className="flag-details">
                                           <summary>
-                                            <TriangleAlert size={18} />
+                                            {checked ? <CircleCheck size={18} /> : <TriangleAlert size={18} />}
                                             <span>
-                                              {[...new Set(flags.map((flag) => flagLabels[flag.kind]))].join(", ")}
+                                              {checked ? "Checked" : [...new Set(flags.map((flag) => flagLabels[flag.kind]))].join(", ")}
                                             </span>
                                           </summary>
                                           {flags.map((flag) => (
@@ -515,8 +521,8 @@ export default function ReviewScreen({
             onChange={(e) => setDraft(e.target.value)}
           />
           <p className="edit-help">
-            Leave empty to record a blank value. Existing flags remain for
-            checking.
+            Leave empty to record a blank value. Once applied, this field&apos;s
+            flags show as checked.
           </p>
           <label htmlFor="edit-reviewer">Reviewer *</label>
           <select
