@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Search,
   TriangleAlert,
+  CircleCheck,
   Pencil,
 } from "lucide-react";
 import ImageViewer from "./ImageViewer";

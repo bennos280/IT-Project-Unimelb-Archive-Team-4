@@ -6,21 +6,41 @@ afterEach(() => vi.unstubAllGlobals());
 it.each(["Correction", "", "/", "[?]", null])(
   "returns the backend export unchanged for value %j",
   async (value) => {
-    const payload = { surveys: [{ surveyId: "survey /1", pages: [{
-      sourceImage: "scans/original.png",
-      fields: [{ id: "address", value }],
-    }] }] };
-    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(payload)));
+    const payload = {
+      surveys: [
+        {
+          surveyId: "survey /1",
+          pages: [
+            {
+              fields: [{ id: "address", value }],
+            },
+          ],
+        },
+      ],
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(payload)));
     vi.stubGlobal("fetch", fetch);
     expect(await loadSurveyExport(" survey /1 ")).toEqual(payload);
-    expect(fetch).toHaveBeenCalledExactlyOnceWith("/api/export?survey_id=survey%20%2F1", {});
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      "/api/export?survey_id=survey%20%2F1",
+      {},
+    );
   },
 );
 
 it("reports backend export errors", async () => {
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
-    JSON.stringify({ detail: "Survey not found" }), { status: 404 },
-  )));
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ detail: "Survey not found" }), {
+          status: 404,
+        }),
+      ),
+  );
   await expect(loadSurveyExport("missing")).rejects.toThrow("Survey not found");
 });
 

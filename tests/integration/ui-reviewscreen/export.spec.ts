@@ -30,7 +30,6 @@ const exported = {
         {
           pageId: "page0",
           label: "main",
-          sourceImage: "scans/original.png",
           status: "Reviewed",
           flags: [],
           fields: [

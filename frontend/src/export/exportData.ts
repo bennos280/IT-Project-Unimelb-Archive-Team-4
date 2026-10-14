@@ -23,9 +23,6 @@ export function buildSurveyExport(survey: Survey, reviews: SavedReviews) {
     pageId: page.id,
     label: page.type,
 
-    // Preserve the original source image reference.
-    sourceImage: page.imageUrl,
-
     // A page is reviewed only when every field has a saved review.
     status:
       page.fields.every((field) => reviews[page.id]?.[field.id]?.savedAt) &&
@@ -86,7 +83,6 @@ export type SurveyExport = {
     pages: Array<{
       pageId: string;
       label: string;
-      sourceImage: string;
       status: "Reviewed" | "ToBeReviewed";
       fields: Array<{
         id: string;

@@ -23,7 +23,6 @@ def test_export_latest_saved_value_and_source(client, db, value):
     result = client.get("/export?survey_id=survey").json()["surveys"][0]
     assert result["status"] == "ToBeReviewed"
     page = result["pages"][0]
-    assert page["sourceImage"].endswith("/pages/p/image")
     fields = {f["id"]: f for f in page["fields"]}
     assert fields["address"]["value"] == value
     assert fields["address"]["status"] == "Reviewed"

@@ -584,7 +584,6 @@ def export_survey(survey_id: str, request: Request, db: Session):
         pages.append({
             "pageId": page["id"],
             "label": page["type"],
-            "sourceImage": page["imageUrl"],
             "status": "Reviewed" if fields and all(
                 field["status"] == "Reviewed" for field in fields
             ) else "ToBeReviewed",
@@ -627,7 +626,6 @@ def download_export(request: Request, survey_id: str | None = None, bundle_id: s
     for page in db.query(models.Page).filter_by(bundle_id=bundle_id, survey_id=None).order_by(models.Page.page_id):
         fields = page_fields(db, page)
         unassigned.append({"pageId": page.page_id, "label": page.category,
-                           "sourceImage": str(request.url_for("page_image", page_id=page.page_id)),
                            "status": "ToBeReviewed", "reason": "No survey assignment",
                            "fields": [{**f, "status": "ToBeReviewed"} for f in fields],
                            "flags": page_flags(db, page, fields)})
