@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from backend.pipeline.validate.validator import find_issues
+from backend.pipeline.validate.validator import CONVENTIONS, find_issues
 
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES = ROOT / "backend" / "pipeline" / "transcribe" / "templates"
@@ -55,7 +55,7 @@ def test_every_field_the_rules_read_is_in_the_templates():
     reading["residents"] = [{**filled(main["residents"][0]), "relationship": "Head", "age": "40"},
                             {**filled(main["residents"][0]), "relationship": "Son", "age": "12"}]
     seen = set()
-    find_issues({"main": wrap(reading, ("main",), seen), "coded": wrap(filled(coded), ("coded",), seen)})
+    find_issues({"main": wrap(reading, ("main",), seen), "coded": wrap(filled(coded), ("coded",), seen)}, dict.fromkeys(CONVENTIONS, True))
 
     read = {path for path in seen if path[-1] not in OPTIONAL}
     assert {path[0] for path in read} == {"main", "coded"}

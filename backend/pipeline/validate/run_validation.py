@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .codebook import find_codebook_issues, load_dictionary
-from .validator import MISSING, _get, _has_content, find_issues
+from .validator import MISSING, _get, _has_content, find_issues, load_checks, load_conventions
 
 
 #('main', 'residents', 0, 'age') -> 'Page 1: residents[0].age'
@@ -24,12 +24,15 @@ def _shown(document, path):
     return raw
 
 
-def validate_survey(main: dict, coded: dict, *, survey_id=None, codebook_path=None) -> dict:
+def validate_survey(main: dict, coded: dict, *, survey_id=None, codebook_path=None, conventions=None, checks=None) -> dict:
     """{survey_id, has_flags, validation_flags, validation_warnings} for one survey. Each flag has a type, a reason,
     an optional comparison and its fields ({'Page 1: rooms.number_of_living_rooms': value}). Reads the codebook,
-    backend/db/data_dict.json unless codebook_path is given; changes nothing."""
+    backend/db/data_dict.json unless codebook_path is given, and the coding conventions to accept from conventions.json
+    unless given (as load_conventions() returns); only the checks switched on in checks.json (or checks, as load_checks()
+    returns) give flags. Changes nothing."""
     document = {'survey_id': survey_id, 'main': main, 'coded': coded}
-    issues = find_issues(document)
+    conventions = load_conventions() if conventions is None else conventions
+    issues = find_issues(document, conventions)
     warnings = []
     other = main.get('other_children', {})
     if isinstance(other, dict) and any(_has_content(v) for v in other.values()):
@@ -40,7 +43,9 @@ def validate_survey(main: dict, coded: dict, *, survey_id=None, codebook_path=No
         value = coded.get(field)
         if isinstance(value, (str, int)) and not isinstance(value, bool) and str(value).strip().isdigit() and int(str(value).strip()) in special_codes:
             warnings.append(f'coded.{field} uses a valid unknown/no-exact-value code; exact cross-page age/duration comparison is not performed.')
-    issues.extend(find_codebook_issues(document, dictionary))
+    issues.extend(find_codebook_issues(document, dictionary, conventions))
+    enabled = load_checks() if checks is None else checks
+    issues = [issue for issue in issues if enabled[issue['check']]]
     flags = []
     for issue in issues:
         flag = {k: v for k, v in issue.items() if k != 'fields'}

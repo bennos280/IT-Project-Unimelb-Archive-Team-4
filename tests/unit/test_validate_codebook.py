@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from backend.pipeline.validate.run_validation import validate_survey
+from backend.pipeline.validate.validator import CONVENTIONS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -15,8 +16,12 @@ def records():
                  for name in ('example_main.json', 'example_coded.json'))
 
 
-def validate(main, coded):
-    return validate_survey(main, coded, codebook_path=ROOT / 'backend' / 'db' / 'data_dict.json')
+ALL = dict.fromkeys(CONVENTIONS, True)
+
+
+def validate(main, coded, **switches):
+    """Every coding convention accepted except those switched off."""
+    return validate_survey(main, coded, codebook_path=ROOT / 'backend' / 'db' / 'data_dict.json', conventions={**ALL, **switches})
 
 
 def age_flags(result):
@@ -106,6 +111,18 @@ def test_municipality_mismatch_is_explained():
     assert 'Page 3: municipality' in result['validation_flags'][0]['fields']
 
 
+@pytest.mark.parametrize('name,code', [('Brighton.', '01'), ('N. Fitzroy.', '09'), ('South Yarra SE 1.', '21'), ('St Kilda', '26'), ('Glen Iris', '03')])
+def test_municipality_ignores_punctuation_and_suburbs(name, code):
+    main, coded = records()
+    main['municipality'] = name
+    coded['municipality'] = code
+    assert validate(main, coded)['validation_flags'] == []
+    assert any(f['reason'].startswith('Municipality:') for f in validate(main, coded, suburb_coded_as_council=False)['validation_flags']) == (
+        name in ('N. Fitzroy.', 'South Yarra SE 1.', 'Glen Iris'))
+    coded['municipality'] = '02'
+    assert any(f['reason'].startswith('Municipality:') for f in validate(main, coded)['validation_flags']) == (name in ('Brighton.', 'St Kilda'))
+
+
 @pytest.mark.parametrize('missing', [None, '/', '[?]'])
 def test_missing_municipality_counterpart_is_incomplete(missing):
     main, coded = records()
@@ -128,11 +145,12 @@ def test_zero_room_code_accepts_over_eleven(exact):
     assert validate(main, coded)['validation_flags'] == []
 
 
-def test_over_eleven_bedrooms_cannot_fit_in_five_rooms():
+def test_zero_room_code_also_means_none():
     main, coded = records()
-    main['rooms']['number_of_separate_bedrooms'] = '12'
-    coded['number_of_bedrooms'] = '0'
-    assert any(f['type'] == 'Page 3 internal conflict' and 'bedrooms plus living rooms' in f['reason'] for f in validate(main, coded)['validation_flags'])
+    main['rooms']['number_of_living_rooms'] = '0'
+    coded.update(number_of_living_rooms='0', total_number_of_rooms='3')
+    assert validate(main, coded)['validation_flags'] == []
+    assert any(f['reason'].startswith('NUMBER OF LIVING ROOMS') for f in validate(main, coded, zero_rooms_means_none=False)['validation_flags'])
 
 
 @pytest.mark.parametrize('code,source', [('00', '55'), ('98', 'old'), ('99', '105 years.'), ('99', 'over 99 years.')])

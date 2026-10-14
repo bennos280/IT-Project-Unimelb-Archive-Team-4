@@ -292,10 +292,11 @@ Covers codebook value ranges, special codes, municipality mapping, house-age and
 |`test_declared_codebook_domains`|For each listed field, a value inside the codebook range raises no codebook conflict and a value just outside it does.|
 |`test_municipality_uses_actual_mapping`|Essendon with code 08, Brunswick with 2 and Box Hill with 00 match the codebook mapping and raise no flags.|
 |`test_municipality_mismatch_is_explained`|Essendon on page 1 with code 2 (Brunswick) is flagged with a reason saying the code means Brunswick, naming `Page 3: municipality`, and both readings are left unchanged.|
+|`test_municipality_ignores_punctuation_and_suburbs`|"Brighton." (01), "N. Fitzroy." (09), "South Yarra SE 1." (21), "St Kilda" (26) and "Glen Iris" (03) raise no flags; with code 02 (Brunswick) only the two that name a council are flagged; with `suburb_coded_as_council` off, the three suburbs are flagged against their own codes.|
 |`test_missing_municipality_counterpart_is_incomplete`|A page 3 municipality of None, `/` or `[?]` against a named page 1 municipality is flagged as an incomplete comparison.|
 |`test_no_reference_fields_and_special_money_codes_not_reinterpreted`|Industry and occupation codes, an unreadable removal, unmapped military-service text and an income code of 997 are not checked or reinterpreted, so no flags result.|
 |`test_zero_room_code_accepts_over_eleven`|With bedrooms coded 0 and total rooms coded 0, an exact page 1 bedroom count of 12 or 18 is accepted.|
-|`test_over_eleven_bedrooms_cannot_fit_in_five_rooms`|A bedroom count of 12 with a page 3 bedrooms code of 0 is flagged as a page 3 conflict because the bedrooms and living rooms cannot fit.|
+|`test_zero_room_code_also_means_none`|No living rooms on page 1, coded 0, with 3 rooms in total raises no flags; with `zero_rooms_means_none` off it's flagged.|
 |`test_house_special_codes_not_treated_as_exact_ages`|House-age codes 00, 98 and 99 against "55", "old", "105 years." and "over 99 years." are not compared as exact ages.|
 |`test_over_ninety_nine_house_code_conflicts_with_fifteen`|A house-age code of 99 (over 99 years) against a page 1 age of 15 years is flagged as a page 1-3 conflict.|
 |`test_residence_special_codes`|Length of residence "0.5 years" with code 00 and "22 years" with code 99 raise no residence issue.|
@@ -304,7 +305,7 @@ Covers codebook value ranges, special codes, municipality mapping, house-age and
 |`test_missing_default_dictionary_preserves_standalone_api`|When the default codebook file cannot be found, validation still runs with no flags and returns a warning that codebook checks were not run.|
 
 ## `test_validate_regressions.py`
-Covers head-relationship parsing, year-unit punctuation, age ranges and annotated child relationships, using the example main and coded surveys. No model calls.
+Covers relationship parsing, year-unit punctuation, age ranges, annotated child relationships and the 1940s coders' conventions (each accepted when switched on and flagged when off), using the example main and coded surveys. No model calls.
 
 |Test|What it checks|
 |---|---|
@@ -313,6 +314,17 @@ Covers head-relationship parsing, year-unit punctuation, age ranges and annotate
 |`test_period_after_year_unit_is_accepted`|"15 years.", "15 year.", "15 yrs." and "15 y." are all read as 15 years for house age and length of residence, with no flags.|
 |`test_age_ranges_and_bounds_allow_period`|"50-60 years.", "over 50 years." and "under 60 years." are accepted as probable-age values with a trailing period, with no flags.|
 |`test_annotated_son_and_daughter_count_as_resident_children`|"Son (M)" and "Daughter (F)" count as resident children, and a page 3 living-children total of 1 is flagged because the resident sons and daughters exceed it.|
+|`test_conventions_file`|`conventions.json` sets every convention; a file with a value that isn't true/false, a missing convention or a misspelt one is refused.|
+|`test_checks_file`|`checks.json` names every check; a file with a value that isn't true/false, a missing check or a misspelt one is refused.|
+|`test_switched_off_check_gives_no_flags`|A coded bedroom count of 5 against 3 on page 1 is flagged by `bedrooms`, and gives no `bedrooms` flag with that check switched off.|
+|`test_relationship_with_full_stops`|"Son.", "Head (F).", "H. (F.)", "Head (R.S.)" and "daughter." are read as son, female head, female head, head and daughter.|
+|`test_sleepout_marks`|Beside the printed B V O, "B 1" is one sleepout, two ticks are two, "B yes. V O" and a lone "V" are one, "none." is none; the bare letters misread as "B Y O" or "B V 9" are unknown.|
+|`test_another_resident_may_stand_in_as_head`|An age of head of 70 matches the 70-year-old wife when Sex of Head is coded 1 (female); coded 0 (male), or with `another_resident_as_head` off, it's flagged against the 76-year-old head.|
+|`test_sleepout_may_be_counted_as_a_bedroom`|With "V yes." for sleepouts, 4 bedrooms and sleepouts 0 on the coded card raise no flags (3 bedrooms + the sleepout); 3 bedrooms with sleepouts 0 flags the sleepouts, and 5 bedrooms flags the bedrooms. With `sleepout_counted_as_bedroom` off, 4 bedrooms is flagged.|
+|`test_living_rooms_may_leave_out_the_kitchen`|Against 2 living rooms on page 1 (3 bedrooms), code 2 raises no living-room flag; code 1 raises none only when the coded total of 5 counts the kitchen apart (7 doesn't) and the convention is on; 0 and 3 are flagged.|
+|`test_residents_serving_in_the_forces_may_be_left_out`|A son with earning status M., or marked A.I.F., R.A.A.F, "in Army." or "In camp", may be left out of the resident total and the over-10 count and counted as a child away; written as a clerk, the same codes flag all three. With `serving_residents_left_out` off, all three are flagged too.|
+|`test_ten_year_old_may_be_counted_over_10`|A 10-year-old daughter may be coded in 5–10 or over 10 (only 5–10 with the convention off); left out of both, the survey is flagged.|
+|`test_part_years_of_residence_may_be_dropped_or_rounded_up`|"4½ yrs." matches codes 04 and 05; 03 and 06 are flagged, and all four with the convention off.|
 
 ## `test_validate_fields.py`
 The consistency check reads fields by their template names: a field renamed in a template fails here instead of
@@ -320,5 +332,5 @@ switching a check off quietly. No model calls.
 
 |Test|What it checks|
 |---|---|
-|`test_every_field_the_rules_read_is_in_the_templates`|Running every rule on readings with every template field filled in, each field the rules look up (residents' optional `sex`/`gender` aside) is in `main.json` or `coded.json`.|
+|`test_every_field_the_rules_read_is_in_the_templates`|Running every rule on readings with every template field filled in, each field the rules look up (residents' optional `sex`/`gender` aside) is in `main.json` or `coded.json`. Every convention is switched on, so every rule runs.|
 |`test_every_codebook_field_is_a_coded_template_field`|Every field in the codebook (`data_dict.json` page 3) is a field of the coded card's template.|
