@@ -10,8 +10,8 @@
     "skipLibCheck": true
   },
   "include": [
-    "unit/ui-reviewscreen/**/*.ts",
-    "integration/ui-reviewscreen/**/*.ts",
+    "unit/frontend/**/*.ts",
+    "integration/frontend/**/*.ts",
     "*.config.ts"
   ]
 }
