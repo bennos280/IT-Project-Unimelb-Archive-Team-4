@@ -28,6 +28,7 @@
   font-size: 11px;
   padding: 7px;
 }
+.flag-progress,
 .review-progress {
   border: 1px solid #ddd;
   border-radius: 4px;

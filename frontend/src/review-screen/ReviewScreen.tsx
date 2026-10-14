@@ -123,7 +123,7 @@ export default function ReviewScreen({
                     : 0}
                   % reviewed
                 </span>
-                <span className="review-progress">
+                <span className="flag-progress">
                   {flagsLeft ? `${flagsLeft} need checking` : "No flags"}
                 </span>
                 {/* TODO:support page-category changes
