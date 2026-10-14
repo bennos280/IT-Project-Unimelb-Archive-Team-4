@@ -172,7 +172,7 @@ The test db is built from `backend/db/models.py` with foreign keys checked, as i
 | `test_a_flag_is_an_inconsistency_gibberish_or_uncertain` | A flag of any other kind is refused.                                                                                                                                             |
 | `test_an_edit_fixes_exactly_one_thing`                   | An edit pointing at nothing, at two things (a field and an other child), at a resident's field without saying whose, or at an other child without saying which list, is refused. |
 
-## `test_jobs_api.py` — 6 tests
+## `test_jobs_api.py` — 15 tests
 
 | Test                                                                     | What it checks                                                                                                                                                                                                                      |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -182,6 +182,21 @@ The test db is built from `backend/db/models.py` with foreign keys checked, as i
 | `test_jobs_only_for_unloaded_pdfs_in_data`                               | A PDF outside `DATA` is refused (404), and a bundle already loaded is refused (409) so its reviews can't be lost.                                                                                                                   |
 | `test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run` | `GET /bundles` also lists each of the archive's bundles (`backend/archive_pdfs.txt`, faked here) whose PDF isn't in `DATA`, as `DATA/<bundle number>/<its PDF>`, and a job can be queued for it; a PDF already here is listed once. |
 | `test_the_real_archive_list_names_each_bundle_as_the_archive_does`       | `backend/archive_pdfs.txt` lists the 45 bundles once each, as `<bundle number>/<file id>_<file name>.pdf`.                                                                                                                          |
+
+Tests below use a temporary SQLite database and temporary output files. No worker or paid
+transcription service is started, and the review database is not changed.
+
+| Test                                                                 | What it checks                                                                                                                                                          |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_job_persists_model_choices_and_defaults`                       | Explicit model/provider/effort choices are trimmed and saved; omitted or null choices use configuration defaults. A separate database connection sees the saved values. |
+| `test_invalid_model_settings_do_not_queue_a_job`                     | Invalid model/provider/effort values return 400 without creating a job; a corrected request can still succeed.                                                          |
+| `test_model_list_includes_configuration_without_history`             | The model endpoint returns configured defaults when no transcription history exists.                                                                                    |
+| `test_model_history_groups_versions_and_averages_available_runtimes` | History separates template versions, counts pages, averages recorded runtimes, handles missing runtimes and excludes pages with no recorded model.                      |
+| `test_transcripts_require_an_existing_job`                           | An unknown job returns 404.                                                                                                                                             |
+| `test_transcripts_reject_jobs_without_a_bundle`                      | Page jobs, training jobs and bundle jobs without a PDF return 400.                                                                                                      |
+| `test_transcripts_before_output_exists_are_empty`                    | A queued job without output returns an empty page list.                                                                                                                 |
+| `test_partial_transcripts_show_sorted_pages_and_only_verified_data`  | Partial output reports pages in order with their identification/transcription status and checksum-verified transcript data.                                             |
+| `test_unusable_transcripts_are_not_exposed`                          | Missing files, changed checksums, invalid JSON, unsafe filenames and invalid manifest entries do not expose transcript data.                                            |
 
 ## `test_serve.py` — 4 tests
 
@@ -287,20 +302,3 @@ npm --prefix tests run test:unit
 These frontend tests run separately from `uv run pytest tests/unit`.
 They check request construction and response handling; the integration runner
 checks the adapter against the real backend and database.
-
-## `test_transcription_api.py` — 27 cases
-
-Uses a temporary SQLite database and temporary output files. No worker or paid
-transcription service is started, and the review database is not changed.
-
-| Test                                                                 | What it checks                                                                                                                                                          |
-| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_job_persists_model_choices_and_defaults`                       | Explicit model/provider/effort choices are trimmed and saved; omitted or null choices use configuration defaults. A separate database connection sees the saved values. |
-| `test_invalid_model_settings_do_not_queue_a_job`                     | Invalid model/provider/effort values return 400 without creating a job; a corrected request can still succeed.                                                          |
-| `test_model_list_includes_configuration_without_history`             | The model endpoint returns configured defaults when no transcription history exists.                                                                                    |
-| `test_model_history_groups_versions_and_averages_available_runtimes` | History separates template versions, counts pages, averages recorded runtimes, handles missing runtimes and excludes pages with no recorded model.                      |
-| `test_transcripts_require_an_existing_job`                           | An unknown job returns 404.                                                                                                                                             |
-| `test_transcripts_reject_jobs_without_a_bundle`                      | Page jobs, training jobs and bundle jobs without a PDF return 400.                                                                                                      |
-| `test_transcripts_before_output_exists_are_empty`                    | A queued job without output returns an empty page list.                                                                                                                 |
-| `test_partial_transcripts_show_sorted_pages_and_only_verified_data`  | Partial output reports pages in order with their identification/transcription status and checksum-verified transcript data.                                             |
-| `test_unusable_transcripts_are_not_exposed`                          | Missing files, changed checksums, invalid JSON, unsafe filenames and invalid manifest entries do not expose transcript data.                                            |
