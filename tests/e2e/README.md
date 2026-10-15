@@ -3,13 +3,11 @@
 The whole system behind a pipeline job: the API, the worker, the pipeline, the loader and the real database tables
 (built by the migrations). Only page sorting (a GPU model) and the paid model call are faked, so these run in CI.
 
-**1 Python pipeline test**, plus the Playwright browser tests documented below.
-
 ```bash
 uv run pytest tests/e2e
 ```
 
-## `test_pipeline_job.py` — 1 test
+## `test_pipeline_job.py`
 
 | Test                                       | What it checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
