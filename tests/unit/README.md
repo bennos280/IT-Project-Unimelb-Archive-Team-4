@@ -274,12 +274,6 @@ Page sorting retrained from the review screen; page fingerprints are made up, so
 Tests the frontend review API adapter using Vitest and mocked fetch responses.
 Each test uses fresh sample data; no running backend or database is needed.
 
-Run from the project folder:
-
-```bash
-npm --prefix tests run test:unit
-```
-
 | Test                                                                                                                                           | What it checks                                                                                             |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `it("requests the selected survey and preserves main/notes/coded data", async () => ...)`                                                      | Requests the correct survey with the supplied abort signal and preserves all three page types.             |
@@ -302,3 +296,14 @@ npm --prefix tests run test:unit
 These frontend tests run separately from `uv run pytest tests/unit`.
 They check request construction and response handling; the integration runner
 checks the adapter against the real backend and database.
+
+## `test_progress.py` — 4 tests
+
+Uses a temporary database to check the backend `/progress` response.
+
+| Test                                                                   | What it checks                                                                                      |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `test_progress_preserves_status_flags_model_and_review_targets`        | Returns page status, flags, model and review targets; a page without a survey is “Not in a survey”. |
+| `test_only_saved_reviews_reduce_flags_and_all_fields_must_be_reviewed` | Unsaved edits do not resolve flags; all fields need saved reviews before a page is reviewed.        |
+| `test_nested_fields_require_reviews_too`                               | A survey-assigned page needs saved reviews for resident, child and annotation fields.               |
+| `test_page_with_fields_but_no_survey_is_not_ready_to_review`           | A page with transcribed text but no survey ID is “Not in a survey”, rather than “Ready to review”.  |

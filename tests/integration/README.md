@@ -170,7 +170,7 @@ These tests use mocked API responses. The integration runner separately
 checks the real frontend adapter, backend and database.
 The highlight test checks visibility and zoom, not coordinate accuracy.
 
-## `progress.spec.ts` — 21 tests
+## `progress.spec.ts` — 23 tests
 
 Located in `tests/integration/ui-reviewscreen/progress.spec.ts`. Run only these tests from the project folder:
 
@@ -186,7 +186,7 @@ npm --prefix tests run test:e2e -- progress.spec.ts
 | `Import and Export remain disabled placeholders`                         | Import and Export buttons remain visible and disabled pending implementation.                                                                                                     |
 | `Pg 1/2/3 opens its matching US7 page` — 3 tests                         | Each page's Review link opens the matching page in the review screen.                                                                                                             |
 | `page table keeps actions visible at 936/640/375px` — 3 tests            | Flags and review actions remain visible without horizontal table overflow at desktop, tablet and phone widths.                                                                    |
-| `untouched bundle prompts Transcribe and shows zero progress`            | A bundle without pages or a job shows 0% progress, the not-started message and an enabled Transcribe button beside the filters.                                                   |
+| `untouched bundle prompts Transcribe and shows no reviewable pages`            | A bundle without pages or a job shows “No reviewable pages”, the not-started message and an enabled Transcribe button beside the filters.                                                   |
 | `partial bundle shows model and completion action without review access` | A failed partial bundle offers Retry transcription and error details; its page list shows the incomplete notice, Complete transcription and the saved model, with no Review link. |
 | `waiting job disables duplicate transcription`                           | A queued job disables the transcription button and keeps the incomplete notice visible.                                                                                           |
 | `running job disables duplicate transcription`                           | A running job disables the transcription button and keeps the incomplete notice visible.                                                                                          |
@@ -194,8 +194,10 @@ npm --prefix tests run test:e2e -- progress.spec.ts
 | `pagination changes rows and searching resets to first page`             | Eleven pages span two table pages; searching from the second page resets pagination and shows matching rows.                                                                      |
 | `failed progress request can be retried`                                 | A failed request displays its error; Try again restores the dashboard after the API recovers.                                                                                     |
 | `polling updates review counts without a reload`                         | Updated API data changes the displayed reviewed count and percentage automatically.                                                                                               |
+| `unassigned pages do not prevent 100% review progress` | One reviewed survey-assigned page and one unassigned page show 2 total pages, 1/1 reviewed (100%), and 1 page not in a survey. The progress bar uses only the assigned page. |
+| `a bundle with only unassigned pages has no review percentage` | A bundle with no survey-assigned pages shows “No reviewable pages” and the unassigned count, without a percentage or progress bar. |
 
-Related backend coverage lives in `tests/unit/test_progress.py` (3 tests): model/status/flag response data and review targets, saved versus unsaved reviews, and reviews of resident, child and annotation fields. Run it with `uv run pytest tests/unit/test_progress.py`.
+Related backend coverage lives in `tests/unit/test_progress.py` (4 tests): model/status/flag response data and review targets, saved versus unsaved reviews, reviews of resident, child and annotation fields, and pages with transcribed fields but no survey assignment. Run it with `uv run pytest tests/unit/test_progress.py`.
 
 ### US7 → US9 review round trip — 3 browser tests
 

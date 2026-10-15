@@ -176,7 +176,8 @@ export default function ProgressDashboard() {
           !b.source.loaded &&
           b.source.job?.status === "running") ||
         (status === "Reviewed"
-          ? b.pages.length > 0 && b.pages.every((p) => p.status === "Reviewed")
+          ? counts(b.pages).reviewable > 0 &&
+            counts(b.pages).reviewed === counts(b.pages).reviewable
           : b.pages.some((p) => p.status === status))),
   );
   // Search page labels, IDs, and categories, then apply the status filter.
@@ -345,6 +346,7 @@ export default function ProgressDashboard() {
                   "Awaiting transcription",
                   "Ready to review",
                   "Reviewed",
+                  "Not in a survey",
                 ].map((s) => (
                   <option key={s} value={s}>
                     Status: {s}
@@ -452,10 +454,10 @@ export default function ProgressDashboard() {
                         .slice(start, start + pageSize)
                         .map((b) => {
                           const c = counts(b.pages);
-                          // Guard against division by zero and round for the displayed percentage.
-                          const percent = c.total
-                            ? Math.round((c.reviewed / c.total) * 100)
-                            : 0;
+                          const percent =
+                            c.reviewable > 0
+                              ? Math.round((c.reviewed / c.reviewable) * 100)
+                              : null;
                           return (
                             <tr key={b.id}>
                               <td>
@@ -471,14 +473,24 @@ export default function ProgressDashboard() {
                               <td>
                                 <div className="progress-meter">
                                   <span>
-                                    {c.reviewed} / {c.total} reviewed ·{" "}
-                                    {percent}%
+                                    {percent === null
+                                      ? "No reviewable pages"
+                                      : `${c.reviewed} / ${c.reviewable} reviewed · ${percent}%`}
                                   </span>
-                                  <progress
-                                    aria-label={`Bundle ${b.id} review progress`}
-                                    value={c.reviewed}
-                                    max={c.total || 1}
-                                  />
+
+                                  {c.unassigned > 0 && (
+                                    <span>
+                                      {c.unassigned} pages not in a survey
+                                    </span>
+                                  )}
+
+                                  {c.reviewable > 0 && (
+                                    <progress
+                                      aria-label={`Bundle ${b.id} review progress`}
+                                      value={c.reviewed}
+                                      max={c.reviewable}
+                                    />
+                                  )}
                                 </div>
                               </td>
                               <td>
@@ -560,7 +572,8 @@ export default function ProgressDashboard() {
                                   <button onClick={() => openBundle(b.id)}>
                                     Review <ArrowRight size={16} />
                                   </button>
-                                ) : c.reviewed === c.total ? (
+                                ) : c.reviewable > 0 &&
+                                  c.reviewed === c.reviewable ? (
                                   <button onClick={() => openBundle(b.id)}>
                                     View <ArrowRight size={16} />
                                   </button>
