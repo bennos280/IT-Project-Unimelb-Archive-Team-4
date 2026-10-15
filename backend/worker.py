@@ -121,7 +121,13 @@ def train_sorting(db, job, progress):
     progress("train", 0, 0)
     built_in = {name for (name,) in db.query(models.PageType.name).filter(models.PageType.built_in)}
     found, no_scan = [], 0
+    # Moves advance the revision for stale-edit protection, not page-type confirmation.
+    # Each move records one event and increments the revision once.
+    move_counts = dict(db.query(models.PageMove.page_id, func.count(models.PageMove.move_id))
+                       .group_by(models.PageMove.page_id))
     for page in db.query(models.Page).filter(models.Page.revision_no > 0, models.Page.category != loader.OTHER_CAT):
+        if page.revision_no <= move_counts.get(page.page_id, 0):
+            continue
         scan = scans.page_scan(page.import_path, db.get(models.Bundle, page.bundle_id).source_pdf, page.page_id)
         found += [(scan, page.category)] if scan else []
         no_scan += not scan

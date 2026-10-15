@@ -654,11 +654,16 @@ def classify_page(page_id: str, payload: PageClassificationRequest, db: Session 
     from backend.db.page_history import snapshot
     snapshot(db, page_id, payload.reviewerId, "change_type")
     page.category = payload.pageType
-    page.needs_transcription = True
+    # Other pages have no transcription template.
+    page.needs_transcription = payload.pageType != loader.OTHER_CAT
     page.revision_no = (page.revision_no or 0) + 1
     page.checked_revision = None
     db.commit()
-    return {"pageType": page.category, "needsTranscription": True}
+    return {
+        "pageType": page.category,
+        "needsTranscription": page.needs_transcription,
+    }
+
 
 @app.post("/page-transcription/{page_id:path}")
 def transcribe_page(page_id: str, payload: PageTranscriptionRequest, db: Session = Depends(get_db)):

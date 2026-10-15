@@ -95,3 +95,20 @@ def test_transcription_requires_template_and_valid_model_details(client,db,monke
     assert response.status_code==400
     assert 'template' in response.json()['detail']
     assert db.query(models.Job).count()==0
+
+
+
+def test_other_does_not_require_transcription_but_main_does(client, db):
+    """Changing to Other removes the requirement; changing back to Main restores it."""
+    seed(db)
+    for revision, page_type, required in [(0, "other", False), (1, "main", True)]:
+        response = client.put('/page-classification/b/p4', json={
+            "pageType": page_type, "revision": revision, "reviewerId": 1,
+        })
+        assert response.status_code == 200
+        assert response.json()["pageType"] == page_type
+        assert response.json()["needsTranscription"] is required
+        db.expire_all()
+        page = db.get(models.Page, 'b/p4')
+        assert page.category == page_type
+        assert page.needs_transcription is required
