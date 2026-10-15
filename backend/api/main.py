@@ -99,7 +99,7 @@ def page_flags(db, p, fields_list):
         flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain", "reason": OTHER_PAGE})
     return flags
 
-#a survey's pages in scan order, with fields, flags and scan URL; an other page shows as an empty notes page
+#a survey's pages in scan order, with fields, flags and scan URL
 @app.get("/survey/{survey_id}")
 def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     if not db.get(models.Survey, survey_id):

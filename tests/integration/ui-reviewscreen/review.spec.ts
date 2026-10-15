@@ -354,7 +354,10 @@ test("Review all preserves correction and saves all fields", async ({
     .selectOption("Test reviewer");
   await edit(page, "Preserve this correction");
   await page
-    .getByRole("button", { name: "Reviewed all fields on page", exact: true })
+    .getByRole("button", {
+      name: "Mark all fields as reviewed",
+      exact: true,
+    })
     .click();
   await expect(page.locator(".review-progress")).toHaveText("100% reviewed");
   await expect(address(page).locator(".value")).toHaveText(
@@ -580,11 +583,9 @@ test("adds a reviewer inside the field editor without losing the draft", async (
   page,
 }) => {
   await page.getByRole("button", { name: "Edit Address", exact: true }).click();
-  const dialog = page
-    .locator("dialog.edit-dialog")
-    .filter({
-      has: page.getByRole("heading", { name: "Edit field", exact: true }),
-    });
+  const dialog = page.locator("dialog.edit-dialog").filter({
+    has: page.getByRole("heading", { name: "Edit field", exact: true }),
+  });
   await dialog
     .getByLabel("Reviewed value", { exact: true })
     .fill("Draft address");

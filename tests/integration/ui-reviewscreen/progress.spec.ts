@@ -153,12 +153,11 @@ test.describe("Progress navigation and layout", () => {
       await page
         .getByRole("combobox", { name: "Reviewer name", exact: true })
         .selectOption("Test reviewer");
-      await page
-        .getByRole("button", {
-          name: "Reviewed all fields on page",
-          exact: true,
-        })
-        .click();
+      // Flagged fields require individual review before saving.
+      for (const field of survey.pages[0].fields) {
+        await page.getByRole("button", { name: `Edit ${field.label}`, exact: true }).click();
+        await page.getByRole("button", { name: "Apply review", exact: true }).click();
+      }
       expect(persisted).toBe(false);
       if (outcome !== "unsaved") {
         await page

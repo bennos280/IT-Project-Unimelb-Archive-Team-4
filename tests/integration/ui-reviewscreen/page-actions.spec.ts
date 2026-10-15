@@ -261,7 +261,7 @@ for (const changeType of [true, false]) {
       await dialog
         .getByRole("button", { name: "Change page type", exact: true })
         .click();
-      await expect(page.locator(".page-heading > h2")).toHaveText("s1 · Coded");
+      await expect(page.locator(".page-heading > h2")).toHaveText("b/p4 · Coded page");
       await expect(
         page.getByText(
           "Page has been changed to a different page type. Click the Transcribe button.",

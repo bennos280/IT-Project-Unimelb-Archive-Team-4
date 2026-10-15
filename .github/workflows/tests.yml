@@ -27,3 +27,48 @@ jobs:
       - name: End-to-end tests
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: uv run pytest -q -s tests/e2e
+
+  frontend:
+    name: UI
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Get project code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            tests/package-lock.json
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: |
+          npm --prefix frontend ci
+          npm --prefix tests ci
+          uv sync --locked
+
+      - name: Install Chromium
+        working-directory: tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Frontend lint
+        run: npm --prefix frontend run lint
+
+      - name: Frontend build
+        run: npm --prefix frontend run build
+
+      - name: Frontend unit tests
+        run: npm --prefix tests run test:unit
+
+      - name: Browser integration tests
+        run: npm --prefix tests run test:e2e
+
+      - name: Backend adapter integration tests
+        run: npm --prefix tests run test:integration

@@ -1,0 +1,10 @@
+{
+  "kitchen_not_a_living_room": false,
+  "sleepout_counted_as_bedroom": true,
+  "serving_residents_left_out": true,
+  "ten_year_olds_over_10": true,
+  "another_resident_as_head": true,
+  "part_years_dropped": true,
+  "suburb_coded_as_council": true,
+  "zero_rooms_means_none": true
+}

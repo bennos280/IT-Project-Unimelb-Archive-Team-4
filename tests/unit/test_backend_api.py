@@ -317,6 +317,6 @@ def test_survey_flags_grouping_problems_unreadable_text_and_other_pages(client, 
     db.commit()
     main, other = client.get("/survey/12345").json()["pages"]
     assert [(f["fieldId"], f["kind"]) for f in main["flags"]] == [("number_of_dwelling", "inconsistency"), ("address", "uncertain")]
-    assert other["type"] == "other"  # the review screen now shows Other explicitly
+    assert other["type"] == "other"
     assert [(f["fieldId"], f["kind"]) for f in other["flags"]] == [("text", "uncertain")]
     assert "wasn't read" in other["flags"][0]["reason"]

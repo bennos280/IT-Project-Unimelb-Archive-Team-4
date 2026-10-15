@@ -1,4 +1,7 @@
-"""Runs the jobs queued through the API, oldest first, one at a time: uv run worker"""
+"""Runs the jobs queued through the API, oldest first, one at a time: uv run worker. Logs to the terminal and
+OUTPUT/worker.log, with the full error of a failed job."""
+import logging
+import logging.handlers
 import sys
 import time
 from collections import Counter
@@ -13,6 +16,7 @@ from backend.pipeline import run as pipeline
 from backend.common import ROOT, settings
 
 LOCK = Path(__file__).parent / "worker.lock"
+log = logging.getLogger("worker")
 MIN_CONFIRMED = 10 #pages of a new page type reviewers must settle before page sorting can learn it
 
 #exits if another worker is running (two would write the same output folder)
@@ -39,6 +43,7 @@ def work_once(db):
         return False
     job.status = "running"
     db.commit()
+    log.info("job %s started: %s %s", job.job_id, job.kind, job.pdf or job.page_id or "")
 
     #a step start reports 0 pages: keep the last count
     def progress(step, done, total):
@@ -50,13 +55,16 @@ def work_once(db):
     try:
         {"bundle": run_bundle, "page": read_page_again, "train": train_sorting}[job.kind](db, job, progress)
     except KeyboardInterrupt:
+        log.warning("job %s stopped during %s", job.job_id, job.step)
         fail(db, job, "the worker was stopped during this job; run it again")
         raise
     except BaseException as error: #a failed model call raises SystemExit
+        log.exception("job %s failed during %s", job.job_id, job.step)
         fail(db, job, str(error) or type(error).__name__)
         return True
     job.status, job.step = "done", None
     db.commit()
+    log.info("job %s done", job.job_id)
     return True
 
 def run_bundle(db, job, progress):
@@ -135,10 +143,16 @@ def train_sorting(db, job, progress):
 
 def main():
     lock = only_worker()
+    output = ROOT / settings()["OUTPUT"]
+    output.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(message)s",  #other libraries: problems only
+                        handlers=[logging.StreamHandler(),  #worker.log up to 1 MB, then worker.log.1 to .3: never more than 4 MB
+                                  logging.handlers.RotatingFileHandler(output / "worker.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8")])
+    log.setLevel(logging.INFO)
     database.migrate()
     db = database.SessionLocal()
     recover(db)
-    print("worker: waiting for pipeline jobs (Ctrl+C to stop)")
+    log.info("waiting for pipeline jobs (Ctrl+C to stop); log: %s", output / "worker.log")
     while True:
         if not work_once(db):
             time.sleep(3)
