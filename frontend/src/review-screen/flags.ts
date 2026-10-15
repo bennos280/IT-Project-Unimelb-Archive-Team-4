@@ -10,7 +10,7 @@ export const flagCategories = {
 
 export const flagLabels: Record<Flag["kind"], string> = {
   ...flagCategories,
-  inconsistency: "Internal inconsistency",
+  inconsistency: "Inconsistency",
   gibberish: "Possible gibberish",
 };
 
