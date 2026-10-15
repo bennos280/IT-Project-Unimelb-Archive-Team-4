@@ -1,4 +1,4 @@
-"""The `survey` command: split -> identify -> transcribe -> group on each PDF. A step is one function on run.pages."""
+"""The `survey` command: split -> identify -> transcribe -> group -> validate on each PDF. A step is one function on run.pages."""
 import argparse
 import hashlib
 import json
@@ -265,7 +265,13 @@ def step_group(run: Run) -> None:
         run.flag(loose[0], "group", f"{len(loose)} page(s) before the first main form belong to no survey")
 
 
-STEPS = {"split": step_split, "identify": step_identify, "transcribe": step_transcribe, "group": step_group}
+def step_validate(run: Run) -> None:
+    """US6: compare grouped page transcripts and publish field review flags."""
+    from backend.pipeline.validate.pipeline_step import step_validate as validate
+    validate(run)
+
+
+STEPS = {"split": step_split, "identify": step_identify, "transcribe": step_transcribe, "group": step_group, "validate": step_validate}
 FULL = list(STEPS)  # a full run: what a job does, and what a run needs before it is loaded
 
 
@@ -310,8 +316,11 @@ def main(argv=None) -> int:
     if args[:1] == ["train"]:
         from backend.pipeline.identify.identify import train
         return train()
+    if args[:1] == ["validate"]:
+        from backend.pipeline.validate.pipeline_step import main as validate
+        return validate(args[1:])
 
-    parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train")
+    parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train | validate <manifest.json>")
     parser.add_argument("inputs", nargs="*", type=Path, help="PDFs or folders of page images; default: unprocessed PDFs in DATA")
     parser.add_argument("--transcribe", action="store_true", help="also transcribe (paid)")
     opts = parser.parse_args(args)
@@ -319,7 +328,7 @@ def main(argv=None) -> int:
     config = settings()
 
     output = (ROOT / config["OUTPUT"]).resolve()
-    steps = [s for s in STEPS if s not in ("transcribe", "group") or opts.transcribe]  # group reads the transcripts
+    steps = [s for s in STEPS if s not in ("transcribe", "group", "validate") or opts.transcribe]  # group and validate read the transcripts
     inputs = opts.inputs or unprocessed(ROOT / config["DATA"], output, steps)
     if missing := [p for p in inputs if not p.exists()]:
         sys.exit(f"not found: {missing[0]}")
