@@ -14,6 +14,13 @@ __pycache__/
 Thumbs.db
 
 
+# Frontend dependencies and build output
+node_modules/
+dist/
+
+
+# US8 database
+backend/wilfprestsurvey.db
 # Database
 # SQLite's file for a write in progress
 *.db-journal

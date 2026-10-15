@@ -252,6 +252,40 @@ Page sorting retrained from the review screen; page fingerprints are made up, so
 |`test_a_bundle_job_sorts_with_the_active_model`|A bundle job sorts pages with the active model's weights; if that file is gone, the job fails saying so.|
 |`test_sorting_models_are_trained_listed_and_chosen_through_the_api`|`POST /sorting-models` queues one training (409 while waiting; 400 for an unknown reviewer); the list is newest first; `PUT /sorting-models/active` refuses an unknown (404) or failed (400) model, makes a passed one the only active one, and `null` goes back to the shipped model.|
 
+## `api.test.ts` — 19 tests
+
+Tests the frontend review API adapter using Vitest and mocked fetch responses.
+Each test uses fresh sample data; no running backend or database is needed.
+
+Run from the project folder:
+
+```bash
+npm --prefix tests run test:unit
+```
+
+| Test                                                                                                                                           | What it checks                                                                                             |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `it("requests the selected survey and preserves main/notes/coded data", async () => ...)`                                                      | Requests the correct survey with the supplied abort signal and preserves all three page types.             |
+| `it("fills missing flags and unavailable image paths without changing field values", async () => ...)`                                         | Missing flags become an empty list and unsupported image paths get a placeholder, preserving field values. |
+| `it("rejects data for a different survey", async () => ...)`                                                                                   | A response belonging to another survey is rejected.                                                        |
+| `it("rejects duplicate page IDs", async () => ...)`                                                                                            | Duplicate page IDs in a survey response are rejected.                                                      |
+| `it("shows backend not-found errors", async () => ...)`                                                                                        | The backend's not-found explanation reaches the caller.                                                    |
+| `it("shows a useful message for non-JSON server errors", async () => ...)`                                                                     | A non-JSON error response produces a message containing the HTTP status.                                   |
+| `it("propagates cancellation", async () => ...)`                                                                                               | A simulated request cancellation reaches the caller as an AbortError.                                      |
+| `it("maps id into the frontend id", async () => ...)`                                                                                          | Reviewer IDs and names from the backend response are returned correctly.                                   |
+| `it("reuses an existing reviewer without creating another", async () => ...)`                                                                  | Surrounding whitespace is trimmed and an existing reviewer is reused.                                      |
+| `it("rejects an empty reviewer name without a request", async () => ...)`                                                                      | A blank reviewer name is rejected without calling the API.                                                 |
+| `it("loads saved reviews and revisions unchanged", async () => ...)`                                                                           | Saved reviews and page revisions are returned unchanged.                                                   |
+| `it.each(["Corrected address", "/", "[?]", null])("sends the selected value %j without changing its meaning", async (value) => ...)` — 4 tests | Each value is sent unchanged with its original value, reviewer details and next page revision.             |
+| `it("does not send an empty save", async () => ...)`                                                                                           | Empty changes are rejected without making an API request.                                                  |
+| `it("does not submit an unknown field", async () => ...)`                                                                                      | A field missing from the selected page is rejected before posting a save.                                  |
+| `it("does not submit an unknown reviewer", async () => ...)`                                                                                   | An unregistered reviewer is rejected before posting a save.                                                |
+| `it("uses the backend-assigned reviewer ID and sends only the name", async () => ...)`                                                         | Creating a reviewer sends only the trimmed name and uses the ID returned by the backend.                   |
+
+These frontend tests run separately from `uv run pytest tests/unit`.
+They check request construction and response handling; the integration runner
+checks the adapter against the real backend and database.
+
 ## `test_validate_rules.py`
 Covers the page 1 / page 3 consistency rules on the sample survey, with a consistent baseline that each test then breaks in one place. No model calls.
 
