@@ -136,7 +136,7 @@ export function useReviewSession() {
     }
   }
 
-  // Mark every unflagged field on the current page as pending review without replacing existing corrections.
+  // Mark every unflagged field with no review yet as pending review; existing reviews keep their value and reviewer.
   function reviewAll() {
     if (!page || !reviewer) return;
     setReviews((r) => ({
@@ -146,14 +146,14 @@ export function useReviewSession() {
         ...Object.fromEntries(
           page.fields
             .filter(
-              (field) => !page.flags.some((flag) => flag.fieldId === field.id),
+              (field) =>
+                !r[page.id]?.[field.id] &&
+                !page.flags.some((flag) => flag.fieldId === field.id),
             )
             .map((field) => [
               field.id,
               {
-                value: r[page.id]?.[field.id]
-                  ? r[page.id][field.id].value
-                  : field.value,
+                value: field.value,
                 original: field.value,
                 reviewer,
                 reviewerId: reviewers.find((r) => r.name === reviewer)!.id,
@@ -163,7 +163,7 @@ export function useReviewSession() {
       },
     }));
     setMessage(
-      "All fields on this page marked reviewed. Save Page Transcript to save this in databsase.",
+      "All unflagged fields on this page marked reviewed. Check the flagged fields, then Save Page Transcript to save them to the database.",
     );
   }
 

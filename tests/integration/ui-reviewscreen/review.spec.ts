@@ -374,6 +374,40 @@ test("Review all preserves correction and saves all fields", async ({
   );
 });
 
+// Checks that marking all fields reviewed leaves a field another reviewer
+// already saved with their value and name.
+test("Review all keeps another reviewer's saved review", async ({
+  page,
+  api,
+}) => {
+  api.reviews[demo.pages[0].id] = {
+    municipality: {
+      value: "Saved earlier",
+      original: null,
+      reviewer: "Other reviewer",
+      reviewerId: 2,
+      savedAt: "2026-10-04T01:00:00Z",
+    },
+  };
+  api.revisions[demo.pages[0].id] = 1;
+  await page.reload();
+  const municipality = page.locator("tr.field").filter({
+    has: page.getByRole("button", { name: "Edit Municipality", exact: true }),
+  });
+  await expect(municipality).toContainText("Reviewed by: Other reviewer");
+  await page
+    .getByRole("combobox", { name: "Reviewer name", exact: true })
+    .selectOption("Test reviewer");
+  await page
+    .getByRole("button", {
+      name: "Mark all fields as reviewed",
+      exact: true,
+    })
+    .click();
+  await expect(municipality).toContainText("Reviewed by: Other reviewer");
+  await expect(municipality.locator(".value")).toHaveText("Saved earlier");
+});
+
 // Checks that a failed survey load displays an error and Try again
 // restores the screen once the mock API succeeds.
 test("Try again recovers from a failed survey request", async ({
