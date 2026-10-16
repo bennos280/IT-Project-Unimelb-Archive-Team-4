@@ -4,7 +4,7 @@
 uv run pytest tests/unit
 ```
 
-## `test_preprocess.py` — 6 tests
+## `test_preprocess.py`
 
 The image steps of `backend.pipeline.preprocess` (skew detection, straightening, card edges), which make the review screen's cleaned-up view.
 
@@ -15,7 +15,7 @@ The image steps of `backend.pipeline.preprocess` (skew detection, straightening,
 | `test_boundary_skew_rejects_blank_and_single_edge`            | A blank image and a single detected edge both return `None` — not enough evidence to guess.                      |
 | `test_boundary_skew_rejects_disagreeing_edges`                | Two edges at conflicting angles return `None` rather than an unreliable average.                                 |
 
-## `test_identify.py` — 20 tests
+## `test_identify.py`
 
 Unit tests for scoring, bookkeeping, fingerprint storage, page identification, and model-result handling in `backend.pipeline.identify`.
 
@@ -39,7 +39,7 @@ Unit tests for scoring, bookkeeping, fingerprint storage, page identification, a
 | `test_identify_pages_returns_plain_python_types`               | Identification results use ordinary Python `str` and `float` values that can be serialized with `json.dumps`, rather than NumPy scalar types.  |
 | `test_min_coverage_is_the_documented_threshold`                | `MIN_COVERAGE` remains fixed at 0.5 and the supported label set remains exactly `blank`, `coded`, `main`, and `notes`.                         |
 
-## `test_identify_classifier.py` — 19 tests
+## `test_identify_classifier.py`
 
 Unit tests for the classifier, prediction safety gates, model persistence, threshold selection, fitting, and cross-validation in `backend.pipeline.identify.classifier`.
 
@@ -65,7 +65,7 @@ Unit tests for the classifier, prediction safety gates, model persistence, thres
 | `test_cross_validate_scores_every_row_including_others`                 | Cross-validation produces scores for every row, including other cards, while known separable pages receive their correct labels.                          |
 | `test_regularisation_constant_is_the_documented_value`                  | The configured model constants remain fixed at the documented values for regularisation, KNN neighbours, distance margin, supported labels, and `REVIEW`. |
 
-## `test_common.py` — 12 tests
+## `test_common.py`
 
 Unit tests for `.env` configuration parsing and page-image discovery in `backend/common.py`, including required settings, defaults, comment handling, duplicate keys, supported image formats, and directory traversal behaviour.
 
@@ -82,7 +82,7 @@ Unit tests for `.env` configuration parsing and page-image discovery in `backend
 | `test_find_images_is_not_recursive_and_ignores_subfolders`       | Only searches the specified directory and ignores images located inside subdirectories.                                                                                       |
 | `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images.                                                                        |
 
-## `test_transcribe.py` — 34 tests
+## `test_transcribe.py`
 
 unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generation, CLI handling, Claude/Codex provider behaviour, response processing, and transcription metadata.
 
@@ -116,7 +116,7 @@ unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generat
 | `test_transcribe_sends_the_template_inside_the_prompt`              | Includes the page template alongside `prompt.txt` in the model prompt and passes the same template to the provider's model call.                                                                                                       |
 | `test_transcribe_defaults_model_and_effort_from_env`                | When model and effort are omitted, uses the corresponding `MODEL` and `EFFORT` values from the environment configuration.                                                                                                              |
 
-## `test_identify_fingerprint.py` — 3 tests
+## `test_identify_fingerprint.py`
 
 Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, view construction, and quadrant cropping. The CLIP encoder (`_clip`) is mocked throughout, so these run in milliseconds with no model loaded.
 
@@ -126,7 +126,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 | `test_fingerprint_builds_5_correctly_sized_views` | Each input image produces exactly 5 views, all resized to `(SIZE, SIZE)` before being passed to CLIP.               |
 | `test_fingerprint_crops_correct_quadrants`        | The four quadrant views are cropped from the correct regions of the source image, each preserving a uniform colour. |
 
-## `test_backend_api.py` — 19 tests
+## `test_backend_api.py`
 |Test|What it checks|
 |---|---|
 |`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
@@ -149,8 +149,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_a_scan_that_cannot_be_cleaned_up_is_sent_as_it_is`|A scan the preprocessing can't read is returned as it is instead of an error.|
 |`test_survey_flags_grouping_problems_unreadable_text_and_other_pages`|A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.|
 
-
-## `test_loader.py` — 4 tests
+## `test_loader.py`
 |Test|What it checks|
 |---|---|
 |`test_each_page_records_the_prompt_and_template_versions_that_read_it`|A page whose manifest entry has the hashes of a stored prompt and template version is stored with those versions; a hash no version has, or a page that wasn't read, leaves them empty.|
@@ -158,10 +157,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`|A page read as a page type the db has no record of is stored as `other`, not refused.|
 |`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field, and an older model label listing every model Claude Code used (`claude-haiku-4-5-20251001+claude-opus-5-5`) is stored as the one the run asked for in its manifest (`opus`).|
 
-
-## `test_schema.py` — 5 tests
-
-
+## `test_schema.py`
 The test db is built from `backend/db/models.py` with foreign keys checked, as in the real db.
 
 | Test                                                     | What it checks                                                                                                                                                                   |
@@ -172,7 +168,7 @@ The test db is built from `backend/db/models.py` with foreign keys checked, as i
 | `test_a_flag_is_an_inconsistency_gibberish_or_uncertain` | A flag of any other kind is refused.                                                                                                                                             |
 | `test_an_edit_fixes_exactly_one_thing`                   | An edit pointing at nothing, at two things (a field and an other child), at a resident's field without saying whose, or at an other child without saying which list, is refused. |
 
-## `test_jobs_api.py` — 29 tests
+## `test_jobs_api.py`
 |Test|What it checks|
 |---|---|
 |`test_bundles_list_each_pdf_whether_it_is_loaded_and_its_surveys`|`GET /bundles` lists every PDF under `DATA` by its bundle number, with whether it is loaded, its survey ids in scan order (by each survey's first page) and its latest job.|
@@ -181,18 +177,8 @@ The test db is built from `backend/db/models.py` with foreign keys checked, as i
 |`test_jobs_only_for_unloaded_pdfs_in_data`|A PDF outside `DATA` is refused (404), and a bundle already loaded is refused (409) so its reviews can't be lost.|
 |`test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run`|`GET /bundles` also lists each of the archive's bundles (`backend/archive_pdfs.txt`, faked here) whose PDF isn't in `DATA`, as `DATA/<bundle number>/<its PDF>`, and a job can be queued for it; a PDF already here is listed once.|
 |`test_the_real_archive_list_names_each_bundle_as_the_archive_does`|`backend/archive_pdfs.txt` lists the 45 bundles once each, as `<bundle number>/<file id>_<file name>.pdf`.|
-| `test_job_persists_model_choices_and_defaults`                       | Explicit model/provider/effort choices are trimmed and saved; omitted or null choices use configuration defaults. A separate database connection sees the saved values. |
-| `test_invalid_model_settings_do_not_queue_a_job`                     | Invalid model/provider/effort values return 400 without creating a job; a corrected request can still succeed.                                                          |
-| `test_model_list_includes_configuration_without_history`             | The model endpoint returns configured defaults when no transcription history exists.                                                                                    |
-| `test_model_history_groups_versions_and_averages_available_runtimes` | History separates template versions, counts pages, averages recorded runtimes, handles missing runtimes and excludes pages with no recorded model.                      |
-| `test_transcripts_require_an_existing_job`                           | An unknown job returns 404.                                                                                                                                             |
-| `test_transcripts_reject_jobs_without_a_bundle`                      | Page jobs, training jobs and bundle jobs without a PDF return 400.                                                                                                      |
-| `test_transcripts_before_output_exists_are_empty`                    | A queued job without output returns an empty page list.                                                                                                                 |
-| `test_partial_transcripts_show_sorted_pages_and_only_verified_data`  | Partial output reports pages in order with their identification/transcription status and checksum-verified transcript data.                                             |
-| `test_unusable_transcripts_are_not_exposed`                          | Missing files, changed checksums, invalid JSON, unsafe filenames and invalid manifest entries do not expose transcript data.                                            |
 
-
-## `test_serve.py` — 4 tests
+## `test_serve.py`
 
 The `uv run app` and `uv run api` commands (`backend/serve.py`), with the programs they start faked.
 
@@ -203,7 +189,7 @@ The `uv run app` and `uv run api` commands (`backend/serve.py`), with the progra
 | `test_api_runs_just_the_api_restarting_on_backend_code_changes` | `uv run api` runs only the API, reloading when files under `backend/` change.                                                                              |
 | `test_every_command_points_at_a_function`                       | Each command in `pyproject.toml` (`survey`, `app`, `api`, `worker`) names a function that exists, so a typo there fails here.                              |
 
-## `test_worker.py` — 9 tests
+## `test_worker.py`
 The pipeline and loader are faked: no model calls. Job state is read through a second connection, as the API sees it.
 
 |Test|What it checks|
@@ -218,9 +204,7 @@ The pipeline and loader are faked: no model calls. Job state is read through a s
 |`test_job_cut_off_by_a_stopped_worker_can_be_run_again`|A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.|
 |`test_only_one_worker_runs_at_a_time`|A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.|
 
-
-
-## `test_instructions.py` — 20 tests
+## `test_instructions.py`
 
 The transcription prompt and templates as versions in the db (`backend/db/instructions.py` and `/instructions`).
 
@@ -234,7 +218,7 @@ The transcription prompt and templates as versions in the db (`backend/db/instru
 | `test_a_save_is_refused_when_unknown_unchanged_invalid_or_based_on_an_old_version` | An unknown kind (404) or reviewer (400), no change, or a template with problems (400, listing them) is refused; a save based on a version that is no longer the newest is refused (409).                                                                                                                                                                                              |
 | `test_accuracy_is_kept_apart_for_each_prompt_and_template_version`                 | `GET /accuracy` gives a row per prompt and template version, so versions can be compared.                                                                                                                                                                                                                                                                                             |
 
-## `test_page_types.py` — 7 tests
+## `test_page_types.py`
 
 Page types added from the review screen, and a page read again as another type.
 
@@ -248,7 +232,7 @@ Page types added from the review screen, and a page read again as another type.
 | `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |
 | `test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`            | If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.                                                                                                                                                                                 |
 
-## `test_sorting_models.py` — 9 tests
+## `test_sorting_models.py`
 
 Page sorting retrained from the review screen; page fingerprints are made up, so no model is loaded.
 
@@ -292,18 +276,7 @@ These frontend tests run separately from `uv run pytest tests/unit`.
 They check request construction and response handling; the integration runner
 checks the adapter against the real backend and database.
 
-## `test_progress.py` — 4 tests
-
-Uses a temporary database to check the backend `/progress` response.
-
-| Test                                                                   | What it checks                                                                                      |
-| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `test_progress_preserves_status_flags_model_and_review_targets`        | Returns page status, flags, model and review targets; a page without a survey is “Not in a survey”. |
-| `test_only_saved_reviews_reduce_flags_and_all_fields_must_be_reviewed` | Unsaved edits do not resolve flags; all fields need saved reviews before a page is reviewed.        |
-| `test_nested_fields_require_reviews_too`                               | A survey-assigned page needs saved reviews for resident, child and annotation fields.               |
-| `test_page_with_fields_but_no_survey_is_not_ready_to_review`           | A page with transcribed text but no survey ID is “Not in a survey”, rather than “Ready to review”.  |
-
-## `test_validate_rules.py` — 22 tests
+## `test_validate_rules.py`
 Covers the page 1 / page 3 consistency rules on the sample survey, with a consistent baseline that each test then breaks in one place. No model calls.
 
 |Test|What it checks|
@@ -331,7 +304,7 @@ Covers the page 1 / page 3 consistency rules on the sample survey, with a consis
 |`test_preserves_input_and_deterministic_batch`|Checking a survey twice gives the same result and leaves both readings unchanged, and the consistent sample has no rule issues.|
 |`test_missing_page_is_input_error`|A survey with no coded page raises `ValueError`.|
 
-## `test_validate_codebook.py` — 55 tests
+## `test_validate_codebook.py`
 Covers codebook value ranges, special codes, municipality mapping, house-age and residence codes, and codebook file loading, using the example main and coded surveys. No model calls.
 
 |Test|What it checks|
@@ -356,7 +329,7 @@ Covers codebook value ranges, special codes, municipality mapping, house-age and
 |`test_malformed_dictionary_fails_before_validation`|A codebook file with no usable content raises `ValueError` before any validation runs.|
 |`test_missing_default_dictionary_preserves_standalone_api`|When the default codebook file cannot be found, validation still runs with no flags and returns a warning that codebook checks were not run.|
 
-## `test_validate_regressions.py` — 51 tests
+## `test_validate_regressions.py`
 Covers relationship parsing, year-unit punctuation, age ranges, annotated child relationships and the 1940s coders' conventions (each accepted when switched on and flagged when off), using the example main and coded surveys. No model calls.
 
 |Test|What it checks|
@@ -378,7 +351,7 @@ Covers relationship parsing, year-unit punctuation, age ranges, annotated child 
 |`test_ten_year_old_may_be_counted_over_10`|A 10-year-old daughter may be coded in 5–10 or over 10 (only 5–10 with the convention off); left out of both, the survey is flagged.|
 |`test_part_years_of_residence_may_be_dropped_or_rounded_up`|"4½ yrs." matches codes 04 and 05; 03 and 06 are flagged, and all four with the convention off.|
 
-## `test_validate_fields.py` — 2 tests
+## `test_validate_fields.py`
 The consistency check reads fields by their template names: a field renamed in a template fails here instead of
 switching a check off quietly. No model calls.
 

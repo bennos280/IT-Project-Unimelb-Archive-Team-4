@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import ImageViewer from "./ImageViewer";
 import type { useReviewSession } from "./useReviewSession";
-import { getPageName } from "./model";
+import { getPageName, isTextPage } from "./model";
 import "./review.css";
 import { flagCategories, flagLabels } from "./flags";
 
@@ -159,7 +159,7 @@ export default function ReviewScreen({
                 ) : (
                   <table
                     className={
-                      page.type === "notes" ? "notes-table" : undefined
+                      isTextPage(page.type) ? "notes-table" : undefined
                     }
                   >
                     <thead>
@@ -284,7 +284,7 @@ export default function ReviewScreen({
                                       <div className="value-cell">
                                         <span
                                           className={
-                                            page.type === "notes"
+                                            isTextPage(page.type)
                                               ? "notes-value"
                                               : "value"
                                           }
@@ -534,7 +534,7 @@ export default function ReviewScreen({
           <textarea
             autoFocus
             id="field-value"
-            rows={page?.type === "notes" ? 10 : 4}
+            rows={page && isTextPage(page.type) ? 10 : 4}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />

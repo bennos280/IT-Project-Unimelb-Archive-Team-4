@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Minus, Maximize, Search } from "lucide-react";
 import type { SurveyPage } from "./model";
-import { getPageName } from "./model";
+import { getPageName, isTextPage } from "./model";
 import { getSourceRegion } from "./fieldLocations";
 
 // Render the source scan with zoom, drag-to-pan, fit, fullscreen and a mapped-field overlay.
@@ -26,7 +26,7 @@ export default function ImageViewer({
   );
   // Zoom first, then centre the selected region after the resized image has rendered.
   useEffect(() => {
-    if (!selection || !region || !loaded || page.type === "notes") return;
+    if (!selection || !region || !loaded || isTextPage(page.type)) return;
     let second = 0;
     const first = requestAnimationFrame(() => {
       setZoom(200);

@@ -115,7 +115,12 @@ const pageNames: Record<string, string> = {
   main: "Main page",
   notes: "Notes page",
   coded: "Coded page",
+  other: "Other page",
 };
+// Notes and other pages hold one free-text field.
+export function isTextPage(type: PageType): boolean {
+  return type === "notes" || type === "other";
+}
 export function getPageName(type: PageType): string {
   return Object.hasOwn(pageNames, type) ? pageNames[type] : type;
 }
