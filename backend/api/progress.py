@@ -40,8 +40,12 @@ def review_progress(db):
         if p.category == "other":
             flagged[p.page_id].add("text")
         pages = bundles[p.bundle_id]["pages"]
-        status = ("Awaiting transcription" if p.needs_transcription or not fields[p.page_id] else
-                  "Reviewed" if fields[p.page_id] <= reviewed[p.page_id] else "Ready to review")
+        status = (
+            "Awaiting transcription" if not fields[p.page_id] else
+            "Not in a survey" if p.survey_id is None else
+            "Reviewed" if fields[p.page_id] <= reviewed[p.page_id] else
+            "Ready to review"
+        )
         pages.append({"id": p.page_id, "label": f"Pg {len(pages) + 1}",
                       "category": {"main": "Main page", "notes": "Notes", "coded": "Coded", "other": "Other"}.get(p.category, p.category),
                       "status": status, "model": p.model, "flagCount": len(flagged[p.page_id] - reviewed[p.page_id]),

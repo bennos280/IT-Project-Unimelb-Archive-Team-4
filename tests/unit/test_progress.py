@@ -51,6 +51,8 @@ def test_only_saved_reviews_reduce_flags_and_all_fields_must_be_reviewed(client,
 
 def test_nested_fields_require_reviews_too(client, db):
     seed(db)
+    db.get(models.Page, "p2").survey_id = "s"
+    db.flush()
     for row in (
         models.Resident(page_id="p2", resident_no=0),
         models.ResidentField(page_id="p2", resident_no=0, resident_field_title="name", text_raw="[?]"),
@@ -71,3 +73,16 @@ def test_nested_fields_require_reviews_too(client, db):
         db.add(models.Edit(page_id="p2", edit_text="corrected", time=datetime.now(timezone.utc), **target))
     db.commit()
     assert (page()["status"], page()["flagCount"]) == ("Reviewed", 0)
+
+
+def test_page_with_fields_but_no_survey_is_not_ready_to_review(client, db):
+    """A transcribed page without a survey stays outside review progress."""
+    seed(db)
+    db.add(models.Field(page_id="p2", field_title="text", text_raw="Transcribed notes"))
+    db.commit()
+    response = client.get("/progress")
+    assert response.status_code == 200
+    bundle = next(b for b in response.json() if b["id"] == "b")
+    page = next(p for p in bundle["pages"] if p["id"] == "p2")
+    assert page["surveyId"] is None
+    assert page["status"] == "Not in a survey"
