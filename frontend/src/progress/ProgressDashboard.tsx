@@ -176,8 +176,7 @@ export default function ProgressDashboard() {
           !b.source.loaded &&
           b.source.job?.status === "running") ||
         (status === "Reviewed"
-          ? counts(b.pages).reviewable > 0 &&
-            counts(b.pages).reviewed === counts(b.pages).reviewable
+          ? b.pages.length > 0 && b.pages.every((p) => p.status === "Reviewed")
           : b.pages.some((p) => p.status === status))),
   );
   // Search page labels, IDs, and categories, then apply the status filter.
@@ -346,7 +345,6 @@ export default function ProgressDashboard() {
                   "Awaiting transcription",
                   "Ready to review",
                   "Reviewed",
-                  "Not in a survey",
                 ].map((s) => (
                   <option key={s} value={s}>
                     Status: {s}
@@ -471,24 +469,14 @@ export default function ProgressDashboard() {
                               <td>
                                 <div className="progress-meter">
                                   <span>
-                                    {percent === null
-                                      ? "No reviewable pages"
-                                      : `${c.reviewed} / ${c.reviewable} reviewed · ${percent}%`}
+                                    {c.reviewed} / {c.total} reviewed ·{" "}
+                                    {percent}%
                                   </span>
-
-                                  {c.unassigned > 0 && (
-                                    <span>
-                                      {c.unassigned} pages not in a survey
-                                    </span>
-                                  )}
-
-                                  {c.reviewable > 0 && (
-                                    <progress
-                                      aria-label={`Bundle ${b.id} review progress`}
-                                      value={c.reviewed}
-                                      max={c.reviewable}
-                                    />
-                                  )}
+                                  <progress
+                                    aria-label={`Bundle ${b.id} review progress`}
+                                    value={c.reviewed}
+                                    max={c.total || 1}
+                                  />
                                 </div>
                               </td>
                               <td>
@@ -570,8 +558,7 @@ export default function ProgressDashboard() {
                                   <button onClick={() => openBundle(b.id)}>
                                     Review <ArrowRight size={16} />
                                   </button>
-                                ) : c.reviewable > 0 &&
-                                  c.reviewed === c.reviewable ? (
+                                ) : c.reviewed === c.total ? (
                                   <button onClick={() => openBundle(b.id)}>
                                     View <ArrowRight size={16} />
                                   </button>

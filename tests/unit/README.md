@@ -259,6 +259,12 @@ Page sorting retrained from the review screen; page fingerprints are made up, so
 Tests the frontend review API adapter using Vitest and mocked fetch responses.
 Each test uses fresh sample data; no running backend or database is needed.
 
+Run from the project folder:
+
+```bash
+npm --prefix tests run test:unit
+```
+
 | Test                                                                                                                                           | What it checks                                                                                             |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `it("requests the selected survey and preserves main/notes/coded data", async () => ...)`                                                      | Requests the correct survey with the supplied abort signal and preserves all three page types.             |

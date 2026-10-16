@@ -438,12 +438,12 @@ test.describe("Progress and transcription states", () => {
     await page.getByRole("button", { name: "216424", exact: true }).click();
   }
 
-  test("untouched bundle prompts Transcribe and shows no reviewable pages", async ({
+  test("untouched bundle prompts Transcribe and shows zero progress", async ({
     page,
   }) => {
     await mock(page);
     await expect(
-      page.getByText("No reviewable pages", { exact: true }),
+      page.getByText("0 / 0 reviewed · 0%", { exact: true }),
     ).toBeVisible();
     await openBundle(page);
     await expect(
@@ -588,68 +588,4 @@ test('awaiting transcription page has a Transcribe action targeting its survey p
   const row=page.locator('.progress-table tbody tr').filter({hasText:'Pg 4'});
   await expect(row.getByRole('link',{name:'Transcribe',exact:true})).toHaveAttribute('href','/?survey=s1&page=b%2Fp4&action=transcribe');
   await expect(row.getByRole('link',{name:'Review',exact:true})).toHaveCount(0);
-  });
-test.describe("Pages without a survey", () => {
-  async function showBundle(page: Page, includeReviewedPage: boolean) {
-    const pages = [
-      {
-        id: "unassigned-page",
-        label: "Pg 2",
-        category: "Notes",
-        status: "Not in a survey",
-        flagCount: 0,
-        surveyId: null,
-        reviewPageId: "unassigned-page",
-      },
-      ...(includeReviewedPage
-        ? [{
-            id: "reviewed-page",
-            label: "Pg 1",
-            category: "Main page",
-            status: "Reviewed",
-            flagCount: 0,
-            surveyId: "survey-1",
-            reviewPageId: "reviewed-page",
-          }]
-        : []),
-    ];
-
-    // Keep requests isolated from the real backend and review database.
-    await page.route("**/api/**", (route) => {
-      const path = new URL(route.request().url()).pathname;
-      if (path === "/api/progress") {
-        return route.fulfill({ json: [{ id: "test-bundle", pages }] });
-      }
-      if (path === "/api/bundles") {
-        return route.fulfill({ json: [] });
-      }
-      return route.fulfill({
-        status: 404,
-        json: { detail: `Unexpected request: ${path}` },
-      });
-    });
-    await page.goto("/");
-    return page.getByRole("row").filter({
-      has: page.getByRole("button", { name: "test-bundle", exact: true }),
-    });
-  }
-
-  test("unassigned pages do not prevent 100% review progress", async ({ page }) => {
-    const row = await showBundle(page, true);
-    await expect(row.locator("td").nth(1)).toHaveText("2");
-    await expect(row.locator(".progress-meter")).toContainText("1 / 1 reviewed · 100%");
-    await expect(row.locator(".progress-meter")).toContainText("1 pages not in a survey");
-    const progress = row.getByRole("progressbar");
-    await expect(progress).toHaveAttribute("value", "1");
-    await expect(progress).toHaveAttribute("max", "1");
-  });
-
-  test("a bundle with only unassigned pages has no review percentage", async ({ page }) => {
-    const row = await showBundle(page, false);
-    await expect(row.locator("td").nth(1)).toHaveText("1");
-    await expect(row.locator(".progress-meter")).toContainText("No reviewable pages");
-    await expect(row.locator(".progress-meter")).toContainText("1 pages not in a survey");
-    await expect(row.locator(".progress-meter")).not.toContainText("%");
-    await expect(row.getByRole("progressbar")).toHaveCount(0);
-  });
 });

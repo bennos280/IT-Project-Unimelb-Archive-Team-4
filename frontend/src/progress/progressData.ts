@@ -1,14 +1,10 @@
 import type { Survey } from "../review-screen/model";
-type SavedReviews = Record<
-  string,
-  Record<string, { value: string | null; savedAt?: string }>
->;
+type SavedReviews = Record<string, Record<string, { value: string | null; savedAt?: string }>>;
 // Covers both processing stages and review states shown in the page list.
 export type PageStatus =
   | "Awaiting transcription"
   | "Ready to review"
   | "Reviewed"
-  | "Not in a survey"
   | "Transcribed — not grouped"
   | "Needs identification"
   | "Not required";
@@ -22,7 +18,7 @@ export type ProgressPage = {
   model?: string | null;
   // Raw transcript data can be available before grouping and database loading finish.
   savedData?: Record<string, unknown>;
-  surveyId?: string | null;
+  surveyId?: string;
   reviewPageId?: string;
 };
 export type Bundle = { id: string; name?: string; pages: ProgressPage[] };
@@ -40,9 +36,7 @@ export function bundleFromSurvey(
     pages: survey.pages.map((page, index) => ({
       id: page.id,
       label: `Pg ${index + 1}`,
-      category: Object.hasOwn(categories, page.type)
-        ? categories[page.type]
-        : page.type,
+      category: Object.hasOwn(categories, page.type) ? categories[page.type] : page.type,
       surveyId: survey.id,
       reviewPageId: page.id,
       // Count unresolved fields, not individual flags; saved reviews resolve the count.
