@@ -102,6 +102,11 @@ test("move keeps page identity and opens its destination; same types are allowed
   await expect(
     history.getByText("Page type changed", { exact: true }),
   ).toBeVisible();
+  // Each of the five columns has room, so the Details button sits inside its own cell.
+  const detailsColumn = await history.getByRole("columnheader", { name: "Details" }).boundingBox();
+  const snapshotButton = await history.getByRole("button", { name: "View snapshot", exact: true }).boundingBox();
+  expect(detailsColumn!.width).toBeGreaterThan(snapshotButton!.width);
+  expect(snapshotButton!.x).toBeGreaterThanOrEqual(detailsColumn!.x);
   await history
     .getByRole("button", { name: "View snapshot", exact: true })
     .click();

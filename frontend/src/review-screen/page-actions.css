@@ -296,6 +296,15 @@
   border-collapse: collapse;
 }
 
+/* Five columns sized to their content, not the field table's fixed four-column widths. */
+.page-history-dialog .history-table {
+  table-layout: auto;
+}
+
+.page-history-dialog .history-table thead th {
+  width: auto;
+}
+
 .page-history-dialog table {
   width: 100%;
   border-collapse: collapse;
