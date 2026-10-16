@@ -155,12 +155,8 @@ test.describe("Progress navigation and layout", () => {
         .selectOption("Test reviewer");
       // Flagged fields must be reviewed individually before saving.
       for (const field of survey.pages[0].fields) {
-        await page
-          .getByRole("button", { name: `Edit ${field.label}`, exact: true })
-          .click();
-        await page
-          .getByRole("button", { name: "Apply review", exact: true })
-          .click();
+        await page.getByRole("button", { name: `Edit ${field.label}`, exact: true }).click();
+        await page.getByRole("button", { name: "Apply review", exact: true }).click();
       }
       expect(persisted).toBe(false);
       if (outcome !== "unsaved") {
@@ -279,6 +275,13 @@ test.describe("Progress navigation and layout", () => {
     await expect(
       page.getByRole("heading", { name: "All survey bundles" }),
     ).toBeVisible();
+  });
+
+  test("Import opens the import screen and Export stays disabled", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Import", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Import survey bundles" })).toBeVisible();
   });
 
   for (const [label, pageId] of [
@@ -587,17 +590,15 @@ test.describe("Pages without a survey", () => {
         reviewPageId: "unassigned-page",
       },
       ...(includeReviewedPage
-        ? [
-            {
-              id: "reviewed-page",
-              label: "Pg 1",
-              category: "Main page",
-              status: "Reviewed",
-              flagCount: 0,
-              surveyId: "survey-1",
-              reviewPageId: "reviewed-page",
-            },
-          ]
+        ? [{
+            id: "reviewed-page",
+            label: "Pg 1",
+            category: "Main page",
+            status: "Reviewed",
+            flagCount: 0,
+            surveyId: "survey-1",
+            reviewPageId: "reviewed-page",
+          }]
         : []),
     ];
 
@@ -621,33 +622,21 @@ test.describe("Pages without a survey", () => {
     });
   }
 
-  test("unassigned pages do not prevent 100% review progress", async ({
-    page,
-  }) => {
+  test("unassigned pages do not prevent 100% review progress", async ({ page }) => {
     const row = await showBundle(page, true);
     await expect(row.locator("td").nth(1)).toHaveText("2");
-    await expect(row.locator(".progress-meter")).toContainText(
-      "1 / 1 reviewed · 100%",
-    );
-    await expect(row.locator(".progress-meter")).toContainText(
-      "1 pages not in a survey",
-    );
+    await expect(row.locator(".progress-meter")).toContainText("1 / 1 reviewed · 100%");
+    await expect(row.locator(".progress-meter")).toContainText("1 pages not in a survey");
     const progress = row.getByRole("progressbar");
     await expect(progress).toHaveAttribute("value", "1");
     await expect(progress).toHaveAttribute("max", "1");
   });
 
-  test("a bundle with only unassigned pages has no review percentage", async ({
-    page,
-  }) => {
+  test("a bundle with only unassigned pages has no review percentage", async ({ page }) => {
     const row = await showBundle(page, false);
     await expect(row.locator("td").nth(1)).toHaveText("1");
-    await expect(row.locator(".progress-meter")).toContainText(
-      "No reviewable pages",
-    );
-    await expect(row.locator(".progress-meter")).toContainText(
-      "1 pages not in a survey",
-    );
+    await expect(row.locator(".progress-meter")).toContainText("No reviewable pages");
+    await expect(row.locator(".progress-meter")).toContainText("1 pages not in a survey");
     await expect(row.locator(".progress-meter")).not.toContainText("%");
     await expect(row.getByRole("progressbar")).toHaveCount(0);
   });

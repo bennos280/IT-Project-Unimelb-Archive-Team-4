@@ -52,7 +52,7 @@ export default function ImportScreen() {
     const accepted: SelectedFile[] = [];
     const rejected: string[] = [];
     for (const file of Array.from(incoming)) {
-      if (!/\.(pdf|jpe?g|png)$/i.test(file.name) || file.size === 0 || file.size > 250 * 1024 * 1024) {
+      if (!/\.(pdf|jpe?g|png)$/i.test(file.name) || file.size === 0 || file.size > 500 * 1024 * 1024) {
         rejected.push(file.name);
         continue;
       }
@@ -75,7 +75,7 @@ export default function ImportScreen() {
     });
     setMessage(
       rejected.length
-        ? `Choose non-empty PDF, JPG or PNG files up to 250 MB. Not added: ${rejected.join(", ")}`
+        ? `Choose non-empty PDF, JPG or PNG files up to 500 MB. Not added: ${rejected.join(", ")}`
         : "",
     );
   }
@@ -94,6 +94,8 @@ export default function ImportScreen() {
         <h2>Import survey bundles</h2>
         <p className="import-intro">
           Upload your survey files and enter a bundle number for each file.
+          A PDF is a whole bundle. For page images, give every page of a bundle
+          the same bundle number; pages are read in file name order.
         </p>
         <div
           className={`import-dropzone ${dragging ? "dragging" : ""}`}

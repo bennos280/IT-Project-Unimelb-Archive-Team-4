@@ -12,7 +12,7 @@ from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
 from datetime import datetime, timezone
-from backend.common import ROOT, settings
+from backend.common import ROOT, find_images, settings
 
 from backend.api.uploads import upload_bundle
 
@@ -437,11 +437,12 @@ class StartJobRequest(BaseModel):
     effort: str | None = None
     pdf: str #as listed by GET /bundles
 
-#every survey PDF under DATA in .env, and each of the archive's bundles whose PDF isn't there, as
-#DATA/<bundle number>/<its PDF> (running it downloads the PDF)
+#every survey PDF under DATA in .env, each DATA/<bundle number>/ folder of page images, and each of the archive's
+#bundles whose PDF isn't there, as DATA/<bundle number>/<its PDF> (running it downloads the PDF)
 def pdfs():
     data = ROOT / settings()["DATA"]
-    here = list(data.rglob("*.pdf"))
+    here = list(data.rglob("*.pdf")) + [p for p in (data.iterdir() if data.is_dir() else ())
+                                        if p.is_dir() and p.name.isdigit() and find_images(p)]
     names = {p.name for p in here}
     return sorted(here + [p for p in (data / pdf for pdf in scans.ARCHIVE_PDFS) if p.name not in names])
 
