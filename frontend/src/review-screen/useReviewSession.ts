@@ -57,6 +57,10 @@ export function useReviewSession() {
         if (controller.signal.aborted) return;
         setError("");
         setSurvey(data);
+        // Dashboard links select the source page by ID, not by assumed page order.
+        const requestedPage = new URLSearchParams(location.search).get("page");
+        const requestedIndex = data.pages.findIndex(p => p.id === requestedPage);
+        setIndex(requestedIndex < 0 ? 0 : requestedIndex);
         setReviews(saved.reviews);
         savedReviews.current = saved.reviews;
         setRevisions(saved.revisions);

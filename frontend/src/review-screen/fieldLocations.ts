@@ -516,7 +516,7 @@ export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
       height: 0.035982755691736146,
     },
     "residents.2.relationship": {
-      x: 0.34211947424636135,
+      x: 0.3421194742463614,
       y: 0.29167010841105184,
       width: 0.0879308682985541,
       height: 0.0325067562091666,

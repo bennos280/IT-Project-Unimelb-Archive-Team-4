@@ -425,6 +425,9 @@ def set_active_sorting_model(payload: ActiveModelRequest, db: Session = Depends(
 
 #--PIPELINE JOBS--# (queued here, done by backend/worker.py)
 class StartJobRequest(BaseModel):
+    model: str | None = None
+    provider: str | None = None
+    effort: str | None = None
     pdf: str #as listed by GET /bundles
 
 #every survey PDF under DATA in .env, and each of the archive's bundles whose PDF isn't there, as
@@ -473,7 +476,17 @@ def start_job(payload: StartJobRequest, db: Session = Depends(get_db)):
     if db.query(models.Job).filter(models.Job.pdf == payload.pdf, models.Job.status.in_(("waiting", "running"))).first():
         raise HTTPException(status_code=409, detail="This bundle is already waiting or running.")
 
-    job = models.Job(pdf=payload.pdf)
+    config = settings()
+    model = (payload.model if payload.model is not None else config["MODEL"]).strip()
+    provider = (payload.provider if payload.provider is not None else config["PROVIDER"]).strip()
+    effort = (payload.effort if payload.effort is not None else config["EFFORT"]).strip()
+    if not model or len(model) > 200 or any(c.isspace() for c in model) or model.startswith("-"):
+        raise HTTPException(status_code=400, detail="Enter a valid model name.")
+    if provider not in ("claude", "codex"):
+        raise HTTPException(status_code=400, detail="Choose Claude or Codex.")
+    if not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
+        raise HTTPException(status_code=400, detail="Enter a valid effort level.")
+    job = models.Job(pdf=payload.pdf, transcription_model=model, transcription_provider=provider, transcription_effort=effort)
     db.add(job)
     db.commit()
     return job_json(job)
@@ -485,3 +498,65 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
     if job is None:
         raise HTTPException(status_code=404, detail="No such job.")
     return job_json(job)
+
+
+@app.get("/progress")
+def get_progress(db: Session = Depends(get_db)):
+    from backend.api.progress import review_progress
+    return review_progress(db)
+
+
+@app.get("/transcription-models")
+def get_transcription_models(db: Session = Depends(get_db)):
+    config = settings()
+    columns = (models.Page.provider, models.Page.model, models.Page.effort,
+               models.Page.prompt_version_id, models.Page.template_version_id)
+    rows = (db.query(*columns, func.count(models.Page.page_id), func.avg(models.Page.runtime))
+            .filter(models.Page.model.is_not(None)).group_by(*columns)
+            .order_by(models.Page.provider, models.Page.model, models.Page.effort))
+    return {"configured": {"model": config["MODEL"], "effort": config["EFFORT"], "provider": config["PROVIDER"]},
+            "models": [{"provider": provider, "model": model, "effort": effort,
+                        "promptVersion": prompt, "templateVersion": template,
+                        "pages": pages, "averageSeconds": float(seconds) if seconds is not None else None}
+                       for provider, model, effort, prompt, template, pages, seconds in rows]}
+
+
+@app.get("/jobs/{job_id}/transcripts")
+def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
+    """Read completed, checksum-verified page outputs without loading a partial bundle."""
+    from pathlib import Path
+    from backend.pipeline.run import read_manifest, digest
+    job = db.get(models.Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No such job.")
+    if job.kind != "bundle" or not job.pdf:
+        raise HTTPException(status_code=400, detail="This job is not a bundle transcription.")
+    folder = ROOT / settings()["OUTPUT"] / Path(job.pdf).stem
+    manifest = read_manifest(folder)
+    pages = []
+    for name, saved in (manifest.get("transcripts") or {}).items():
+        if not isinstance(saved, dict) or Path(name).name != name:
+            continue
+        path = folder / "transcribe" / f"{Path(name).stem}.json"
+        try:
+            if digest(path) != saved.get("result"):
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        pages.append({"id": Path(name).stem, "category": saved.get("request", {}).get("label"), "data": data})
+    completed = {page["id"]: page for page in pages}
+    identified = {Path(page["file"]).stem: page for page in manifest.get("pages", []) if page.get("file")}
+    # Published page images are available before identification completes.
+    extracted = {path.stem for path in (folder / "pages").glob("*.png")}
+    result = []
+    for page_id in sorted(extracted | identified.keys() | completed.keys()):
+        page = completed.get(page_id)
+        category = identified.get(page_id, {}).get("label") or (page or {}).get("category") or "unidentified"
+        status = ("Transcribed — not grouped" if page else
+                  "Not required" if category == "blank" else
+                  "Needs identification" if category in ("unidentified", "review", "other") else
+                  "Awaiting transcription")
+        result.append({"id": page_id, "category": category, "status": status,
+                       "data": page["data"] if page else None})
+    return {"jobId": job_id, "status": job.status, "pages": result}

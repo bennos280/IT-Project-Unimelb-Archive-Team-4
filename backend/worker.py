@@ -75,6 +75,9 @@ def run_bundle(db, job, progress):
         raise SystemExit(f"page sorting model {active.model_id}'s file {active.path} is missing: choose another model, or retrain")
     run = pipeline.Run(pdf, out, progress=progress, texts=instructions.texts(db), #the newest versions, as the job starts
                        sorting_model=ROOT / active.path if active else None)
+    run.transcription_config = {key: value for key, value in (
+        ("MODEL", job.transcription_model), ("PROVIDER", job.transcription_provider),
+        ("EFFORT", job.transcription_effort)) if value is not None}
     pipeline.run_steps(run, pipeline.FULL)
     if not run.pages:
         raise SystemExit("the PDF has no pages")

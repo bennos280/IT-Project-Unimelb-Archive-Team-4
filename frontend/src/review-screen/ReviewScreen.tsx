@@ -2,12 +2,12 @@
 
 import React, { useState } from "react";
 import {
+  Download,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Search,
   TriangleAlert,
-  Download,
   CircleCheck,
   Pencil,
 } from "lucide-react";
@@ -69,7 +69,6 @@ export default function ReviewScreen({
     stayOnPage,
     saveAndContinue,
     discardAndContinue,
-    download,
     visible: matchingFields,
   } = session;
   // Filter by the same saved/draft status shown in each row.
@@ -390,8 +389,8 @@ export default function ReviewScreen({
                     </button>
                   </nav>
                 </div>
-                <button onClick={download}>
-                  <Download size={16} /> Export{" "}
+                <button type="button" disabled title="Export coming soon">
+                  <Download size={16} /> Export
                 </button>
               </div>
               <ImageViewer
