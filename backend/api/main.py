@@ -14,6 +14,8 @@ from backend.api.sections import groupings_main, groupings_coded
 from datetime import datetime, timezone
 from backend.common import ROOT, settings
 
+from backend.api.uploads import upload_bundle
+
 app = FastAPI()
 
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://localhost:3000"],
@@ -30,6 +32,11 @@ def get_db():
         yield db
     finally:
         db.close()
+
+@app.post("/bundles/upload", status_code=201)
+async def import_bundle(request: Request, bundle: str, filename: str, db: Session = Depends(get_db)):
+    return await upload_bundle(request, bundle, filename, db)
+
 
 #request bodies
 class CreateReviewerRequest(BaseModel):

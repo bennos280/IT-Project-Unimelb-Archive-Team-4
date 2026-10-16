@@ -268,12 +268,12 @@ export default function ProgressDashboard() {
                 : `Track review progress across ${(bundles ?? []).length} bundles`}
             </p>
           </div>
-          {/* Import and export will be implemented separately. */}
+          {/* Open the import file selection screen. */}
           <div className="progress-actions">
             <button type="button" disabled title="Export coming soon">
               <Download size={16} /> Export
             </button>
-            <button type="button" disabled title="Import coming soon">
+            <button type="button" onClick={() => { window.location.href = "/?view=import"; }}>
               <Upload size={16} /> Import
             </button>
           </div>
