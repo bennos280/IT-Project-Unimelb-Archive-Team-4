@@ -134,7 +134,7 @@ npm --prefix tests run test:integration
 These checks run separately from pytest. They test adapter/API/database
 integration; browser behaviour and image loading are covered separately.
 
-## Review UI browser tests — 17 tests
+## Review UI browser tests — 18 tests
 
 `review.spec.ts` test the review screen in a real browser using Playwright.
 Each test uses a sample survey, mock images and an isolated mock API.
@@ -157,6 +157,7 @@ npm --prefix tests run test:e2e
 | `test("Apply creates draft; Save persists and reload restores it", async ({ page, api }) => ...)`    | Applying creates a draft; saving stores it in the mock API and refreshing restores it.          |
 | `test("Rejected save displays reason and retains unsaved correction", async ({ page, api }) => ...)` | A rejected save displays the error and preserves the draft.                                     |
 | `test("Review all preserves correction and saves all fields", async ({ page, api }) => ...)`         | Reviewing all fields preserves existing corrections and saves every field.                      |
+| `test("Review all keeps another reviewer's saved review", async ({ page, api }) => ...)`             | A field another reviewer already saved keeps their value and name after reviewing all fields.   |
 | `test("Try again recovers from a failed survey request", async ({ page, api }) => ...)`              | Retrying restores the screen after a failed request.                                            |
 | `test("Add reviewer makes the new reviewer selectable", async ({ page }) => ...)`                    | A newly added reviewer becomes selected.                                                        |
 | `test("Stay here and Escape retain the unsaved review", async ({ page, api }) => ...)`               | Dismissing the navigation warning retains the draft without saving.                             |
