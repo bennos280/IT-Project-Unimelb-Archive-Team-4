@@ -1,15 +1,20 @@
+/* Base and menu */
+
 .page-actions {
   font-size: 14px;
 }
+
 .page-actions > details {
   position: relative;
 }
+
 .page-actions summary {
   cursor: pointer;
   padding: 8px;
   border: 1px solid #ccc;
   border-radius: 5px;
 }
+
 .page-actions-menu {
   position: absolute;
   right: 0;
@@ -19,11 +24,19 @@
   background: white;
   box-shadow: 0 6px 20px #0002;
 }
+
 .page-actions-menu button {
   display: block;
   width: 100%;
   margin: 4px 0;
 }
+
+.page-actions p {
+  line-height: 1.5;
+}
+
+/* Dialogs and form controls */
+
 .page-actions dialog {
   width: min(540px, 92vw);
   max-height: 90vh;
@@ -32,17 +45,21 @@
   border: 1px solid #ccc;
   border-radius: 8px;
 }
+
 .page-actions dialog::backdrop {
   background: #0006;
 }
+
 .page-actions dialog h2 {
   font-size: 23px;
 }
+
 .page-actions dialog label {
   display: block;
   margin-top: 18px;
   font-weight: 600;
 }
+
 .page-actions dialog select,
 .page-actions textarea {
   width: 100%;
@@ -53,55 +70,74 @@
   border: 1px solid #bbb;
   border-radius: 4px;
 }
-.page-actions p {
-  line-height: 1.5;
-}
-.page-action-warning,
-.page-action-preview {
-  padding: 12px;
-  background: #fff4db;
-  border-left: 3px solid #ac7b19;
-}
+
 .page-actions footer {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   margin-top: 24px;
 }
+
+.page-actions dialog input {
+  width: 100%;
+  display: block;
+  margin-top: 8px;
+  padding: 10px;
+  font: inherit;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+}
+
+/* Warnings and transcription progress */
+
+.page-action-warning,
+.page-action-preview {
+  padding: 12px;
+  background: #fff4db;
+  border-left: 3px solid #ac7b19;
+}
+
 .page-actions [role="alert"] {
   color: #a22222;
 }
 
-.page-action-progress{margin-top:12px;padding:14px;background:#eef3f9;border-left:3px solid #526f95;border-radius:4px}.page-action-progress p{margin:8px 0}.page-action-progress small{color:#505b68}.page-action-progress progress{width:100%;height:8px}
-.page-actions dialog input{width:100%;display:block;margin-top:8px;padding:10px;font:inherit;border:1px solid #bbb;border-radius:4px}.page-actions dialog.page-action-model-table{width:min(1000px,95vw)}.page-actions .model-table-scroll{overflow-x:auto}.page-actions .model-table-scroll table{width:100%;border-collapse:collapse}.page-actions .model-table-scroll th,.page-actions .model-table-scroll td{padding:10px;text-align:left;border-bottom:1px solid #ddd}
+.page-action-progress {
+  margin-top: 12px;
+  padding: 14px;
+  background: #eef3f9;
+  border-left: 3px solid #526f95;
+  border-radius: 4px;
+}
 
-.page-action-model-heading{margin:24px 0 0;padding-top:18px;border-top:1px solid #ddd;font-size:16px;font-weight:600}
+.page-action-progress p {
+  margin: 8px 0;
+}
 
-.page-transcription-toolbar{display:flex;align-items:center;gap:8px}
+.page-action-progress small {
+  color: #505b68;
+}
 
-.page-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.page-transcription-toolbar { flex-wrap: wrap; }
-.page-actions dialog.page-history-dialog { width: min(760px, 92vw); }
-.page-history-list { list-style: none; padding: 0; }
-.page-history-list > li { padding: 16px 0; border-bottom: 1px solid #ddd; }
-.page-history-list h3 { margin: 0; font-size: 17px; }
-.page-history-list h4 { text-transform: capitalize; }
-.page-history-list dl { padding: 12px; background: #f6f6f6; }
-.page-history-list dl > div { display: grid; grid-template-columns: minmax(120px, 1fr) 2fr; gap: 12px; padding: 4px 0; }
-.page-history-list dt { font-weight: 600; }
-.page-history-list dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.page-action-progress progress {
+  width: 100%;
+  height: 8px;
+}
 
-.page-actions dialog.page-history-dialog { width: min(1100px, 94vw); }
-.history-table-scroll { overflow-x: auto; }
-.history-table { width: 100%; min-width: 680px; border-collapse: collapse; }
-.page-history-dialog table { width: 100%; border-collapse: collapse; }
-.page-history-dialog th, .page-history-dialog td { padding: 12px; text-align: left; vertical-align: top; border-bottom: 1px solid #ddd; overflow-wrap: anywhere; white-space: pre-wrap; }
-.page-history-dialog thead { background: #f4f4f4; }
-.history-expanded { background: #fafafa; }
-.history-values { table-layout: fixed; }
-.history-table button { white-space: nowrap; }
+/* Toolbar buttons */
 
-/* Match the native details trigger to its neighbouring toolbar buttons. */
+.page-transcription-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.page-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .page-transcription-toolbar > button,
 .page-toolbar-actions > button,
 .page-toolbar-actions > details > summary {
@@ -121,9 +157,172 @@
   line-height: 1;
   white-space: nowrap;
 }
-.page-toolbar-actions > details > summary { list-style: none; }
-.page-toolbar-actions > details > summary::-webkit-details-marker { display: none; }
-.page-toolbar-actions > details > summary::before { content: '▸'; }
-.page-toolbar-actions > details[open] > summary::before { content: '▾'; }
-.page-toolbar-actions > details > summary:hover { background: #eee; }
-.page-transcription-toolbar > div { display: flex; align-items: center; }
+
+.page-toolbar-actions > details > summary {
+  list-style: none;
+}
+
+.page-toolbar-actions > details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.page-toolbar-actions > details > summary::before {
+  content: "▸";
+}
+
+.page-toolbar-actions > details[open] > summary::before {
+  content: "▾";
+}
+
+.page-toolbar-actions > details > summary:hover {
+  background: #eee;
+}
+
+.page-transcription-toolbar > div {
+  display: flex;
+  align-items: center;
+}
+
+/* Transcription model table */
+
+.page-actions dialog.page-action-model-table {
+  width: min(1000px, 95vw);
+}
+
+.page-actions .model-table-scroll {
+  overflow-x: auto;
+}
+
+.page-actions .model-table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.page-actions .model-table-scroll th,
+.page-actions .model-table-scroll td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+.page-action-model-heading {
+  margin: 24px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid #ddd;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.page-actions .model-table-scroll .progress-table {
+  table-layout: auto;
+  width: 100%;
+  min-width: 800px;
+}
+
+.page-actions .model-table-scroll .progress-table thead {
+  position: static;
+}
+
+.page-actions .model-table-scroll .progress-table th,
+.page-actions .model-table-scroll .progress-table td {
+  width: auto;
+  height: auto;
+  padding: 12px;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+
+.page-actions .model-table-scroll .progress-table td:first-child {
+  min-width: 180px;
+  overflow-wrap: anywhere;
+}
+
+/* Page history */
+
+.page-actions dialog.page-history-dialog {
+  width: min(1100px, 94vw);
+}
+
+.page-history-list {
+  list-style: none;
+  padding: 0;
+}
+
+.page-history-list > li {
+  padding: 16px 0;
+  border-bottom: 1px solid #ddd;
+}
+
+.page-history-list h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.page-history-list h4 {
+  text-transform: capitalize;
+}
+
+.page-history-list dl {
+  padding: 12px;
+  background: #f6f6f6;
+}
+
+.page-history-list dl > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 2fr;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.page-history-list dt {
+  font-weight: 600;
+}
+
+.page-history-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.history-table-scroll {
+  overflow-x: auto;
+}
+
+.history-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+}
+
+.page-history-dialog table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.page-history-dialog th,
+.page-history-dialog td {
+  padding: 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #ddd;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.page-history-dialog thead {
+  background: #f4f4f4;
+}
+
+.history-expanded {
+  background: #fafafa;
+}
+
+.history-values {
+  table-layout: fixed;
+}
+
+.history-table button {
+  white-space: nowrap;
+}
