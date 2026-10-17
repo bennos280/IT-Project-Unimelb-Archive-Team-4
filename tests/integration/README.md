@@ -128,7 +128,7 @@ afterwards.V
 These checks run separately from pytest. They test adapter/API/database
 integration; browser behaviour and image loading are covered separately.
 
-## `review.spec.ts` — 17 tests
+## `review.spec.ts` — 18 tests
 
 Tests the review screen in a real browser using Playwright.
 Each test uses a sample survey, mock images and an isolated mock API.
@@ -145,6 +145,7 @@ No running backend or database is needed.
 | `test("Apply creates draft; Save persists and reload restores it", async ({ page, api }) => ...)`    | Applying creates a draft; saving stores it in the mock API and refreshing restores it.          |
 | `test("Rejected save displays reason and retains unsaved correction", async ({ page, api }) => ...)` | A rejected save displays the error and preserves the draft.                                     |
 | `test("Review all preserves correction and saves all fields", async ({ page, api }) => ...)`         | Reviewing all fields preserves existing corrections and saves every field.                      |
+| `test("Review all keeps another reviewer's saved review", async ({ page, api }) => ...)`             | A field another reviewer already saved keeps their value and name after reviewing all fields.   |
 | `test("Try again recovers from a failed survey request", async ({ page, api }) => ...)`              | Retrying restores the screen after a failed request.                                            |
 | `test("Add reviewer makes the new reviewer selectable", async ({ page }) => ...)`                    | A newly added reviewer becomes selected.                                                        |
 | `test("Stay here and Escape retain the unsaved review", async ({ page, api }) => ...)`               | Dismissing the navigation warning retains the draft without saving.                             |
@@ -212,3 +213,38 @@ Survey consistency check run over a pipeline manifest (`validate_manifest`) with
 | `test_actual_coded_all_null_schema` | The blank main form and coded card templates together give no flags. |
 | `test_explicit_margin_codes_compare` | An industry-of-head code '0802' matches coded '802', and a coded '803' is flagged as an INDUSTRY OF HEAD CODE conflict. |
 | `test_nonpersonal_metadata_not_resident` | A resident row holding only a stray annotation, with no relationship, age or earning status, is not counted as a resident and gives no flags. |
+
+## `progress.spec.ts` — 21 tests (US9: track progress)
+
+Located in `tests/integration/frontend/progress.spec.ts`. Run only these tests from the project folder:
+
+```bash
+npm --prefix tests run test:e2e -- progress.spec.ts
+```
+
+| Test                                                                     | What it checks                                                                                                                                                                    |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `searches bundles and clears an empty result`                            | Bundle search finds a match; an unmatched search shows an empty state; Clear filters restores the list.                                                                           |
+| `disables pagination for one bundle and filters by status`               | Next is disabled for a single bundle, and Reviewed/Ready to review filters return the expected results.                                                                           |
+| `opens bundle pages with matching review targets`                        | Opening a bundle shows its pages and the correct survey/page review link; Back returns to all bundles.                                                                            |
+| `Import and Export remain disabled placeholders`                    | Import and Export buttons remain visible and disabled pending implementation.                                                                                              |
+| `Pg 1/2/3 opens its matching US7 page` — 3 tests                         | Each page's Review link opens the matching page in the review screen.                                                                                                             |
+| `page table keeps actions visible at 936/640/375px` — 3 tests            | Flags and review actions remain visible without horizontal table overflow at desktop, tablet and phone widths.                                                                    |
+| `untouched bundle prompts Transcribe and shows zero progress`            | A bundle without pages or a job shows 0% progress, the not-started message and an enabled Transcribe button beside the filters.                                                   |
+| `partial bundle shows model and completion action without review access` | A failed partial bundle offers Retry transcription and error details; its page list shows the incomplete notice, Complete transcription and the saved model, with no Review link. |
+| `waiting job disables duplicate transcription`                           | A queued job disables the transcription button and keeps the incomplete notice visible.                                                                                           |
+| `running job disables duplicate transcription`                           | A running job disables the transcription button and keeps the incomplete notice visible.                                                                                          |
+| `loaded bundle shows model or dash and hides incomplete notice`          | The Model column shows saved model information or a dash; completed bundles hide the incomplete notice and transcription action.                                                  |
+| `pagination changes rows and searching resets to first page`             | Eleven pages span two table pages; searching from the second page resets pagination and shows matching rows.                                                                      |
+| `failed progress request can be retried`                                 | A failed request displays its error; Try again restores the dashboard after the API recovers.                                                                                     |
+| `polling updates review counts without a reload`                         | Updated API data changes the displayed reviewed count and percentage automatically.                                                                                               |
+
+Related backend coverage lives in `tests/unit/test_progress.py` (3 tests): model/status/flag response data and review targets, saved versus unsaved reviews, and reviews of resident, child and annotation fields. Run it with `uv run pytest tests/unit/test_progress.py`.
+
+### US7 → US9 review round trip — 3 browser tests
+
+`review round trip: saved/unsaved/failed save updates progress only after persistence` opens a page from US9, reviews all fields in US7, and returns through Back to all bundles. An accepted save updates the reviewed count, ready count, percentage, page status, flags and View action, including after refresh. Unsaved drafts and rejected saves leave progress unchanged. These tests use a stateful mock API; they verify the screen-to-screen flow, not real database persistence.
+
+## `page-actions.spec.ts` — 3 tests
+
+Checks same-bundle moves, immediate type changes without queuing, persistence of the transcription prompt after refresh, and separate transcription with or without a preceding type change. Also checks editable model selection and the model table.

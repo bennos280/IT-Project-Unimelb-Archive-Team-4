@@ -125,3 +125,14 @@ def test_a_page_read_again_counts_for_accuracy_only_once_a_reviewer_saves_it(cli
     assert client.post("/reviews/s", json={"reviews": {PAGE: {}}, "revisions": {PAGE: 2}}).status_code == 200
     assert [(row["model"], row["templateVersion"], row["pages"]) for row in client.get("/accuracy").json()] == [
         ("sonnet", queued.version_id, 1)]
+
+
+def test_page_type_job_records_selected_transcription_model(client, setup):
+    setup.get(models.Page, PAGE).category = 'notes'
+    setup.commit()
+    payload = {'pageType': 'main', 'reviewerId': 1, 'model': 'selected-model', 'provider': 'claude', 'effort': 'low'}
+    assert client.put(f'/pages/{PAGE}/type', json={**payload, 'model': ''}).status_code == 400
+    response = client.put(f'/pages/{PAGE}/type', json=payload)
+    assert response.status_code == 200
+    job = setup.get(models.Job, response.json()['job']['id'])
+    assert (job.transcription_model, job.transcription_provider, job.transcription_effort) == ('selected-model', 'claude', 'low')

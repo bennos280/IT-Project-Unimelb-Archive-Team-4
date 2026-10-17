@@ -95,14 +95,22 @@ def read_page_again(db, job, progress):
     if scan is None:
         raise SystemExit("there is no scan of this page on this computer or on the archive")
     progress("transcribe", 0, 1)
-    answer = transcribe(scan, job.page_type, texts={kind: v.body for kind, v in newest.items()})
+    chosen = {key: value for key, value in (("model", job.transcription_model),
+              ("provider", job.transcription_provider), ("effort", job.transcription_effort)) if value is not None}
+    answer = transcribe(scan, job.page_type, texts={kind: v.body for kind, v in newest.items()}, **chosen)
     con = db.connection()
     con.exec_driver_sql("UPDATE pages SET page_id = page_id WHERE 0") #the write lock first: no review lands between check and swap
-    if con.exec_driver_sql("SELECT 1 FROM edits WHERE page_id = ?", (page.page_id,)).first():
+    if job.base_revision is not None:
+        current = con.exec_driver_sql("SELECT revision_no, category FROM pages WHERE page_id = ?", (page.page_id,)).one()
+        if current[0] != job.base_revision or current[1] != job.page_type:
+            raise SystemExit("The page changed during transcription; its existing data was kept. Refresh and retry.")
+        from backend.db.page_history import snapshot
+        snapshot(db, page.page_id, job.reviewer_id, "transcribe")
+    elif con.exec_driver_sql("SELECT 1 FROM edits WHERE page_id = ?", (page.page_id,)).first():
         raise SystemExit("the page was reviewed while it was being read again, so it was left as it was")
     loader.clear_content(page.page_id, con)
     loader.insert_content(page.page_id, answer, job.page_type, con)
-    con.exec_driver_sql("UPDATE pages SET category = ?, revision_no = revision_no + 1, provider = ?, model = ?, effort = ?, runtime = ?,"
+    con.exec_driver_sql("UPDATE pages SET needs_transcription = 0, checked_revision = NULL, category = ?, revision_no = revision_no + 1, provider = ?, model = ?, effort = ?, runtime = ?,"
                         " prompt_version_id = ?, template_version_id = ? WHERE page_id = ?",
                         (job.page_type, *(answer.get(key) for key in loader.META), newest[instructions.PROMPT].version_id,
                          newest[job.page_type].version_id, page.page_id))
@@ -113,7 +121,13 @@ def train_sorting(db, job, progress):
     progress("train", 0, 0)
     built_in = {name for (name,) in db.query(models.PageType.name).filter(models.PageType.built_in)}
     found, no_scan = [], 0
+    # Moves advance the revision for stale-edit protection, not page-type confirmation.
+    # Each move records one event and increments the revision once.
+    move_counts = dict(db.query(models.PageMove.page_id, func.count(models.PageMove.move_id))
+                       .group_by(models.PageMove.page_id))
     for page in db.query(models.Page).filter(models.Page.revision_no > 0, models.Page.category != loader.OTHER_CAT):
+        if page.revision_no <= move_counts.get(page.page_id, 0):
+            continue
         scan = scans.page_scan(page.import_path, db.get(models.Bundle, page.bundle_id).source_pdf, page.page_id)
         found += [(scan, page.category)] if scan else []
         no_scan += not scan

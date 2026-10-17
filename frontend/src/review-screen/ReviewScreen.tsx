@@ -1,4 +1,5 @@
 import ExportDialog from "../export/ExportDialog";
+import PageActions from "./PageActions";
 // Main review screen: field table on the left, scan viewer on the right.
 
 import React, { useState } from "react";
@@ -23,6 +24,7 @@ export default function ReviewScreen({
 }: {
   session: ReturnType<typeof useReviewSession>;
 }) {
+  const [transcribeToolbar, setTranscribeToolbar] = useState<HTMLDivElement | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
@@ -109,7 +111,7 @@ export default function ReviewScreen({
         ) : (
           <div className="review-grid">
             <section className="extracted">
-              <div className="page-heading">
+              <div className="page-heading" data-page-id={page.id}>
                 <h2>
                   {page.id} · {getPageName(page.type)}{" "}
                 </h2>
@@ -122,6 +124,7 @@ export default function ReviewScreen({
                     : 0}
                   % reviewed
                 </span>
+                <PageActions key={page.id} session={session} toolbar={transcribeToolbar} />
                 <span className="flag-progress">
                   {flagsLeft ? `${flagsLeft} need checking` : "No flags"}
                 </span>
@@ -389,6 +392,7 @@ export default function ReviewScreen({
                     </button>
                   </nav>
                 </div>
+                <div className="page-transcription-toolbar"><div ref={setTranscribeToolbar} />
                 <ExportDialog
                   surveyId={survey.id}
                   initialBundleId={survey.bundleId}
@@ -396,6 +400,7 @@ export default function ReviewScreen({
                     Object.values(fields).some((review) => !review.savedAt),
                   )}
                 />
+                </div>
               </div>
               <ImageViewer
                 key={page.id}

@@ -8,6 +8,7 @@ export type PageStatus =
   | "Awaiting transcription"
   | "Ready to review"
   | "Reviewed"
+  | "Not in a survey"
   | "Transcribed — not grouped"
   | "Needs identification"
   | "Not required";
@@ -21,7 +22,7 @@ export type ProgressPage = {
   model?: string | null;
   // Raw transcript data can be available before grouping and database loading finish.
   savedData?: Record<string, unknown>;
-  surveyId?: string;
+  surveyId?: string | null;
   reviewPageId?: string;
 };
 export type Bundle = { id: string; name?: string; pages: ProgressPage[] };
@@ -37,6 +38,7 @@ export function bundleFromSurvey(
     main: "Main page",
     notes: "Notes",
     coded: "Coded",
+    other: "Other",
   };
   return {
     id: bundleId,
@@ -69,9 +71,15 @@ export function bundleFromSurvey(
 // Total includes every status; only the two review states contribute to the other counters.
 // Ready excludes pages without extracted fields and fully reviewed pages.
 export function counts(pages: ProgressPage[]) {
+  const reviewable = pages.filter((page) => page.surveyId != null);
+
   return {
     total: pages.length,
-    reviewed: pages.filter((p) => p.status === "Reviewed").length,
-    ready: pages.filter((p) => p.status === "Ready to review").length,
+    reviewable: reviewable.length,
+    unassigned: pages.filter((page) => page.status === "Not in a survey")
+      .length,
+    reviewed: reviewable.filter((page) => page.status === "Reviewed").length,
+    ready: reviewable.filter((page) => page.status === "Ready to review")
+      .length,
   };
 }

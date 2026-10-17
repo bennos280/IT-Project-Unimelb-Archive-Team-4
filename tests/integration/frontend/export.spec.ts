@@ -47,12 +47,17 @@ const exported = {
   ],
 };
 
+// The page actions menu loads its context on the review screen; export tests only need a valid one.
+const pageActions = { bundleId: "bundle-test", surveyId: "export-test", category: "main", needsTranscription: false,
+  revision: 0, hasReviews: false, job: null, surveys: [] };
+
 // Confirms the downloaded JSON uses the saved backend correction and excludes an unsaved edit in the review screen.
 test("downloads backend correction instead of an unsaved on-screen edit", async ({
   page,
 }) => {
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url()).pathname;
+    if (url.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
     if (url === "/api/export") return route.fulfill({ json: exported });
     if (url.startsWith("/api/survey/")) return route.fulfill({ json: demo });
     if (url === "/api/reviewers")
@@ -101,6 +106,7 @@ test("shows backend export failure and permits retry", async ({ page }) => {
   let fail = false;
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url()).pathname;
+    if (url.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
     if (url.startsWith("/api/survey/")) return route.fulfill({ json: demo });
     if (url === "/api/reviewers") return route.fulfill({ json: [] });
     if (url === "/api/export")
@@ -125,6 +131,7 @@ test("shows backend export failure and permits retry", async ({ page }) => {
 test("downloads a selected bundle as JSON", async ({ page }) => {
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
     if (url.pathname === "/api/export/bundles")
       return route.fulfill({ json: [{ id: "bundle-test", name: "123" }] });
     if (url.pathname === "/api/export") {
@@ -160,6 +167,7 @@ test("dashboard exports the selected bundle ID rather than its display number", 
 }) => {
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
     if (url.pathname === "/api/progress")
       return route.fulfill({
         json: [{ id: "db-bundle-abc", name: "123", pages: [] }],
@@ -201,6 +209,7 @@ test("review screen exports its current bundle using the backend bundle ID", asy
 }) => {
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
     if (url.pathname.startsWith("/api/survey/"))
       return route.fulfill({ json: { ...demo, bundleId: "actual-bundle-id" } });
     if (url.pathname === "/api/export/bundles")
@@ -237,6 +246,7 @@ test("warns for unreviewed data and clears the warning for a reviewed selection"
 }) => {
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
+    if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
     if (url.pathname.startsWith("/api/survey/"))
       return route.fulfill({ json: demo });
     if (
@@ -275,6 +285,7 @@ for (const selectedBundle of [false, true]) {
   }) => {
     await page.route("**/api/**", (route) => {
       const url = new URL(route.request().url());
+      if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
       if (url.pathname === "/api/progress")
         return route.fulfill({
           json: [{ id: "pending", name: "123", pages: [] }],

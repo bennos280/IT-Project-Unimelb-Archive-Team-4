@@ -46,6 +46,7 @@ type SurveyResponse = {
   pages: Array<{
     id: string;
     type: string;
+    needsTranscription?: boolean;
     imageUrl?: string | null;
     fields: unknown[];
     flags?: Array<{

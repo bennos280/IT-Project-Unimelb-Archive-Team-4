@@ -2,6 +2,7 @@
 import type { PageType, SourceRegion } from "./model";
 
 export const fieldLocations: Record<PageType, Record<string, SourceRegion>> = {
+  other: {},
   main: {
     // Approximate handwritten dwelling number in the upper-left margin.
     number_of_dwelling: { x: 0.02, y: 0.025, width: 0.18, height: 0.10 },

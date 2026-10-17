@@ -29,6 +29,7 @@ class Page(Base):
     effort = Column(String, nullable=True)
     runtime = Column(Numeric, nullable=True)
     revision_no = Column(Integer, default=0, server_default="0")
+    needs_transcription = Column(Boolean, nullable=False, default=False, server_default=false())
     checked_revision = Column(Integer, nullable=True) #the revision a reviewer last saved: checked while it is still revision_no
     survey_id = Column(String, ForeignKey("surveys.survey_id", ondelete="CASCADE"), nullable=True)
     bundle_id = Column(String, ForeignKey("bundles.bundle_id", ondelete="CASCADE"), nullable=False)
@@ -95,6 +96,7 @@ class Job(Base):
     __table_args__ = (CheckConstraint("status IN ('waiting', 'running', 'done', 'failed')", name="status"),
                       CheckConstraint("kind IN ('bundle', 'page', 'train')", name="kind"))
     job_id = Column(Integer, primary_key=True, autoincrement=True)
+    base_revision = Column(Integer, nullable=True)
     transcription_model = Column(String, nullable=True)
     transcription_provider = Column(String, nullable=True)
     transcription_effort = Column(String, nullable=True)
@@ -168,3 +170,24 @@ class Annotation(Base):
     annotation_no = Column(Integer, primary_key=True)
     text_raw = Column(String, nullable=True)
     location = Column(String, nullable=True)
+
+# Audit trail; moving a page never rewrites its extracted fields or reviews
+class PageMove(Base):
+    __tablename__ = "page_moves"
+    move_id = Column(Integer, primary_key=True)
+    page_id = Column(String, ForeignKey("pages.page_id"), nullable=False)
+    from_survey = Column(String, nullable=True)
+    to_survey = Column(String, nullable=False)
+    reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=False)
+    reason = Column(Text, nullable=False, default="")
+    time = Column(DateTime, nullable=False, server_default=func.now())
+
+# Snapshot before reclassification or replacement, including saved edits.
+class PageVersion(Base):
+    __tablename__ = "page_versions"
+    version_id = Column(Integer, primary_key=True)
+    page_id = Column(String, ForeignKey("pages.page_id"), nullable=False)
+    reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=False)
+    action = Column(String, nullable=False)
+    snapshot = Column(Text, nullable=False)
+    time = Column(DateTime, nullable=False, server_default=func.now())

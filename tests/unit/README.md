@@ -247,6 +247,23 @@ Page sorting retrained from the review screen; page fingerprints are made up, so
 | `test_a_model_that_fails_its_check_is_recorded_but_not_used`                     | A model that fails is recorded with its check, but not kept or used.                                                                                                                                                                                                                   |
 | `test_a_bundle_job_sorts_with_the_active_model`                                  | A bundle job sorts pages with the active model's weights; if that file is gone, the job fails saying so.                                                                                                                                                                               |
 | `test_sorting_models_are_trained_listed_and_chosen_through_the_api`              | `POST /sorting-models` queues one training (409 while waiting; 400 for an unknown reviewer); the list is newest first; `PUT /sorting-models/active` refuses an unknown (404) or failed (400) model, makes a passed one the only active one, and `null` goes back to the shipped model. |
+|`test_moves_do_not_make_unreviewed_pages_training_examples` — 2 tests|Repeated moves increase revisions and reject stale requests without making an unreviewed page eligible for sorting training. A previously reviewed page stays eligible after moving.|
+
+## `test_page_transcription.py`
+
+|Test|What it checks|
+|---|---|
+|`test_classification_is_immediate_preserves_reviews_and_does_not_queue`|Changing page type preserves existing content and reviews, records a history snapshot, and does not queue transcription.|
+|`test_same_type_transcription_preserves_old_reviews_in_history`|Retranscription replaces the current content while preserving previous content and reviews in history.|
+|`test_failed_transcription_keeps_old_content`|A failed transcription keeps the existing content and reviews.|
+|`test_concurrent_review_prevents_replacement`|A page changed after transcription was queued is protected from replacement.|
+|`test_classification_rejects_invalid_type_reviewer_and_stale_revision`|Rejects unsupported types, unknown reviewers, outdated revisions, and selecting the existing type.|
+|`test_transcription_requires_template_and_valid_model_details`|Rejects invalid model settings and transcription of a page type without a template.|
+|`test_other_does_not_require_transcription_but_main_does`|Changing Main → Other → Main updates the transcription requirement correctly in both the API response and database.|
+
+## `test_page_history.py`
+
+It checks read-only, page-scoped history, archived reviews, moves, empty history, and missing pages.
 
 ## `api.test.ts` — 19 tests
 
