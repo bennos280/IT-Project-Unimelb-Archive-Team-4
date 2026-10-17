@@ -41,7 +41,7 @@ def review_progress(db):
             flagged[p.page_id].add("text")
         pages = bundles[p.bundle_id]["pages"]
         status = (
-            "Awaiting transcription" if not fields[p.page_id] else
+            "Awaiting transcription" if p.needs_transcription or not fields[p.page_id] else
             "Not in a survey" if p.survey_id is None else
             "Reviewed" if fields[p.page_id] <= reviewed[p.page_id] else
             "Ready to review"

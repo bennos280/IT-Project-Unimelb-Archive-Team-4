@@ -40,6 +40,7 @@ export type Field = {
 export type SurveyPage = {
   id: string;
   type: PageType;
+  needsTranscription?: boolean;
   imageUrl: string;
   fields: Field[];
   flags: Flag[];

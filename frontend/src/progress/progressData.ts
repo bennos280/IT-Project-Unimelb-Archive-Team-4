@@ -38,6 +38,7 @@ export function bundleFromSurvey(
     main: "Main page",
     notes: "Notes",
     coded: "Coded",
+    other: "Other",
   };
   return {
     id: bundleId,
