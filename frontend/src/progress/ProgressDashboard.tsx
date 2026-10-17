@@ -282,7 +282,7 @@ export default function ProgressDashboard() {
               defaultScope="bundle"
               hasDrafts={false}
             />
-            <button type="button" disabled title="Import coming soon">
+            <button type="button" onClick={() => { window.location.href = "/?view=import"; }}>
               <Upload size={16} /> Import
             </button>
           </div>

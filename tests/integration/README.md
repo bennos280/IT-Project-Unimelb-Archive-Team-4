@@ -227,7 +227,7 @@ npm --prefix tests run test:e2e -- progress.spec.ts
 | `searches bundles and clears an empty result`                            | Bundle search finds a match; an unmatched search shows an empty state; Clear filters restores the list.                                                                           |
 | `disables pagination for one bundle and filters by status`               | Next is disabled for a single bundle, and Reviewed/Ready to review filters return the expected results.                                                                           |
 | `opens bundle pages with matching review targets`                        | Opening a bundle shows its pages and the correct survey/page review link; Back returns to all bundles.                                                                            |
-| `Import and Export remain disabled placeholders`                    | Import and Export buttons remain visible and disabled pending implementation.                                                                                              |
+| `Import opens the import screen` | The Import button opens the import screen. |
 | `Pg 1/2/3 opens its matching US7 page` — 3 tests                         | Each page's Review link opens the matching page in the review screen.                                                                                                             |
 | `page table keeps actions visible at 936/640/375px` — 3 tests            | Flags and review actions remain visible without horizontal table overflow at desktop, tablet and phone widths.                                                                    |
 | `untouched bundle prompts Transcribe and shows zero progress`            | A bundle without pages or a job shows 0% progress, the not-started message and an enabled Transcribe button beside the filters.                                                   |
@@ -248,3 +248,20 @@ Related backend coverage lives in `tests/unit/test_progress.py` (3 tests): model
 ## `page-actions.spec.ts` — 3 tests
 
 Checks same-bundle moves, immediate type changes without queuing, persistence of the transcription prompt after refresh, and separate transcription with or without a preceding type change. Also checks editable model selection and the model table.
+
+## Import screen browser tests — 5 tests
+
+`import.spec.ts` tests the import screen (`/?view=import`) in a real browser. Uploads are intercepted, so no
+file reaches the data folder; the server's own checks are in `tests/unit/test_uploads.py`.
+
+```bash
+npm --prefix tests run test:e2e -- import.spec.ts
+```
+
+| Test                                                                                    | What it checks                                                                                                          |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `files need a bundle number, and unsupported, empty or repeated files are not added`    | Import stays disabled until every file has a 1–30 digit bundle number; other types, empty files and repeats are left out. |
+| `each file is sent with its own bundle number and a refusal shows the server's reason`  | Each upload carries its file's trimmed bundle number; a refused file keeps its row editable and shows why.              |
+| `page images of one bundle share its bundle number`                                     | Two page images with the same bundle number are both sent under it.                                                     |
+| `controls are locked while an upload is under way`                                      | Choose files, Remove and the bundle numbers are disabled until the upload finishes.                                     |
+| `a dropped file is added`                                                               | Dragging a file over the drop zone highlights it, and dropping adds the file.                                           |

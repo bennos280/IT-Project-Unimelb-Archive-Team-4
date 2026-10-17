@@ -265,6 +265,24 @@ Page sorting retrained from the review screen; page fingerprints are made up, so
 
 It checks read-only, page-scoped history, archived reviews, moves, empty history, and missing pages.
 
+## `test_uploads.py`
+
+`POST /bundles/upload`: a bundle is one PDF, or a folder of page images that share a bundle number. Duplicates are refused without changing existing files or database records.
+
+| Test                                                              | What it checks                                                                                                                                                                                          |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_loaded_pdf_cannot_be_uploaded_under_another_bundle`         | Rejects a PDF whose filename already identifies a loaded bundle, reports the original bundle number, and preserves the database record.                                                                 |
+| `test_local_pdf_identity_is_unique_across_folders`                | Rejects the same PDF filename under a different bundle folder and preserves the original file.                                                                                                          |
+| `test_archive_pdf_requires_original_bundle_number`                | Rejects an archive PDF under the wrong bundle number and accepts it under its registered number when not already loaded or uploaded.                                                                    |
+| `test_different_pdf_cannot_reuse_bundle_number` — 3 tests         | Rejects a different PDF when its proposed bundle number is already used in the database, local storage, or archive list.                                                                                |
+| `test_new_bundle_number_accepts_upload`                           | Accepts a new PDF under an unused bundle number and saves its contents unchanged.                                                                                                                       |
+| `test_page_images_make_one_bundle_named_after_it`                 | Several page images share a bundle number and are saved as `<bundle>_<name>`, so their page IDs stay unique; the same image twice, or a PDF, is refused; `GET /bundles` lists the folder as one bundle. |
+| `test_an_image_cannot_join_a_pdf_bundle`                          | A page image under a PDF's bundle number is refused and the folder keeps only the PDF.                                                                                                                  |
+| `test_a_damaged_pdf_is_refused_and_leaves_nothing_behind`         | A damaged PDF gets a 400 saying so, with no bundle folder and no temporary file left.                                                                                                                   |
+| `test_a_file_over_the_limit_is_refused_and_leaves_nothing_behind` | A file over the size limit gets a 413, with no bundle folder and no temporary file left.                                                                                                                |
+| `test_names_windows_cannot_store_are_refused` — 6 tests           | Names with `? : | "` or a trailing dot or space are refused with a 400 before anything is saved.                                                                                                        |
+| `test_pdf_names_that_differ_only_by_case_are_the_same_bundle`     | A PDF name that differs from an uploaded, loaded or archive PDF only by case counts as the same bundle; an archive PDF is accepted under its own number whatever the case.                              |
+
 ## `api.test.ts` — 19 tests
 
 Tests the frontend review API adapter using Vitest and mocked fetch responses.
