@@ -186,3 +186,40 @@ def test_retraining_keeps_its_fingerprints_apart_from_the_committed_ones(tmp_pat
     assert len(list((tmp_path / "output" / "fingerprints" / identify.CODE_HASH).iterdir())) == 20
     identify.retrain([(p, "followup") for p in settled], tmp_path / "model.npz", tmp_path / "output" / "fingerprints")
     assert [n for n in calls if n] == [120, 20]  # the second retraining reused every fingerprint
+
+
+@pytest.mark.parametrize("reviewed", [False, True])
+def test_moves_do_not_make_unreviewed_pages_training_examples(client, db, monkeypatch, tmp_path, reviewed):
+    """Repeated moves keep stale-save protection without making a page eligible for training.
+
+    A page with an existing saved review remains eligible after moving.
+    """
+    add_in_order(db,
+        models.Reviewer(reviewer_id=1, name="Reviewer"),
+        models.Survey(survey_id="s1", bundle_id="6789"),
+        models.Survey(survey_id="s2", bundle_id="6789"),
+        models.Page(page_id="p", survey_id="s1", bundle_id="6789", category="main",
+                    import_path="x.png", revision_no=0),
+        models.Field(page_id="p", field_title="address", text_raw="Example address"))
+    db.commit()
+    revision = 0
+    if reviewed:
+        saved = client.post("/reviews/s1", json={
+            "reviews": {"p": {"address": {"value": "Example address", "reviewerId": 1}}},
+            "revisions": {"p": 1}})
+        assert saved.status_code == 200
+        revision = 1
+    for source, target in [("s1", "s2"), ("s2", "s1")]:
+        payload = {"sourceSurveyId": source, "surveyId": target, "reviewerId": 1, "revision": revision}
+        assert client.put("/page-moves/p", json=payload).status_code == 200
+        revision += 1
+        db.expire_all()
+        page = db.get(models.Page, "p")
+        assert page.revision_no == revision
+        assert page.checked_revision == (revision if reviewed else None)
+        assert client.put("/page-moves/p", json={**payload, "sourceSurveyId": target, "surveyId": source}).status_code == 409
+    used = fake_retrain(monkeypatch, tmp_path, passes=True)
+    db.add(models.Job(kind="train", reviewer_id=1))
+    db.commit()
+    assert worker.work_once(db)
+    assert used == ([(Path("p"), "main")] if reviewed else [])

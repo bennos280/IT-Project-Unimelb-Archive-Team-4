@@ -40,6 +40,7 @@ export type Field = {
 export type SurveyPage = {
   id: string;
   type: PageType;
+  needsTranscription?: boolean;
   imageUrl: string;
   fields: Field[];
   flags: Flag[];
@@ -47,6 +48,7 @@ export type SurveyPage = {
 
 // Represents the complete survey loaded by the review screen.
 export type Survey = {
+  bundleId?: string;
   id: string;
   title: string;
   pages: SurveyPage[];
@@ -115,7 +117,12 @@ const pageNames: Record<string, string> = {
   main: "Main page",
   notes: "Notes page",
   coded: "Coded page",
+  other: "Other page",
 };
+// Notes and other pages hold one free-text field.
+export function isTextPage(type: PageType): boolean {
+  return type === "notes" || type === "other";
+}
 export function getPageName(type: PageType): string {
   return Object.hasOwn(pageNames, type) ? pageNames[type] : type;
 }

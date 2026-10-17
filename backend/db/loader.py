@@ -35,6 +35,7 @@ def dump_into_db(manifest_path):
             insert_page(Path(p["file"]).stem, page, stored_path(p["path"]), category,
                         p.get("survey"), bundle_id, con, transcripts.get(p["file"], {}).get("request") if page else None)
         insert_flags(run_folder / "review.json", con)
+        insert_check_flags(run_folder / "validation" / "output_flagged.json", con)
 
 
 #request: how the page was read (from the manifest); its prompt and template hashes find their versions
@@ -114,6 +115,23 @@ def insert_flags(review_p, con):
         if field is not None: #a blank page isn't in the db
             con.exec_driver_sql("""INSERT INTO flags(page_id, field_title, kind, reason)
                 VALUES(?, ?, 'inconsistency', ?)""", (page_id, field[0], "Grouping: " + entry["reason"].split(": ", 1)[-1]))
+
+#the consistency check's conflicts become flags on the fields they name (a resident's field isn't in fields: skipped);
+#"comparison incomplete" (one side blank or unreadable) isn't a conflict
+def insert_check_flags(check_p, con):
+    if not check_p.is_file():
+        return
+    for survey in json.loads(check_p.read_text(encoding="utf-8"))["surveys"]:
+        pages = {"Page 1": survey["page_files"]["main"], "Page 3": survey["page_files"]["coded"]}
+        for flag in survey["validation_flags"]:
+            if "incomplete" in flag["type"]:
+                continue
+            for path in flag["fields"]:
+                page, _, field_title = path.partition(": ")
+                if page in pages:
+                    con.exec_driver_sql("""INSERT INTO flags(page_id, field_title, kind, reason)
+                        SELECT page_id, field_title, 'inconsistency', ? FROM fields WHERE page_id = ? AND field_title = ?""",
+                        ("Consistency: " + flag["reason"], Path(pages[page]).stem, field_title))
 
 #the first version of kind with this text's hash; None if no version has it
 def version_id(con, kind, sha):

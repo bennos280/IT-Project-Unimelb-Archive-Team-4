@@ -1,6 +1,7 @@
+import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Search, Upload, Download } from "lucide-react";
+import { ArrowLeft, ArrowRight, Search, Upload } from "lucide-react";
 import {
   counts,
   type Bundle,
@@ -239,7 +240,7 @@ export default function ProgressDashboard() {
   }
   // Open US7 at the exact survey and page selected through Review or View.
   function reviewLink(p: ProgressPage) {
-    return `/?survey=${encodeURIComponent(p.surveyId!)}&page=${encodeURIComponent(p.reviewPageId!)}`;
+    return `/?survey=${encodeURIComponent(p.surveyId!)}&page=${encodeURIComponent(p.reviewPageId!)}${p.status === "Awaiting transcription" ? "&action=transcribe" : ""}`;
   }
   return (
     <div className="progress-app">
@@ -268,11 +269,19 @@ export default function ProgressDashboard() {
                 : `Track review progress across ${(bundles ?? []).length} bundles`}
             </p>
           </div>
-          {/* Open the import file selection screen. */}
           <div className="progress-actions">
-            <button type="button" disabled title="Export coming soon">
-              <Download size={16} /> Export
-            </button>
+            <ExportDialog
+              surveyId={
+                bundle?.pages.find((page) => page.surveyId)?.surveyId ?? ""
+              }
+              initialBundleId={
+                bundle && (!bundle.source || bundle.source.loaded)
+                  ? bundle.id
+                  : undefined
+              }
+              defaultScope="bundle"
+              hasDrafts={false}
+            />
             <button type="button" onClick={() => { window.location.href = "/?view=import"; }}>
               <Upload size={16} /> Import
             </button>
@@ -429,14 +438,12 @@ export default function ProgressDashboard() {
                           <td>
                             {bundle.source && !bundle.source.loaded ? (
                               <span>Unavailable at the moment</span>
-                            ) : p.status === "Awaiting transcription" ? (
-                              <span>Awaiting transcription</span>
                             ) : p.surveyId ? (
                               <a
                                 className="progress-link-button"
                                 href={reviewLink(p)}
                               >
-                                {p.status === "Reviewed" ? "View" : "Review"}
+                                {p.status === "Awaiting transcription" ? "Transcribe" : p.status === "Reviewed" ? "View" : "Review"}
                                 <ArrowRight size={16} />
                               </a>
                             ) : (

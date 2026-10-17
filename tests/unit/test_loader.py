@@ -62,6 +62,27 @@ def test_run_loads_into_its_surveys(tmp_path, monkeypatch):
         "washouse": "In separate laundry", "weekly_rent": None}
 
 
+def test_consistency_conflicts_become_flags_on_the_fields_they_name(tmp_path, monkeypatch):
+    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+    database.migrate(url)
+    monkeypatch.setattr(database, "engine", database.make_engine(url))
+    out = run_folder(tmp_path)
+    (out / "validation").mkdir()
+    (out / "validation" / "output_flagged.json").write_text(json.dumps({"surveys": [{
+        "page_files": {"main": "216412_00001.png", "coded": "216412_00002.png", "notes": ["216412_00003.png"]},
+        "validation_flags": [
+            {"type": "Page 1–3 conflict", "reason": "TYPE OF FAMILY: Page 1 has 2 residents, but Page 3 records 1.",
+             "fields": {"Page 1: residents[0].relationship": "Head", "Page 1: address": "5 Raeburn Cres.", "Page 3: type_of_family": "1"}},
+            {"type": "Page 1–3 comparison incomplete", "reason": "WASHOUSE: one corresponding value is missing.",
+             "fields": {"Page 3: washouse": "1"}}]}]}), encoding="utf-8")
+    loader.dump_into_db(out / "manifest.json")
+
+    db = sqlite3.connect(tmp_path / "test.db")
+    assert db.execute("SELECT page_id, field_title, reason FROM flags WHERE reason LIKE 'Consistency%' ORDER BY page_id").fetchall() == [
+        ("216412_00001", "address", "Consistency: TYPE OF FAMILY: Page 1 has 2 residents, but Page 3 records 1."),
+        ("216412_00002", "type_of_family", "Consistency: TYPE OF FAMILY: Page 1 has 2 residents, but Page 3 records 1.")]
+
+
 def test_each_page_records_the_prompt_and_template_versions_that_read_it(tmp_path, monkeypatch):
     from backend.db.instructions import sha256
     from backend.pipeline.transcribe.transcribe import read_texts

@@ -149,7 +149,7 @@ test.describe("Progress navigation and layout", () => {
         .filter({ has: page.getByRole("cell", { name: "Pg 1", exact: true }) });
       await expect(firstRow).toContainText("5 need checking");
       await firstRow.getByRole("link", { name: "Review", exact: true }).click();
-      await expect(page.locator(".page-heading h2")).toContainText("216417/p0");
+      await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id", "216417/p0");
       await page
         .getByRole("combobox", { name: "Reviewer name", exact: true })
         .selectOption("Test reviewer");
@@ -277,9 +277,8 @@ test.describe("Progress navigation and layout", () => {
     ).toBeVisible();
   });
 
-  test("Import opens the import screen and Export stays disabled", async ({ page }) => {
+  test("Import opens the import screen", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeDisabled();
     await page.getByRole("button", { name: "Import", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Import survey bundles" })).toBeVisible();
   });
@@ -303,7 +302,7 @@ test.describe("Progress navigation and layout", () => {
 
       await row.getByRole("link", { name: "Review", exact: true }).click();
 
-      await expect(page.locator(".page-heading h2")).toContainText(pageId);
+      await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id", pageId);
       await expect(
         page.getByRole("heading", { name: "Transcript Review" }),
       ).toBeVisible();
@@ -575,6 +574,20 @@ test.describe("Progress and transcription states", () => {
       page.getByText("1 / 2 reviewed · 50%", { exact: true }),
     ).toBeVisible({ timeout: 10000 });
   });
+});
+
+test('awaiting transcription page has a Transcribe action targeting its survey page', async ({ page }) => {
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === '/api/progress') return route.fulfill({json:[{id:'b',pages:[{id:'b/p4',label:'Pg 4',category:'Coded',status:'Awaiting transcription',flagCount:0,surveyId:'s1',reviewPageId:'b/p4'}]}]});
+    if (path === '/api/bundles') return route.fulfill({json:[]});
+    return route.fulfill({status:404,json:{detail:'Unexpected test request'}});
+  });
+  await page.goto('/');
+  await page.getByRole('button',{name:'b',exact:true}).click();
+  const row=page.locator('.progress-table tbody tr').filter({hasText:'Pg 4'});
+  await expect(row.getByRole('link',{name:'Transcribe',exact:true})).toHaveAttribute('href','/?survey=s1&page=b%2Fp4&action=transcribe');
+  await expect(row.getByRole('link',{name:'Review',exact:true})).toHaveCount(0);
 });
 
 test.describe("Pages without a survey", () => {

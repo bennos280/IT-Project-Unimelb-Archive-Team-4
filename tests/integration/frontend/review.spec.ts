@@ -180,7 +180,7 @@ test("Next/Previous show matching page data and image", async ({ page }) => {
   ).toBeDisabled();
   for (let index = 0; index < demo.pages.length; index++) {
     const source = demo.pages[index];
-    await expect(page.locator(".page-heading h2")).toContainText(source.id);
+    await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id", source.id);
     await expect(page.locator("tr.field")).toHaveCount(source.fields.length);
     await expect(page.locator(".scan-stage img")).toHaveAttribute(
       "src",
@@ -206,7 +206,7 @@ test("Next/Previous show matching page data and image", async ({ page }) => {
   await page
     .getByRole("button", { name: "Previous page", exact: true })
     .click();
-  await expect(page.locator(".page-heading h2")).toContainText(
+  await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id",
     demo.pages[1].id,
   );
 });
@@ -374,6 +374,40 @@ test("Review all preserves correction and saves all fields", async ({
   );
 });
 
+// Checks that marking all fields reviewed leaves a field another reviewer
+// already saved with their value and name.
+test("Review all keeps another reviewer's saved review", async ({
+  page,
+  api,
+}) => {
+  api.reviews[demo.pages[0].id] = {
+    municipality: {
+      value: "Saved earlier",
+      original: null,
+      reviewer: "Other reviewer",
+      reviewerId: 2,
+      savedAt: "2026-10-04T01:00:00Z",
+    },
+  };
+  api.revisions[demo.pages[0].id] = 1;
+  await page.reload();
+  const municipality = page.locator("tr.field").filter({
+    has: page.getByRole("button", { name: "Edit Municipality", exact: true }),
+  });
+  await expect(municipality).toContainText("Reviewed by: Other reviewer");
+  await page
+    .getByRole("combobox", { name: "Reviewer name", exact: true })
+    .selectOption("Test reviewer");
+  await page
+    .getByRole("button", {
+      name: "Mark all fields as reviewed",
+      exact: true,
+    })
+    .click();
+  await expect(municipality).toContainText("Reviewed by: Other reviewer");
+  await expect(municipality.locator(".value")).toHaveText("Saved earlier");
+});
+
 // Checks that a failed survey load displays an error and Try again
 // restores the screen once the mock API succeeds.
 test("Try again recovers from a failed survey request", async ({
@@ -460,7 +494,7 @@ test.describe("Unsaved navigation", () => {
       .click();
 
     await expect(leaveDialog(page)).not.toBeVisible();
-    await expect(page.locator(".page-heading h2")).toContainText(
+    await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id",
       demo.pages[1].id,
     );
 
@@ -509,7 +543,7 @@ test.describe("Unsaved navigation", () => {
       })
       .click();
 
-    await expect(page.locator(".page-heading h2")).toContainText(
+    await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id",
       demo.pages[1].id,
     );
 
@@ -545,7 +579,7 @@ test.describe("Unsaved navigation", () => {
       "Page changed",
     );
 
-    await expect(page.locator(".page-heading h2")).toContainText(
+    await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id",
       demo.pages[0].id,
     );
 

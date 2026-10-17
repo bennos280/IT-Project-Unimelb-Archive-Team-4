@@ -40,11 +40,13 @@ type SaveResult = {
 };
 
 type SurveyResponse = {
+  bundleId?: string;
   id: string;
   title: string;
   pages: Array<{
     id: string;
     type: string;
+    needsTranscription?: boolean;
     imageUrl?: string | null;
     fields: unknown[];
     flags?: Array<{
@@ -57,7 +59,10 @@ type SurveyResponse = {
 };
 
 // Send a request and display errors into message the review screen can display
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function request<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, options);
 
   if (!response.ok) {
