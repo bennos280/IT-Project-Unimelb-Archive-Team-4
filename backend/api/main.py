@@ -102,7 +102,8 @@ def page_flags(db, p, fields_list):
 #a survey's pages in scan order, with fields, flags and scan URL
 @app.get("/survey/{survey_id}")
 def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
-    if not db.get(models.Survey, survey_id):
+    survey = db.get(models.Survey, survey_id)
+    if not survey:
         raise HTTPException(status_code=404, detail="Survey not found")
 
     pages_list = []
@@ -116,7 +117,7 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
             "fields": fields_list,
             "flags": page_flags(db, p, fields_list),
         })
-    return {"id":survey_id, "title":"Wilfred Prest Survey", "pages":pages_list}
+    return {"id":survey_id, "bundleId":survey.bundle_id, "title":"Wilfred Prest Survey", "pages":pages_list}
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
 #and black and white (the scan itself if that fails)
@@ -570,6 +571,75 @@ def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
         result.append({"id": page_id, "category": category, "status": status,
                        "data": page["data"] if page else None})
     return {"jobId": job_id, "status": job.status, "pages": result}
+
+
+def export_survey(survey_id: str, request: Request, db: Session):
+    survey_id = survey_id.strip()
+    if not survey_id:
+        raise HTTPException(status_code=400, detail="Enter a survey ID.")
+    survey = get_survey(survey_id, request, db)
+    reviews = get_reviews(survey_id, db)["reviews"]
+    pages = []
+    for page in survey["pages"]:
+        fields = []
+        for field in page["fields"]:
+            saved = reviews.get(page["id"], {}).get(field["id"])
+            reviewed = bool(saved and saved.get("savedAt"))
+            fields.append({
+                **field,
+                "value": saved["value"] if reviewed else field["value"],
+                **({"decoded": saved.get("decoded")} if reviewed and "decoded" in field else {}),
+                "status": "Reviewed" if reviewed else "ToBeReviewed",
+            })
+        pages.append({
+            "pageId": page["id"],
+            "label": page["type"],
+            "status": "Reviewed" if fields and all(
+                field["status"] == "Reviewed" for field in fields
+            ) else "ToBeReviewed",
+            "fields": fields,
+            "flags": page["flags"],
+        })
+    return {"surveys": [{
+        "surveyId": survey_id,
+        "status": "Reviewed" if pages and all(
+            page["status"] == "Reviewed" for page in pages
+        ) else "ToBeReviewed",
+        "pages": pages,
+    }]}
+
+
+@app.get("/export/bundles")
+def export_bundles(db: Session = Depends(get_db)):
+    from pathlib import PurePosixPath
+    return [{"id": b.bundle_id, "name": PurePosixPath(b.source_pdf.replace("\\", "/")).parent.name or b.bundle_id}
+            for b in db.query(models.Bundle).order_by(models.Bundle.bundle_id)]
+
+
+@app.get("/export")
+def download_export(request: Request, survey_id: str | None = None, bundle_id: str | None = None,
+                    db: Session = Depends(get_db)):
+    if (survey_id is None) == (bundle_id is None):
+        raise HTTPException(status_code=400, detail="Choose a survey ID or a bundle.")
+    if survey_id is not None:
+        return export_survey(survey_id, request, db)
+    bundle_id = bundle_id.strip()
+    if not bundle_id:
+        raise HTTPException(status_code=400, detail="Choose a bundle.")
+    if not db.get(models.Bundle, bundle_id):
+        raise HTTPException(status_code=404, detail="Bundle not found.")
+    surveys = []
+    for (sid,) in db.query(models.Survey.survey_id).filter_by(bundle_id=bundle_id).order_by(models.Survey.survey_id):
+        surveys.extend(export_survey(sid, request, db)["surveys"])
+    # Unassigned pages have no saved survey reviews, but remain in the download.
+    unassigned = []
+    for page in db.query(models.Page).filter_by(bundle_id=bundle_id, survey_id=None).order_by(models.Page.page_id):
+        fields = page_fields(db, page)
+        unassigned.append({"pageId": page.page_id, "label": page.category,
+                           "status": "ToBeReviewed", "reason": "No survey assignment",
+                           "fields": [{**f, "status": "ToBeReviewed"} for f in fields],
+                           "flags": page_flags(db, page, fields)})
+    return {"bundleId": bundle_id, "surveys": surveys, "unassignedPages": unassigned}
 
 
 class MovePageRequest(BaseModel):

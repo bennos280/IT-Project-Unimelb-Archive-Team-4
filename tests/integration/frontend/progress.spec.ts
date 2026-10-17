@@ -277,12 +277,6 @@ test.describe("Progress navigation and layout", () => {
     ).toBeVisible();
   });
 
-  test("Import and Export remain disabled placeholders", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.getByRole("button", { name: "Import", exact: true })).toBeDisabled();
-    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeDisabled();
-  });
-
   for (const [label, pageId] of [
     ["Pg 1", "216417/p0"],
     ["Pg 2", "216417/p1"],

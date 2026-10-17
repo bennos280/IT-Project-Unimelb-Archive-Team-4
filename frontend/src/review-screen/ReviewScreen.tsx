@@ -1,9 +1,9 @@
+import ExportDialog from "../export/ExportDialog";
 import PageActions from "./PageActions";
 // Main review screen: field table on the left, scan viewer on the right.
 
 import React, { useState } from "react";
 import {
-  Download,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -393,9 +393,14 @@ export default function ReviewScreen({
                   </nav>
                 </div>
                 <div className="page-transcription-toolbar"><div ref={setTranscribeToolbar} />
-                <button type="button" disabled title="Export coming soon">
-                  <Download size={16} /> Export
-                </button></div>
+                <ExportDialog
+                  surveyId={survey.id}
+                  initialBundleId={survey.bundleId}
+                  hasDrafts={Object.values(session.reviews).some((fields) =>
+                    Object.values(fields).some((review) => !review.savedAt),
+                  )}
+                />
+                </div>
               </div>
               <ImageViewer
                 key={page.id}

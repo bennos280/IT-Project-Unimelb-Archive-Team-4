@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 export default defineConfig({
-  testDir: "./integration/ui-reviewscreen",
+  testDir: "./integration/frontend",
   fullyParallel: true,
   workers: 2,
   reporter: [["list"]],

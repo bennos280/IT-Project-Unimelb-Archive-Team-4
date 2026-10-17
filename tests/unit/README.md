@@ -289,6 +289,28 @@ Each test uses fresh sample data; no running backend or database is needed.
 | `it("does not submit an unknown reviewer", async () => ...)`                                                                                   | An unregistered reviewer is rejected before posting a save.                                                |
 | `it("uses the backend-assigned reviewer ID and sends only the name", async () => ...)`                                                         | Creating a reviewer sends only the trimmed name and uses the ID returned by the backend.                   |
 
+## `test_export_api.py` — 9 test cases
+
+checks the export endpoints using the test client and database fixtures.
+
+| Test                                                    | What it checks                                                                                                            |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `test_export_latest_saved_value_and_source` — 5 cases   | Exports the latest saved correction, including empty strings, `/`, `[?]` and null values, with the correct review status. |
+| `test_bundle_includes_all_surveys_and_unassigned_pages` | Bundle exports include all surveys, empty surveys and unassigned pages. The bundle list returns its ID and display name.  |
+| `test_export_rejects_invalid_selection`                 | Missing, blank or conflicting selections return 400; unknown survey or bundle IDs return 404.                             |
+| `test_bundle_export_uses_id_and_excludes_other_bundles` | Bundle selection uses the database ID, trims whitespace and excludes other bundles even when their display names match.   |
+| `test_review_survey_identifies_current_bundle`          | The survey response includes the bundle ID needed by the Current bundle export option.                                    |
+
+## `export.test.ts` — 7 test cases
+
+Test checks the frontend export service using mocked fetch responses.
+
+| Test                                            | What it checks                                                                                                                          |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Returns the backend export unchanged — 5 cases  | Preserves correction text, empty strings, `/`, `[?]` and null values. Trims and URL-encodes the survey ID before requesting the export. |
+| Reports backend export errors                   | Displays the error returned by the backend.                                                                                             |
+| Rejects blank survey IDs before requesting data | Rejects a whitespace-only survey ID without making a request.                                                                           |
+
 These frontend tests run separately from `uv run pytest tests/unit`.
 They check request construction and response handling; the integration runner
 checks the adapter against the real backend and database.

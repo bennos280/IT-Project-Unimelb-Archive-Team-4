@@ -103,18 +103,12 @@ code that reads it is checked against the archive's own markup, not only the tes
 | `test_a_migration_that_breaks_a_link_is_undone`                         | A later migration that leaves rows pointing at nothing (deletes a bundle its pages belong to) stops with an error, and the db is left as it was before it.                                                                                                                                                                           |
 | `test_version_1_of_the_prompt_and_templates_is_the_files_byte_for_byte` | Migration 001 stores `prompt.txt` and each template as version 1 byte for byte, with the files' hashes, so transcripts already made from the files are reused, not read (and paid for) again.                                                                                                                                        |
 
-## Review UI/API integration — 15 checks
+## `check_review_integration.mjs` / `check_review_integration.py` — 15 test
 
 Tests the real frontend review adapter against the FastAPI backend using a
 temporary copy of `backend/db/wilfprestsurvey.db`. The source database stays
 unchanged. Results appear in the terminal, and the temporary copy is deleted
 afterwards.V
-
-Run from the project folder:
-
-```bash
-npm --prefix tests run test:integration
-```
 
 | Test                                                                                       | What it checks                                                                                |
 | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
@@ -134,17 +128,11 @@ npm --prefix tests run test:integration
 These checks run separately from pytest. They test adapter/API/database
 integration; browser behaviour and image loading are covered separately.
 
-## Review UI browser tests — 18 tests
+## `review.spec.ts` — 18 tests
 
-`review.spec.ts` test the review screen in a real browser using Playwright.
+Tests the review screen in a real browser using Playwright.
 Each test uses a sample survey, mock images and an isolated mock API.
 No running backend or database is needed.
-
-Run from the project folder:
-
-```bash
-npm --prefix tests run test:e2e
-```
 
 | Test                                                                                                 | What it checks                                                                                  |
 | ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -166,6 +154,26 @@ npm --prefix tests run test:e2e
 | `test("Failed save keeps the current page and unsaved review", async ({ page, api }) => ...)`        | A failed save keeps the warning open, displays the error and preserves the draft.               |
 | `test("Leaving the website warns about unsaved reviews", async ({ page }) => ...)`                   | Leaving with unsaved changes triggers the browser warning.                                      |
 | `test("adds a reviewer inside the field editor without losing the draft", async ({ page }) => ...)`  | Adding a reviewer inside the editor preserves the draft value.                                  |
+
+## `ui-reviewscreen/export.spec.ts` — 8 tests
+
+It tests the export interface in a real browser using Playwright.
+API responses are mocked, so no running backend or database is needed.
+
+Run from the project folder:
+
+| Test                                                                      | What it checks                                                                        |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Downloads backend correction instead of an unsaved on-screen edit         | The downloaded export uses the backend response rather than an unsaved browser draft. |
+| Shows backend export failure and permits retry                            | A failed export displays an error and allows another attempt.                         |
+| Downloads a selected bundle as JSON                                       | Selecting a bundle produces a JSON download.                                          |
+| Dashboard exports the selected bundle ID rather than its display number   | Dashboard export requests use the database bundle ID.                                 |
+| Review screen exports its current bundle using the backend bundle ID      | The Current bundle option uses the bundle ID supplied by the survey response.         |
+| Warns for unreviewed data and clears the warning for a reviewed selection | The export warning reflects whether the selected data has been reviewed.              |
+| Conditional export warning on dashboard — 2 cases                         | Checks the warning on both the all-bundles and selected-bundle dashboard views.       |
+
+These tests cover browser interactions with mocked API responses.
+The backend export tests separately check database selection and saved values.
 
 These tests use mocked API responses. The integration runner separately
 checks the real frontend adapter, backend and database.
@@ -208,7 +216,7 @@ Survey consistency check run over a pipeline manifest (`validate_manifest`) with
 
 ## `progress.spec.ts` — 21 tests (US9: track progress)
 
-Located in `tests/integration/ui-reviewscreen/progress.spec.ts`. Run only these tests from the project folder:
+Located in `tests/integration/frontend/progress.spec.ts`. Run only these tests from the project folder:
 
 ```bash
 npm --prefix tests run test:e2e -- progress.spec.ts
