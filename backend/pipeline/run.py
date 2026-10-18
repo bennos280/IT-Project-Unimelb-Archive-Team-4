@@ -153,11 +153,21 @@ def step_identify(run: Run) -> None:
         if r["label"] == REVIEW:
             run.flag(page, "identify", "unlike any known page type; check highest distance first")
 
+def transcription_config(chosen: dict | None = None) -> dict:
+    """The folders plus PROVIDER, MODEL and EFFORT from the choice given; what it leaves out comes from the choice saved on
+    the Settings page, and with none saved the run exits."""
+    chosen = {key: value for key, value in (chosen or {}).items() if value}
+    if not all(chosen.get(key) for key in ("PROVIDER", "MODEL", "EFFORT")):
+        from backend.db.app_settings import saved_choice_or_exit
+        chosen = {**{key.upper(): value for key, value in saved_choice_or_exit().items()}, **chosen}
+    return {**settings(), **chosen}
+
+
 def step_transcribe(run: Run) -> None:
     """Each labelled page -> out/transcribe/<file>.json, READERS at a time, each saved as soon as it is read (paid: only
     with --transcribe). A failed page stops the step once the reads under way are saved."""
     from backend.pipeline.transcribe.transcribe import read_texts, transcribe
-    config = {**settings(), **(run.transcription_config or {})}
+    config = transcription_config(run.transcription_config)
     texts = run.texts or read_texts()
     folder = run.out / "transcribe"
     folder.mkdir(parents=True, exist_ok=True)
@@ -303,7 +313,7 @@ def unprocessed(folder: Path, output: Path, steps: list[str] | None = None) -> l
     if steps is None:
         steps = ["split", "identify"]
     if not folder.is_dir():
-        sys.exit(f"DATA={folder} is not a folder; fix .env")
+        sys.exit(f"{folder} is not a folder: create it and put survey PDFs in it")
     out = output.resolve()
     candidates = sorted([p for p in folder.rglob("*.pdf") if out not in p.resolve().parents]
                         + [p for p in folder.iterdir() if p.is_dir() and p.resolve() != out and find_images(p)])
@@ -336,7 +346,8 @@ def main(argv=None) -> int:
     if not inputs:
         print(f"nothing to do: every input in DATA has completed the requested steps under {output}")
         return 0
-    print(f"{len(inputs)} to process -> {output}" + (f"   ({config['PROVIDER']}: {config['MODEL']})" if opts.transcribe else ""))
+    chosen = transcription_config() if opts.transcribe else {}
+    print(f"{len(inputs)} to process -> {output}" + (f"   ({chosen['PROVIDER']}: {chosen['MODEL']})" if opts.transcribe else ""))
     for path in inputs:
         run_steps(Run(path.resolve(), output / path.stem), steps)
     return 0

@@ -9,7 +9,7 @@ from functools import cache
 import json
 import sqlite3
 import threading
-from backend.db import database, instructions, loader, models
+from backend.db import app_settings, database, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
@@ -17,23 +17,20 @@ from datetime import datetime, timezone
 from backend.common import ROOT, find_images, settings
 
 from backend.api.uploads import upload_bundle
+from backend.api import connections, transcription_options
 
 app = FastAPI()
 
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://localhost:3000"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.include_router(connections.router)
+app.include_router(transcription_options.router)
 
 #takes the db's write lock now, so another save can't land between a check and the write it guards (freed at commit)
 def write_lock(db):
     db.connection().exec_driver_sql("UPDATE pages SET page_id = page_id WHERE 0")
 
-#db session dependency generator
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+get_db = database.get_db #the db session dependency, defined there so connections.py can use it too
 
 @app.post("/bundles/upload", status_code=201)
 async def import_bundle(request: Request, bundle: str, filename: str, db: Session = Depends(get_db)):
@@ -382,13 +379,14 @@ def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depend
         return {"pageType": page.category, "job": None}
     if payload.pageType not in instructions.newest(db):
         raise HTTPException(status_code=400, detail=f"Give {payload.pageType} a template first.")
-    if payload.model is not None:
-        if not payload.model.strip() or len(payload.model) > 200 or any(c.isspace() for c in payload.model) or payload.model.startswith("-") or "+" in payload.model:
-            raise HTTPException(400, "Select a valid model.")
-        if payload.provider not in ("claude", "codex") or not payload.effort or len(payload.effort) > 40 or any(c.isspace() for c in payload.effort) or payload.effort.startswith("-"):
-            raise HTTPException(400, "Select a valid provider and effort.")
+    chosen = chosen_transcription(db, payload.provider, payload.model, payload.effort) #what's missing comes from the saved choice
+    model, provider, effort = chosen["model"], chosen["provider"], chosen["effort"]
+    if not model or len(model) > 200 or any(c.isspace() for c in model) or model.startswith("-") or "+" in model:
+        raise HTTPException(400, "Select a valid model.")
+    if provider not in ("claude", "codex") or not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
+        raise HTTPException(400, "Select a valid provider and effort.")
     job = models.Job(kind="page", page_id=page_id, page_type=payload.pageType, reviewer_id=payload.reviewerId,
-                     transcription_model=payload.model, transcription_provider=payload.provider, transcription_effort=payload.effort)
+                     **{f"transcription_{field}": value for field, value in chosen.items()})
     db.add(job)
     db.commit()
     return {"pageType": page.category, "job": job_json(job)}
@@ -444,13 +442,35 @@ def set_active_sorting_model(payload: ActiveModelRequest, db: Session = Depends(
 
 
 #--PIPELINE JOBS--# (queued here, done by backend/worker.py)
+#where the scans are read from and the results written, as absolute paths (inside the project)
+@app.get("/folders")
+def get_folders():
+    return {key.lower(): str((ROOT / settings()[key]).resolve()) for key in ("DATA", "OUTPUT")}
+
+#a transcription's provider, model and effort: the ones given, else the saved choice; 409 when either is still missing
+def chosen_transcription(db, provider, model, effort):
+    saved = app_settings.transcription_defaults(db) or {}
+    chosen = {field: given.strip() if given is not None else saved.get(field)
+              for field, given in zip(app_settings.FIELDS, (provider, model, effort))}
+    if None in chosen.values():
+        raise HTTPException(status_code=409, detail=app_settings.NOT_SET)
+    return chosen
+
+def check_transcription(provider, model, effort):
+    if not model or len(model) > 200 or any(c.isspace() for c in model) or model.startswith("-") or "+" in model:
+        raise HTTPException(status_code=400, detail="Enter a valid model name.")
+    if provider not in ("claude", "codex"):
+        raise HTTPException(status_code=400, detail="Choose Claude or Codex.")
+    if not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
+        raise HTTPException(status_code=400, detail="Enter a valid effort level.")
+
 class StartJobRequest(BaseModel):
     model: str | None = None
     provider: str | None = None
     effort: str | None = None
     pdf: str #as listed by GET /bundles
 
-#every survey PDF under DATA in .env, each DATA/<bundle number>/ folder of page images, and each of the archive's
+#every survey PDF under DATA (the data folder), each DATA/<bundle number>/ folder of page images, and each of the archive's
 #bundles whose PDF isn't there, as DATA/<bundle number>/<its PDF> (running it downloads the PDF)
 def pdfs():
     data = ROOT / settings()["DATA"]
@@ -497,17 +517,9 @@ def start_job(payload: StartJobRequest, db: Session = Depends(get_db)):
     if db.query(models.Job).filter(models.Job.pdf == payload.pdf, models.Job.status.in_(("waiting", "running"))).first():
         raise HTTPException(status_code=409, detail="This bundle is already waiting or running.")
 
-    config = settings()
-    model = (payload.model if payload.model is not None else config["MODEL"]).strip()
-    provider = (payload.provider if payload.provider is not None else config["PROVIDER"]).strip()
-    effort = (payload.effort if payload.effort is not None else config["EFFORT"]).strip()
-    if not model or len(model) > 200 or any(c.isspace() for c in model) or model.startswith("-"):
-        raise HTTPException(status_code=400, detail="Enter a valid model name.")
-    if provider not in ("claude", "codex"):
-        raise HTTPException(status_code=400, detail="Choose Claude or Codex.")
-    if not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
-        raise HTTPException(status_code=400, detail="Enter a valid effort level.")
-    job = models.Job(pdf=payload.pdf, transcription_model=model, transcription_provider=provider, transcription_effort=effort)
+    chosen = chosen_transcription(db, payload.provider, payload.model, payload.effort)
+    check_transcription(**chosen)
+    job = models.Job(pdf=payload.pdf, **{f"transcription_{field}": value for field, value in chosen.items()})
     db.add(job)
     db.commit()
     return job_json(job)
@@ -544,17 +556,31 @@ def get_progress(db: Session = Depends(get_db)):
 
 @app.get("/transcription-models")
 def get_transcription_models(db: Session = Depends(get_db)):
-    config = settings()
     columns = (models.Page.provider, models.Page.model, models.Page.effort,
                models.Page.prompt_version_id, models.Page.template_version_id)
     rows = (db.query(*columns, func.count(models.Page.page_id), func.avg(models.Page.runtime))
             .filter(models.Page.model.is_not(None)).group_by(*columns)
             .order_by(models.Page.provider, models.Page.model, models.Page.effort))
-    return {"configured": {"model": config["MODEL"], "effort": config["EFFORT"], "provider": config["PROVIDER"]},
+    return {"configured": app_settings.transcription_defaults(db),
             "models": [{"provider": provider, "model": model, "effort": effort,
                         "promptVersion": prompt, "templateVersion": template,
                         "pages": pages, "averageSeconds": float(seconds) if seconds is not None else None}
                        for provider, model, effort, prompt, template, pages, seconds in rows]}
+
+
+class TranscriptionDefaults(BaseModel):
+    provider: str
+    model: str
+    effort: str
+
+#the choice every transcription started without one uses (POST /jobs, the worker and the command line)
+@app.put("/transcription-defaults")
+def put_transcription_defaults(payload: TranscriptionDefaults, db: Session = Depends(get_db)):
+    provider, model, effort = payload.provider.strip(), payload.model.strip(), payload.effort.strip()
+    check_transcription(provider, model, effort)
+    write_lock(db) #two saves at once can't both insert the same keys
+    app_settings.save_transcription_defaults(db, provider, model, effort)
+    return app_settings.transcription_defaults(db)
 
 
 @app.get("/jobs/{job_id}/transcripts")

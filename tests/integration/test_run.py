@@ -6,10 +6,18 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
+from sqlalchemy.orm import sessionmaker
 
+from backend.db import app_settings, database, models
 from backend.pipeline import run
 from backend.pipeline.identify import identify
 from backend.pipeline.transcribe import transcribe as transcription
+
+
+def save_choice(**changes):
+    """The transcription choice saved on the Settings page (in the db the command line opens)."""
+    with database.SessionLocal() as db:
+        app_settings.save_transcription_defaults(db, **{"provider": "claude", "model": "sonnet", "effort": "high", **changes})
 
 
 def labels(images, weights=None):
@@ -23,8 +31,12 @@ def survey(tmp_path, monkeypatch):
     source.mkdir(parents=True)
     for i in (1, 2):
         Image.new("RGB", (8, 8), (i, i, i)).save(source / f"page{i}.png")
-    config = {"DATA": str(data), "OUTPUT": str(output), "PROVIDER": "claude", "MODEL": "sonnet", "EFFORT": "high"}
+    config = {"DATA": str(data), "OUTPUT": str(output)}
     monkeypatch.setattr(run, "settings", lambda: config)
+    engine = database.make_engine(f"sqlite:///{(tmp_path / 'choice.db').as_posix()}")
+    models.Base.metadata.create_all(engine)
+    monkeypatch.setattr(database, "SessionLocal", sessionmaker(autoflush=False, bind=engine))
+    save_choice()
     monkeypatch.setattr(identify, "identify_pages", labels)
 
     def unexpected_call(*args, **kwargs):
@@ -164,7 +176,7 @@ def test_run_reports_each_step_and_transcription_progress(survey, monkeypatch):
 @pytest.mark.parametrize("changed", ["image", "label", "model", "effort", "prompt", "template",
                                     "missing_result", "changed_result"])
 def test_transcription_reuse_requires_matching_inputs_and_result(survey, monkeypatch, tmp_path, changed):
-    source, output, config = survey
+    source, output, _ = survey
     # Copy prompt/template data into the test directory so fixtures stay untouched.
     prompts = tmp_path / "prompts"
     (prompts / "templates").mkdir(parents=True)
@@ -188,7 +200,7 @@ def test_transcription_reuse_requires_matching_inputs_and_result(survey, monkeyp
             {"label": "notes" if p.name == "page1.png" else "main", "confidence": 1.0, "distance": 0.0}
             for p in images])
     elif changed in ("model", "effort"):
-        config[changed.upper()] = "haiku" if changed == "model" else "low"
+        save_choice(**{changed: "haiku" if changed == "model" else "low"})
     elif changed == "prompt":
         (prompts / "prompt.txt").write_text("Read all fields.", encoding="utf-8")
     elif changed == "template":
@@ -202,6 +214,27 @@ def test_transcription_reuse_requires_matching_inputs_and_result(survey, monkeyp
     # Explicit inputs request a rerun even when all previous stages completed.
     run.main([str(source), "--transcribe"])
     assert len(calls) == (4 if changed in ("model", "effort", "prompt", "template") else 3)
+
+
+def test_the_command_line_transcribes_with_the_saved_choice_and_exits_without_one(survey, monkeypatch):
+    source, output, _ = survey
+    seen = []
+    monkeypatch.setattr(transcription, "transcribe", lambda image, kind, **options: seen.append(options) or {"text": "x"})
+    save_choice(provider="codex", model="gpt-5", effort="medium")
+    assert run.main(["--transcribe"]) == 0
+    assert {(o["provider"], o["model"], o["effort"]) for o in seen} == {("codex", "gpt-5", "medium")}
+    with database.SessionLocal() as db:
+        db.query(models.AppSetting).delete()
+        db.commit()
+    with pytest.raises(SystemExit, match="Choose a transcription model on the Settings page first."):
+        run.main([str(source), "--transcribe"])
+    assert run.main([str(source)]) == 0  #no model is needed without --transcribe
+
+
+def test_a_choice_with_a_blank_part_takes_that_part_from_the_saved_one(survey):
+    save_choice(provider="codex", model="gpt-5", effort="medium")
+    config = run.transcription_config({"MODEL": None, "EFFORT": "", "PROVIDER": "claude"})
+    assert (config["PROVIDER"], config["MODEL"], config["EFFORT"]) == ("claude", "gpt-5", "medium")
 
 
 def test_legacy_completed_manifest_still_skips_input(survey):
@@ -231,12 +264,13 @@ def test_failed_json_publication_keeps_previous_progress(tmp_path, monkeypatch):
 def test_a_job_reads_each_page_with_its_texts_and_skips_a_page_type_with_no_template(tmp_path, monkeypatch):
     image = tmp_path / "page.png"
     Image.new("RGB", (8, 8)).save(image)
-    monkeypatch.setattr(run, "settings", lambda: {"PROVIDER": "claude", "MODEL": "sonnet", "EFFORT": "high"})
+    monkeypatch.setattr(run, "settings", lambda: {})
     read = []
     monkeypatch.setattr(transcription, "transcribe",
                         lambda image, kind, **options: read.append((kind, options["texts"])) or {"text": "read"})
     texts = {"prompt": "Read it.", "followup": '{"text": null}'}  # a job's: the db's newest versions
     job = run.Run(tmp_path / "bundle.pdf", tmp_path / "out", texts=texts)
+    job.transcription_config = {"PROVIDER": "claude", "MODEL": "sonnet", "EFFORT": "high"}  # a job's own choice: nothing read from the db
     job.pages = [{"file": "a.png", "path": str(image), "label": "followup"}, {"file": "b.png", "path": str(image), "label": "main"}]
     run.step_transcribe(job)
     assert read == [("followup", texts)]  # main has no template in these texts

@@ -191,3 +191,10 @@ class PageVersion(Base):
     action = Column(String, nullable=False)
     snapshot = Column(Text, nullable=False)
     time = Column(DateTime, nullable=False, server_default=func.now())
+
+# Settings edited in the app and shared with the team through the committed db; key like "transcription.model"
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+    updated_at = Column(DateTime, nullable=True, server_default=func.now(), onupdate=func.now())

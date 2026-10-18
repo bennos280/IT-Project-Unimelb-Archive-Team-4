@@ -80,3 +80,26 @@ def test_version_1_of_the_prompt_and_templates_is_the_files_byte_for_byte(url):
         rows = db.exec_driver_sql("SELECT kind, body, sha256 FROM instruction_versions ORDER BY version_id").fetchall()
     assert [kind for kind, _, _ in rows] == list(files)
     assert all(body.encode("utf-8") == files[kind].read_bytes() and sha == digest(files[kind]) for kind, body, sha in rows)
+
+
+def test_a_db_at_004_has_no_saved_choice_so_a_command_line_run_exits(url, tmp_path, monkeypatch):
+    """The committed db before 005: no app_settings table yet, so the choice reads as not set, not as a crash."""
+    from sqlalchemy.orm import sessionmaker
+    from backend.db import app_settings
+    command.downgrade(database.alembic_config(url), "004")
+    monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=database.make_engine(url)))
+    with pytest.raises(SystemExit, match="Choose a transcription model on the Settings page first."):
+        app_settings.saved_choice_or_exit()
+
+
+def test_005_adds_the_app_settings_table_and_keeps_the_rows_already_there(url, tmp_path):
+    """The committed db at 004 gets the table on the next start; the reviewers' edits stay."""
+    config = database.alembic_config(url)
+    command.downgrade(config, "004")
+    assert rows(tmp_path / "test.db", "SELECT name FROM sqlite_master WHERE name = 'app_settings'") == []
+    database.migrate(url)
+    assert [r[1:3] + r[5:] for r in rows(tmp_path / "test.db", "PRAGMA table_info(app_settings)")] == [("key", "VARCHAR", 1), ("value", "VARCHAR", 0), ("updated_at", "DATETIME", 0)]
+    assert rows(tmp_path / "test.db", "SELECT edit_text FROM edits") == [("6 Peel St.",)]
+    with database.make_engine(url).begin() as db:
+        db.exec_driver_sql("INSERT INTO app_settings(key, value) VALUES('transcription.model', 'opus')")
+    assert rows(tmp_path / "test.db", "SELECT value, updated_at IS NOT NULL FROM app_settings") == [("opus", 1)]

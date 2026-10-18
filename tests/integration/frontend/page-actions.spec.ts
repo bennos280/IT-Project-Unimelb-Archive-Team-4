@@ -321,3 +321,43 @@ for (const changeType of [true, false]) {
     ).toHaveCount(0);
   });
 }
+
+test("the page's Transcribe dialog prefills nothing and links to Settings when no model is saved, yet can run with one picked there", async ({ page }) => {
+  const sent: unknown[] = [];
+  await page.route("**/scan.svg", (r) =>
+    r.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500"/>' }));
+  await page.route("**/api/**", async (r) => {
+    const path = decodeURIComponent(new URL(r.request().url()).pathname);
+    const json = (body: unknown) => r.fulfill({ json: body });
+    if (path === "/api/transcription-models") return json({ configured: null, models: [] });
+    if (path === "/api/reviewers") return json([{ id: 1, name: "Alex" }]);
+    if (path.startsWith("/api/reviews/")) return json({ reviews: {}, revisions: {} });
+    if (path.startsWith("/api/survey/"))
+      return json({ id: "s1", title: "Survey", pages: [{ id: "b/p4", type: "main", imageUrl: "/scan.svg", fields: [], flags: [] }] });
+    if (path === "/api/page-actions/b/p4")
+      return json({ bundleId: "b", surveyId: "s1", category: "main", revision: 0, hasReviews: false, job: null, surveys: [] });
+    if (path === "/api/page-transcription/b/p4") {
+      sent.push(r.request().postDataJSON());
+      return json({ job: { id: 1, status: "waiting", pageType: "main", error: null } });
+    }
+    return r.fulfill({ status: 404, json: { detail: path } });
+  });
+  await page.goto("/?survey=s1&page=b%2Fp4&action=transcribe");
+  const dialog = page.getByRole("dialog", { name: "Transcribe page" });
+  await expect(dialog.getByText("No transcription model is set.")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Choose one on the Settings page" })).toHaveAttribute("href", "/?view=settings");
+  await expect(dialog.getByLabel("Model", { exact: true })).toHaveValue("");
+  await expect(dialog.getByLabel("Effort", { exact: true })).toHaveValue("");
+  await expect(dialog.getByLabel("Provider", { exact: true })).toHaveValue("");
+  await dialog.getByRole("combobox", { name: "Reviewer", exact: true }).selectOption("Alex");
+  const transcribe = dialog.getByRole("button", { name: "Transcribe", exact: true });
+  await expect(transcribe).toBeDisabled();
+  await dialog.getByLabel("Model", { exact: true }).fill("sonnet");
+  await dialog.getByLabel("Effort", { exact: true }).fill("low");
+  await expect(transcribe).toBeDisabled(); //the provider is chosen too
+  await dialog.getByLabel("Provider", { exact: true }).selectOption("claude");
+  await dialog.getByLabel("Model", { exact: true }).fill("sonnet");
+  await transcribe.click();
+  await expect(dialog).not.toBeVisible();
+  expect(sent).toEqual([{ reviewerId: 1, revision: 0, model: "sonnet", provider: "claude", effort: "low" }]);
+});

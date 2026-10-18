@@ -11,6 +11,7 @@ from urllib.response import addinfourl
 import pytest
 
 from backend import scans
+from backend.db import database
 from backend.pipeline.validate import run_validation, validator
 
 
@@ -34,6 +35,14 @@ def offline(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", this_computer_only)
     monkeypatch.setattr(scans, "ARCHIVE_PDFS", [])
     monkeypatch.setattr(scans, "failed", {})
+
+
+@pytest.fixture(autouse=True)
+def no_real_db(monkeypatch):
+    def refused(*args, **kwargs):
+        raise RuntimeError("the tests don't open the real database: give the test a db (cli_db) or an explicit choice")
+
+    monkeypatch.setattr(database, "SessionLocal", refused)
 
 
 class FakeArchive:

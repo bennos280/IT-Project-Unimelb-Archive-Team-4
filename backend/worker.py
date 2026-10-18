@@ -11,7 +11,7 @@ from filelock import FileLock, Timeout
 from sqlalchemy import func
 
 from backend import scans
-from backend.db import database, instructions, loader, models
+from backend.db import app_settings, database, instructions, loader, models
 from backend.pipeline import run as pipeline
 from backend.common import ROOT, settings
 
@@ -36,6 +36,14 @@ def fail(db, job, reason):
     db.rollback()
     job.status, job.error = "failed", reason
     db.commit()
+
+#a job's own model, provider and effort, else the choice saved in the app; a field with neither fails the job
+def transcription_choice(db, job):
+    saved = app_settings.transcription_defaults(db) or {}
+    chosen = {field: getattr(job, f"transcription_{field}") or saved.get(field) for field in app_settings.FIELDS}
+    if None in chosen.values():
+        raise SystemExit(app_settings.NOT_SET)
+    return chosen
 
 def work_once(db):
     job = db.query(models.Job).filter(models.Job.status == "waiting").order_by(models.Job.job_id).first()
@@ -75,9 +83,7 @@ def run_bundle(db, job, progress):
         raise SystemExit(f"page sorting model {active.model_id}'s file {active.path} is missing: choose another model, or retrain")
     run = pipeline.Run(pdf, out, progress=progress, texts=instructions.texts(db), #the newest versions, as the job starts
                        sorting_model=ROOT / active.path if active else None)
-    run.transcription_config = {key: value for key, value in (
-        ("MODEL", job.transcription_model), ("PROVIDER", job.transcription_provider),
-        ("EFFORT", job.transcription_effort)) if value is not None}
+    run.transcription_config = {field.upper(): value for field, value in transcription_choice(db, job).items()}
     pipeline.run_steps(run, pipeline.FULL)
     if not run.pages:
         raise SystemExit("the PDF has no pages")
@@ -95,9 +101,7 @@ def read_page_again(db, job, progress):
     if scan is None:
         raise SystemExit("there is no scan of this page on this computer or on the archive")
     progress("transcribe", 0, 1)
-    chosen = {key: value for key, value in (("model", job.transcription_model),
-              ("provider", job.transcription_provider), ("effort", job.transcription_effort)) if value is not None}
-    answer = transcribe(scan, job.page_type, texts={kind: v.body for kind, v in newest.items()}, **chosen)
+    answer = transcribe(scan, job.page_type, texts={kind: v.body for kind, v in newest.items()}, **transcription_choice(db, job))
     con = db.connection()
     con.exec_driver_sql("UPDATE pages SET page_id = page_id WHERE 0") #the write lock first: no review lands between check and swap
     if job.base_revision is not None:

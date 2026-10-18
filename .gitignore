@@ -1,4 +1,4 @@
-# the scans (6.7 GB): DATA in .env
+# the scans (6.7 GB): the data folder
 data/
 #what the 'survey' writes
 output/

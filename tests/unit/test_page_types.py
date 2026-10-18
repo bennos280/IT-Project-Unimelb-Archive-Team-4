@@ -26,7 +26,7 @@ def setup(db):
 
 
 def change(client, page_type, page=PAGE):
-    return client.put(f"/pages/{page}/type", json={"pageType": page_type, "reviewerId": 1})
+    return client.put(f"/pages/{page}/type", json={"pageType": page_type, "reviewerId": 1, "provider": "claude", "model": "sonnet", "effort": "low"})
 
 
 def fields(db, page=PAGE):
@@ -55,6 +55,28 @@ def test_a_new_page_type_needs_a_template_before_pages_are_read_as_it(client, se
     assert change(client, "followup").status_code == 409  # already waiting
 
 
+def test_reading_a_page_again_without_a_choice_uses_the_saved_one_or_is_refused(client, setup):
+    client.post("/page-types", json={"name": "followup", "reviewerId": 1})
+    client.post("/instructions/followup", json={"body": FOLLOWUP, "basedOn": None, "reviewerId": 1})
+    asked = {"pageType": "followup", "reviewerId": 1}
+    refused = client.put(f"/pages/{PAGE}/type", json=asked)
+    assert (refused.status_code, refused.json()["detail"]) == (409, "Choose a transcription model on the Settings page first.")
+    assert setup.query(models.Job).count() == 0
+    client.put("/transcription-defaults", json={"provider": "codex", "model": "gpt-test", "effort": "medium"})
+    queued = client.put(f"/pages/{PAGE}/type", json=asked)
+    job = setup.get(models.Job, queued.json()["job"]["id"])
+    assert (queued.status_code, job.transcription_provider, job.transcription_model, job.transcription_effort) == (200, "codex", "gpt-test", "medium")
+
+
+def test_a_part_of_a_choice_is_checked_like_a_whole_one(client, setup):
+    client.post("/page-types", json={"name": "followup", "reviewerId": 1})
+    client.post("/instructions/followup", json={"body": FOLLOWUP, "basedOn": None, "reviewerId": 1})
+    client.put("/transcription-defaults", json={"provider": "codex", "model": "gpt-test", "effort": "medium"})
+    for part in ({"effort": "-low"}, {"provider": "unknown"}, {"model": "two words"}):
+        assert client.put(f"/pages/{PAGE}/type", json={"pageType": "followup", "reviewerId": 1, **part}).status_code == 400
+    assert setup.query(models.Job).count() == 0
+
+
 def test_a_page_made_other_is_emptied_at_once(client, setup):
     assert change(client, "other").json() == {"pageType": "other", "job": None}
     setup.expire_all()
@@ -74,7 +96,7 @@ def test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown(clien
 def queued(setup, tmp_path, monkeypatch):
     """The followup type with a template, a job to read the page as it, and a scan of the page."""
     followup = models.InstructionVersion(kind="followup", body=FOLLOWUP, sha256="f")
-    for row in (models.PageType(name="followup", reviewer_id=1), followup, models.Job(kind="page", page_id=PAGE, page_type="followup")):
+    for row in (models.PageType(name="followup", reviewer_id=1), followup, models.Job(kind="page", page_id=PAGE, page_type="followup", transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")):
         setup.add(row)
         setup.flush()
     setup.commit()
@@ -85,7 +107,7 @@ def queued(setup, tmp_path, monkeypatch):
 
 
 def test_the_worker_reads_the_page_again_and_swaps_what_was_read(setup, queued, monkeypatch):
-    def transcribe(image, kind, texts):
+    def transcribe(image, kind, texts, **choice):
         assert (image.name, kind, texts["followup"], texts["prompt"]) == ("page.png", "followup", FOLLOWUP, "Read it.")
         return {"date_of_follow_up": "3/43", "text": "moved to Kew", "provider": "claude", "model": "sonnet", "effort": "low", "seconds": 2.0}
 
@@ -98,7 +120,7 @@ def test_the_worker_reads_the_page_again_and_swaps_what_was_read(setup, queued, 
 
 
 def test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was(setup, queued, monkeypatch):
-    def transcribe(image, kind, texts):
+    def transcribe(image, kind, texts, **choice):
         setup.add(models.Edit(page_id=PAGE, edit_text="14", field_title="number_of_dwelling", reviewer_id=1))
         setup.commit()  # a reviewer saves while the model reads
         return {"text": "moved to Kew"}
@@ -111,7 +133,7 @@ def test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was(setup, queued,
 
 
 def test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was(setup, queued, monkeypatch):
-    monkeypatch.setattr(transcription, "transcribe", lambda image, kind, texts: {"residents": "not a list of residents"})
+    monkeypatch.setattr(transcription, "transcribe", lambda image, kind, texts, **choice: {"residents": "not a list of residents"})
     worker.work_once(setup)
     assert setup.query(models.Job).one().status == "failed"
     page = setup.get(models.Page, PAGE)
@@ -119,7 +141,7 @@ def test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was(setup, 
 
 
 def test_a_page_read_again_counts_for_accuracy_only_once_a_reviewer_saves_it(client, setup, queued, monkeypatch):
-    monkeypatch.setattr(transcription, "transcribe", lambda image, kind, texts: {"text": "moved", "model": "sonnet", "effort": "low"})
+    monkeypatch.setattr(transcription, "transcribe", lambda image, kind, texts, **choice: {"text": "moved", "model": "sonnet", "effort": "low"})
     worker.work_once(setup)
     assert client.get("/accuracy").json() == []  # read again, but nobody has checked it
     assert client.post("/reviews/s", json={"reviews": {PAGE: {}}, "revisions": {PAGE: 2}}).status_code == 200

@@ -33,3 +33,11 @@ def alembic_config(url=SQLALCHEMY_DATABASE_URL):
 #creates or updates the db's tables to match the migrations; existing rows are kept
 def migrate(url=SQLALCHEMY_DATABASE_URL):
     command.upgrade(alembic_config(url), "head")
+
+#db session dependency generator
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

@@ -8,8 +8,6 @@ import tempfile
 import time
 from pathlib import Path
 
-from backend.common import settings
-
 HERE = Path(__file__).resolve().parent
 TIMEOUT = 1800  # seconds one page may take before we give up on it
 
@@ -25,9 +23,10 @@ def schema_for(shape):
 
 
 def run_cli(command, label, **kwargs):
-    """subprocess.run for a transcription CLI. A hang exits with a message, not a traceback."""
+    """subprocess.run for a transcription CLI. A hang exits with a message, not a traceback. stdin is closed: codex exec
+    and claude -p wait to read an open one."""
     try:
-        return subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+        return subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8",
                               errors="replace", timeout=TIMEOUT, **kwargs)
     except subprocess.TimeoutExpired:
         sys.exit(f"{label} timed out after {TIMEOUT}s; no answer written")
@@ -87,12 +86,14 @@ def full_prompt(prompt, template):
 
 def transcribe(image, kind, provider=None, model=None, effort=None, texts=None):
     """One card image of the given kind (main / notes / coded) -> the filled template as a dict,
-    stamped with provider, model, effort and seconds. Defaults come from .env; texts default to the files."""
-    provider = provider or settings()["PROVIDER"]
+    stamped with provider, model, effort and seconds. A choice left out comes from the choice saved on the Settings page, and with none
+    saved it exits; texts default to the files."""
+    if not (provider and model and effort):
+        from backend.db.app_settings import saved_choice_or_exit
+        chosen = saved_choice_or_exit()
+        provider, model, effort = provider or chosen["provider"], model or chosen["model"], effort or chosen["effort"]
     if provider not in ("claude", "codex"):
         sys.exit(f"PROVIDER must be claude or codex, not {provider!r}")
-    model = model or settings()["MODEL"]
-    effort = effort or settings()["EFFORT"]
     texts = texts or read_texts()
     template = json.loads(texts[kind])
     prompt = full_prompt(texts["prompt"], template)
