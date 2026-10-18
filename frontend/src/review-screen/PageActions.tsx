@@ -16,8 +16,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
 
 type Job = { id: number; status: string; pageType?: string; step?: string | null; error: string | null };
-const typeLabel = (value?: string) => ({ main: "Main page", notes: "Notes", coded: "Coded", other: "Other" }[value ?? ""] ?? value ?? "the selected page type");
-type Context = { bundleId: string; surveyId: string; category: string; needsTranscription?: boolean; revision: number; hasReviews: boolean; job: Job | null; surveys: { id: string; pages: { id: string; type: string }[] }[] };
+type Context = { bundleId: string; surveyId: string; category: string; pageTypes?: { name: string; label: string }[]; needsTranscription?: boolean; revision: number; hasReviews: boolean; job: Job | null; surveys: { id: string; pages: { id: string; type: string }[] }[] };
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, options);
   const body = await response.json().catch(() => null);
@@ -41,7 +40,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
   const [choice, setChoice] = useState<ModelChoice>(NO_CHOICE);
   const [showModels, setShowModels] = useState(false);
   const [target, setTarget] = useState('');
-  const [type, setType] = useState('main');
+  const [type, setType] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -54,6 +53,8 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
   const dirtyRef = useRef(dirty);
   useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
   const running = job?.status === 'waiting' || job?.status === 'running';
+  // A page type's label from the page's collection, else its name.
+  const typeLabel = (name?: string) => context?.pageTypes?.find(t => t.name === name)?.label ?? name ?? 'the selected page type';
 
   function reloadPage() {
     const url = new URL(window.location.href);
@@ -183,7 +184,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
           {context.surveys.length<2&&<FieldDescription>No other surveys exist in this bundle.</FieldDescription>}
           {destination&&<Card size="sm">
             <CardHeader><CardTitle>Destination pages</CardTitle></CardHeader>
-            <CardContent className="space-y-1">{destination.pages.map(p=><p key={p.id}>{p.id} · {p.type}</p>)}{destination.pages.some(p=>p.type===context.category)&&<p className="font-medium">Another page of this type already exists. Multiple pages of the same type are allowed; check the destination.</p>}</CardContent>
+            <CardContent className="space-y-1">{destination.pages.map(p=><p key={p.id}>{p.id} · {typeLabel(p.type)}</p>)}{destination.pages.some(p=>p.type===context.category)&&<p className="font-medium">Another page of this type already exists. Multiple pages of the same type are allowed; check the destination.</p>}</CardContent>
           </Card>}
           <Field>
             <FieldLabel htmlFor={`${uid}-reason`}>Reason (optional)</FieldLabel>
@@ -192,7 +193,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
         </FieldGroup>:mode==='type'?<FieldGroup className="gap-4">
           <Field>
             <FieldLabel htmlFor={`${uid}-type`}>Correct page type</FieldLabel>
-            <NativeSelect id={`${uid}-type`} className="w-full" value={type} onChange={e=>setType(e.target.value)}>{['main','notes','coded','other'].map(t=><option key={t} value={t}>{t}</option>)}</NativeSelect>
+            <NativeSelect id={`${uid}-type`} className="w-full" value={type} onChange={e=>setType(e.target.value)}>{(context.pageTypes ?? []).map(t=><option key={t.name} value={t.name}>{t.label}</option>)}</NativeSelect>
           </Field>
         </FieldGroup>:<FieldGroup className="gap-4">
           <Field>

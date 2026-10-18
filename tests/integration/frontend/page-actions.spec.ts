@@ -206,6 +206,12 @@ for (const changeType of [true, false]) {
           bundleId: "b",
           surveyId: "s1",
           category,
+          pageTypes: [
+            { name: "coded", label: "Coded page" },
+            { name: "main", label: "Main page" },
+            { name: "notes", label: "Notes page" },
+            { name: "other", label: "Unknown" },
+          ],
           revision: classificationRequests,
           hasReviews: false,
           surveys: [],
@@ -263,6 +269,10 @@ for (const changeType of [true, false]) {
       const dialog = page.getByRole("dialog", { name: "Change page type" });
       // Type changes need no model selection; the reminder must survive a reload.
       await expect(dialog.getByLabel("Model", { exact: true })).toHaveCount(0);
+      // The choices are the page's collection's types, by label.
+      await expect(page.getByLabel("Correct page type").locator("option")).toHaveText(
+        ["Coded page", "Main page", "Notes page", "Unknown"],
+      );
       await page.getByLabel("Correct page type").selectOption("coded");
       await dialog
         .getByRole("button", { name: "Change page type", exact: true })

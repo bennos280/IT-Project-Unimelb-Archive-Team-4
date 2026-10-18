@@ -723,7 +723,9 @@ def page_action_context(page_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Page not found.")
     surveys = db.query(models.Survey).filter(models.Survey.bundle_id == page.bundle_id).order_by(models.Survey.survey_id).all()
     job = db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.kind == "page").order_by(models.Job.job_id.desc()).first()
+    types = db.query(models.PageType).filter_by(collection_id=db.get(models.Bundle, page.bundle_id).collection_id)         .order_by(models.PageType.built_in.desc(), models.PageType.name)
     return {"bundleId": page.bundle_id, "surveyId": page.survey_id, "category": page.category,
+            "pageTypes": [{"name": t.name, "label": t.label} for t in types], #what it can be changed to: its collection's types
             "needsTranscription": page.needs_transcription, "revision": page.revision_no or 0, "hasReviews": bool(db.query(models.Edit).filter_by(page_id=page_id).first()),
             "job": job_json(job) if job else None,
             "surveys": [{"id": s.survey_id, "pages": [{"id": p.page_id, "type": p.category} for p in
@@ -784,15 +786,16 @@ def actionable_page(db, page_id, reviewer_id, revision):
 @app.put("/page-classification/{page_id:path}")
 def classify_page(page_id: str, payload: PageClassificationRequest, db: Session = Depends(get_db)):
     page = actionable_page(db, page_id, payload.reviewerId, payload.revision)
-    if payload.pageType not in ("main", "notes", "coded", "other"):
-        raise HTTPException(400, "Choose a supported page type.")
+    new_type = db.get(models.PageType, payload.pageType)
+    if not new_type or new_type.collection_id != db.get(models.Bundle, page.bundle_id).collection_id:
+        raise HTTPException(400, f"No page type called {payload.pageType} in this page's collection.")
     if payload.pageType == page.category:
         raise HTTPException(400, "The page is already that type.")
     from backend.db.page_history import snapshot
     snapshot(db, page_id, payload.reviewerId, "change_type")
     page.category = payload.pageType
     # An Unknown type's pages wait, unread, for a reviewer to pick their type.
-    page.needs_transcription = not db.get(models.PageType, payload.pageType).unknown
+    page.needs_transcription = not new_type.unknown
     page.revision_no = (page.revision_no or 0) + 1
     page.checked_revision = None
     db.commit()
