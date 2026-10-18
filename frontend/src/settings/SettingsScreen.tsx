@@ -320,6 +320,15 @@ export default function SettingsScreen() {
               </div>
             )}
           </section>
+          <section id="page-types" className="space-y-3">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Page types</h2>
+              <p className="text-sm text-muted-foreground">
+                The kinds of page in the collection, the template each is read with, and how pages group into surveys.
+              </p>
+            </div>
+            <Button asChild variant="outline"><a href="/?view=page-types">Manage page types</a></Button>
+          </section>
           <Folders />
         </main>
       </TooltipProvider>

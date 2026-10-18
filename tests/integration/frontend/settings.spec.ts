@@ -828,7 +828,7 @@ test("checklist: updates when a sign-in finishes", async ({ page }) => {
   await expect(checklist(page)).toHaveCount(0);
 });
 
-test("sections run Transcription model, Accounts, then the folders footer", async ({ page }) => {
+test("sections run Transcription model, Accounts, Page types, then the folders footer", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
   await page.goto("/?view=settings");
   const tops = [];
@@ -837,7 +837,7 @@ test("sections run Transcription model, Accounts, then the folders footer", asyn
   expect(tops[0]).toBeLessThan(tops[1]);
   expect(tops[1]).toBeLessThan(tops[2]);
   await expect(page.locator("footer", { has: page.getByRole("heading", { name: "Folders", level: 2 }) })).toBeVisible();
-  await expect(page.locator("section#transcription-defaults + section#connections + footer")).toHaveCount(1);
+  await expect(page.locator("section#transcription-defaults + section#connections + section#page-types + footer")).toHaveCount(1);
 });
 
 test("the model row leaves no empty line under it until there is a message", async ({ page }) => {

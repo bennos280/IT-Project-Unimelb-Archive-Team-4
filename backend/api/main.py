@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from functools import cache
 import json
+import re
 import sqlite3
 import threading
 from backend.db import app_settings, database, grouping, instructions, loader, models
@@ -324,9 +325,17 @@ def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depen
 
 #--PAGE TYPES--# (the four built in, and any added here; a page type's pages are read with its template)
 class PageTypeRequest(BaseModel):
-    name: str
     reviewerId: int
     label: str | None = None #what people see; the name if not given
+    name: str | None = None #its id; made from the label if not given
+
+class PageTypeSettings(BaseModel):
+    label: str | None = None
+    startsRecord: bool | None = None
+    matchedByKey: bool | None = None
+
+class CollectionSettings(BaseModel):
+    recordKey: str | None = None #None or "": surveys by page order only
 
 class PageTypeChange(BaseModel):
     pageType: str
@@ -337,23 +346,36 @@ class PageTypeChange(BaseModel):
 
 RESERVED = {instructions.PROMPT, "blank", "review"} #the prompt's kind, and what page sorting answers for no page type
 
+def page_type_json(t, templates):
+    return {"name": t.name, "label": t.label, "builtIn": t.built_in, "unknown": t.unknown, "startsRecord": t.starts_record,
+            "matchedByKey": t.matched_by_key, "templateVersion": templates[t.name].version_id if t.name in templates else None}
+
 #the page types, each with its newest template's version (None: it has none, so its pages aren't read)
 @app.get("/page-types")
 def get_page_types(db: Session = Depends(get_db)):
     templates = instructions.newest(db)
-    return [{"name": t.name, "label": t.label, "builtIn": t.built_in,
-             "templateVersion": templates[t.name].version_id if t.name in templates else None}
-            for t in db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)]
+    return [page_type_json(t, templates) for t in db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)]
+
+#a free id for a page type, from its label: "Follow-up visit" -> follow_up_visit, then follow_up_visit_2, ...
+def new_name(db, label):
+    base = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+    base = base if instructions.KEY.fullmatch(base) else f"type_{base}".rstrip("_")
+    name, n = base, 1
+    while name in RESERVED or db.get(models.PageType, name):
+        n += 1
+        name = f"{base}_{n}"
+    return name
 
 #adds a page type; POST /instructions/{name} gives it a template, and only then can pages be read as it
 @app.post("/page-types", status_code=201)
 def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
-    name, label = payload.name.strip(), (payload.label or payload.name).strip()
-    write_lock(db)
-    if not instructions.KEY.fullmatch(name) or name in RESERVED:
-        raise HTTPException(status_code=400, detail="A page type's name is lower-case letters, digits and _, starting with a letter.")
+    label = (payload.label or payload.name or "").strip()
     if not label:
         raise HTTPException(status_code=400, detail="A page type's label can't be empty.")
+    write_lock(db)
+    name = payload.name.strip() if payload.name else new_name(db, label)
+    if not instructions.KEY.fullmatch(name) or name in RESERVED:
+        raise HTTPException(status_code=400, detail="A page type's name is lower-case letters, digits and _, starting with a letter.")
     if db.get(models.PageType, name):
         raise HTTPException(status_code=409, detail=f"There is already a page type called {name}.")
     if not db.get(models.Reviewer, payload.reviewerId):
@@ -364,7 +386,64 @@ def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
     except IntegrityError: #the label is taken in the collection
         db.rollback()
         raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
-    return {"name": name, "label": label, "builtIn": False, "templateVersion": None}
+    return page_type_json(db.get(models.PageType, name), {})
+
+#changes a page type's label or how it groups. A type starts a survey or joins one by number, not both; an Unknown type, never
+#read, does neither; and grouping needs the collection's number field in the template of a type that does
+@app.patch("/page-types/{name}")
+def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends(get_db)):
+    write_lock(db)
+    t = db.get(models.PageType, name)
+    if not t:
+        raise HTTPException(status_code=404, detail=f"No page type called {name}.")
+    label = t.label if payload.label is None else payload.label.strip()
+    starts = t.starts_record if payload.startsRecord is None else payload.startsRecord
+    matched = t.matched_by_key if payload.matchedByKey is None else payload.matchedByKey
+    template = instructions.newest(db).get(name)
+    key = db.get(models.Collection, t.collection_id).record_key
+    problem = ("A page type's label can't be empty." if not label else
+               "A page type starts a survey or joins one by number, not both." if starts and matched else
+               "Unknown pages aren't read, so they can't start or join a survey." if t.unknown and (starts or matched) else
+               f"Add the survey number field '{key}' to its template first."
+               if key and (starts or matched) and template and key not in json.loads(template.body) else None)
+    if problem:
+        raise HTTPException(status_code=400, detail=problem)
+    t.label, t.starts_record, t.matched_by_key = label, starts, matched
+    try:
+        db.commit()
+    except IntegrityError: #the label is taken in the collection
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
+    return page_type_json(t, instructions.newest(db))
+
+def collection_json(c):
+    return {"id": c.collection_id, "name": c.name, "recordKey": c.record_key}
+
+@app.get("/collections/{collection_id}")
+def get_collection(collection_id: int, db: Session = Depends(get_db)):
+    c = db.get(models.Collection, collection_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="No such collection.")
+    return collection_json(c)
+
+#sets the field holding a survey's number, which the templates of the types that start or join a survey must have
+@app.patch("/collections/{collection_id}")
+def update_collection(collection_id: int, payload: CollectionSettings, db: Session = Depends(get_db)):
+    write_lock(db)
+    c = db.get(models.Collection, collection_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="No such collection.")
+    key = (payload.recordKey or "").strip() or None
+    if key and not instructions.KEY.fullmatch(key):
+        raise HTTPException(status_code=400, detail="A field name is lower-case letters, digits and _, starting with a letter.")
+    templates = instructions.newest(db)
+    missing = sorted(t.label for t in db.query(models.PageType).filter_by(collection_id=collection_id)
+                     if key and (t.starts_record or t.matched_by_key) and t.name in templates and key not in json.loads(templates[t.name].body))
+    if missing:
+        raise HTTPException(status_code=400, detail=f"These page types' templates don't have '{key}': {', '.join(missing)}.")
+    c.record_key = key
+    db.commit()
+    return collection_json(c)
 
 #reads a page again as another page type, replacing what was read off it: queued for the worker, or for other done now (an
 #empty page to type into). A page with saved reviews keeps its type, as reading it again would lose them.
