@@ -5,6 +5,7 @@ from pathlib import Path
 
 from backend.db import database
 from backend.common import ROOT, settings
+from backend.pipeline.transcribe import area_rules, areas
 
 CODED_DICT = Path(__file__).parent / "data_dict.json"
 OTHER_CAT = "other" #a page identify wasn't sure about
@@ -68,8 +69,15 @@ def insert_content(page_id, data, category, con):
                                         " VALUES(?, ?, ?, ?)", (page_id, resident_no, title, raw))
         elif key == "annotations":
             for annotation_no, annotation in enumerate(value):
-                con.exec_driver_sql("INSERT INTO annotations(page_id, annotation_no, text_raw, location) VALUES(?, ?, ?, ?)",
-                                    (page_id, annotation_no, annotation["raw"], annotation["location"]))
+                #the transcript's area if the page type has it (older transcripts have none), else the one the location's words give;
+                #the words also give a box
+                ruled, region = area_rules.place(category, annotation["location"])
+                area = annotation.get("area")
+                area = area if area in areas.names(category) else ruled
+                con.exec_driver_sql("INSERT INTO annotations(page_id, annotation_no, text_raw, location, area, region)"
+                                    " VALUES(?, ?, ?, ?, ?, ?)",
+                                    (page_id, annotation_no, annotation["raw"], annotation["location"], area,
+                                     json.dumps(region) if region and area == ruled else None))
         elif key == "other_children":
             for residence in ("died", "living_elsewhere"):
                 for child_no, child in enumerate(value.get(residence) or []):

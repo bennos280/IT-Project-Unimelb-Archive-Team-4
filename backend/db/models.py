@@ -170,6 +170,8 @@ class Annotation(Base):
     annotation_no = Column(Integer, primary_key=True)
     text_raw = Column(String, nullable=True)
     location = Column(String, nullable=True)
+    area = Column(String, nullable=True) #a name in pipeline/transcribe/areas.json for the page type
+    region = Column(String, nullable=True) #JSON {"x", "y", "width", "height"}: a box inside the area, from the location text
 
 # Audit trail; moving a page never rewrites its extracted fields or reviews
 class PageMove(Base):

@@ -12,7 +12,7 @@ PROMPT = "prompt"
 KEY = re.compile(r"[a-z][a-z0-9_]*")  #field ids join keys with "." and labels split them at "_"
 MAX_CHARS = 32_000  #the prompt, template and schema go on one command line; Windows allows 32,767
 REQUIRED = {"main": "number_of_dwelling", "coded": "number_of_dwelling", "notes": "text"}  #grouping and the review screen read these
-SHAPES = {"annotations": [{"raw": None, "location": None}],  #the loader stores these as their own tables
+SHAPES = {"annotations": [{"raw": None, "location": None, "area": None}],  #the loader stores these as their own tables
           "other_children": {"died": [], "living_elsewhere": []}}
 
 

@@ -15,6 +15,7 @@ from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
 from datetime import datetime, timezone
 from backend.common import ROOT, find_images, settings
+from backend.pipeline.transcribe import areas
 
 from backend.api.uploads import upload_bundle
 from backend.api import connections, transcription_options
@@ -90,8 +91,10 @@ def page_fields(db, p):
 
     annotations = db.query(models.Annotation).filter(models.Annotation.page_id == p.page_id)
     for a in annotations.order_by(models.Annotation.annotation_no):
+        box = areas.shown(p.category, a.area, a.region)
         fields_list.append({"id": f"annotations.{a.annotation_no}", "label": "Annotation", "labelText": None,
-                            "group": "Annotations", "value": a.text_raw, "location": a.location})
+                            "group": "Annotations", "value": a.text_raw, "location": a.location, "area": a.area,
+                            **({"areaLabel": areas.label(p.category, a.area), "sourceRegion": box} if box else {})})
     return fields_list
 
 #what to check on a page: stored flags, unreadable ([?]) text, and an other page
