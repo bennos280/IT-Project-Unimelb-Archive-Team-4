@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, Circle, CircleAlert, CircleCheck, CircleX, TriangleAlert, type LucideIcon } from "lucide-react";
+import { Check, Circle, CircleAlert, CircleCheck, CircleX, TriangleAlert, type LucideIcon } from "lucide-react";
 
+import AppHeader from "@/components/AppHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -189,14 +190,7 @@ export default function SettingsScreen() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="flex items-center justify-between gap-4 border-b px-6 py-4">
-        <p className="text-2xl font-semibold tracking-tight">Wilfred Prest Survey</p>
-        <Button asChild variant="outline">
-          <a href="/">
-            <ArrowLeft /> Back to all bundles
-          </a>
-        </Button>
-      </header>
+      <AppHeader crumbs={[{ label: "All bundles", href: "/" }, { label: "Settings" }]} />
       <TooltipProvider>
         <main className="mx-auto max-w-6xl space-y-8 p-6">
           <div className="flex flex-col gap-3">
