@@ -171,7 +171,7 @@ class Annotation(Base):
     text_raw = Column(String, nullable=True)
     location = Column(String, nullable=True)
     area = Column(String, nullable=True) #a name in pipeline/transcribe/areas.json for the page type
-    region = Column(String, nullable=True) #JSON {"x", "y", "width", "height"}: a box inside the area, from the location text
+    region = Column(String, nullable=True) #JSON {"x", "y", "width", "height"}: a closer box than the area's, shown instead of it
 
 # Audit trail; moving a page never rewrites its extracted fields or reviews
 class PageMove(Base):

@@ -1,8 +1,9 @@
-import pytest
 """The named areas of a card (backend/pipeline/transcribe/areas.json): the file is sound, the prompt lists exactly its
 names, and the API gives an annotation's area and its box."""
 import json
 import re
+
+import pytest
 
 from backend.db import models
 from backend.pipeline.transcribe import areas
@@ -19,8 +20,7 @@ def test_every_area_is_a_unique_name_with_a_label_and_a_box_inside_the_card():
         assert names and len(names) == len(set(names)) and all(re.fullmatch(r"[a-z]+(_[a-z]+)*", name) for name in names)
         for name in names:
             box = areas.AREAS[page_type][name]
-            assert box["label"].strip() and set(box) == {"label", "x", "y", "width", "height", "fields"}, name
-            assert all(isinstance(f, str) and f.strip() for f in box["fields"]) and len(box["fields"]) == len(set(box["fields"])), name
+            assert box["label"].strip() and set(box) == {"label", "x", "y", "width", "height"}, name
             assert 0 <= box["x"] and 0 <= box["y"] and box["width"] > 0 and box["height"] > 0, name
             assert box["x"] + box["width"] <= 1 and box["y"] + box["height"] <= 1, name
 
@@ -28,6 +28,14 @@ def test_every_area_is_a_unique_name_with_a_label_and_a_box_inside_the_card():
 def test_a_page_type_without_areas_has_no_names_or_boxes():
     assert areas.names("notes") == [] and areas.box("notes", "header") is None and areas.box("main", "nowhere") is None
     assert areas.box("main", None) is None
+
+
+def test_the_shown_box_is_grown_and_kept_on_the_page():
+    corner = areas.shown("main", "top_left_corner", None)
+    assert (corner["x"], corner["y"]) == (0, 0) and corner["width"] == pytest.approx(0.28) and corner["height"] == pytest.approx(0.15)
+    cell = areas.shown("main", "residents_table", '{"x": 0.255, "y": 0.438, "width": 0.093, "height": 0.062}')
+    assert (cell["x"], cell["y"], cell["width"], cell["height"]) == (0.24, 0.423, 0.123, 0.092)
+    assert areas.shown("main", None, None) is None
 
 
 def test_the_prompt_lists_exactly_the_names_for_each_page_type():

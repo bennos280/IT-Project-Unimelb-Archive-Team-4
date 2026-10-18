@@ -124,7 +124,7 @@ def test_an_annotation_is_stored_with_its_area_when_the_page_type_has_it(tmp_pat
     monkeypatch.setattr(database, "engine", database.make_engine(url))
     out = run_folder(tmp_path)
     for stem, annotations in (("216412_00001", [{"raw": "R", "location": "right margin", "area": "right_margin"},
-                                                {"raw": "/", "location": "by the kitchen", "area": "middle_column"},  # a coded card's area: the words decide
+                                                {"raw": "/", "location": "by the kitchen", "area": "middle_column"},  # a coded card's area
                                                 {"raw": "x", "location": "somewhere", "area": None},
                                                 {"raw": "old", "location": "a transcript from before areas"}]),
                               ("216412_00002", [{"raw": "9", "location": "bottom-left", "area": "bottom_left"}])):
@@ -133,43 +133,5 @@ def test_an_annotation_is_stored_with_its_area_when_the_page_type_has_it(tmp_pat
     loader.dump_into_db(out / "manifest.json")
     db = sqlite3.connect(tmp_path / "test.db")
     assert db.execute("SELECT page_id, annotation_no, text_raw, area FROM annotations ORDER BY page_id, annotation_no").fetchall() == [
-        ("216412_00001", 0, "R", "right_margin"), ("216412_00001", 1, "/", "kitchen_block"), ("216412_00001", 2, "x", None),
+        ("216412_00001", 0, "R", "right_margin"), ("216412_00001", 1, "/", None), ("216412_00001", 2, "x", None),
         ("216412_00001", 3, "old", None), ("216412_00002", 0, "9", "bottom_left")]
-
-
-def annotations_loaded(tmp_path, monkeypatch, main_annotations, coded_annotations=()):
-    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
-    database.migrate(url)
-    monkeypatch.setattr(database, "engine", database.make_engine(url))
-    out = run_folder(tmp_path)
-    for stem, annotations in (("216412_00001", main_annotations), ("216412_00002", coded_annotations)):
-        path = out / "transcribe" / f"{stem}.json"
-        path.write_text(json.dumps({**json.loads(path.read_text(encoding="utf-8")), "annotations": annotations}), encoding="utf-8")
-    loader.dump_into_db(out / "manifest.json")
-    db = sqlite3.connect(tmp_path / "test.db")
-    return [(page_id, no, area, region and json.loads(region)) for page_id, no, area, region in db.execute(
-        "SELECT page_id, annotation_no, area, region FROM annotations ORDER BY page_id, annotation_no")]
-
-
-def test_an_annotation_without_an_area_gets_the_one_its_location_words_give(tmp_path, monkeypatch):
-    stored = annotations_loaded(tmp_path, monkeypatch, [
-        {"raw": "1", "location": "after municipality, red pencil", "area": None},
-        {"raw": "2", "location": "top-left, beside dwelling number"},  # a transcript from before areas
-        {"raw": "3", "location": "somewhere odd", "area": None}],
-        [{"raw": "4", "location": "bottom centre, red pencil", "area": None}])
-    assert stored == [("216412_00001", 0, "address_block", None), ("216412_00001", 1, "top_left_corner", None),
-                      ("216412_00001", 2, None, None), ("216412_00002", 0, "bottom_centre", None)]
-
-
-def test_a_residents_mark_gets_its_row_band_whoever_gave_the_area(tmp_path, monkeypatch):
-    band = {"x": 0.04, "y": 0.67, "width": 0.57, "height": 0.028}
-    stored = annotations_loaded(tmp_path, monkeypatch, [
-        {"raw": "1", "location": "residential pref row (red)", "area": None},
-        {"raw": "2", "location": "residential pref row (red)", "area": "residents_table"},  # the model's area is the rules'
-        {"raw": "3", "location": "residential pref row (red)", "area": "left_margin"},  # a different area: no band for it
-        {"raw": "4", "location": "unearned income weekly amount/source, column 2", "area": "residents_table"},
-        {"raw": "5", "location": "after municipality", "area": "residents_table"}])  # the model's area, no row named
-    assert stored == [("216412_00001", 0, "residents_table", band), ("216412_00001", 1, "residents_table", band),
-                      ("216412_00001", 2, "left_margin", None),
-                      ("216412_00001", 3, "residents_table", {"x": 0.255, "y": 0.438, "width": 0.093, "height": 0.062}),
-                      ("216412_00001", 4, "residents_table", None)]

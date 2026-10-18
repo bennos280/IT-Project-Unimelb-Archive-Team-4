@@ -23,7 +23,7 @@ def padded(box, pad):
     return {"x": round(x0, 4), "y": round(y0, 4), "width": round(x1 - x0, 4), "height": round(y1 - y0, 4)}
 
 
-#the box the review screen highlights for an annotation: its row/cell region (JSON text) grown by 0.015, else its area grown by 0.03
+#the box the review screen highlights for an annotation: its own region (JSON text) grown by 0.015, else its area grown by 0.03
 def shown(page_type, name, region):
     if region:
         return padded(json.loads(region), 0.015)
@@ -33,8 +33,3 @@ def shown(page_type, name, region):
 
 def label(page_type, name):
     return AREAS.get(page_type, {}).get(name, {}).get("label")
-
-
-#an area's printed field labels (areas.json "fields")
-def fields(page_type, name):
-    return AREAS.get(page_type, {}).get(name, {}).get("fields", [])
