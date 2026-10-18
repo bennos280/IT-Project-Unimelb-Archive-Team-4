@@ -14,7 +14,8 @@ const pageRow = (page: Page, label: string) =>
 test.describe("Progress navigation and layout", () => {
   const survey = {
     id: "216417_1",
-    title: "Test survey",
+    title: "Wilfred Prest Survey",
+    collectionId: 1,
     pages: ["main", "notes", "coded"].map((type, index) => ({
       id: `216417/p${index}`,
       type,
@@ -50,6 +51,8 @@ test.describe("Progress navigation and layout", () => {
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
 
+      if (path === "/api/collections/1")
+        return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", archiveSeries: 499420 } });
       if (path === "/api/progress")
         return route.fulfill({
           json: [
@@ -131,7 +134,7 @@ test.describe("Progress navigation and layout", () => {
           },
         });
       });
-      await page.route("**/api/progress", (route) =>
+      await page.route(/\/api\/progress(\?.*)?$/, (route) =>
         route.fulfill({
           json: [
             {
@@ -150,7 +153,7 @@ test.describe("Progress navigation and layout", () => {
         }),
       );
 
-      await page.goto("/");
+      await page.goto("/?collection=1");
       const bundleRow = bundleRows(page).filter({
         has: page.getByRole("link", { name: "216417", exact: true }),
       });
@@ -185,7 +188,7 @@ test.describe("Progress navigation and layout", () => {
       }
       // Accept the browser's leave warning for deliberately discarded drafts.
       page.on("dialog", (dialog) => dialog.accept());
-      await page.getByRole("link", { name: "All bundles" }).click();
+      await page.getByRole("link", { name: "Wilfred Prest Survey" }).click();
       const complete = outcome === "saved";
       expect(saveRequests).toBe(outcome === "unsaved" ? 0 : 1);
       for (const refresh of [false, true]) {
@@ -217,7 +220,7 @@ test.describe("Progress navigation and layout", () => {
   }
 
   test("searches bundles and clears an empty result", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/?collection=1");
 
     await expect(
       page.getByRole("heading", { name: "All survey bundles" }),
@@ -238,7 +241,7 @@ test.describe("Progress navigation and layout", () => {
   test("disables pagination for one bundle and filters by status", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/?collection=1");
 
     await expect(
       page.getByRole("button", { name: "Next", exact: true }),
@@ -259,7 +262,7 @@ test.describe("Progress navigation and layout", () => {
   });
 
   test("opens bundle pages with matching review targets", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/?collection=1");
     await page.getByRole("link", { name: "216417", exact: true }).click();
 
     await expect(
@@ -272,7 +275,7 @@ test.describe("Progress navigation and layout", () => {
       notesRow.getByRole("link", { name: "Review Pg 2", exact: true }),
     ).toHaveAttribute("href", "/?survey=216417_1&page=216417%2Fp1");
 
-    await page.getByRole("link", { name: "All bundles" }).click();
+    await page.getByRole("link", { name: "Wilfred Prest Survey" }).click();
 
     await expect(
       page.getByRole("heading", { name: "All survey bundles" }),
@@ -280,7 +283,7 @@ test.describe("Progress navigation and layout", () => {
   });
 
   test("Import opens the import screen", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/?collection=1");
     await page.getByRole("button", { name: "Import", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Import survey bundles" })).toBeVisible();
   });
@@ -291,7 +294,7 @@ test.describe("Progress navigation and layout", () => {
     ["Pg 3", "216417/p2"],
   ]) {
     test(`${label} opens its matching US7 page`, async ({ page }) => {
-      await page.goto("/");
+      await page.goto("/?collection=1");
       await page.getByRole("link", { name: "216417", exact: true }).click();
 
       const row = pageRow(page, label);
@@ -310,7 +313,7 @@ test.describe("Progress navigation and layout", () => {
   for (const width of [936, 640, 375]) {
     test(`page table keeps actions visible at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto("/");
+      await page.goto("/?collection=1");
       await page.getByRole("link", { name: "216417", exact: true }).click();
 
       await expect(
@@ -430,7 +433,7 @@ test.describe("Progress and transcription states", () => {
         json: { detail: `Unexpected request: ${path}` },
       });
     });
-    await page.goto("/");
+    await page.goto("/?collection=1");
   }
 
   async function openBundle(page: Page) {
@@ -542,17 +545,17 @@ test.describe("Progress and transcription states", () => {
     await mock(page, { loaded: true, count: 11 });
     await openBundle(page);
     await page.getByRole("button", { name: "Next", exact: true }).click();
-    await expect(page).toHaveURL(/\/\?bundle=216424&page=2$/);
+    await expect(page).toHaveURL(/\/\?collection=1&bundle=216424&page=2$/);
     await page.reload();
     await expect(page.getByText("Showing 10–11 of 11 pages")).toBeVisible();
     await page.getByLabel("Status").selectOption("Ready to review");
-    await expect(page).toHaveURL(/\/\?bundle=216424&status=Ready\+to\+review$/);
+    await expect(page).toHaveURL(/\/\?collection=1&bundle=216424&status=Ready\+to\+review$/);
     await page.goBack();
     await expect(page.getByText("Showing 10–11 of 11 pages")).toBeVisible();
     await page.goBack();
     await expect(page.getByText("Showing 1–9 of 11 pages")).toBeVisible();
     await page.goBack();
-    await expect(page).toHaveURL(/:\d+\/$/);
+    await expect(page).toHaveURL(/\/\?collection=1$/);
     await expect(page.getByRole("link", { name: "216424", exact: true })).toBeVisible();
   });
 
@@ -568,13 +571,13 @@ test.describe("Progress and transcription states", () => {
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
-    await expect(page).toHaveURL(/:\d+\/$/);
+    await expect(page).toHaveURL(/\/\?collection=1$/);
     // The row link's overlay covers the Total pages cell, so click its centre with the mouse.
     const box = await row.getByRole("cell").nth(1).boundingBox();
     expect(box).not.toBeNull();
     await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
     await expect(page.getByRole("heading", { name: "Bundle Number · 216424" })).toBeVisible();
-    await expect(page).toHaveURL(/\/\?bundle=216424$/);
+    await expect(page).toHaveURL(/\/\?collection=1&bundle=216424$/);
   });
 
   test("a failed bundle's Retry and error buttons act without opening the bundle", async ({
@@ -592,7 +595,7 @@ test.describe("Progress and transcription states", () => {
     await expect(page.getByRole("dialog")).toContainText("Test transcription failure");
     await page.getByRole("button", { name: "Close", exact: true }).click();
     await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
-    await expect(page).toHaveURL(/:\d+\/$/);
+    await expect(page).toHaveURL(/\/\?collection=1$/);
   });
 
   test("bundle rows have one keyboard stop, an Actions header, and open natively in a new tab", async ({
@@ -607,19 +610,19 @@ test.describe("Progress and transcription states", () => {
     await expect(row.getByRole("link")).toHaveCount(1);
     await expect(row.getByRole("button")).toHaveCount(0);
     const link = row.getByRole("link", { name: "216424", exact: true });
-    await expect(link).toHaveAttribute("href", "/?bundle=216424");
+    await expect(link).toHaveAttribute("href", "/?collection=1&bundle=216424");
     const opened = page.context().waitForEvent("page");
     await link.click({ modifiers: ["Control"] });
     const tab = await opened;
-    expect(new URL(tab.url()).search).toBe("?bundle=216424");
+    expect(new URL(tab.url()).search).toBe("?collection=1&bundle=216424");
     await tab.close();
-    await expect(page).toHaveURL(/:\d+\/$/);
+    await expect(page).toHaveURL(/\/\?collection=1$/);
     await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
     await link.focus();
     await expect(link).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { name: "Bundle Number · 216424" })).toBeVisible();
-    await expect(page).toHaveURL(/\/\?bundle=216424$/);
+    await expect(page).toHaveURL(/\/\?collection=1&bundle=216424$/);
     await expect(page.getByRole("columnheader", { name: "Actions", exact: true })).toHaveCount(1);
   });
 
@@ -635,7 +638,7 @@ test.describe("Progress and transcription states", () => {
   test("failed progress request can be retried", async ({ page }) => {
     await mock(page, { loaded: true });
     let failed = true;
-    await page.route("**/api/progress", (route) =>
+    await page.route(/\/api\/progress(\?.*)?$/, (route) =>
       failed
         ? route.fulfill({ status: 500, json: { detail: "Temporary failure" } })
         : route.fulfill({ json: [{ id: "b", pages: [readyPage(1)] }] }),
@@ -655,7 +658,7 @@ test.describe("Progress and transcription states", () => {
     await expect(
       page.getByText("0 / 2 reviewed · 0%", { exact: true }),
     ).toBeVisible();
-    await page.route("**/api/progress", (route) =>
+    await page.route(/\/api\/progress(\?.*)?$/, (route) =>
       route.fulfill({
         json: [
           {
@@ -678,7 +681,7 @@ test.describe("Progress and transcription states", () => {
     let calls = 0;
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/progress", async (route) => {
+    await page.route(/\/api\/progress(\?.*)?$/, async (route) => {
       calls++;
       await held;
       await route.fulfill({ json: [{ id: "b", pages: [readyPage(1), readyPage(2)] }] });
@@ -710,7 +713,7 @@ test('awaiting transcription page has a Transcribe action targeting its survey p
     if (path === '/api/bundles') return route.fulfill({json:[]});
     return route.fulfill({status:404,json:{detail:'Unexpected test request'}});
   });
-  await page.goto('/');
+  await page.goto("/?collection=1");
   await page.getByRole('link',{name:'b',exact:true}).click();
   const row=bundleRows(page).filter({hasText:'Pg 4'});
   await expect(row.getByRole('link',{name:'Transcribe Pg 4',exact:true})).toHaveAttribute('href','/?survey=s1&page=b%2Fp4&action=transcribe');
@@ -756,7 +759,7 @@ test.describe("Pages without a survey", () => {
         json: { detail: `Unexpected request: ${path}` },
       });
     });
-    await page.goto("/");
+    await page.goto("/?collection=1");
     return page.getByRole("row").filter({
       has: page.getByRole("link", { name: "test-bundle", exact: true }),
     });
@@ -810,7 +813,7 @@ test("with no transcription model saved, the dialog prefills nothing, links to S
     }
     return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${path}` } });
   });
-  await page.goto("/");
+  await page.goto("/?collection=1");
   const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "216424", exact: true }) });
   await row.getByRole("button", { name: "Transcribe", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Transcribe scans" });
@@ -842,7 +845,7 @@ test("with a transcription model saved, the dialog prefills it and shows no noti
       return route.fulfill({ json: { configured: { provider: "codex", model: "gpt-x", effort: "high" }, models: [] } });
     return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${path}` } });
   });
-  await page.goto("/");
+  await page.goto("/?collection=1");
   await bundleRows(page).getByRole("button", { name: "Transcribe", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Transcribe scans" });
   await expect(dialog.getByLabel("Model", { exact: true })).toHaveValue("gpt-x");

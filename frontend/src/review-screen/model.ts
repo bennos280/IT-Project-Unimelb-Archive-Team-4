@@ -55,6 +55,7 @@ export type SurveyPage = {
 // Represents the complete survey loaded by the review screen.
 export type Survey = {
   bundleId?: string;
+  collectionId?: number;
   id: string;
   title: string;
   pages: SurveyPage[];

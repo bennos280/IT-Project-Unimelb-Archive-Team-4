@@ -129,7 +129,7 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
             "flags": page_flags(db, p, fields_list),
         })
     collection = db.get(models.Collection, db.get(models.Bundle, survey.bundle_id).collection_id)
-    return {"id":survey_id, "bundleId":survey.bundle_id, "title":collection.name, "pages":pages_list}
+    return {"id":survey_id, "bundleId":survey.bundle_id, "collectionId":collection.collection_id, "title":collection.name, "pages":pages_list}
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
 #and black and white (the scan itself if that fails)
@@ -326,6 +326,7 @@ def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depen
 #--PAGE TYPES--# (the four built in, and any added here; a page type's pages are read with its template)
 class PageTypeRequest(BaseModel):
     reviewerId: int
+    collectionId: int = 1
     label: str | None = None #what people see; the name if not given
     name: str | None = None #its id; made from the label if not given
 
@@ -335,7 +336,13 @@ class PageTypeSettings(BaseModel):
     matchedByKey: bool | None = None
 
 class CollectionSettings(BaseModel):
+    name: str | None = None
+    archiveSeries: str | None = None #its series' address on the archive, or the number at its end
     recordKey: str | None = None #None or "": surveys by page order only
+
+class NewCollection(BaseModel):
+    name: str
+    archiveSeries: str
 
 class PageTypeChange(BaseModel):
     pageType: str
@@ -352,9 +359,10 @@ def page_type_json(t, templates):
 
 #the page types, each with its newest template's version (None: it has none, so its pages aren't read)
 @app.get("/page-types")
-def get_page_types(db: Session = Depends(get_db)):
+def get_page_types(collection: int | None = None, db: Session = Depends(get_db)):
     templates = instructions.newest(db)
-    return [page_type_json(t, templates) for t in db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)]
+    types = db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)
+    return [page_type_json(t, templates) for t in (types if collection is None else types.filter_by(collection_id=collection))]
 
 #a free id for a page type, from its label: "Follow-up visit" -> follow_up_visit, then follow_up_visit_2, ...
 def new_name(db, label):
@@ -380,8 +388,10 @@ def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail=f"There is already a page type called {name}.")
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    if not db.get(models.Collection, payload.collectionId):
+        raise HTTPException(status_code=400, detail="No such collection.")
     try:
-        db.add(models.PageType(name=name, label=label, reviewer_id=payload.reviewerId))
+        db.add(models.PageType(name=name, label=label, reviewer_id=payload.reviewerId, collection_id=payload.collectionId))
         db.commit()
     except IntegrityError: #the label is taken in the collection
         db.rollback()
@@ -416,34 +426,96 @@ def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends
         raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
     return page_type_json(t, instructions.newest(db))
 
-def collection_json(c):
-    return {"id": c.collection_id, "name": c.name, "recordKey": c.record_key}
+def collection_json(c, db=None):
+    counts = {} if db is None else {
+        "bundles": db.query(models.Bundle).filter_by(collection_id=c.collection_id).count(),
+        "pages": db.query(models.Page).join(models.Bundle).filter(models.Bundle.collection_id == c.collection_id).count()}
+    return {"id": c.collection_id, "name": c.name, "recordKey": c.record_key, "archiveSeries": c.archive_series, **counts}
+
+#a series' node id on archives.library.unimelb.edu.au, from its address (.../nodes/view/499420) or the number itself; None: neither
+def series_node(text):
+    found = re.fullmatch(r"\s*(?:https?://archives\.library\.unimelb\.edu\.au/nodes/view/)?([1-9]\d{0,8})/?\s*", text or "")
+    return int(found.group(1)) if found else None
+
+SERIES_HELP = "Paste the series' address from archives.library.unimelb.edu.au (.../nodes/view/<number>), or just its number."
+
+#every collection, with how many bundles and pages it has
+@app.get("/collections")
+def get_collections(db: Session = Depends(get_db)):
+    return [collection_json(c, db) for c in db.query(models.Collection).order_by(models.Collection.collection_id)]
+
+#a new collection, linked to its series on the archive, starts with its Unknown page type
+@app.post("/collections", status_code=201)
+def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
+    name, node = payload.name.strip(), series_node(payload.archiveSeries)
+    if not name:
+        raise HTTPException(status_code=400, detail="A collection needs a name.")
+    if node is None:
+        raise HTTPException(status_code=400, detail=SERIES_HELP)
+    write_lock(db)
+    collection = models.Collection(name=name, archive_series=node)
+    db.add(collection)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"There is already a collection called {name}.")
+    db.add(models.PageType(name=new_name(db, "Unknown"), label="Unknown", unknown=True, built_in=True, collection_id=collection.collection_id))
+    db.commit()
+    return collection_json(collection, db)
 
 @app.get("/collections/{collection_id}")
 def get_collection(collection_id: int, db: Session = Depends(get_db)):
     c = db.get(models.Collection, collection_id)
     if not c:
         raise HTTPException(status_code=404, detail="No such collection.")
-    return collection_json(c)
+    return collection_json(c, db)
 
-#sets the field holding a survey's number, which the templates of the types that start or join a survey must have
+#renames a collection, relinks its series, or sets the field holding a survey's number, which the templates of the types that
+#start or join a survey must have; a field left out of the request stays as it is
 @app.patch("/collections/{collection_id}")
 def update_collection(collection_id: int, payload: CollectionSettings, db: Session = Depends(get_db)):
     write_lock(db)
     c = db.get(models.Collection, collection_id)
     if not c:
         raise HTTPException(status_code=404, detail="No such collection.")
-    key = (payload.recordKey or "").strip() or None
-    if key and not instructions.KEY.fullmatch(key):
-        raise HTTPException(status_code=400, detail="A field name is lower-case letters, digits and _, starting with a letter.")
-    templates = instructions.newest(db)
-    missing = sorted(t.label for t in db.query(models.PageType).filter_by(collection_id=collection_id)
-                     if key and (t.starts_record or t.matched_by_key) and t.name in templates and key not in json.loads(templates[t.name].body))
-    if missing:
-        raise HTTPException(status_code=400, detail=f"These page types' templates don't have '{key}': {', '.join(missing)}.")
-    c.record_key = key
-    db.commit()
-    return collection_json(c)
+    given = payload.model_fields_set
+    if "name" in given:
+        if not (payload.name or "").strip():
+            raise HTTPException(status_code=400, detail="A collection needs a name.")
+        c.name = payload.name.strip()
+    if "archiveSeries" in given:
+        if series_node(payload.archiveSeries) is None:
+            raise HTTPException(status_code=400, detail=SERIES_HELP)
+        c.archive_series = series_node(payload.archiveSeries)
+    if "recordKey" in given:
+        key = (payload.recordKey or "").strip() or None
+        if key and not instructions.KEY.fullmatch(key):
+            raise HTTPException(status_code=400, detail="A field name is lower-case letters, digits and _, starting with a letter.")
+        templates = instructions.newest(db)
+        missing = sorted(t.label for t in db.query(models.PageType).filter_by(collection_id=collection_id)
+                         if key and (t.starts_record or t.matched_by_key) and t.name in templates and key not in json.loads(templates[t.name].body))
+        if missing:
+            raise HTTPException(status_code=400, detail=f"These page types' templates don't have '{key}': {', '.join(missing)}.")
+        c.record_key = key
+    name = c.name
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"There is already a collection called {name}.")
+    return collection_json(c, db)
+
+#a series on the archive, to check before a collection links to it
+@app.get("/archive-series/{node}")
+def get_archive_series(node: int):
+    try:
+        series = scans.archive_series(node)
+    except scans.ARCHIVE_ERRORS as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't reach the archive ({error}).")
+    if series is None:
+        raise HTTPException(status_code=404, detail="The archive has no page with that number.")
+    return series
 
 #reads a page again as another page type, replacing what was read off it: queued for the worker, or for other done now (an
 #empty page to type into). A page with saved reviews keeps its type, as reading it again would lose them.
@@ -581,8 +653,9 @@ def job_json(job):
 
 #every runnable PDF, with its loaded survey ids and latest job; name is the bundle number (the PDF's folder)
 @app.get("/bundles")
-def get_bundles(db: Session = Depends(get_db)):
-    loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id)}
+def get_bundles(collection: int = 1, db: Session = Depends(get_db)):
+    loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id).filter_by(collection_id=collection)}
+    elsewhere = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id).filter(models.Bundle.collection_id != collection)}
     surveys = {}
     for survey_id, bundle_id in (db.query(models.Page.survey_id, models.Page.bundle_id)
                                  .filter(models.Page.survey_id.is_not(None))
@@ -593,6 +666,8 @@ def get_bundles(db: Session = Depends(get_db)):
     data = ROOT / settings()["DATA"]
     bundles = []
     for p in pdfs():
+        if p.stem in elsewhere or (p.stem not in loaded and collection != 1):  #ponytail: a PDF not loaded yet is collection 1's
+            continue
         job = latest.get(stored_path(p))
         bundles.append({"pdf": stored_path(p), "bundle": p.stem, "name": p.stem if p.parent == data else p.parent.name,
                         "loaded": p.stem in loaded, "surveys": surveys.get(p.stem, []), "job": job_json(job) if job else None})
@@ -632,7 +707,11 @@ _progress, _watchers, _progress_lock = {}, {}, threading.Lock()
 
 
 @app.get("/progress")
-def get_progress(db: Session = Depends(get_db)):
+def get_progress(collection: int | None = None, db: Session = Depends(get_db)):
+    progress = cached_progress(db)
+    return [b for b in progress if collection is None or b["collectionId"] == collection]
+
+def cached_progress(db):
     from backend.api.progress import review_progress
     path = db.get_bind().url.database
     #an in-memory db can't be watched from another connection
@@ -756,10 +835,11 @@ def export_survey(survey_id: str, request: Request, db: Session):
 
 
 @app.get("/export/bundles")
-def export_bundles(db: Session = Depends(get_db)):
+def export_bundles(collection: int | None = None, db: Session = Depends(get_db)):
     from pathlib import PurePosixPath
+    bundles = db.query(models.Bundle).order_by(models.Bundle.bundle_id)
     return [{"id": b.bundle_id, "name": PurePosixPath(b.source_pdf.replace("\\", "/")).parent.name or b.bundle_id}
-            for b in db.query(models.Bundle).order_by(models.Bundle.bundle_id)]
+            for b in (bundles if collection is None else bundles.filter_by(collection_id=collection))]
 
 
 @app.get("/export")

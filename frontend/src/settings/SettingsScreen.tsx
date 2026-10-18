@@ -190,7 +190,7 @@ export default function SettingsScreen() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader crumbs={[{ label: "All bundles", href: "/" }, { label: "Settings" }]} />
+      <AppHeader crumbs={[{ label: "Collections", href: "/" }, { label: "Settings" }]} />
       <TooltipProvider>
         <main className="mx-auto max-w-6xl space-y-8 p-6">
           <div className="flex flex-col gap-3">
@@ -319,15 +319,6 @@ export default function SettingsScreen() {
                 })}
               </div>
             )}
-          </section>
-          <section id="page-types" className="space-y-3">
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight">Page types</h2>
-              <p className="text-sm text-muted-foreground">
-                The kinds of page in the collection, the template each is read with, and how pages group into surveys.
-              </p>
-            </div>
-            <Button asChild variant="outline"><a href="/?view=page-types">Manage page types</a></Button>
           </section>
           <Folders />
         </main>

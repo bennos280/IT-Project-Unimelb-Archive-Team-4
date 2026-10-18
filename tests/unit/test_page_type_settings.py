@@ -50,7 +50,7 @@ def test_a_page_types_label_and_grouping_change_within_the_rules(client, db):
 
 def test_the_survey_number_field_must_be_in_the_templates_that_group_by_it(client, db):
     setup(db)
-    assert client.get("/collections/1").json() == {"id": 1, "name": "Wilfred Prest Survey", "recordKey": "number_of_dwelling"}
+    assert client.get("/collections/1").json()["recordKey"] == "number_of_dwelling"
     refused = client.patch("/collections/1", json={"recordKey": "address"})
     assert (refused.status_code, refused.json()["detail"]) == (400, "These page types' templates don't have 'address': Coded page.")
     assert client.patch("/collections/1", json={"recordKey": "Bad key"}).status_code == 400

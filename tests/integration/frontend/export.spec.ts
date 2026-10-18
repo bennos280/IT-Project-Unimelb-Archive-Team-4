@@ -193,7 +193,7 @@ test("dashboard exports the selected bundle ID rather than its display number", 
       json: { detail: "Unexpected request" },
     });
   });
-  await page.goto("/");
+  await page.goto("/?collection=1");
   await page.getByRole("link", { name: "123", exact: true }).click();
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(
@@ -325,7 +325,7 @@ for (const selectedBundle of [false, true]) {
         json: { detail: "Unexpected request" },
       });
     });
-    await page.goto("/");
+    await page.goto("/?collection=1");
     if (selectedBundle)
       await page.getByRole("link", { name: "123", exact: true }).click();
     await page.getByRole("button", { name: "Export", exact: true }).click();

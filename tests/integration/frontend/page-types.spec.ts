@@ -67,13 +67,12 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
 
 const row = (page: Page, label: string) => page.getByRole("row").filter({ has: page.getByRole("cell", { name: label, exact: true }) });
 
-test("Settings links to the page types, listed by label with how they group and their template", async ({ page }) => {
+test("a collection's page types are listed by label with how they group and their template", async ({ page }) => {
   await mockApi(page);
-  await page.route("**/api/connections", (route) => route.fulfill({ status: 500, json: { detail: "Not mocked." } }));
-  await page.goto("/?view=settings");
-  await page.getByRole("link", { name: "Manage page types" }).click();
-  await expect(page).toHaveURL(/view=page-types/);
+  await page.goto("/?collection=1&view=page-types");
   await expect(page.getByRole("heading", { name: "Page types", level: 1 })).toBeVisible();
+  await expect(page.locator('[data-slot="breadcrumb-item"]')).toHaveText(
+    ["Collections", "Wilfred Prest Survey", "Page types"]);
   await expect(row(page, "Main page")).toContainText("Starts a survey");
   await expect(row(page, "Coded page")).toContainText("Joins the survey with the same number");
   await expect(row(page, "Notes page")).toContainText("Follows the page before it");
@@ -122,7 +121,7 @@ test("a new page type is added by label, then opened to give it a template", asy
   await add.getByLabel("Label").fill("Follow-up visit");
   await add.getByLabel("Saved as").selectOption("Ben");
   await add.getByRole("button", { name: "Add" }).click();
-  expect(calls.addType).toEqual([{ label: "Follow-up visit", reviewerId: 1 }]);
+  expect(calls.addType).toEqual([{ label: "Follow-up visit", reviewerId: 1, collectionId: 1 }]);
   const edit = page.getByRole("dialog", { name: "Edit Follow-up visit" });
   await expect(edit.getByText("Until it has one, pages of this type aren't read.")).toBeVisible();
   await edit.getByRole("button", { name: "Cancel" }).click();

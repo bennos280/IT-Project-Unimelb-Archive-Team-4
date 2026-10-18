@@ -136,23 +136,25 @@ export default function ReviewScreen({
   const textPage = !!page && isTextPage(page);
   // The dashboard names a bundle by its /bundles name; the id is accepted too when that is unavailable.
   const bundleId = survey?.bundleId;
+  const collectionId = survey?.collectionId ?? 1;
   const [bundleNames, setBundleNames] = useState<{ bundle: string; name: string }[]>([]);
   useEffect(() => {
     if (!bundleId) return;
     let active = true;
-    request<{ bundle: string; name: string }[]>("/bundles")
+    request<{ bundle: string; name: string }[]>(`/bundles?collection=${collectionId}`)
       .then((list) => active && Array.isArray(list) && setBundleNames(list))
       .catch(() => {});
     return () => { active = false; };
-  }, [bundleId]);
+  }, [bundleId, collectionId]);
   const bundleLabel = bundleNames.find((b) => b.bundle === bundleId)?.name || bundleId || "";
   return (
     <>
       <AppHeader
         crumbs={[
-          { label: "All bundles", href: "/" },
+          { label: "Collections", href: "/" },
+          ...(survey?.collectionId ? [{ label: survey.title, href: `/?collection=${survey.collectionId}` }] : []),
           ...(survey?.bundleId
-            ? [{ label: `Bundle ${bundleLabel}`, href: `/?bundle=${encodeURIComponent(bundleLabel)}` }]
+            ? [{ label: `Bundle ${bundleLabel}`, href: `/?collection=${survey.collectionId ?? 1}&bundle=${encodeURIComponent(bundleLabel)}` }]
             : []),
           { label: `Survey ${session.surveyId}`.trim() },
         ]}
@@ -552,6 +554,7 @@ export default function ReviewScreen({
                   <ExportDialog
                     surveyId={survey.id}
                     initialBundleId={survey.bundleId}
+                    collectionId={survey.collectionId}
                     hasDrafts={Object.values(session.reviews).some((fields) =>
                       Object.values(fields).some((review) => !review.savedAt),
                     )}

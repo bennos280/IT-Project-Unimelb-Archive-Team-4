@@ -8,6 +8,7 @@ class Collection(Base):
     collection_id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
     record_key = Column(String, nullable=True) #the field holding a survey's number, which ties its pages together; None: page order only
+    archive_series = Column(Integer, nullable=True) #its series on archives.library.unimelb.edu.au: /nodes/view/<archive_series>
 
 #ponytail: a new bundle or page type joins collection 1 until there is a way to choose one
 class Bundle(Base):

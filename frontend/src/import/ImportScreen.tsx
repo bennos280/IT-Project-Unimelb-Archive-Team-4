@@ -95,7 +95,7 @@ export default function ImportScreen() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader crumbs={[{ label: "All bundles", href: "/" }, { label: "Import" }]} />
+      <AppHeader crumbs={[{ label: "Collections", href: "/" }, { label: "Import" }]} />
       <main className="mx-auto max-w-6xl space-y-4 p-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Import survey bundles</h1>

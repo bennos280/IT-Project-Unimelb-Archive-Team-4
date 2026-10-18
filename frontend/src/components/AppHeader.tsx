@@ -16,7 +16,7 @@ export default function AppHeader({ crumbs, actions }: { crumbs: Crumb[]; action
   return (
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b px-6 py-4">
       <div className="min-w-0 space-y-1">
-        <a href="/" className="block rounded-sm text-2xl font-semibold tracking-tight">Wilfred Prest Survey</a>
+        <a href="/" className="block rounded-sm text-2xl font-semibold tracking-tight">PrestCribe</a>
         <Breadcrumb>
           <BreadcrumbList>
             {crumbs.map((crumb, i) => (

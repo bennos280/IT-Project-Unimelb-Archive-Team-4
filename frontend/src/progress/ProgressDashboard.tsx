@@ -1,7 +1,7 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { ArrowRight, ChevronRight, Search, Settings, Upload } from "lucide-react";
+import { ArrowRight, ChevronRight, LayoutList, Search, Settings, Upload } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,12 @@ const jobStages: Record<string, string> = {
 
 // Shows the bundle overview or the selected bundle’s pages using saved US8 data.
 export default function ProgressDashboard() {
+  // The collection whose bundles these are (/?collection=<id>).
+  const collectionId = Number(new URLSearchParams(location.search).get("collection")) || 1;
+  const [collectionName, setCollectionName] = useState("");
+  useEffect(() => {
+    backendRequest<{ name: string }>(`/collections/${collectionId}`).then((c) => setCollectionName(c.name)).catch(() => {});
+  }, [collectionId]);
   // Null means data has not loaded yet; an empty array means no bundles were returned.
   const [bundles, setBundles] = useState<DashboardBundle[] | null>(null);
   const [error, setError] = useState("");
@@ -105,8 +111,8 @@ export default function ProgressDashboard() {
       try {
         // /progress supplies saved review totals; /bundles also includes unprocessed sources.
         const [data, available] = await Promise.all([
-          backendRequest<Bundle[]>("/progress"),
-          backendRequest<AvailableBundle[]>("/bundles"),
+          backendRequest<Bundle[]>(`/progress?collection=${collectionId}`),
+          backendRequest<AvailableBundle[]>(`/bundles?collection=${collectionId}`),
         ]);
         // Refresh queued/running job details before displaying the current processing stage.
         await Promise.all(
@@ -206,8 +212,8 @@ export default function ProgressDashboard() {
       window.removeEventListener("focus", refresh);
       window.removeEventListener("pageshow", refresh);
     };
-  }, [attempt]);
-  // The view lives in the URL (?bundle, ?q, ?status, ?page) so refresh, Back and shared links keep it.
+  }, [attempt, collectionId]);
+  // The view lives in the URL (?collection, ?bundle, ?q, ?status, ?page) so refresh, Back and shared links keep it.
   // No bundle displays all bundles; search, status and page apply to the displayed table.
   const [view, setView] = useState(readView);
   useEffect(() => {
@@ -219,12 +225,12 @@ export default function ProgressDashboard() {
   // Typing in search replaces the current history entry; every other change adds one.
   function show(next: Partial<View>, replace = false) {
     const v = { ...view, ...next };
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ collection: String(collectionId) });
     if (v.bundle) params.set("bundle", v.bundle);
     if (v.query) params.set("q", v.query);
     if (v.status !== "All") params.set("status", v.status);
     if (v.pageNumber) params.set("page", String(v.pageNumber + 1));
-    history[replace ? "replaceState" : "pushState"](null, "", params.size ? `/?${params}` : "/");
+    history[replace ? "replaceState" : "pushState"](null, "", `/?${params}`);
     setView(v);
   }
 
@@ -275,7 +281,7 @@ export default function ProgressDashboard() {
     const b = bundles?.find((x) => x.id === id);
     show({ bundle: b ? (b.name ?? b.id) : null, query: "", status: "All", pageNumber: 0 });
   }
-  // A plain click on the "All bundles" crumb returns in-app; modified clicks keep the link's default.
+  // A plain click on the collection's crumb returns in-app; modified clicks keep the link's default.
   function backToOverview(e: MouseEvent) {
     if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
@@ -333,9 +339,10 @@ export default function ProgressDashboard() {
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader
         crumbs={[
+          { label: "Collections", href: "/" },
           bundle
-            ? { label: "All bundles", href: "/", onClick: backToOverview }
-            : { label: "All bundles" },
+            ? { label: collectionName || "Collection", href: `/?collection=${collectionId}`, onClick: backToOverview }
+            : { label: collectionName || "Collection" },
           ...(bundle ? [{ label: `Bundle ${bundle.name ?? bundle.id}` }] : []),
         ]}
         actions={
@@ -350,10 +357,16 @@ export default function ProgressDashboard() {
                   : undefined
               }
               defaultScope="bundle"
+              collectionId={collectionId}
               hasDrafts={false}
             />
-            <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=import"; }}>
-              <Upload /> Import
+            {collectionId === 1 && ( // ponytail: imports go to collection 1 until the import screen picks a collection
+              <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=import"; }}>
+                <Upload /> Import
+              </Button>
+            )}
+            <Button type="button" variant="outline" onClick={() => { window.location.href = `/?collection=${collectionId}&view=page-types`; }}>
+              <LayoutList /> Page types
             </Button>
             <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=settings"; }}>
               <Settings /> Settings
@@ -589,7 +602,7 @@ export default function ProgressDashboard() {
                             <TableRow key={b.id} className="relative cursor-pointer hover:bg-muted focus-within:bg-muted">
                               <TableCell className={cell}>
                                 <a
-                                  href={`/?bundle=${encodeURIComponent(b.name ?? b.id)}`}
+                                  href={`/?collection=${collectionId}&bundle=${encodeURIComponent(b.name ?? b.id)}`}
                                   className={rowLink}
                                   onClick={(e) => {
                                     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;

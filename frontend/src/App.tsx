@@ -1,3 +1,4 @@
+import CollectionsScreen from "./collections/CollectionsScreen";
 import ImportScreen from "./import/ImportScreen";
 import ReviewScreen from "./review-screen/ReviewScreen";
 import { useReviewSession } from "./review-screen/useReviewSession";
@@ -10,10 +11,13 @@ function SurveyReview() {
   const session = useReviewSession();
   return <ReviewScreen session={session}/>;
 }
+// Home lists the collections; /?collection=<id> is one collection's bundles.
 export default function App() {
-  const view = new URLSearchParams(location.search).get("view");
+  const params = new URLSearchParams(location.search);
+  const view = params.get("view");
   if (view === "import") return <ImportScreen/>;
   if (view === "settings") return <SettingsScreen/>;
   if (view === "page-types") return <PageTypesScreen/>;
-  return new URLSearchParams(location.search).has("survey") ? <SurveyReview/> : <ProgressDashboard/>;
+  if (params.has("survey")) return <SurveyReview/>;
+  return params.has("collection") || params.has("bundle") ? <ProgressDashboard/> : <CollectionsScreen/>; // an old /?bundle= link: collection 1
 }

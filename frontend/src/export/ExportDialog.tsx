@@ -72,11 +72,13 @@ export default function ExportDialog({
   hasDrafts,
   initialBundleId = "",
   defaultScope = "survey",
+  collectionId,
 }: {
   surveyId: string;
   hasDrafts: boolean;
   initialBundleId?: string;
   defaultScope?: Scope;
+  collectionId?: number; // the bundles listed are this collection's
 }) {
   // Stores the selected export scope.
   const [scope, setScope] = useState<Scope>(defaultScope);
@@ -158,7 +160,7 @@ export default function ExportDialog({
       setBundleId(initialBundleId);
     } else if (next === "bundle") {
       setScope("bundle");
-      void loadExportBundles()
+      void loadExportBundles(collectionId)
         .then(setBundles)
         .catch((e) => setFailure(e.message));
     } else {
@@ -239,7 +241,7 @@ export default function ExportDialog({
               setRequestedId(surveyId);
               setScope(defaultScope);
               setBundleId(initialBundleId);
-              void loadExportBundles()
+              void loadExportBundles(collectionId)
                 .then(setBundles)
                 .catch((error) => setFailure(error.message));
             }}

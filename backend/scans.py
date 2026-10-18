@@ -1,11 +1,13 @@
 """Page scans not on this computer, from the University of Melbourne Archives' website: for the API when a page's scan
 isn't here, and for the pipeline when a bundle's PDF isn't."""
+import html
 import logging
 import re
 import shutil
 import tempfile
 import time
 from http.client import HTTPException
+from urllib.error import HTTPError
 from pathlib import Path
 from urllib.request import HTTPCookieProcessor, build_opener
 
@@ -66,6 +68,28 @@ def archive_scan(bundle, page_no):
             log.warning("the archive couldn't send bundle %s page %s (%s: %s); asking again in %s s",
                         bundle, page_no, type(error).__name__, error, RETRY)
     return jpeg if jpeg.is_file() else None
+
+
+#a series' page on the archive (/nodes/view/<node>, which robots.txt allows): its title, catalogue identifier, dates, access
+#status and number of items; None if the archive has no such page
+def archive_series(node):
+    session = build_opener()
+    session.addheaders = [("User-Agent", AGENT)]
+    try:
+        with session.open(f"{ARCHIVE}/nodes/view/{node}", timeout=30) as response:
+            page = response.read(2_000_000).decode("utf-8", "replace")  #a series page is well under this
+    except HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+    def meta(name):
+        found = re.search(rf'<meta property="og:{name}" content="([^"]*)"', page)
+        return html.unescape(found.group(1)) if found else ""
+    details = dict(part.split(": ", 1) for part in meta("description").split(" | ") if ": " in part)
+    items = re.search(r"Items in this series \((\d+)\)", page)
+    return {"id": node, "title": meta("title"), "identifier": details.get("Identifier", ""), "date": details.get("Date", ""),
+            "access": details.get("Access Status", ""), "items": int(items.group(1)) if items else None,
+            "url": f"{ARCHIVE}/nodes/view/{node}"}
 
 
 #a page's scan: the picture this computer's pipeline made, else the archive's; None if neither

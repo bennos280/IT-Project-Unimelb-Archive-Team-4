@@ -79,6 +79,8 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
     if (path === "/api/transcription-models")
       return route.fulfill({ json: { configured: defaults, models: [] } });
     if (path === "/api/progress" || path === "/api/bundles") return route.fulfill({ json: [] });
+    if (path === "/api/collections")
+      return route.fulfill({ json: [{ id: 1, name: "Wilfred Prest Survey", archiveSeries: 499420, bundles: 0, pages: 0 }] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
   return calls;
@@ -382,16 +384,16 @@ test("a test the API refuses (another one running) shows the reason", async ({ p
   await expect(claude(page).getByRole("alert")).toHaveText("A test is already running.");
 });
 
-test("the All bundles crumb returns to the dashboard", async ({ page }) => {
+test("the Collections crumb returns to the collections", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
   await page.goto("/?view=settings");
-  await page.getByRole("link", { name: "All bundles" }).click();
-  await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
+  await page.getByRole("link", { name: "Collections" }).click();
+  await expect(page.getByRole("heading", { name: "Collections", level: 1 })).toBeVisible();
 });
 
 test("the dashboard Settings button opens the settings page", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
-  await page.goto("/");
+  await page.goto("/?collection=1");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL(/\/\?view=settings$/);
   await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
@@ -520,7 +522,7 @@ test("the page has a Settings heading and subtitle above the sections", async ({
   await expect(page.getByRole("heading", { name: "Accounts", level: 2 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Transcription model", level: 2 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Folders", level: 2 })).toBeVisible();
-  await expect(page.getByRole("link", { name: "All bundles" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Collections" })).toBeVisible();
 });
 
 test("the Used for transcription tag shows only once a choice is saved, then follows the saved provider", async ({ page }) => {
@@ -828,7 +830,7 @@ test("checklist: updates when a sign-in finishes", async ({ page }) => {
   await expect(checklist(page)).toHaveCount(0);
 });
 
-test("sections run Transcription model, Accounts, Page types, then the folders footer", async ({ page }) => {
+test("sections run Transcription model, Accounts, then the folders footer", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
   await page.goto("/?view=settings");
   const tops = [];
@@ -837,7 +839,7 @@ test("sections run Transcription model, Accounts, Page types, then the folders f
   expect(tops[0]).toBeLessThan(tops[1]);
   expect(tops[1]).toBeLessThan(tops[2]);
   await expect(page.locator("footer", { has: page.getByRole("heading", { name: "Folders", level: 2 }) })).toBeVisible();
-  await expect(page.locator("section#transcription-defaults + section#connections + section#page-types + footer")).toHaveCount(1);
+  await expect(page.locator("section#transcription-defaults + section#connections + footer")).toHaveCount(1);
 });
 
 test("the model row leaves no empty line under it until there is a message", async ({ page }) => {

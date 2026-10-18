@@ -18,7 +18,6 @@ type Reviewer = { id: number; name: string };
 type Version = { id: number; body: string };
 type Grouping = "starts" | "matched" | "follows";
 
-const COLLECTION = 1; // ponytail: the only collection until there is a way to choose one
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 const groupingOf = (t: PageType): Grouping => (t.startsRecord ? "starts" : t.matchedByKey ? "matched" : "follows");
@@ -30,6 +29,7 @@ const GROUPINGS: Record<Grouping, string> = {
 
 // The collection's page types: what each is called, the template its pages are read with, and how they group into surveys.
 export default function PageTypesScreen() {
+  const collectionId = Number(new URLSearchParams(location.search).get("collection")) || 1;
   const [types, setTypes] = useState<PageType[] | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
   const [reviewers, setReviewers] = useState<Reviewer[]>([]);
@@ -39,8 +39,8 @@ export default function PageTypesScreen() {
 
   const load = useCallback(() => {
     Promise.all([
-      backendRequest<PageType[]>("/page-types"),
-      backendRequest<Collection>(`/collections/${COLLECTION}`),
+      backendRequest<PageType[]>(`/page-types?collection=${collectionId}`),
+      backendRequest<Collection>(`/collections/${collectionId}`),
       backendRequest<Reviewer[]>("/reviewers"),
     ]).then(([t, c, r]) => {
       setTypes(t);
@@ -48,12 +48,13 @@ export default function PageTypesScreen() {
       setReviewers(r);
       setLoadError("");
     }).catch((e) => setLoadError(message(e, "Could not load the page types.")));
-  }, []);
+  }, [collectionId]);
   useEffect(load, [load]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader crumbs={[{ label: "All bundles", href: "/" }, { label: "Settings", href: "/?view=settings" }, { label: "Page types" }]} />
+      <AppHeader crumbs={[{ label: "Collections", href: "/" }, { label: collection?.name ?? "Collection", href: `/?collection=${collectionId}` },
+        { label: "Page types" }]} />
       <main className="mx-auto max-w-6xl space-y-8 p-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Page types</h1>
@@ -104,7 +105,7 @@ export default function PageTypesScreen() {
         )}
       </main>
       {adding && (
-        <AddDialog reviewers={reviewers} onClose={() => setAdding(false)}
+        <AddDialog collectionId={collectionId} reviewers={reviewers} onClose={() => setAdding(false)}
           onAdded={(created) => { setAdding(false); setEditing(created); load(); }} />
       )}
       {editing && collection && (
@@ -170,7 +171,9 @@ function ReviewerField({ reviewers, value, onChange }: { reviewers: Reviewer[]; 
   );
 }
 
-function AddDialog({ reviewers, onClose, onAdded }: { reviewers: Reviewer[]; onClose: () => void; onAdded: (created: PageType) => void }) {
+function AddDialog({ collectionId, reviewers, onClose, onAdded }: {
+  collectionId: number; reviewers: Reviewer[]; onClose: () => void; onAdded: (created: PageType) => void;
+}) {
   const id = useId();
   const [label, setLabel] = useState("");
   const [reviewerId, setReviewerId] = useState("");
@@ -181,7 +184,7 @@ function AddDialog({ reviewers, onClose, onAdded }: { reviewers: Reviewer[]; onC
     setBusy(true);
     setError("");
     try {
-      onAdded(await backendRequest<PageType>("/page-types", json("POST", { label, reviewerId: Number(reviewerId) })));
+      onAdded(await backendRequest<PageType>("/page-types", json("POST", { label, reviewerId: Number(reviewerId), collectionId })));
     } catch (e) {
       setError(message(e, "Could not add the page type."));
       setBusy(false);

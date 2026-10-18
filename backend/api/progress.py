@@ -35,7 +35,8 @@ def review_progress(db):
     bundles = {}
     for b in db.query(models.Bundle).order_by(models.Bundle.bundle_id):
         parent = PurePosixPath(b.source_pdf.replace("\\", "/")).parent.name
-        bundles[b.bundle_id] = {"id": b.bundle_id, "name": parent if parent.isdigit() else b.bundle_id, "pages": []}
+        bundles[b.bundle_id] = {"id": b.bundle_id, "name": parent if parent.isdigit() else b.bundle_id, "collectionId": b.collection_id,
+                                "pages": []}
     labels = dict(db.query(models.PageType.name, models.PageType.label))
     unknown = {name for (name,) in db.query(models.PageType.name).filter(models.PageType.unknown)}
     for p in db.query(models.Page).order_by(models.Page.page_id):
