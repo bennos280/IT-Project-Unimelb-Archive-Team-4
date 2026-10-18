@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
-from backend.db import models
+from backend.db import database, models
 from backend.db.database import make_engine
 
 
@@ -24,6 +24,13 @@ def sessions(tmp_path):
 def db(sessions):
     with sessions() as session:
         yield session
+
+
+@pytest.fixture
+def cli_db(sessions, monkeypatch):
+    """The test database as the one that command-line runs and transcribe() open for themselves."""
+    monkeypatch.setattr(database, "SessionLocal", sessions)
+    return sessions
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
-import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, ChevronRight, Search, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, ArrowRight, ChevronRight, Search, Settings, Upload } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,9 @@ import {
   type ProgressPage,
   type PageStatus,
 } from "./progressData";
-import { backendRequest, type AvailableBundle } from "./backend";
+import { backendRequest, providerNames, type AvailableBundle } from "./backend";
 import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
+import type { ModelData } from "./ModelControls";
 import JobErrorDialog from "./JobErrorDialog";
 // Attach processing metadata to database progress so unfinished bundles can appear too.
 type DashboardBundle = Bundle & { source?: AvailableBundle };
@@ -67,6 +68,31 @@ export default function ProgressDashboard() {
   const [transcribing, setTranscribing] = useState<AvailableBundle | null>(
     null,
   );
+  // The saved transcription choice and sign-in status, for the setup banner. Null until both load; stays null if either request fails.
+  const [setup, setSetup] = useState<{ configured: ModelData["configured"]; signedIn: Record<string, boolean> } | null>(null);
+  const lastCheck = useRef(-Infinity); // a ref, so React's dev-mode remount doesn't repeat the load check
+  useEffect(() => {
+    // Not on the progress poll: /connections runs the CLIs' status checks. Focus checks at most every 30 s.
+    async function check() {
+      if (Date.now() - lastCheck.current < 30_000) return;
+      lastCheck.current = Date.now();
+      try {
+        const [models, connections] = await Promise.all([
+          backendRequest<ModelData>("/transcription-models"),
+          backendRequest<Record<string, { signedIn: boolean }>>("/connections"),
+        ]);
+        setSetup({
+          configured: models.configured,
+          signedIn: Object.fromEntries(Object.entries(connections).map(([id, c]) => [id, Boolean(c?.signedIn)])),
+        });
+      } catch {
+        setSetup(null);
+      }
+    }
+    void check();
+    window.addEventListener("focus", check);
+    return () => window.removeEventListener("focus", check);
+  }, []);
   useEffect(() => {
     // Ignore responses after unmounting and older requests that finish after a newer refresh.
     let active = true;
@@ -339,6 +365,9 @@ export default function ProgressDashboard() {
             <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=import"; }}>
               <Upload /> Import
             </Button>
+            <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=settings"; }}>
+              <Settings /> Settings
+            </Button>
           </div>
         </div>
         {/* Display loading failures and allow retry; previously loaded data stays visible. */}
@@ -347,6 +376,16 @@ export default function ProgressDashboard() {
             <AlertDescription className="flex flex-wrap items-center gap-3">
               Could not load current progress: {error}
               <Button variant="outline" size="sm" onClick={() => setAttempt((a) => a + 1)}>Try again</Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        {setup && (!setup.configured || !setup.signedIn[setup.configured.provider]) && (
+          <Alert role="status">
+            <AlertDescription className="flex flex-wrap items-center gap-x-3 text-foreground">
+              {setup.configured
+                ? `${providerNames[setup.configured.provider] ?? setup.configured.provider} isn't signed in, so transcription won't work yet.`
+                : "Transcription isn't set up yet. Choose a model in Settings to start transcribing."}
+              <Button asChild variant="link" size="sm" className="h-auto p-0"><a href="/?view=settings">Open Settings</a></Button>
             </AlertDescription>
           </Alert>
         )}

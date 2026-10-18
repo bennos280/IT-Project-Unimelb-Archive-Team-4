@@ -789,3 +789,59 @@ test.describe("Pages without a survey", () => {
     await expect(row.getByRole("progressbar")).toHaveCount(0);
   });
 });
+
+test("with no transcription model saved, the dialog prefills nothing, links to Settings and still starts a run with the model picked there", async ({ page }) => {
+  const started: unknown[] = [];
+  await page.route("**/api/**", (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/progress") return route.fulfill({ json: [] });
+    if (path === "/api/bundles")
+      return route.fulfill({ json: [{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false, surveys: [], job: null }] });
+    if (path === "/api/transcription-models") return route.fulfill({ json: { configured: null, models: [] } });
+    if (path === "/api/jobs" && request.method() === "POST") {
+      started.push(request.postDataJSON());
+      return route.fulfill({ status: 202, json: { id: 1, status: "waiting", step: null, donePages: 0, totalPages: 0, error: null } });
+    }
+    return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${path}` } });
+  });
+  await page.goto("/");
+  const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "216424", exact: true }) });
+  await row.getByRole("button", { name: "Transcribe", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Transcribe scans" });
+  await expect(dialog.getByText("No transcription model is set.")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Choose one on the Settings page" })).toHaveAttribute("href", "/?view=settings");
+  await expect(dialog.getByLabel("Model", { exact: true })).toHaveValue("");
+  await expect(dialog.getByLabel("Effort", { exact: true })).toHaveValue("");
+  await expect(dialog.getByLabel("Provider", { exact: true })).toHaveValue("");
+  const start = dialog.getByRole("button", { name: "Start transcription" });
+  await expect(start).toBeDisabled();
+  await dialog.getByLabel("Model", { exact: true }).fill("sonnet");
+  await expect(start).toBeDisabled();
+  await dialog.getByLabel("Effort", { exact: true }).fill("low");
+  await expect(start).toBeDisabled(); //the provider is chosen too
+  await dialog.getByLabel("Provider", { exact: true }).selectOption("claude");
+  await dialog.getByLabel("Model", { exact: true }).fill("sonnet");
+  await start.click();
+  await expect(dialog).toHaveCount(0);
+  expect(started).toEqual([{ pdf: "b.pdf", model: "sonnet", provider: "claude", effort: "low" }]);
+});
+
+test("with a transcription model saved, the dialog prefills it and shows no notice", async ({ page }) => {
+  await page.route("**/api/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/progress") return route.fulfill({ json: [] });
+    if (path === "/api/bundles")
+      return route.fulfill({ json: [{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false, surveys: [], job: null }] });
+    if (path === "/api/transcription-models")
+      return route.fulfill({ json: { configured: { provider: "codex", model: "gpt-x", effort: "high" }, models: [] } });
+    return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${path}` } });
+  });
+  await page.goto("/");
+  await bundleRows(page).getByRole("button", { name: "Transcribe", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Transcribe scans" });
+  await expect(dialog.getByLabel("Model", { exact: true })).toHaveValue("gpt-x");
+  await expect(dialog.getByLabel("Provider", { exact: true })).toHaveValue("codex");
+  await expect(dialog.getByLabel("Effort", { exact: true })).toHaveValue("high");
+  await expect(dialog.getByText("No transcription model is set.")).toHaveCount(0);
+});

@@ -15,11 +15,13 @@ import { backendRequest, type AvailableBundle } from "./backend";
 import { ModelFields, ModelTable, type ModelChoice, type ModelData } from "./ModelControls";
 export type { ModelChoice } from "./ModelControls";
 
+const NO_CHOICE: ModelChoice = { model: "", provider: "", effort: "" }; // nothing prefilled
+
 export default function TranscriptionDialog({ source, busy, error, onClose, onStart }: {
   source: AvailableBundle; busy: boolean; error: string;
   onClose: () => void; onStart: (choice: ModelChoice) => void;
 }) {
-  const [choice, setChoice] = useState<ModelChoice>({ model: "", provider: "claude", effort: "" });
+  const [choice, setChoice] = useState<ModelChoice>(NO_CHOICE);
   const [table, setTable] = useState(false);
   const [data, setData] = useState<ModelData | null>(null);
   const [failure, setFailure] = useState("");
@@ -27,7 +29,7 @@ export default function TranscriptionDialog({ source, busy, error, onClose, onSt
   useEffect(() => {
     let active = true;
     backendRequest<ModelData>("/transcription-models").then((result) => {
-      if (active) { setData(result); setChoice(result.configured); setFailure(""); }
+      if (active) { setData(result); setChoice(result.configured ?? NO_CHOICE); setFailure(""); }
     }).catch((e) => { if (active) setFailure(e instanceof Error ? e.message : "Could not load models."); });
     return () => { active = false; };
   }, [attempt]);
@@ -51,7 +53,7 @@ export default function TranscriptionDialog({ source, busy, error, onClose, onSt
       <DialogFooter>
         {table ? <Button variant="outline" onClick={() => setTable(false)}>Back to transcription</Button> : <>
           <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button disabled={busy || !data || Boolean(failure) || !choice.model.trim() || !choice.effort.trim()} onClick={() => onStart(choice)}>{busy ? "Starting…" : "Start transcription"}</Button>
+          <Button disabled={busy || !data || Boolean(failure) || !choice.provider || !choice.model.trim() || !choice.effort.trim()} onClick={() => onStart(choice)}>{busy ? "Starting…" : "Start transcription"}</Button>
         </>}
       </DialogFooter>
     </DialogContent>

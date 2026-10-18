@@ -26,7 +26,7 @@ def setup(tmp_path, monkeypatch):
             doc.new_page(width=100, height=100).insert_text((10, 25), f"page {number + 1}")
         doc.save(pdf)
 
-    config = {"DATA": str(tmp_path / "data"), "OUTPUT": str(tmp_path / "output"), "PROVIDER": "claude", "MODEL": "sonnet", "EFFORT": "low"}
+    config = {"DATA": str(tmp_path / "data"), "OUTPUT": str(tmp_path / "output")}
     for module in (main, worker, run):
         monkeypatch.setattr(module, "settings", lambda: config)
     monkeypatch.setattr(identify, "identify_pages",
@@ -55,7 +55,7 @@ def test_queued_bundle_comes_back_as_surveys(setup):
     [bundle] = client.get("/bundles").json()
     assert (bundle["name"], bundle["loaded"], bundle["job"]) == ("216441", False, None)
 
-    assert client.post("/jobs", json={"pdf": bundle["pdf"]}).status_code == 202
+    assert client.post("/jobs", json={"pdf": bundle["pdf"], "provider": "claude", "model": "sonnet", "effort": "low"}).status_code == 202
     assert worker.work_once(db)  # the worker picks the job up and runs it
 
     [bundle] = client.get("/bundles").json()

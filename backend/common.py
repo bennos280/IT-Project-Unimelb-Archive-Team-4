@@ -1,26 +1,13 @@
-"""Shared by the backend: repo root, .env settings, page images."""
-import sys
+"""Shared by the backend: repo root, the data and output folders, page images."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 IMAGES = {".jpg", ".jpeg", ".png"}
-KEYS = ("DATA", "OUTPUT", "MODEL", "EFFORT")
 
 
 def settings() -> dict[str, str]:
-    """KEY=VALUE lines from .env: DATA, MODEL and EFFORT are required, OUTPUT defaults to output and PROVIDER to claude."""
-    env = ROOT / ".env"
-    if not env.exists():
-        sys.exit("no .env: copy .env.example to .env")
-    found = {"OUTPUT": "output", "PROVIDER": "claude"}
-    for line in env.read_text(encoding="utf-8-sig").splitlines():
-        if "=" in line and not line.lstrip().startswith("#"):
-            key, value = line.split("=", 1)
-            found[key.strip()] = value.partition(" #")[0].strip()
-    for key in KEYS:
-        if not found.get(key):
-            sys.exit(f"{key} not set in .env")
-    return found
+    """The folders for the scans and the results, inside the project."""
+    return {"DATA": "data", "OUTPUT": "output"}
 
 
 def find_images(folder: Path) -> list[Path]:

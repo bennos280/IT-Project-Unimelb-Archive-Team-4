@@ -7,8 +7,11 @@ export async function backendRequest<T>(path: string, options: RequestInit = {})
     const error = await response.json().catch(() => ({}));
     throw new Error(typeof error.detail === "string" ? error.detail : `Request failed (${response.status}).`);
   }
+  // 204 No Content (e.g. a DELETE) has no body to parse.
+  if (response.status === 204) return undefined as T;
   return response.json();
 }
+export const providerNames: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI" };
 // Bundle metadata returned by /bundles, including its current processing job.
 // loaded means it has been imported into the database; job can be absent.
 export type AvailableBundle = {

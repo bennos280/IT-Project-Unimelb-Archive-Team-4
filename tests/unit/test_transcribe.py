@@ -5,7 +5,9 @@ import subprocess
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import text
 
+from backend.db import app_settings
 from backend.pipeline.transcribe import transcribe as transcription
 from backend.pipeline.transcribe.transcribe import run_claude, run_cli, run_codex, schema_for, transcribe
 
@@ -336,16 +338,41 @@ def test_transcribe_sends_the_template_inside_the_prompt(prompt_files, monkeypat
     assert '"text": null' in captured["prompt"]
     assert captured["template"] == {"text": None}
 
-def test_transcribe_defaults_model_and_effort_from_env(prompt_files, monkeypatch):
-    """Called without provider/model/effort, the values come from .env.
-    """
-    monkeypatch.setattr(transcription, "settings",
-                        lambda: {"PROVIDER": "claude", "MODEL": "haiku", "EFFORT": "low"})
+def test_transcribe_without_a_choice_uses_the_one_saved_on_the_settings_page(prompt_files, cli_db, monkeypatch):
+    with cli_db() as db:
+        app_settings.save_transcription_defaults(db, "claude", "haiku", "low")
     monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: {"text": "x"})
 
     answer = transcribe("page.jpg", "main")
 
     assert (answer["provider"], answer["model"], answer["effort"]) == ("claude", "haiku", "low")
+
+
+def test_transcribe_with_a_full_choice_needs_nothing_saved(prompt_files, monkeypatch):
+    monkeypatch.setattr(app_settings, "saved_choice_or_exit", lambda: pytest.fail("the db was read"))
+    monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: {"text": "x"})
+
+    answer = transcribe("page.jpg", "main", provider="claude", model="opus", effort="high")
+
+    assert (answer["provider"], answer["model"], answer["effort"]) == ("claude", "opus", "high")
+
+
+def test_transcribe_without_a_choice_and_nothing_saved_exits_with_the_message(prompt_files, cli_db, monkeypatch):
+    monkeypatch.setattr(transcription, "run_claude", lambda *a, **k: pytest.fail("a model was called"))
+
+    with pytest.raises(SystemExit, match="Choose a transcription model on the Settings page first."):
+        transcribe("page.jpg", "main")
+    with pytest.raises(SystemExit, match="Choose a transcription model on the Settings page first."):
+        transcribe("page.jpg", "main", provider="claude")  # part of a choice still needs the rest saved
+
+
+def test_transcribe_with_a_db_that_has_no_settings_table_yet_exits_with_the_message(prompt_files, cli_db):
+    with cli_db() as db:
+        db.execute(text("DROP TABLE app_settings"))
+        db.commit()
+
+    with pytest.raises(SystemExit, match="Choose a transcription model on the Settings page first."):
+        transcribe("page.jpg", "main")
 
 
 def test_transcribe_reads_with_the_texts_it_is_given(prompt_files, monkeypatch):
@@ -361,3 +388,11 @@ def test_transcribe_reads_with_the_texts_it_is_given(prompt_files, monkeypatch):
                texts={"prompt": "Read it.\r\nCarefully.\r\n", "followup": '{"text": null}'})
 
     assert captured == {"prompt": 'Read it.\nCarefully.\n\n{\n  "text": null\n}', "template": {"text": None}}
+
+
+def test_cli_runs_with_stdin_closed(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(transcription.subprocess, "run", lambda command, **kwargs: seen.update(kwargs) or SimpleNamespace(returncode=0))
+    run_cli(["codex", "exec", "hi"], "codex")
+    assert seen["stdin"] is subprocess.DEVNULL
+

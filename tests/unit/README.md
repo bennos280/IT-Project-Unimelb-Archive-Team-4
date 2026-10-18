@@ -67,17 +67,13 @@ Unit tests for the classifier, prediction safety gates, model persistence, thres
 
 ## `test_common.py`
 
-Unit tests for `.env` configuration parsing and page-image discovery in `backend/common.py`, including required settings, defaults, comment handling, duplicate keys, supported image formats, and directory traversal behaviour.
+Unit tests for the fixed data and output folders (`settings()`, which ignores any `.env`) and page-image discovery in `backend/common.py`, including supported image formats and directory traversal behaviour.
 
 | Test                                                             | What it checks                                                                                                                                                                |
 | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `test_settings_reads_keys_and_defaults_output`                   | Reads the required `DATA`, `MODEL`, and `EFFORT` settings from `.env` and uses `"output"` as the default when `OUTPUT` is not provided and `"claude"` when `PROVIDER` is not. |
-| `test_settings_strips_comments_whitespace_and_bom`               | Removes surrounding whitespace, ignores comments and lines without `=`, and handles a UTF-8 BOM when reading `.env` files.                                                    |
-| `test_settings_keeps_hash_when_not_preceded_by_space`            | Preserves `#` characters inside values when they are not preceded by a space, rather than treating them as comments.                                                          |
-| `test_settings_exits_when_env_file_is_missing`                   | Raises `SystemExit` with a clear message when the `.env` file does not exist.                                                                                                 |
-| `test_settings_exits_when_a_required_key_is_missing`             | Verifies that each required setting (`DATA`, `MODEL`, and `EFFORT`) causes `SystemExit` when it is missing.(runs 3 times)                                                     |
-| `test_settings_treats_an_empty_value_as_missing`                 | Treats a required setting with an empty value, such as `DATA=`, as missing and exits with an appropriate error.                                                               |
-| `test_settings_last_duplicate_key_wins`                          | Confirms that when the same `.env` key appears multiple times, the final value overwrites the earlier value.                                                                  |
+| `test_settings_gives_the_fixed_folders`                          | `settings()` is always `{"DATA": "data", "OUTPUT": "output"}`.                                                                                                                |
+| `test_settings_ignores_any_env_file`                             | A `.env` in the project (folders, model, effort, junk lines) changes nothing and never stops the app.                                                                         |
+| `test_settings_works_with_no_env_file`                           | No `.env` is needed: `settings()` does not exit.                                                                                                                              |
 | `test_find_images_returns_only_supported_suffixes_sorted`        | Finds only `.jpg`, `.jpeg`, and `.png` files and returns them in sorted order.                                                                                                |
 | `test_find_images_is_not_recursive_and_ignores_subfolders`       | Only searches the specified directory and ignores images located inside subdirectories.                                                                                       |
 | `test_find_images_returns_empty_list_for_a_folder_with_no_pages` | Returns an empty list rather than raising an error when a directory contains no supported page images.                                                                        |
@@ -110,11 +106,31 @@ unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generat
 | `test_run_codex_exits_when_the_answer_file_holds_no_json`           | Rejects an output file containing prose without a JSON object and exits with a clear message.                                                                                                                                          |
 | `test_transcribe_reads_with_the_provider_it_is_given`               | 2 cases: `PROVIDER` picks the CLI (`claude` or `codex`) whatever the model is called, and the answer is stamped with it; an OpenAI `o3` goes to Codex though it isn't named gpt-\*.                                                    |
 | `test_transcribe_refuses_an_unknown_provider`                       | A provider other than `claude` or `codex` stops with "PROVIDER must be claude or codex".                                                                                                                                               |
-| `test_transcribe_stamps_every_answer_with_provenance`               | Adds provider, model and effort (as given, else from `.env`) and elapsed seconds to every transcription result.                                                                                                                        |
+| `test_transcribe_stamps_every_answer_with_provenance`               | Adds provider, model and effort (as given, else the choice saved on the Settings page) and elapsed seconds to every transcription result.                                                                                                                        |
 | `test_transcribe_unwraps_a_notes_answer_returned_as_a_json_string`  | Repairs notes responses where the complete transcription object has incorrectly been returned as a JSON string inside the `text` field.                                                                                                |
 | `test_transcribe_leaves_ordinary_text_untouched`                    | Leaves normal text and invalid JSON-looking text unchanged when the notes JSON-unwrapping repair does not apply.                                                                                                                       |
 | `test_transcribe_sends_the_template_inside_the_prompt`              | Includes the page template alongside `prompt.txt` in the model prompt and passes the same template to the provider's model call.                                                                                                       |
-| `test_transcribe_defaults_model_and_effort_from_env`                | When model and effort are omitted, uses the corresponding `MODEL` and `EFFORT` values from the environment configuration.                                                                                                              |
+| `test_transcribe_without_a_choice_uses_the_one_saved_on_the_settings_page` | When provider, model and effort are omitted, uses the choice saved in the database. |
+| `test_transcribe_with_a_full_choice_needs_nothing_saved` | A full explicit choice never reads the database. |
+| `test_transcribe_without_a_choice_and_nothing_saved_exits_with_the_message` | With nothing saved (or only part of a choice given) it exits with "Choose a transcription model on the Settings page first." and calls no model. |
+| `test_transcribe_with_a_db_that_has_no_settings_table_yet_exits_with_the_message` | An older database without the `app_settings` table gives the same message. |
+
+## `test_transcription_defaults.py`
+
+The transcription choice saved on the Settings page (no default), and everything that starts a transcription without a choice of its own.
+
+| Test | What it checks |
+| --- | --- |
+| `test_nothing_saved_is_none_and_so_is_part_of_a_choice` | The saved choice is `None` until all three of provider, model and effort are saved. |
+| `test_nothing_is_configured_until_a_choice_is_saved` | `GET /transcription-models` gives `configured: null` until then. |
+| `test_put_saves_all_three_trimmed_and_returns_the_choice` / `test_there_is_no_reset` | `PUT /transcription-defaults` saves and returns exactly provider, model and effort; `DELETE` no longer exists. |
+| `test_folders_are_the_data_and_output_folders_inside_the_project` | `GET /folders` gives the absolute `data` and `output` folders under the project. |
+| `test_a_job_without_a_full_choice_and_nothing_saved_is_refused` | `POST /jobs` without a full choice and nothing saved is 409 "Choose a transcription model on the Settings page first." and queues nothing. |
+| `test_a_job_with_an_explicit_choice_works_with_nothing_saved` | An explicit choice in the payload needs nothing saved. |
+| `test_a_job_started_without_a_choice_uses_the_saved_one` / `test_a_job_with_part_of_a_choice_takes_the_rest_from_the_saved_one` | The saved choice fills whatever the payload leaves out. |
+| `test_a_page_transcription_cannot_leave_out_its_choice` | `POST /page-transcription` requires provider, model and effort (422). |
+| `test_a_bundle_job_with_no_choice_runs_with_the_saved_one` | The worker gives the pipeline the job's own fields, else the saved choice. |
+| `test_a_bundle_job_without_a_full_choice_and_nothing_saved_fails_with_the_message` / `test_a_page_job_with_no_choice_and_nothing_saved_fails_with_the_message` | A job with a missing field and nothing saved is marked failed with the message, and no model or pipeline runs. |
 
 ## `test_identify_fingerprint.py`
 
@@ -227,6 +243,8 @@ Page types added from the review screen, and a page read again as another type.
 | `test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was`     | A model answer the db can't take fails the job, and the page keeps its fields, type and revision: the swap is all or nothing.                                                                                                                                                                     |
 | `test_a_page_read_again_counts_for_accuracy_only_once_a_reviewer_saves_it` | A page read again isn't counted by `GET /accuracy` until a reviewer saves it.                                                                                                                                                                                                                     |
 | `test_a_new_page_type_needs_a_template_before_pages_are_read_as_it`        | `GET /page-types` lists the built-in four with their templates; a new type needs a lower-case name that isn't taken or reserved (`blank`) and a known reviewer; a page can't be read as it until it has a template (`other` can't have one); then `PUT /pages/{id}/type` queues a page job, once. |
+| `test_reading_a_page_again_without_a_choice_uses_the_saved_one_or_is_refused` | `PUT /pages/{id}/type` without a model, provider and effort is refused with 409 and the Settings message when nothing is saved, and queues the saved choice otherwise. |
+| `test_a_part_of_a_choice_is_checked_like_a_whole_one` | A part given on its own (a bad effort, provider or model) is refused with 400 even when the rest comes from the saved choice. |
 | `test_a_page_made_other_is_emptied_at_once`                                | Making a page `other` empties it to one blank text field at once and moves its revision on.                                                                                                                                                                                                       |
 | `test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`   | An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).                                                                                                                                                  |
 | `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |

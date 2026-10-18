@@ -14,19 +14,9 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 
    For Mac/Linux or other installation options, see the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
-2. Open a **new terminal in the project folder** and copy the configuration:
+2. Put your survey PDFs ([the archive](https://archives.library.unimelb.edu.au/nodes/view/499420)) in the project's `data` folder. If they live on another drive, make `data` a folder link to them. Results are saved in the project's `output` folder, under `output/<name>/`; the default run skips inputs only when their requested steps are complete. Both folders are fixed, inside the project, and ignored by git. Before transcribing, choose the provider, model and effort on the Settings page (see below): there is no default.
 
-   ```powershell
-   Copy-Item .env.example .env
-   ```
-
-   On Mac/Linux, use `cp .env.example .env`.
-
-3. Set `DATA` in `.env` to your folder of survey PDFs ([the archive](https://archives.library.unimelb.edu.au/nodes/view/499420)). To use the default `DATA=data`, create a `data` folder inside the project and put your PDFs there.
-
-   Set `OUTPUT` to where pipeline results should be saved (default: `output`). Both `DATA` and `OUTPUT` accept paths relative to the project folder or absolute paths such as `D:/survey-results`. Results go under `<OUTPUT>/<name>/`; the default run skips inputs only when their requested steps are complete. Choosing a new, empty output folder starts a fresh set of results.
-
-4. Run the pipeline:
+3. Run the pipeline:
 
    ```sh
    uv run survey
@@ -38,8 +28,8 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 
 | Command                                                          | Description                                                                                                                                                                                                    |
 | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `uv run survey`                                                  | Process new or unfinished PDFs (or folders of page images) in `DATA` → `<OUTPUT>/<name>/manifest.json` + `review.json`                                                                                         |
-| `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI (Claude Code 2.1.280+) signed in, or OpenAI's `codex` CLI with `PROVIDER=codex` in `.env`)                                                             |
+| `uv run survey`                                                  | Process new or unfinished PDFs (or folders of page images) in `data` → `output/<name>/manifest.json` + `review.json`                                                                                         |
+| `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI (Claude Code 2.1.280+) signed in, or OpenAI's `codex` CLI chosen on the Settings page)                                                             |
 | `uv run pytest`                                                  | Run all tests (see `tests/README.md` for more info) scored                                                                                                      |
 | `uv run survey train`                                            | Refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`)                                                                                                        |
 | `uv run python -m backend.db.loader` | Load finished runs in `OUTPUT` into the database (`backend/db/wilfprestsurvey.db`), creating or upgrading it first |
@@ -64,6 +54,8 @@ Install **Node.js 24.x** (includes npm), alongside the Python setup above. Run t
 | `npm --prefix frontend run dev -- --port 5174 --strictPort` | Start the frontend in a second terminal            |
 
 Keep both terminals running and open [the review UI](http://localhost:5174/).
+
+Transcription runs Claude Code or the Codex CLI on your computer, so each team member signs in with their own subscription. The Settings page (gear button on the dashboard) shows the sign-in status and opens the official sign-in in your browser. The app never sees your credentials. Usage counts against your own subscription. It is also where you choose the provider, model and effort for every transcription, in the app and with `uv run survey --transcribe`. They are saved in the database (shared with the team once it is committed) and have no default: until they are chosen, transcribing stops with "Choose a transcription model on the Settings page first." A model picked in a transcription dialog applies to that run only. The Settings page also shows where the scans and results folders are.
 
 ## Add a step
 

@@ -21,7 +21,7 @@ def committed(sessions):
 
 
 def queue(db, tmp_path, status="waiting"):
-    job = models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), status=status)
+    job = models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), status=status, transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")
     db.add(job)
     db.commit()
     return job

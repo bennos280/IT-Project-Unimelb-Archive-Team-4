@@ -26,6 +26,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return body;
 }
 
+const NO_CHOICE: ModelChoice = {model:'',provider:'',effort:''}; // nothing prefilled
+
 // Acts on the selected page, using backend checks rather than changing local sample data.
 export default function PageActions({ session, toolbar }: { session: ReturnType<typeof useReviewSession>; toolbar: HTMLDivElement | null }) {
   const { page, reviewer, reviewers, reviews, saving, setAttempt } = session;
@@ -36,7 +38,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
   const [context, setContext] = useState<Context | null>(null);
   const [mode, setMode] = useState<'move' | 'type' | 'transcribe'>('move');
   const [modelData, setModelData] = useState<ModelData | null>(null);
-  const [choice, setChoice] = useState<ModelChoice>({model:'',provider:'claude',effort:''});
+  const [choice, setChoice] = useState<ModelChoice>(NO_CHOICE);
   const [showModels, setShowModels] = useState(false);
   const [target, setTarget] = useState('');
   const [type, setType] = useState('main');
@@ -97,7 +99,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
     try { const next = await request<Context>(`/page-actions/${encodeURIComponent(pageId!)}`); setContext(next); setJob(next.job); setType(next.category);
       if (action === 'transcribe') {
         const data = await request<ModelData>('/transcription-models');
-        setModelData(data); setChoice(data.configured);
+        setModelData(data); setChoice(data.configured ?? NO_CHOICE);
       }
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load page actions.'); }
@@ -125,7 +127,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
         await request(`/page-classification/${encodeURIComponent(page.id)}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({pageType:type,reviewerId,revision:context.revision})});
         setNotice(''); setDialogOpen(false); reloadPage();
       } else {
-        if (!modelData || !choice.model.trim() || !choice.effort.trim()) return;
+        if (!modelData || !choice.provider || !choice.model.trim() || !choice.effort.trim()) return;
         const result = await request<{job:Job}>(`/page-transcription/${encodeURIComponent(page.id)}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewerId,revision:context.revision,...choice})});
         pendingJob.current = result.job.id; setJob({...result.job,pageType:result.job.pageType ?? context.category}); setNotice('');
         setDialogOpen(false);
@@ -202,7 +204,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
         </FieldGroup>)}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={()=>setDialogOpen(false)}>Cancel</Button>
-          <Button disabled={loading||!context||busy||saving||dirty||!reviewerId||running||(mode==='move'?!target:mode==='type'?type===context.category:!modelData||!choice.model.trim()||!choice.effort.trim())} onClick={()=>void submit()}>{busy?'Saving…':mode==='move'?'Move page':mode==='type'?'Change page type':'Transcribe'}</Button>
+          <Button disabled={loading||!context||busy||saving||dirty||!reviewerId||running||(mode==='move'?!target:mode==='type'?type===context.category:!modelData||!choice.provider||!choice.model.trim()||!choice.effort.trim())} onClick={()=>void submit()}>{busy?'Saving…':mode==='move'?'Move page':mode==='type'?'Change page type':'Transcribe'}</Button>
         </DialogFooter>
         </>}
         {showModels && <Button variant="outline" className="justify-self-start" onClick={()=>setShowModels(false)}>Back to transcription</Button>}

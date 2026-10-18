@@ -9,17 +9,18 @@ import pytest
 
 from backend.api import main
 from backend.common import ROOT
-from backend.db import models
+from backend.db import app_settings, models
 from backend.db.loader import stored_path
 
 
 @pytest.fixture
-def data(tmp_path, monkeypatch):
-    """DATA with two bundles, as the archive's PDFs are stored: <bundle number>/<pdf>."""
+def data(tmp_path, monkeypatch, db):
+    """DATA with two bundles, as the archive's PDFs are stored: <bundle number>/<pdf>. A transcription choice is saved."""
+    app_settings.save_transcription_defaults(db, "claude", "sonnet", "high")
     for number, stem in (("216441", "a"), ("216444", "b")):
         (tmp_path / number).mkdir()
         (tmp_path / number / f"{stem}.pdf").write_bytes(b"%PDF")
-    monkeypatch.setattr(main, "settings", lambda: {"DATA": str(tmp_path), "MODEL": "sonnet", "PROVIDER": "claude", "EFFORT": "high"})
+    monkeypatch.setattr(main, "settings", lambda: {"DATA": str(tmp_path)})
     return tmp_path
 
 
@@ -49,11 +50,11 @@ def test_started_job_waits_for_the_worker(client, data):
 
 
 def test_pdfs_inside_the_repo_are_named_relative_to_it(client, data, monkeypatch):
-    """The usual setup, DATA=data/raw/Surveys: the job stores a path any checkout can use."""
+    """The usual setup, the data folder inside the project: the job stores a path any checkout can use."""
     from backend.db import loader
     monkeypatch.setattr(main, "ROOT", data.parent)
     monkeypatch.setattr(loader, "ROOT", data.parent)
-    monkeypatch.setattr(main, "settings", lambda: {"DATA": data.name, "MODEL": "sonnet", "PROVIDER": "claude", "EFFORT": "high"})
+    monkeypatch.setattr(main, "settings", lambda: {"DATA": data.name})
     pdf = f"{data.name}/216441/a.pdf"
     assert client.get("/bundles").json()[0]["pdf"] == pdf
     assert client.post("/jobs", json={"pdf": pdf}).json()["pdf"] == pdf
@@ -84,16 +85,16 @@ def test_the_real_archive_list_names_each_bundle_as_the_archive_does():
 
 
 @pytest.fixture
-def config(tmp_path, monkeypatch):
-    """Point the API at a temporary PDF, output folder and fixed model settings.
+def config(tmp_path, monkeypatch, db):
+    """Point the API at a temporary PDF and output folder, with a transcription choice saved (Claude, sonnet, high).
 
     This avoids depending on local configuration or real survey files. The PDF
     only needs to be discoverable: these tests queue jobs without running them.
     """
     pdf = tmp_path / "survey.pdf"
     pdf.write_bytes(b"%PDF")
-    values = {"DATA": str(tmp_path), "OUTPUT": str(tmp_path / "output"),
-              "MODEL": "sonnet", "PROVIDER": "claude", "EFFORT": "high"}
+    app_settings.save_transcription_defaults(db, "claude", "sonnet", "high")
+    values = {"DATA": str(tmp_path), "OUTPUT": str(tmp_path / "output")}
     monkeypatch.setattr(main, "settings", lambda: values)
     return pdf, tmp_path / "output"
 
@@ -107,7 +108,7 @@ def config(tmp_path, monkeypatch):
      ("gpt-test", "codex", "medium")),
 ])
 def test_job_persists_model_choices_and_defaults(client, sessions, config, choices, expected):
-    """Save explicit choices after trimming whitespace, and use defaults for omitted or null values.
+    """Save explicit choices after trimming whitespace, and use the saved choice for omitted or null values.
 
     Read the job through a separate connection to check that the choices were
     committed for the worker, rather than only held in the request session.

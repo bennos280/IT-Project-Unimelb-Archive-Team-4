@@ -108,7 +108,7 @@ def test_a_model_that_fails_its_check_is_recorded_but_not_used(settled, monkeypa
 def test_a_bundle_job_sorts_with_the_active_model(db, tmp_path, monkeypatch):
     (tmp_path / "model-1.npz").write_bytes(b"weights")
     db.add_all([models.SortingModel(path=str(tmp_path / "model-1.npz"), page_types="main", pages=1, answered=1, wrong=0,
-                                    passed=True, active=True), models.Job(pdf=str(tmp_path / "216441" / "a.pdf"))])
+                                    passed=True, active=True), models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")])
     db.commit()
     used = []
     monkeypatch.setattr(worker, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
@@ -117,7 +117,7 @@ def test_a_bundle_job_sorts_with_the_active_model(db, tmp_path, monkeypatch):
     worker.work_once(db)
     assert used == [tmp_path / "model-1.npz"]
     (tmp_path / "model-1.npz").unlink()  # e.g. output/ was cleared
-    db.add(models.Job(pdf=str(tmp_path / "216441" / "a.pdf")))
+    db.add(models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), transcription_provider="claude", transcription_model="sonnet", transcription_effort="low"))
     db.commit()
     worker.work_once(db)
     assert db.query(models.Job).order_by(models.Job.job_id.desc()).first().error.startswith("page sorting model 1's file")
