@@ -1,4 +1,9 @@
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Spinner } from '@/components/ui/spinner';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 type Row = Record<string, unknown>;
 type Snapshot = Record<string, Row[]>;
@@ -6,6 +11,7 @@ type Change = { field: string; previous: unknown; saved: unknown };
 type History = { revision: number; events: { id: string; time: string | null; reviewer: string; title: string; details: string; snapshot: Snapshot | null; changes?: Change[] }[] };
 const text = (value: unknown) => value === null || value === undefined || value === '' ? '—' : String(value);
 const label = (value: string) => value.replaceAll('_', ' ');
+const wrap = 'whitespace-pre-wrap align-top [overflow-wrap:anywhere]';
 // Composite identifiers keep residents, children and annotations separate.
 function fieldKey(row: Row): string {
   if (row.resident_no != null) return `Resident ${Number(row.resident_no) + 1} · ${row.resident_field_title}`;
@@ -22,20 +28,22 @@ function snapshotChanges(snapshot: Snapshot): Change[] {
   }));
 }
 function ChangesTable({ changes }: { changes: Change[] }) {
-  return <table className="history-values"><thead><tr><th scope="col">Field</th><th scope="col">Previous value</th><th scope="col">Saved value</th></tr></thead>
-    <tbody>{changes.map((change, index) => <tr key={index}><th scope="row">{label(change.field)}</th><td>{text(change.previous)}</td><td>{text(change.saved)}</td></tr>)}</tbody></table>;
+  return <Table className="table-fixed">
+    <TableHeader><TableRow><TableHead scope="col">Field</TableHead><TableHead scope="col">Previous value</TableHead><TableHead scope="col">Saved value</TableHead></TableRow></TableHeader>
+    <TableBody>{changes.map((change, index) => <TableRow key={index}><TableHead scope="row" className={`h-auto ${wrap}`}>{label(change.field)}</TableHead><TableCell className={wrap}>{text(change.previous)}</TableCell><TableCell className={wrap}>{text(change.saved)}</TableCell></TableRow>)}</TableBody>
+  </Table>;
 }
 
 // Viewing history never modifies a page or its pending review edits.
 export default function PageHistory({ pageId }: { pageId: string }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [history, setHistory] = useState<History | null>(null);
   const [expanded, setExpanded] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   async function open() {
     setHistory(null); setExpanded([]); setError(''); setLoading(true);
-    dialog.current?.showModal();
+    setDialogOpen(true);
     try {
       const response = await fetch(`/api/page-history/${encodeURIComponent(pageId)}`);
       const body = await response.json().catch(() => null);
@@ -46,32 +54,39 @@ export default function PageHistory({ pageId }: { pageId: string }) {
     finally { setLoading(false); }
   }
   return <>
-    <button type="button" onClick={() => void open()}>History</button>
-    <dialog ref={dialog} className="page-history-dialog" aria-label="Page history">
-      <h2>Page history</h2><p>Page {pageId}</p>
-      {loading && <p role="status">Loading history…</p>}
-      {error && <p role="alert">{error}</p>}
-      {history && <>
-        <p>Current revision: {history.revision}</p>
-        <p>Snapshots show data before a page type change or retranscription. History is read-only.</p>
-        {!history.events.length ? <p>No history has been recorded for this page yet.</p> : <div className="history-table-scroll"><table className="history-table">
-          <thead><tr><th scope="col">Date and time</th><th scope="col">Reviewer</th><th scope="col">Action</th><th scope="col">Change</th><th scope="col">Details</th></tr></thead>
-          <tbody>{history.events.map(event => {
-            const isOpen = expanded.includes(event.id);
-            const changes = event.snapshot ? snapshotChanges(event.snapshot) : event.changes ?? [];
-            return <Fragment key={event.id}><tr>
-              <td>{event.time ? new Date(event.time).toLocaleString() : 'Date unavailable'}</td><td>{event.reviewer}</td><td>{event.title}</td><td>{event.details}</td>
-              <td><button type="button" aria-expanded={isOpen} aria-controls={`history-${event.id}`} onClick={() => setExpanded(ids => isOpen ? ids.filter(id => id !== event.id) : [...ids, event.id])}>{isOpen ? 'Hide details' : event.snapshot ? 'View snapshot' : 'View details'}</button></td>
-            </tr>{isOpen && <tr id={`history-${event.id}`}><td colSpan={5} className="history-expanded">
-              <h3>{event.title}</h3>
-              {event.snapshot && <p>Previous data and the latest saved review values in this snapshot. “Not reviewed” means no saved review was present.</p>}
-              {changes.length > 0 ? <ChangesTable changes={changes} /> : <p>{event.details}</p>}
-              {!!event.snapshot?.flags?.length && <><h4>Previous flags</h4><table><thead><tr><th>Field</th><th>Flag</th><th>Reason</th></tr></thead><tbody>{event.snapshot.flags.map((flag, i) => <tr key={i}><td>{text(flag.field_title)}</td><td>{text(flag.kind)}</td><td>{text(flag.reason)}</td></tr>)}</tbody></table></>}
-            </td></tr>}</Fragment>;
-          })}</tbody>
-        </table></div>}
-      </>}
-      <footer><button type="button" onClick={() => dialog.current?.close()}>Close</button></footer>
-    </dialog>
+    <Button type="button" variant="outline" size="sm" onClick={() => void open()}>History</Button>
+    <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <DialogContent showCloseButton={false} onInteractOutside={e => e.preventDefault()} className="max-h-[90vh] overflow-y-auto sm:max-w-[1100px]">
+        <DialogHeader>
+          <DialogTitle className="text-lg">Page history</DialogTitle>
+          <DialogDescription>Page {pageId}</DialogDescription>
+        </DialogHeader>
+        {loading && <p role="status" className="flex items-center gap-2 text-muted-foreground"><Spinner role={undefined} aria-hidden="true" />Loading history…</p>}
+        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+        {history && <>
+          <p>Current revision: {history.revision}</p>
+          <p className="text-muted-foreground">Snapshots show data before a page type change or retranscription. History is read-only.</p>
+          {!history.events.length ? <p>No history has been recorded for this page yet.</p> : <div className="rounded-md border"><Table className="min-w-[680px] table-auto">
+            <TableHeader><TableRow><TableHead scope="col">Date and time</TableHead><TableHead scope="col">Reviewer</TableHead><TableHead scope="col">Action</TableHead><TableHead scope="col">Change</TableHead><TableHead scope="col">Details</TableHead></TableRow></TableHeader>
+            <TableBody>{history.events.map(event => {
+              const isOpen = expanded.includes(event.id);
+              const changes = event.snapshot ? snapshotChanges(event.snapshot) : event.changes ?? [];
+              return <Fragment key={event.id}><TableRow>
+                <TableCell className={wrap}>{event.time ? new Date(event.time).toLocaleString() : 'Date unavailable'}</TableCell><TableCell className={wrap}>{event.reviewer}</TableCell><TableCell className={wrap}>{event.title}</TableCell><TableCell className={wrap}>{event.details}</TableCell>
+                <TableCell className="align-top"><Button type="button" variant="outline" size="sm" aria-expanded={isOpen} aria-controls={`history-${event.id}`} onClick={() => setExpanded(ids => isOpen ? ids.filter(id => id !== event.id) : [...ids, event.id])}>{isOpen ? 'Hide details' : event.snapshot ? 'View snapshot' : 'View details'}</Button></TableCell>
+              </TableRow>{isOpen && <TableRow id={`history-${event.id}`}><TableCell colSpan={5} className="space-y-3 whitespace-normal bg-muted/30 p-4">
+                <h3 className="font-medium">{event.title}</h3>
+                {event.snapshot && <p className="text-muted-foreground">Previous data and the latest saved review values in this snapshot. “Not reviewed” means no saved review was present.</p>}
+                {changes.length > 0 ? <ChangesTable changes={changes} /> : <p>{event.details}</p>}
+                {!!event.snapshot?.flags?.length && <><h4 className="font-medium">Previous flags</h4><Table className="table-auto"><TableHeader><TableRow><TableHead>Field</TableHead><TableHead>Flag</TableHead><TableHead>Reason</TableHead></TableRow></TableHeader><TableBody>{event.snapshot.flags.map((flag, i) => <TableRow key={i}><TableCell className={wrap}>{text(flag.field_title)}</TableCell><TableCell className={wrap}>{text(flag.kind)}</TableCell><TableCell className={wrap}>{text(flag.reason)}</TableCell></TableRow>)}</TableBody></Table></>}
+              </TableCell></TableRow>}</Fragment>;
+            })}</TableBody>
+          </Table></div>}
+        </>}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </>;
 }

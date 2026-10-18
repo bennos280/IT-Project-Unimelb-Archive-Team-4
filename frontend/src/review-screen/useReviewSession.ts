@@ -30,10 +30,9 @@ export function useReviewSession() {
     [message, setMessage] = useState("");
   const [revisions, setRevisions] = useState<Record<string, number>>({}),
     [saving, setSaving] = useState(false);
-  const editor = useRef<HTMLDialogElement>(null);
-  const navigationDialog = useRef<HTMLDialogElement>(null);
   const savedReviews = useRef<Reviews>({});
   const [pendingPage, setPendingPage] = useState<number | null>(null);
+  const leaving = pendingPage !== null;
   const [survey, setSurvey] = useState<Survey | null>(null),
     [error, setError] = useState(""),
     [attempt, setAttempt] = useState(0),
@@ -97,7 +96,6 @@ export function useReviewSession() {
     setDraft(
       (pageReviews[field.id] ? pageReviews[field.id].value : field.value) ?? "",
     );
-    editor.current?.showModal();
   }
 
   // Store the review in memory without a saved timestamp; an empty editor value becomes null.
@@ -115,7 +113,6 @@ export function useReviewSession() {
         },
       },
     }));
-    editor.current?.close();
     setEditing(null);
     setMessage("Field reviewed. Save Page Transcript to save your changes.");
   }
@@ -232,7 +229,6 @@ export function useReviewSession() {
     if (Object.values(pageReviews).some((review) => !review.savedAt)) {
       setPendingPage(i);
       setMessage("");
-      navigationDialog.current?.showModal();
       return;
     }
     changePage(i);
@@ -241,7 +237,6 @@ export function useReviewSession() {
   // Close the navigation warning and keep the current page and pending reviews.
   function stayOnPage() {
     if (saving) return;
-    navigationDialog.current?.close();
     setPendingPage(null);
   }
 
@@ -250,7 +245,6 @@ export function useReviewSession() {
     if (pendingPage === null || saving) return;
     const destination = pendingPage;
     if (await savePage()) {
-      navigationDialog.current?.close();
       setPendingPage(null);
       changePage(destination);
     }
@@ -263,7 +257,6 @@ export function useReviewSession() {
       ...current,
       [page.id]: savedReviews.current[page.id] || {},
     }));
-    navigationDialog.current?.close();
     changePage(pendingPage);
     setPendingPage(null);
   }
@@ -336,14 +329,13 @@ export function useReviewSession() {
     message,
     revisions,
     saving,
-    editor,
     beginEdit,
     applyEdit,
     addReviewer,
     reviewAll,
     savePage,
     navigate,
-    navigationDialog,
+    leaving,
     stayOnPage,
     saveAndContinue,
     discardAndContinue,

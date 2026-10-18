@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from functools import cache
 import json
+import sqlite3
+import threading
 from backend.db import database, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
@@ -519,10 +521,25 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
     return job_json(job)
 
 
+#each db file's last progress answer, with the data_version it was worked out at, and the connection that reads it
+_progress, _watchers, _progress_lock = {}, {}, threading.Lock()
+
+
 @app.get("/progress")
 def get_progress(db: Session = Depends(get_db)):
     from backend.api.progress import review_progress
-    return review_progress(db)
+    path = db.get_bind().url.database
+    #an in-memory db can't be watched from another connection
+    if not path or path == ":memory:":
+        return review_progress(db)
+    #data_version changes when any other connection or process commits; the watcher never writes, so it sees every change
+    with _progress_lock:
+        if path not in _watchers:
+            _watchers[path] = sqlite3.connect(path, check_same_thread=False, timeout=15)
+        version = _watchers[path].execute("PRAGMA data_version").fetchone()[0]
+        if path not in _progress or _progress[path][0] != version:
+            _progress[path] = (version, review_progress(db))
+        return _progress[path][1]
 
 
 @app.get("/transcription-models")

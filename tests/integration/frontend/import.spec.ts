@@ -101,10 +101,10 @@ test("a dropped file is added", async ({ page }) => {
     transfer.items.add(new File([new Uint8Array([37, 80, 68, 70])], "dropped.pdf", { type: "application/pdf" }));
     return transfer;
   });
-  const zone = page.locator(".import-dropzone");
+  const zone = page.getByTestId("dropzone");
   await zone.dispatchEvent("dragover", { dataTransfer: dropped });
-  await expect(zone).toHaveClass(/dragging/);
+  await expect(zone).toHaveAttribute("data-dragging", "true");
   await zone.dispatchEvent("drop", { dataTransfer: dropped });
-  await expect(zone).not.toHaveClass(/dragging/);
+  await expect(zone).toHaveAttribute("data-dragging", "false");
   await expect(row(page, "dropped.pdf")).toBeVisible();
 });

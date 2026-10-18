@@ -1,9 +1,33 @@
 // Displays the export dialog for downloading saved survey data as JSON,
 // with validation and success or error messages.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { CheckCircle2, Download, X, AlertTriangle } from "lucide-react";
+
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+  FieldTitle,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 import {
   loadSurveyExport,
@@ -11,10 +35,31 @@ import {
   loadExportBundles,
 } from "./exportService";
 
-import "./export.css";
-
 // Defines the available export scope options shown in the dialog.
 type Scope = "bundle" | "survey" | "current";
+
+// One selectable export scope: a radio whose label holds its title and help text.
+function ScopeOption({
+  value,
+  title,
+  children,
+}: {
+  value: Scope;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <FieldLabel htmlFor={`export-scope-${value}`}>
+      <Field orientation="horizontal">
+        <RadioGroupItem value={value} id={`export-scope-${value}`} />
+        <FieldContent>
+          <FieldTitle>{title}</FieldTitle>
+          <FieldDescription>{children}</FieldDescription>
+        </FieldContent>
+      </Field>
+    </FieldLabel>
+  );
+}
 
 /**
  * Displays the export button and modal dialog.
@@ -33,9 +78,6 @@ export default function ExportDialog({
   initialBundleId?: string;
   defaultScope?: Scope;
 }) {
-  // Reference to the native HTML dialog so it can be opened and closed.
-  const dialog = useRef<HTMLDialogElement>(null);
-
   // Stores the selected export scope.
   const [scope, setScope] = useState<Scope>(defaultScope);
 
@@ -106,7 +148,24 @@ export default function ExportDialog({
 
   // Closes the dialog unless an export is currently being generated.
   function close() {
-    if (!busy) dialog.current?.close();
+    if (!busy) setOpen(false);
+  }
+
+  // Switches scope and clears any previous result or error.
+  function chooseScope(next: string) {
+    if (next === "current") {
+      setScope("current");
+      setBundleId(initialBundleId);
+    } else if (next === "bundle") {
+      setScope("bundle");
+      void loadExportBundles()
+        .then(setBundles)
+        .catch((e) => setFailure(e.message));
+    } else {
+      setScope("survey");
+    }
+    setResult(null);
+    setFailure("");
   }
 
   /**
@@ -167,189 +226,145 @@ export default function ExportDialog({
 
   return (
     <>
-      {/* Opens the export dialog and resets previous messages. */}
-      <button
-        onClick={() => {
-          setOpen(true);
-          setReviewCheck(null);
-          setResult(null);
-          setFailure("");
-          setRequestedId(surveyId);
-          setScope(defaultScope);
-          setBundleId(initialBundleId);
-          void loadExportBundles()
-            .then(setBundles)
-            .catch((error) => setFailure(error.message));
-          dialog.current?.showModal();
-        }}
-      >
-        <Download size={16} /> Export
-      </button>
-
-      {/* Native modal containing all export controls and feedback. */}
-      <dialog
-        ref={dialog}
-        onClose={() => setOpen(false)}
-        className="export-dialog"
-        aria-labelledby="export-title"
-        aria-describedby="export-description"
-        onCancel={(event) => {
-          // Prevent the Escape key from closing the dialog while exporting.
-          if (busy) {
-            event.preventDefault();
-          }
-        }}
-      >
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void exportFile();
-          }}
+      {/* Modal containing all export controls and feedback. */}
+      <Dialog open={open} onOpenChange={(next) => !busy && setOpen(next)}>
+        {/* Opens the export dialog and resets previous messages. The trigger gets focus back on close. */}
+        <DialogTrigger asChild>
+          <Button
+            onClick={() => {
+              setOpen(true);
+              setReviewCheck(null);
+              setResult(null);
+              setFailure("");
+              setRequestedId(surveyId);
+              setScope(defaultScope);
+              setBundleId(initialBundleId);
+              void loadExportBundles()
+                .then(setBundles)
+                .catch((error) => setFailure(error.message));
+            }}
+          >
+            <Download /> Export
+          </Button>
+        </DialogTrigger>
+        <DialogContent
+          showCloseButton={false}
+          className="max-h-[calc(100dvh-2rem)] overflow-y-auto data-[state=open]:animate-none data-[state=closed]:animate-none sm:max-w-lg"
+          // Escape is blocked while exporting; clicking the backdrop never closes.
+          onEscapeKeyDown={(event) => busy && event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
         >
-          <div className="export-body">
-            {/* Dialog heading and close control. */}
-            <div className="export-heading">
-              <h2 id="export-title">Export</h2>
-
-              <button
-                type="button"
-                className="export-close"
-                aria-label="Close export"
-                onClick={close}
-                disabled={busy}
-              >
-                <X size={22} />
-              </button>
-            </div>
-
-            <p id="export-description">Choose what you want to export.</p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="absolute top-2 right-2"
+            aria-label="Close export"
+            onClick={close}
+            disabled={busy}
+          >
+            <X />
+          </Button>
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void exportFile();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="text-lg">Export</DialogTitle>
+              <DialogDescription>
+                Choose what you want to export.
+              </DialogDescription>
+            </DialogHeader>
 
             {/* Export scope selection. */}
-            <fieldset disabled={busy} className="export-choices">
-              <legend className="export-sr">Export scope</legend>
+            <FieldSet disabled={busy}>
+              <FieldLegend className="sr-only">Export scope</FieldLegend>
+              <RadioGroup
+                value={scope}
+                onValueChange={chooseScope}
+                disabled={busy}
+              >
+                {initialBundleId && (
+                  <ScopeOption value="current" title="Current bundle">
+                    Export all surveys and unassigned pages in bundle{" "}
+                    {initialBundleId}.
+                  </ScopeOption>
+                )}
 
-              {initialBundleId && (
-                <label className="export-option">
-                  <input
-                    type="radio"
-                    name="scope"
-                    checked={scope === "current"}
-                    onChange={() => {
-                      setScope("current");
-                      setBundleId(initialBundleId);
-                      setResult(null);
-                      setFailure("");
-                    }}
-                  />
-                  <span>
-                    <strong>Current bundle</strong>
-                    <small>
-                      Export all surveys and unassigned pages in bundle{" "}
-                      {initialBundleId}.
-                    </small>
-                  </span>
-                </label>
-              )}
+                <ScopeOption value="bundle" title="Export bundle JSON">
+                  JSON file containing all surveys in one bundle.
+                </ScopeOption>
 
-              {/* Bundle export option. */}
-              <label className="export-option">
-                <input
-                  type="radio"
-                  name="scope"
-                  checked={scope === "bundle"}
-                  onChange={() => {
-                    setScope("bundle");
-                    void loadExportBundles()
-                      .then(setBundles)
-                      .catch((e) => setFailure(e.message));
-                    setResult(null);
-                    setFailure("");
-                  }}
-                />
+                {/* Choose a loaded bundle from the database. */}
+                {scope === "bundle" && (
+                  <Field className="pl-9">
+                    <FieldLabel htmlFor="export-bundle">
+                      Bundle number
+                    </FieldLabel>
+                    <NativeSelect
+                      id="export-bundle"
+                      className="w-full"
+                      value={bundleId}
+                      required
+                      onChange={(e) => {
+                        setBundleId(e.target.value);
+                        setResult(null);
+                        setFailure("");
+                      }}
+                    >
+                      <option value="">Choose a loaded bundle</option>
+                      {bundles.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name} · {b.id}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+                )}
 
-                <span>
-                  <strong>Export bundle JSON</strong>
-                  <small>JSON file containing all surveys in one bundle.</small>
-                </span>
-              </label>
+                <ScopeOption value="survey" title="Survey ID JSON">
+                  JSON file containing one survey and its source page labels.
+                </ScopeOption>
 
-              {/* Choose a loaded bundle from the database. */}
-              {scope === "bundle" && (
-                <label className="export-input">
-                  Bundle number
-                  <select
-                    value={bundleId}
-                    required
-                    onChange={(e) => {
-                      setBundleId(e.target.value);
-                      setResult(null);
-                      setFailure("");
-                    }}
-                  >
-                    <option value="">Choose a loaded bundle</option>
-                    {bundles.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name} · {b.id}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              {/* Single-survey export option. */}
-              <label className="export-option">
-                <input
-                  type="radio"
-                  name="scope"
-                  checked={scope === "survey"}
-                  onChange={() => {
-                    setScope("survey");
-                    setResult(null);
-                    setFailure("");
-                  }}
-                />
-
-                <span>
-                  <strong>Survey ID JSON</strong>
-
-                  <small>
-                    JSON file containing one survey and its source page labels.
-                  </small>
-                </span>
-              </label>
-
-              {/* Survey ID input used for the currently supported export mode. */}
-              {scope === "survey" && (
-                <label className="export-input">
-                  Survey ID *
-                  <input
-                    required
-                    value={requestedId}
-                    onChange={(event) => {
-                      setRequestedId(event.target.value);
-                      setResult(null);
-                      setFailure("");
-                    }}
-                    placeholder="Enter survey ID"
-                  />
-                </label>
-              )}
-            </fieldset>
+                {/* Survey ID input used for the currently supported export mode. */}
+                {scope === "survey" && (
+                  <Field className="pl-9">
+                    <FieldLabel htmlFor="export-survey-id">
+                      Survey ID *
+                    </FieldLabel>
+                    <Input
+                      id="export-survey-id"
+                      required
+                      value={requestedId}
+                      onChange={(event) => {
+                        setRequestedId(event.target.value);
+                        setResult(null);
+                        setFailure("");
+                      }}
+                      placeholder="Enter survey ID"
+                    />
+                  </Field>
+                )}
+              </RadioGroup>
+            </FieldSet>
 
             {/* Only warn when the selected saved data contains unreviewed records. */}
             {reviewCheck?.key === selectionKey && reviewCheck.pending && (
-              <div className="export-policy" role="status">
-                <span>Contains unreviewed data</span>
-                <p>
+              <Alert role="status">
+                <AlertTitle>Contains unreviewed data</AlertTitle>
+                <AlertDescription>
                   This contains fields that are still awaiting review. Be aware
                   that unreviewed values may contain transcription errors and
                   have not been verified by a reviewer.
-                </p>
-              </div>
+                </AlertDescription>
+              </Alert>
             )}
             {hasDrafts && (
-              <p className="export-draft">
-                <AlertTriangle size={15} />
+              <p className="flex items-start gap-2 text-sm text-muted-foreground">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                 Unsaved edits are excluded. Save your pages first to include
                 them.
               </p>
@@ -357,55 +372,55 @@ export default function ExportDialog({
 
             {/* Display an export failure to the user. */}
             {failure && (
-              <div className="export-error" role="alert">
-                <strong>
+              <Alert variant="destructive" className="wrap-anywhere">
+                <AlertTitle>
                   Survey {requestedId || "(no ID)"} could not be exported.
-                </strong>
-
-                <p>{failure}</p>
-                <p>No export file was created.</p>
-              </div>
+                </AlertTitle>
+                <AlertDescription>
+                  <p>{failure}</p>
+                  <p>No export file was created.</p>
+                </AlertDescription>
+              </Alert>
             )}
 
             {/* Display details about a successful export. */}
             {result && (
-              <div className="export-success" role="status">
-                <CheckCircle2 size={19} />
-
-                <div>
-                  <strong>Export file prepared</strong>
-
+              <Alert role="status" className="wrap-anywhere">
+                <CheckCircle2 />
+                <AlertTitle>Export file prepared</AlertTitle>
+                <AlertDescription>
                   <p>{result.filename}</p>
-
                   <p>
                     {result.surveys} surveys · {result.pages} pages ·{" "}
                     {result.pending} pages awaiting review included.
                   </p>
-                </div>
-              </div>
+                </AlertDescription>
+              </Alert>
             )}
 
-            {/* Notes that the current export behaviour is still subject to stakeholder confirmation. */}
-          </div>
+            {/* Dialog actions. */}
+            <DialogFooter className="sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={close}
+                disabled={busy}
+              >
+                {result ? "Close" : "Cancel"}
+              </Button>
 
-          {/* Dialog actions. */}
-          <footer className="export-footer">
-            <button type="button" onClick={close} disabled={busy}>
-              {result ? "Close" : "Cancel"}
-            </button>
-
-            <button
-              className="export-submit"
-              type="submit"
-              disabled={
-                busy || !(scope === "survey" ? requestedId.trim() : bundleId)
-              }
-            >
-              {busy ? "Preparing…" : "Export JSON"}
-            </button>
-          </footer>
-        </form>
-      </dialog>
+              <Button
+                type="submit"
+                disabled={
+                  busy || !(scope === "survey" ? requestedId.trim() : bundleId)
+                }
+              >
+                {busy ? "Preparing…" : "Export JSON"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

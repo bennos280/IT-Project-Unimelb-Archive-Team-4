@@ -1,7 +1,23 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Search, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronRight, Search, Upload } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   counts,
   type Bundle,
@@ -9,12 +25,23 @@ import {
   type PageStatus,
 } from "./progressData";
 import { backendRequest, type AvailableBundle } from "./backend";
-import "./progress.css";
 import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
 import JobErrorDialog from "./JobErrorDialog";
 // Attach processing metadata to database progress so unfinished bundles can appear too.
 type DashboardBundle = Bundle & { source?: AvailableBundle };
 const pageSize = 9;
+
+type View = { bundle: string | null; query: string; status: string; pageNumber: number };
+// Reads the dashboard view from the URL; its page number counts from 1.
+function readView(): View {
+  const params = new URLSearchParams(location.search);
+  return {
+    bundle: params.get("bundle"),
+    query: params.get("q") ?? "",
+    status: params.get("status") ?? "All",
+    pageNumber: Math.max(0, Math.floor(Number(params.get("page")) || 1) - 1),
+  };
+}
 // Translate backend pipeline step names into descriptions for reviewers.
 const jobStages: Record<string, string> = {
   split: "Preparing page images (downloads PDF if needed)",
@@ -44,8 +71,10 @@ export default function ProgressDashboard() {
     // Ignore responses after unmounting and older requests that finish after a newer refresh.
     let active = true;
     let latest = 0;
+    let loading = false;
     async function refresh() {
       const request = ++latest;
+      loading = true;
       try {
         // /progress supplies saved review totals; /bundles also includes unprocessed sources.
         const [data, available] = await Promise.all([
@@ -132,10 +161,15 @@ export default function ProgressDashboard() {
         setError(
           cause instanceof Error ? cause.message : "Could not load progress.",
         );
+      } finally {
+        if (request === latest) loading = false;
       }
     }
     void refresh();
-    const timer = window.setInterval(refresh, 5000);
+    // Poll only a visible tab, and only after the previous refresh has finished.
+    const timer = window.setInterval(() => {
+      if (!document.hidden && !loading) void refresh();
+    }, 5000);
     window.addEventListener("focus", refresh);
     window.addEventListener("pageshow", refresh);
     // Clean up polling and both listeners when retrying or leaving the dashboard.
@@ -146,15 +180,28 @@ export default function ProgressDashboard() {
       window.removeEventListener("pageshow", refresh);
     };
   }, [attempt]);
-  // A null selection displays all bundles; a selected ID displays that bundle’s pages.
-  const [bundleId, setBundleId] = useState<string | null>(null);
+  // The view lives in the URL (?bundle, ?q, ?status, ?page) so refresh, Back and shared links keep it.
+  // No bundle displays all bundles; search, status and page apply to the displayed table.
+  const [view, setView] = useState(readView);
+  useEffect(() => {
+    const sync = () => setView(readView());
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
+  const { query, status, pageNumber } = view;
+  // Typing in search replaces the current history entry; every other change adds one.
+  function show(next: Partial<View>, replace = false) {
+    const v = { ...view, ...next };
+    const params = new URLSearchParams();
+    if (v.bundle) params.set("bundle", v.bundle);
+    if (v.query) params.set("q", v.query);
+    if (v.status !== "All") params.set("status", v.status);
+    if (v.pageNumber) params.set("page", String(v.pageNumber + 1));
+    history[replace ? "replaceState" : "pushState"](null, "", params.size ? `/?${params}` : "/");
+    setView(v);
+  }
 
-  // Search, status filtering, and pagination apply to the currently displayed table.
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("All");
-  const [pageNumber, setPageNumber] = useState(0);
-
-  const bundle = (bundles ?? []).find((b) => b.id === bundleId);
+  const bundle = (bundles ?? []).find((b) => view.bundle && (b.name === view.bundle || b.id === view.bundle));
   const bundleNotStarted = Boolean(
     bundle?.source &&
     !bundle.source.loaded &&
@@ -198,10 +245,8 @@ export default function ProgressDashboard() {
 
   // Switch between overview and page list, resetting filters and pagination.
   function openBundle(id: string | null) {
-    setBundleId(id);
-    setQuery("");
-    setStatus("All");
-    setPageNumber(0);
+    const b = bundles?.find((x) => x.id === id);
+    show({ bundle: b ? (b.name ?? b.id) : null, query: "", status: "All", pageNumber: 0 });
   }
   // Prevent duplicate submissions, then refresh the dashboard after the API accepts a job.
   async function startTranscription(
@@ -242,34 +287,43 @@ export default function ProgressDashboard() {
   function reviewLink(p: ProgressPage) {
     return `/?survey=${encodeURIComponent(p.surveyId!)}&page=${encodeURIComponent(p.reviewPageId!)}${p.status === "Awaiting transcription" ? "&action=transcribe" : ""}`;
   }
+  const openable = (p: ProgressPage) => (!bundle?.source || bundle.source.loaded) && Boolean(p.surveyId);
+  const cell = "whitespace-normal px-1.5 sm:px-2 [overflow-wrap:anywhere]";
+  const head = "whitespace-normal px-1.5 text-xs [overflow-wrap:anywhere] sm:px-2 sm:text-sm";
+  const num = "text-right tabular-nums";
+  // Stretched link: its overlay makes the whole row clickable; controls inside a row sit above it.
+  const rowLink =
+    "rounded-sm font-medium outline-none after:absolute after:inset-0 hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring/50";
+  const above = "relative z-10";
+  const rowAction = "h-auto min-h-7 w-full flex-wrap px-1 py-1 text-xs sm:px-2.5 sm:text-[0.8rem]";
   return (
-    <div className="progress-app">
-      <header className="progress-header">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="flex items-center justify-between gap-4 border-b px-6 py-4">
         <div>
-          <h1>Wilfred Prest Survey</h1>
-          <p>Review Progress</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Wilfred Prest Survey</h1>
+          <p className="text-sm text-muted-foreground">Review Progress</p>
         </div>
         {bundle && (
-          <button onClick={() => openBundle(null)}>
-            <ArrowLeft size={17} /> Back to all bundles
-          </button>
+          <Button variant="outline" onClick={() => openBundle(null)}>
+            <ArrowLeft /> Back to all bundles
+          </Button>
         )}
       </header>
-      <main className="progress-main">
-        <div className="progress-title">
+      <main className="space-y-4 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2>
+            <h2 className="text-xl font-semibold tracking-tight">
               {bundle
                 ? `Bundle Number · ${bundle.name ?? bundle.id}`
                 : "All survey bundles"}
             </h2>
-            <p>
+            <p className="text-sm text-muted-foreground">
               {bundle
                 ? `${totals.ready} pages ready to review`
                 : `Track review progress across ${(bundles ?? []).length} bundles`}
             </p>
           </div>
-          <div className="progress-actions">
+          <div className="flex items-center gap-2">
             <ExportDialog
               surveyId={
                 bundle?.pages.find((page) => page.surveyId)?.surveyId ?? ""
@@ -282,66 +336,82 @@ export default function ProgressDashboard() {
               defaultScope="bundle"
               hasDrafts={false}
             />
-            <button type="button" onClick={() => { window.location.href = "/?view=import"; }}>
-              <Upload size={16} /> Import
-            </button>
+            <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=import"; }}>
+              <Upload /> Import
+            </Button>
           </div>
         </div>
         {/* Display loading failures and allow retry; previously loaded data stays visible. */}
         {error && (
-          <div role="alert">
-            Could not load current progress: {error}
-            <button onClick={() => setAttempt((a) => a + 1)}>Try again</button>
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription className="flex flex-wrap items-center gap-3">
+              Could not load current progress: {error}
+              <Button variant="outline" size="sm" onClick={() => setAttempt((a) => a + 1)}>Try again</Button>
+            </AlertDescription>
+          </Alert>
         )}
         {bundle?.source && !bundle.source.loaded && (
-          <p role="status" className="progress-incomplete-warning">
-            {bundleNotStarted
-              ? "This bundle has not been processed yet. Press Transcribe to get started."
-              : "This bundle has not finished processing. Pages shown may not be transcribed, grouped into survey or identified yet. Please complete transcription."}
-          </p>
+          <Alert role="status">
+            <AlertDescription className="text-foreground">
+              {bundleNotStarted
+                ? "This bundle has not been processed yet. Press Transcribe to get started."
+                : "This bundle has not finished processing. Pages shown may not be transcribed, grouped into survey or identified yet. Please complete transcription."}
+            </AlertDescription>
+          </Alert>
         )}
 
-        {jobError && !transcribing && <p role="alert">{jobError}</p>}
-        {!bundles && !error && <p role="status">Loading review progress…</p>}
+        {jobError && !transcribing && (
+          <Alert variant="destructive">
+            <AlertDescription>{jobError}</AlertDescription>
+          </Alert>
+        )}
+        {!bundles && !error && (
+          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner role="presentation" aria-hidden="true" />
+            Loading review progress…
+          </p>
+        )}
         {bundles && (
           <>
             {/* Saved page statuses determine the totals and review progress. */}
-            <div className="progress-stats">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4">
               {[
                 ["Total pages", totals.total],
                 ["Reviewed", totals.reviewed],
                 ["Ready to review", totals.ready],
               ].map(([label, value]) => (
-                <section key={label}>
-                  <span>{label}</span>
-                  <strong>{value.toLocaleString()}</strong>
-                </section>
+                <Card key={label}>
+                  <CardHeader>
+                    <CardDescription>{label}</CardDescription>
+                    <CardTitle
+                      className="text-2xl font-semibold tracking-tight sm:text-3xl"
+                      data-testid={`stat-${String(label).toLowerCase().replace(/ /g, "-")}`}
+                    >
+                      {value.toLocaleString()}
+                    </CardTitle>
+                  </CardHeader>
+                </Card>
               ))}
             </div>
             {/* Changing search or status returns the table to its first page. */}
-            <div className="progress-filters">
-              <label className="progress-search">
-                <Search size={19} />
-                <input
+            <div className="flex flex-wrap items-center gap-2" data-testid="progress-filters">
+              <div className="relative w-full min-w-48 sm:w-auto sm:max-w-md sm:flex-1">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-8"
                   aria-label={bundle ? "Search pages" : "Search bundles"}
                   placeholder={
                     bundle ? "Search page number…" : "Search bundle number…"
                   }
                   value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    setPageNumber(0);
-                  }}
+                  onChange={(e) => show({ query: e.target.value, pageNumber: 0 }, true)}
                 />
-              </label>
-              <select
+              </div>
+              <NativeSelect
+                className="w-full sm:w-auto"
                 aria-label="Status"
                 value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPageNumber(0);
-                }}
+                onChange={(e) => show({ status: e.target.value, pageNumber: 0 })}
               >
                 {[
                   "All",
@@ -361,9 +431,9 @@ export default function ProgressDashboard() {
                     Status: {s}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               {bundle?.source && !bundle.source.loaded && (
-                <button
+                <Button
                   disabled={
                     starting !== null ||
                     bundle.source.job?.status === "waiting" ||
@@ -383,79 +453,86 @@ export default function ProgressDashboard() {
                         : bundleNotStarted
                           ? "Transcribe"
                           : "Complete transcription"}
-                </button>
+                </Button>
               )}
             </div>
             {/* The same table shows bundle summaries or individual page details. */}
-            <div className="progress-table-wrap">
-              <table
-                className={`progress-table${bundle ? " progress-pages-table" : ""}`}
-              >
-                <thead>
-                  <tr>
+            <div className="rounded-md border">
+              <Table className="table-fixed">
+                <TableHeader>
+                  <TableRow>
                     {(bundle
                       ? [
-                          "Page",
-                          "Page category",
-                          "Flags",
-                          "Status",
-                          "Model",
-                          "Action",
+                          ["Page", "w-[9%]"],
+                          ["Page category", "w-[16%]"],
+                          ["Flags", "w-[15%]"],
+                          ["Status", "w-[24%]"],
+                          ["Model", "w-[20%]"],
+                          ["Actions", "w-[16%]", "sr-only"],
                         ]
                       : [
-                          "Bundle number",
-                          "Total pages",
-                          "Ready to review",
-                          "Review progress",
-                          "Action",
+                          ["Bundle number", "w-[13%]"],
+                          ["Total pages", "w-[20%]", num],
+                          ["Ready to review", "w-[20%]", `${num} sm:pr-6`],
+                          ["Review progress", "w-[29%]"],
+                          ["Actions", "w-[18%]", "sr-only"],
                         ]
-                    ).map((h) => (
-                      <th key={h}>{h}</th>
+                    ).map(([h, width, extra]) => (
+                      <TableHead key={h} className={`${head} ${width} ${extra?.startsWith(num) ? extra : ""}`}>
+                        {extra === "sr-only" ? <span className="sr-only">{h}</span> : h}
+                      </TableHead>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {bundle
                     ? matchingPages.slice(start, start + pageSize).map((p) => (
-                        <tr key={p.id}>
-                          <td>{p.label}</td>
-                          <td>{p.category}</td>
-                          <td>
+                        <TableRow
+                          key={p.id}
+                          className={openable(p) ? "relative cursor-pointer hover:bg-muted focus-within:bg-muted" : undefined}
+                        >
+                          <TableCell className={cell}>
+                            {openable(p) ? (
+                              <a
+                                href={reviewLink(p)}
+                                aria-label={`${p.status === "Awaiting transcription" ? "Transcribe" : p.status === "Reviewed" ? "View" : "Review"} ${p.label}`}
+                                className={rowLink}
+                              >
+                                {p.label}
+                              </a>
+                            ) : (
+                              p.label
+                            )}
+                          </TableCell>
+                          <TableCell className={cell}>{p.category}</TableCell>
+                          <TableCell className={cell}>
                             {bundle.source && !bundle.source.loaded
                               ? "Pending checks"
                               : p.flagCount > 0
                                 ? `${p.flagCount} need checking`
                                 : "No flags"}
-                          </td>
-                          <td>
-                            <span
-                              className={`progress-badge ${p.status === "Reviewed" ? "done" : p.status === "Ready to review" ? "ready" : "waiting"}`}
+                          </TableCell>
+                          <TableCell className={cell}>
+                            <Badge
+                              className="h-auto whitespace-normal"
+                              variant={p.status === "Reviewed" ? "default" : p.status === "Ready to review" ? "secondary" : "outline"}
                             >
                               {p.status}
-                            </span>
-                          </td>
-                          <td>{p.model || "—"}</td>
-                          <td>
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={cell}>{p.model || "—"}</TableCell>
+                          <TableCell className={cell}>
                             {bundle.source && !bundle.source.loaded ? (
                               <span>Unavailable at the moment</span>
                             ) : p.surveyId ? (
-                              <a
-                                className="progress-link-button"
-                                href={reviewLink(p)}
-                              >
-                                {p.status === "Awaiting transcription" ? "Transcribe" : p.status === "Reviewed" ? "View" : "Review"}
-                                <ArrowRight size={16} />
-                              </a>
+                              <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground" />
                             ) : (
-                              <button
-                                disabled
-                                title="This page has no survey assignment"
-                              >
-                                Review
-                              </button>
+                              <span className="block text-right text-muted-foreground" title="This page has no survey assignment">
+                                —
+                              </span>
                             )}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))
                     : matchingBundles
                         .slice(start, start + pageSize)
@@ -466,19 +543,24 @@ export default function ProgressDashboard() {
                               ? Math.round((c.reviewed / c.reviewable) * 100)
                               : null;
                           return (
-                            <tr key={b.id}>
-                              <td>
-                                <button
-                                  className="progress-bundle"
-                                  onClick={() => openBundle(b.id)}
+                            <TableRow key={b.id} className="relative cursor-pointer hover:bg-muted focus-within:bg-muted">
+                              <TableCell className={cell}>
+                                <a
+                                  href={`/?bundle=${encodeURIComponent(b.name ?? b.id)}`}
+                                  className={rowLink}
+                                  onClick={(e) => {
+                                    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                                    e.preventDefault();
+                                    openBundle(b.id);
+                                  }}
                                 >
                                   {b.name ?? b.id}
-                                </button>
-                              </td>
-                              <td>{c.total}</td>
-                              <td>{c.ready}</td>
-                              <td>
-                                <div className="progress-meter">
+                                </a>
+                              </TableCell>
+                              <TableCell className={`${cell} ${num}`}>{c.total}</TableCell>
+                              <TableCell className={`${cell} ${num} sm:pr-6`}>{c.ready}</TableCell>
+                              <TableCell className={cell}>
+                                <div className="flex max-w-sm flex-col gap-1.5">
                                   <span>
                                     {percent === null
                                       ? "No reviewable pages"
@@ -486,23 +568,25 @@ export default function ProgressDashboard() {
                                   </span>
 
                                   {c.unassigned > 0 && (
-                                    <span>
-                                      {c.unassigned} pages not in a survey
+                                    <span className="text-muted-foreground">
+                                      {c.unassigned} {c.unassigned === 1 ? "page" : "pages"} not in a survey
                                     </span>
                                   )}
 
                                   {c.reviewable > 0 && (
-                                    <progress
+                                    <Progress
+                                      className="h-2"
                                       aria-label={`Bundle ${b.id} review progress`}
-                                      value={c.reviewed}
+                                      value={(c.reviewed / c.reviewable) * 100}
                                       max={c.reviewable}
+                                      aria-valuenow={c.reviewed}
                                     />
                                   )}
                                 </div>
-                              </td>
-                              <td>
+                              </TableCell>
+                              <TableCell className={cell}>
                                 {b.source && !b.source.loaded ? (
-                                  <div>
+                                  <div className="space-y-1.5">
                                     {b.source.job?.status === "waiting" ||
                                     b.source.job?.status === "running" ? (
                                       <div role="status">
@@ -511,7 +595,7 @@ export default function ProgressDashboard() {
                                             ? "Waiting — queued"
                                             : "Running"}
                                         </strong>
-                                        <div>
+                                        <div className="text-muted-foreground">
                                           {b.source.job.status === "waiting"
                                             ? "Waiting for the worker to start this job"
                                             : (jobStages[
@@ -523,7 +607,7 @@ export default function ProgressDashboard() {
                                         {b.source.job.status === "running" &&
                                           b.source.job.step === "transcribe" &&
                                           b.source.job.totalPages > 0 && (
-                                            <small>
+                                            <small className="text-muted-foreground">
                                               {b.source.job.donePages}/
                                               {b.source.job.totalPages} pages
                                               transcribed
@@ -534,10 +618,13 @@ export default function ProgressDashboard() {
                                       <>
                                         {b.source.job?.status !== "failed" && (
                                           <>
-                                            <span>Not transcribed</span>{" "}
+                                            <Badge variant="outline" className="h-auto whitespace-normal">Not transcribed</Badge>{" "}
                                           </>
                                         )}
-                                        <button
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className={`${rowAction} ${above}`}
                                           disabled={starting !== null}
                                           onClick={() => {
                                             setJobError("");
@@ -549,17 +636,19 @@ export default function ProgressDashboard() {
                                             : b.source.job?.status === "failed"
                                               ? "Retry transcription"
                                               : "Transcribe"}
-                                        </button>
+                                        </Button>
                                       </>
                                     )}
                                     {b.source.job?.status === "failed" && (
-                                      <p className="transcription-failure">
+                                      <p className="text-xs text-destructive">
                                         Transcription failed
                                         {b.source.job.error && (
                                           <>
                                             :{" "}
-                                            <button
-                                              className="transcription-error-link"
+                                            <Button
+                                              variant="link"
+                                              size="sm"
+                                              className={`h-auto p-0 text-xs text-destructive underline ${above}`}
                                               onClick={() =>
                                                 setErrorDetails({
                                                   bundle: b.name ?? b.id,
@@ -569,75 +658,66 @@ export default function ProgressDashboard() {
                                               }
                                             >
                                               more details here
-                                            </button>
+                                            </Button>
                                           </>
                                         )}
                                       </p>
                                     )}
                                   </div>
-                                ) : c.ready ? (
-                                  <button onClick={() => openBundle(b.id)}>
-                                    Review <ArrowRight size={16} />
-                                  </button>
-                                ) : c.reviewable > 0 &&
-                                  c.reviewed === c.reviewable ? (
-                                  <button onClick={() => openBundle(b.id)}>
-                                    View <ArrowRight size={16} />
-                                  </button>
                                 ) : (
-                                  <button onClick={() => openBundle(b.id)}>
-                                    View
-                                  </button>
+                                  <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground" />
                                 )}
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           );
                         })}
                   {/* Offer a filter reset when no rows match. */}
                   {!totalRows && (
-                    <tr>
-                      <td colSpan={bundle ? 6 : 5}>
-                        <div className="progress-empty">
+                    <TableRow>
+                      <TableCell colSpan={bundle ? 6 : 5}>
+                        <div className="flex flex-wrap items-center justify-center gap-3 p-6 text-center whitespace-normal">
                           No {bundle ? "pages" : "bundles"} match your filters.
-                          <button
-                            onClick={() => {
-                              setQuery("");
-                              setStatus("All");
-                              setPageNumber(0);
-                            }}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => show({ query: "", status: "All", pageNumber: 0 })}
                           >
                             Clear filters
-                          </button>
+                          </Button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   )}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
             {/* Show the visible row range and disable navigation at either end. */}
-            <footer className="progress-pagination">
+            <footer className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <span>
                 Showing {totalRows ? start + 1 : 0}–
                 {Math.min(start + pageSize, totalRows)} of {totalRows}{" "}
                 {bundle ? "pages" : "bundles"}
               </span>
-              <div>
-                <button
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={current === 0}
-                  onClick={() => setPageNumber(current - 1)}
+                  onClick={() => show({ pageNumber: current - 1 })}
                 >
                   Previous
-                </button>
+                </Button>
                 <span>
                   Page {current + 1} of {lastPage + 1}
                 </span>
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={current === lastPage}
-                  onClick={() => setPageNumber(current + 1)}
+                  onClick={() => show({ pageNumber: current + 1 })}
                 >
-                  Next <ArrowRight size={15} />
-                </button>
+                  Next <ArrowRight />
+                </Button>
               </div>
             </footer>
           </>

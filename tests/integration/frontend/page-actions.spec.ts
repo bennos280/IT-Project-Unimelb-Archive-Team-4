@@ -90,9 +90,9 @@ test("move keeps page identity and opens its destination; same types are allowed
   });
   await page.goto("/?survey=s1&page=b%2Fp4");
   // History belongs to the toolbar and can expand a stored snapshot without changing the page.
-  const toolbar = page.locator(".page-transcription-toolbar");
+  const toolbar = page.getByTestId("page-toolbar");
   await expect(
-    toolbar.getByText("Page actions", { exact: true }),
+    toolbar.getByRole("button", { name: "Page actions", exact: true }),
   ).toBeVisible();
   await toolbar.getByRole("button", { name: "History", exact: true }).click();
   const history = page.getByRole("dialog", {
@@ -116,7 +116,7 @@ test("move keeps page identity and opens its destination; same types are allowed
   await history.getByRole("button", { name: "Close", exact: true }).click();
   await expect(history).not.toBeVisible();
   // No reviewer or destination has been selected yet, so moving must be disabled.
-  await page.getByText("Page actions", { exact: true }).click();
+  await page.getByRole("button", { name: "Page actions", exact: true }).click();
   await page
     .getByRole("button", { name: "Move to another survey", exact: true })
     .click();
@@ -128,7 +128,7 @@ test("move keeps page identity and opens its destination; same types are allowed
   await page
     .getByRole("combobox", { name: "Reviewer name", exact: true })
     .selectOption("Alex");
-  await page.getByText("Page actions", { exact: true }).click();
+  await page.getByRole("button", { name: "Page actions", exact: true }).click();
   await page
     .getByRole("button", { name: "Move to another survey", exact: true })
     .click();
@@ -140,11 +140,11 @@ test("move keeps page identity and opens its destination; same types are allowed
   await page.getByRole("button", { name: "Move page", exact: true }).click();
   // Navigation changes the survey, while the page ID and extracted value remain the same.
   await expect(page).toHaveURL(/survey=s2&page=b%2Fp4/);
-  await expect(page.locator(".page-heading")).toHaveAttribute(
+  await expect(page.locator("[data-page-id]")).toHaveAttribute(
     "data-page-id",
     "b/p4",
   );
-  await expect(page.locator(".value").first()).toHaveText("24 Test Street");
+  await expect(page.getByText("24 Test Street", { exact: true })).toBeVisible();
 });
 
 // Exercise both entry points: change the type first, or open Transcribe directly from a page-list link.
@@ -255,7 +255,7 @@ for (const changeType of [true, false]) {
         .getByRole("combobox", { name: "Reviewer", exact: true })
         .selectOption("Alex");
     if (changeType) {
-      await page.getByText("Page actions", { exact: true }).click();
+      await page.getByRole("button", { name: "Page actions", exact: true }).click();
       await page
         .getByRole("button", { name: "Change page type", exact: true })
         .click();
@@ -266,7 +266,9 @@ for (const changeType of [true, false]) {
       await dialog
         .getByRole("button", { name: "Change page type", exact: true })
         .click();
-      await expect(page.locator(".page-heading > h2")).toHaveText("b/p4 · Coded page");
+      await expect(
+        page.getByRole("heading", { level: 2, name: /^b\/p4 ·/ }),
+      ).toHaveText("b/p4 · Coded page");
       await expect(
         page.getByText(
           "Page has been changed to a different page type. Click the Transcribe button.",
@@ -287,7 +289,7 @@ for (const changeType of [true, false]) {
     }
     if (changeType)
       await page
-        .locator(".page-transcription-toolbar")
+        .getByTestId("page-toolbar")
         .getByRole("button", { name: "Transcribe", exact: true })
         .click();
     // Reviewers can inspect model information and return to the transcription form.
@@ -308,8 +310,7 @@ for (const changeType of [true, false]) {
       .click();
     await expect(dialog).not.toBeVisible();
     // Wait for polling to load the replacement data and clear the transcription reminder.
-    await expect(page.locator(".value").first()).toHaveText(
-      "New transcription",
+    await expect(page.getByText("New transcription", { exact: true })).toBeVisible(
       { timeout: 10000 },
     );
     await expect(

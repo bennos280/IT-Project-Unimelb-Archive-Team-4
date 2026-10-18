@@ -86,3 +86,18 @@ def test_page_with_fields_but_no_survey_is_not_ready_to_review(client, db):
     page = next(p for p in bundle["pages"] if p["id"] == "p2")
     assert page["surveyId"] is None
     assert page["status"] == "Not in a survey"
+
+
+def test_progress_is_reused_until_the_database_changes(client, db, monkeypatch):
+    from backend.api import progress
+    seed(db)
+    calls = []
+    original = progress.review_progress
+    monkeypatch.setattr(progress, "review_progress", lambda session: calls.append(1) or original(session))
+    first = client.get("/progress").json()
+    assert client.get("/progress").json() == first
+    assert len(calls) == 1
+    db.add(models.Edit(page_id="p1", field_title="a", edit_text="readable", time=datetime.now(timezone.utc)))
+    db.commit()
+    assert client.get("/progress").json()[0]["pages"][0]["flagCount"] == 0
+    assert len(calls) == 2

@@ -1,6 +1,18 @@
 import { useRef, useState } from "react";
 import { ArrowLeft, Upload } from "lucide-react";
-import "./import.css";
+
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type SelectedFile = { id: string; file: File; bundle: string; uploaded?: boolean };
 
@@ -81,24 +93,28 @@ export default function ImportScreen() {
   }
 
   return (
-    <div className="import-screen">
-      <header className="import-header">
-        <div>
-          <h1>Wilfred Prest Survey</h1>
-        </div>
-        <a href="/">
-          <ArrowLeft size={18} /> Back to all bundles
-        </a>
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="flex items-center justify-between gap-4 border-b px-6 py-4">
+        <h1 className="text-2xl font-semibold tracking-tight">Wilfred Prest Survey</h1>
+        <Button asChild variant="outline">
+          <a href="/">
+            <ArrowLeft /> Back to all bundles
+          </a>
+        </Button>
       </header>
-      <main className="import-main">
-        <h2>Import survey bundles</h2>
-        <p className="import-intro">
-          Upload your survey files and enter a bundle number for each file.
-          A PDF is a whole bundle. For page images, give every page of a bundle
-          the same bundle number; pages are read in file name order.
-        </p>
+      <main className="mx-auto max-w-6xl space-y-4 p-6">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">Import survey bundles</h2>
+          <p className="text-sm text-muted-foreground">
+            Upload your survey files and enter a bundle number for each file.
+            A PDF is a whole bundle. For page images, give every page of a bundle
+            the same bundle number; pages are read in file name order.
+          </p>
+        </div>
         <div
-          className={`import-dropzone ${dragging ? "dragging" : ""}`}
+          data-testid="dropzone"
+          data-dragging={dragging}
+          className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-8 text-sm text-muted-foreground data-[dragging=true]:border-foreground/50 data-[dragging=true]:bg-muted"
           onDragOver={(event) => {
             event.preventDefault();
             setDragging(true);
@@ -115,12 +131,12 @@ export default function ImportScreen() {
             addFiles(event.dataTransfer.files);
           }}
         >
-          <Upload size={52} aria-hidden="true" />
-          <strong>Drag and drop files here</strong>
+          <Upload className="size-10" aria-hidden="true" />
+          <strong className="text-base font-medium text-foreground">Drag and drop files here</strong>
           <span>or</span>
-          <button type="button" disabled={uploading} onClick={() => input.current?.click()}>
+          <Button type="button" variant="outline" disabled={uploading} onClick={() => input.current?.click()}>
             Choose files
-          </button>
+          </Button>
           <input
             ref={input}
             type="file"
@@ -135,39 +151,44 @@ export default function ImportScreen() {
           <span>PDF, JPG or PNG</span>
         </div>
         {message && (
-          <p role="alert" className="import-error">
-            {message}
-          </p>
+          <Alert variant="destructive">
+            <AlertDescription>{message}</AlertDescription>
+          </Alert>
         )}
-        <h3 aria-live="polite">Selected files ({files.length})</h3>
+        <h3 aria-live="polite" className="pt-2 text-lg font-semibold tracking-tight">
+          Selected files ({files.length})
+        </h3>
         {files.length === 0 ? (
-          <p className="import-muted">No files selected.</p>
+          <p className="text-sm text-muted-foreground">No files selected.</p>
         ) : (
-          <div className="import-table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>File</th>
-                  <th>Size</th>
-                  <th>Bundle number *</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="rounded-md border">
+            <Table className="min-w-[580px] table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[32%]">File</TableHead>
+                  <TableHead className="w-[14%]">Size</TableHead>
+                  <TableHead className="w-[36%]">Bundle number *</TableHead>
+                  <TableHead className="w-[18%]">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {files.map((item, index) => {
                   const error = !/^[0-9]{1,30}$/.test(item.bundle.trim())
                     ? "Enter a bundle number containing 1–30 digits."
                     : "";
                   return (
-                    <tr key={item.id}>
-                      <td>{item.file.name}{item.uploaded && <small>Uploaded</small>}</td>
-                      <td>
+                    <TableRow key={item.id} className="align-top">
+                      <TableCell className="p-3 align-top whitespace-normal wrap-anywhere">
+                        {item.file.name}
+                        {item.uploaded && <Badge variant="secondary" className="mt-2 flex">Uploaded</Badge>}
+                      </TableCell>
+                      <TableCell className="p-3 align-top">
                         {item.file.size < 1024 * 1024
                           ? `${Math.max(1, Math.ceil(item.file.size / 1024))} KB`
                           : `${(item.file.size / (1024 * 1024)).toFixed(1)} MB`}
-                      </td>
-                      <td>
-                        <input
+                      </TableCell>
+                      <TableCell className="p-3 align-top whitespace-normal">
+                        <Input
                           disabled={uploading || item.uploaded}
                           aria-label={`Bundle number for ${item.file.name}`}
                           aria-invalid={Boolean(error)}
@@ -188,12 +209,16 @@ export default function ImportScreen() {
                           }
                         />
                         {error && (
-                          <small id={`bundle-error-${index}`}>{error}</small>
+                          <p id={`bundle-error-${index}`} className="mt-2 text-xs text-destructive">
+                            {error}
+                          </p>
                         )}
-                      </td>
-                      <td>
-                        <button
+                      </TableCell>
+                      <TableCell className="p-3 align-top">
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           disabled={uploading}
                           aria-label={`Remove ${item.file.name}`}
                           onClick={() =>
@@ -203,25 +228,25 @@ export default function ImportScreen() {
                           }
                         >
                           Remove
-                        </button>
-                      </td>
-                    </tr>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
-        <p className="import-muted">
+        <p className="text-sm text-muted-foreground">
           Each file must have a bundle number before import.
         </p>
-        <footer className="import-footer">
-          <p id="import-availability" role="status">
+        <footer className="flex flex-col items-start justify-between gap-4 border-t pt-4 sm:flex-row sm:items-center">
+          <p id="import-availability" role="status" className="text-sm text-muted-foreground">
             {progress || "Files are saved to the data folder. Uploading does not start transcription."}
           </p>
-          <button onClick={uploadFiles} disabled={uploading || !pending.length || pending.some((item) => !/^[0-9]{1,30}$/.test(item.bundle.trim()))} aria-describedby="import-availability">
+          <Button onClick={uploadFiles} disabled={uploading || !pending.length || pending.some((item) => !/^[0-9]{1,30}$/.test(item.bundle.trim()))} aria-describedby="import-availability">
             Import files
-          </button>
+          </Button>
         </footer>
       </main>
     </div>

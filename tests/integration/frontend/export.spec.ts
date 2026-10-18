@@ -125,17 +125,20 @@ test("shows backend export failure and permits retry", async ({ page }) => {
   await page.getByRole("button", { name: "Export JSON", exact: true }).click();
   await downloaded;
   await expect(page.getByText("Export file prepared")).toBeVisible();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Export", exact: true })).toBeFocused();
 });
 
 // Checks that choosing a bundle sends its ID and downloads JSON with the matching bundle ID and filename.
 test("downloads a selected bundle as JSON", async ({ page }) => {
+  const exports: URLSearchParams[] = [];
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
     if (url.pathname === "/api/export/bundles")
       return route.fulfill({ json: [{ id: "bundle-test", name: "123" }] });
     if (url.pathname === "/api/export") {
-      expect(url.searchParams.get("bundle_id")).toBe("bundle-test");
+      exports.push(url.searchParams);
       return route.fulfill({
         json: { bundleId: "bundle-test", ...exported, unassignedPages: [] },
       });
@@ -156,6 +159,9 @@ test("downloads a selected bundle as JSON", async ({ page }) => {
   await page.getByRole("button", { name: "Export JSON", exact: true }).click();
   const file = await download;
   expect(file.suggestedFilename()).toBe("bundle-bundle-test-export.json");
+  // The download's request comes last; the review check run before it may use the survey ID.
+  expect(exports.at(-1)?.get("bundle_id")).toBe("bundle-test");
+  expect(exports.at(-1)?.has("survey_id")).toBe(false);
   expect(JSON.parse(readFileSync((await file.path())!, "utf8")).bundleId).toBe(
     "bundle-test",
   );
@@ -188,7 +194,7 @@ test("dashboard exports the selected bundle ID rather than its display number", 
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "123", exact: true }).click();
+  await page.getByRole("link", { name: "123", exact: true }).click();
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(
     page.getByRole("radio", { name: /Export bundle JSON/ }),
@@ -207,6 +213,7 @@ test("dashboard exports the selected bundle ID rather than its display number", 
 test("review screen exports its current bundle using the backend bundle ID", async ({
   page,
 }) => {
+  const exports: URLSearchParams[] = [];
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
@@ -215,8 +222,7 @@ test("review screen exports its current bundle using the backend bundle ID", asy
     if (url.pathname === "/api/export/bundles")
       return route.fulfill({ json: [{ id: "actual-bundle-id", name: "123" }] });
     if (url.pathname === "/api/export") {
-      expect(url.searchParams.get("bundle_id")).toBe("actual-bundle-id");
-      expect(url.searchParams.has("survey_id")).toBe(false);
+      exports.push(url.searchParams);
       return route.fulfill({
         json: {
           ...exported,
@@ -235,6 +241,9 @@ test("review screen exports its current bundle using the backend bundle ID", asy
   await page.getByRole("button", { name: "Export JSON", exact: true }).click();
   const file = await download;
   expect(file.suggestedFilename()).toBe("bundle-actual-bundle-id-export.json");
+  // The download's request comes last; the review check run before it may use the survey ID.
+  expect(exports.at(-1)?.get("bundle_id")).toBe("actual-bundle-id");
+  expect(exports.at(-1)?.has("survey_id")).toBe(false);
   expect(JSON.parse(readFileSync((await file.path())!, "utf8")).bundleId).toBe(
     "actual-bundle-id",
   );
@@ -318,7 +327,7 @@ for (const selectedBundle of [false, true]) {
     });
     await page.goto("/");
     if (selectedBundle)
-      await page.getByRole("button", { name: "123", exact: true }).click();
+      await page.getByRole("link", { name: "123", exact: true }).click();
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const warning = page.getByText(
       /This contains fields that are still awaiting review/,
