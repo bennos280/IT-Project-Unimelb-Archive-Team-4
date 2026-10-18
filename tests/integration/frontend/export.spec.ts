@@ -125,6 +125,8 @@ test("shows backend export failure and permits retry", async ({ page }) => {
   await page.getByRole("button", { name: "Export JSON", exact: true }).click();
   await downloaded;
   await expect(page.getByText("Export file prepared")).toBeVisible();
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Export", exact: true })).toBeFocused();
 });
 
 // Checks that choosing a bundle sends its ID and downloads JSON with the matching bundle ID and filename.

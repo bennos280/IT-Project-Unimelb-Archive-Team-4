@@ -1,4 +1,11 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
+
+// The review-progress cell is the fourth column of a bundle row.
+const meter = (row: Locator) => row.getByRole("cell").nth(3);
+const incompleteNotice = (page: Page) =>
+  page.getByRole("status").filter({ hasText: /has not (finished processing|been processed yet)/ });
+const filters = (page: Page) => page.getByTestId("progress-filters");
+const bundleRows = (page: Page) => page.locator("tbody").getByRole("row");
 
 test.describe("Progress navigation and layout", () => {
   const survey = {
@@ -140,16 +147,16 @@ test.describe("Progress navigation and layout", () => {
       );
 
       await page.goto("/");
-      await expect(page.locator(".progress-meter")).toContainText(
-        "0 / 3 reviewed · 0%",
-      );
+      const bundleRow = bundleRows(page).filter({
+        has: page.getByRole("button", { name: "216417", exact: true }),
+      });
+      await expect(meter(bundleRow)).toContainText("0 / 3 reviewed · 0%");
       await page.getByRole("button", { name: "216417", exact: true }).click();
-      const firstRow = page
-        .locator(".progress-table tbody tr")
+      const firstRow = bundleRows(page)
         .filter({ has: page.getByRole("cell", { name: "Pg 1", exact: true }) });
       await expect(firstRow).toContainText("5 need checking");
       await firstRow.getByRole("link", { name: "Review", exact: true }).click();
-      await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id", "216417/p0");
+      await expect(page.getByRole("heading", { name: "216417/p0 ·" })).toBeVisible();
       await page
         .getByRole("combobox", { name: "Reviewer name", exact: true })
         .selectOption("Test reviewer");
@@ -165,12 +172,12 @@ test.describe("Progress navigation and layout", () => {
           .click();
         if (outcome === "saved") {
           await expect(
-            page.locator(".field-status").filter({ hasText: "Reviewed by:" }),
+            page.getByText("Reviewed by:"),
           ).toHaveCount(5);
         } else {
-          await expect(page.locator(".save-help")).toHaveText(
-            "Page changed in another tab.",
-          );
+          await expect(
+            page.getByRole("status").filter({ hasText: "Page changed in another tab." }),
+          ).toHaveText("Page changed in another tab.");
         }
       }
       // Accept the browser's leave warning for deliberately discarded drafts.
@@ -180,24 +187,18 @@ test.describe("Progress navigation and layout", () => {
       expect(saveRequests).toBe(outcome === "unsaved" ? 0 : 1);
       for (const refresh of [false, true]) {
         if (refresh) await page.reload();
-        await expect(page.locator(".progress-meter")).toContainText(
+        await expect(meter(bundleRow)).toContainText(
           complete ? "1 / 3 reviewed · 33%" : "0 / 3 reviewed · 0%",
         );
-        await expect(
-          page
-            .locator(".progress-stats section")
-            .filter({ hasText: /^Reviewed/ })
-            .locator("strong"),
-        ).toHaveText(complete ? "1" : "0");
-        await expect(
-          page
-            .locator(".progress-stats section")
-            .filter({ hasText: /^Ready to review/ })
-            .locator("strong"),
-        ).toHaveText(complete ? "2" : "3");
+        await expect(page.getByTestId("stat-reviewed")).toHaveText(
+          complete ? "1" : "0",
+        );
+        await expect(page.getByTestId("stat-ready-to-review")).toHaveText(
+          complete ? "2" : "3",
+        );
       }
       await page.getByRole("button", { name: "216417", exact: true }).click();
-      await expect(firstRow.locator(".progress-badge")).toHaveText(
+      await expect(firstRow.getByRole("cell").nth(3)).toHaveText(
         complete ? "Reviewed" : "Ready to review",
       );
       await expect(firstRow).toContainText(
@@ -220,7 +221,7 @@ test.describe("Progress navigation and layout", () => {
     ).toBeVisible();
 
     await page.getByLabel("Search bundles").fill("216417");
-    await expect(page.locator(".progress-table tbody tr")).toHaveCount(1);
+    await expect(bundleRows(page)).toHaveCount(1);
 
     await page.getByLabel("Search bundles").fill("missing");
     await expect(
@@ -228,7 +229,7 @@ test.describe("Progress navigation and layout", () => {
     ).toBeVisible();
 
     await page.getByRole("button", { name: "Clear filters" }).click();
-    await expect(page.locator(".progress-table tbody tr")).toHaveCount(1);
+    await expect(bundleRows(page)).toHaveCount(1);
   });
 
   test("disables pagination for one bundle and filters by status", async ({
@@ -262,7 +263,7 @@ test.describe("Progress navigation and layout", () => {
       page.getByRole("heading", { name: "Bundle Number · 216417" }),
     ).toBeVisible();
 
-    const notesRow = page.locator(".progress-table tbody tr").filter({
+    const notesRow = bundleRows(page).filter({
       has: page.getByRole("cell", { name: "Pg 2", exact: true }),
     });
 
@@ -292,7 +293,7 @@ test.describe("Progress navigation and layout", () => {
       await page.goto("/");
       await page.getByRole("button", { name: "216417", exact: true }).click();
 
-      const row = page.locator(".progress-table tbody tr").filter({
+      const row = bundleRows(page).filter({
         has: page.getByRole("cell", { name: label, exact: true }),
       });
 
@@ -302,7 +303,7 @@ test.describe("Progress navigation and layout", () => {
 
       await row.getByRole("link", { name: "Review", exact: true }).click();
 
-      await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id", pageId);
+      await expect(page.getByRole("heading", { name: `${pageId} ·` })).toBeVisible();
       await expect(
         page.getByRole("heading", { name: "Transcript Review" }),
       ).toBeVisible();
@@ -340,7 +341,8 @@ test.describe("Progress navigation and layout", () => {
 
       expect(
         await page
-          .locator(".progress-table-wrap")
+          .getByRole("table")
+          .locator("..")
           .evaluate(
             (element) => element.scrollWidth <= element.clientWidth + 1,
           ),
@@ -452,9 +454,7 @@ test.describe("Progress and transcription states", () => {
       ),
     ).toBeVisible();
     await expect(
-      page
-        .locator(".progress-filters")
-        .getByRole("button", { name: "Transcribe", exact: true }),
+      filters(page).getByRole("button", { name: "Transcribe", exact: true }),
     ).toBeEnabled();
     await expect(
       page.getByRole("button", { name: "Complete transcription", exact: true }),
@@ -477,13 +477,11 @@ test.describe("Progress and transcription states", () => {
       page.getByRole("button", { name: "Retry transcription" }),
     ).toBeEnabled();
     await openBundle(page);
-    await expect(page.locator(".progress-incomplete-warning")).toContainText(
+    await expect(incompleteNotice(page)).toContainText(
       "has not finished processing",
     );
     await expect(
-      page
-        .locator(".progress-filters")
-        .getByRole("button", { name: "Complete transcription" }),
+      filters(page).getByRole("button", { name: "Complete transcription" }),
     ).toBeEnabled();
     await expect(
       page.getByRole("cell", { name: "partial-model", exact: true }),
@@ -497,8 +495,12 @@ test.describe("Progress and transcription states", () => {
     test(`${status} job disables duplicate transcription`, async ({ page }) => {
       await mock(page, { status });
       await openBundle(page);
-      await expect(page.locator(".progress-filters button")).toBeDisabled();
-      await expect(page.locator(".progress-incomplete-warning")).toContainText(
+      const action = filters(page).getByRole("button");
+      await expect(action).toBeDisabled();
+      await expect(action).toHaveAccessibleName(
+        status === "waiting" ? "Waiting — queued" : "Transcription in progress",
+      );
+      await expect(incompleteNotice(page)).toContainText(
         "has not finished processing",
       );
     });
@@ -518,8 +520,8 @@ test.describe("Progress and transcription states", () => {
     await expect(
       page.getByRole("cell", { name: "—", exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".progress-incomplete-warning")).toHaveCount(0);
-    await expect(page.locator(".progress-filters button")).toHaveCount(0);
+    await expect(incompleteNotice(page)).toHaveCount(0);
+    await expect(filters(page).getByRole("button")).toHaveCount(0);
   });
 
   test("pagination changes rows and searching resets to first page", async ({
@@ -527,7 +529,7 @@ test.describe("Progress and transcription states", () => {
   }) => {
     await mock(page, { loaded: true, count: 11 });
     await openBundle(page);
-    await expect(page.locator(".progress-table tbody tr")).toHaveCount(9);
+    await expect(bundleRows(page)).toHaveCount(9);
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect(page.getByText("Showing 10–11 of 11 pages")).toBeVisible();
     await page.getByLabel("Search pages").fill("Pg 1");
@@ -585,7 +587,7 @@ test('awaiting transcription page has a Transcribe action targeting its survey p
   });
   await page.goto('/');
   await page.getByRole('button',{name:'b',exact:true}).click();
-  const row=page.locator('.progress-table tbody tr').filter({hasText:'Pg 4'});
+  const row=bundleRows(page).filter({hasText:'Pg 4'});
   await expect(row.getByRole('link',{name:'Transcribe',exact:true})).toHaveAttribute('href','/?survey=s1&page=b%2Fp4&action=transcribe');
   await expect(row.getByRole('link',{name:'Review',exact:true})).toHaveCount(0);
 });
@@ -638,19 +640,19 @@ test.describe("Pages without a survey", () => {
   test("unassigned pages do not prevent 100% review progress", async ({ page }) => {
     const row = await showBundle(page, true);
     await expect(row.locator("td").nth(1)).toHaveText("2");
-    await expect(row.locator(".progress-meter")).toContainText("1 / 1 reviewed · 100%");
-    await expect(row.locator(".progress-meter")).toContainText("1 pages not in a survey");
+    await expect(meter(row)).toContainText("1 / 1 reviewed · 100%");
+    await expect(meter(row)).toContainText("1 pages not in a survey");
     const progress = row.getByRole("progressbar");
-    await expect(progress).toHaveAttribute("value", "1");
-    await expect(progress).toHaveAttribute("max", "1");
+    await expect(progress).toHaveAttribute("aria-valuenow", "1");
+    await expect(progress).toHaveAttribute("aria-valuemax", "1");
   });
 
   test("a bundle with only unassigned pages has no review percentage", async ({ page }) => {
     const row = await showBundle(page, false);
     await expect(row.locator("td").nth(1)).toHaveText("1");
-    await expect(row.locator(".progress-meter")).toContainText("No reviewable pages");
-    await expect(row.locator(".progress-meter")).toContainText("1 pages not in a survey");
-    await expect(row.locator(".progress-meter")).not.toContainText("%");
+    await expect(meter(row)).toContainText("No reviewable pages");
+    await expect(meter(row)).toContainText("1 pages not in a survey");
+    await expect(meter(row)).not.toContainText("%");
     await expect(row.getByRole("progressbar")).toHaveCount(0);
   });
 });

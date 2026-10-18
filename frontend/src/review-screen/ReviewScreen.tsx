@@ -2,7 +2,7 @@ import ExportDialog from "../export/ExportDialog";
 import PageActions from "./PageActions";
 // Main review screen: field table on the left, scan viewer on the right.
 
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -12,11 +12,57 @@ import {
   CircleCheck,
   Pencil,
 } from "lucide-react";
+import { cn } from "cn";
 import ImageViewer from "./ImageViewer";
 import type { useReviewSession } from "./useReviewSession";
 import { getPageName, isTextPage } from "./model";
-import "./review.css";
+import type { Flag } from "./model";
 import { flagCategories, flagLabels } from "./flags";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+
+// Flag kind and the reason the extractor gave for it.
+function FlagReason({ flag }: { flag: Flag }) {
+  return (
+    <div className="mt-2 text-xs leading-relaxed text-muted-foreground">
+      <strong className="font-medium text-foreground">
+        {flagLabels[flag.kind]}
+      </strong>
+      <p className="my-1">{flag.reason}</p>
+    </div>
+  );
+}
+
+const cell = "align-top whitespace-normal break-words";
 
 // Render extracted fields and the scan, wiring reviewer controls and dialogs to session actions.
 export default function ReviewScreen({
@@ -60,14 +106,13 @@ export default function ReviewScreen({
     setDraft,
     message,
     saving,
-    editor,
     beginEdit,
     applyEdit,
     addReviewer,
     reviewAll,
     savePage,
     navigate,
-    navigationDialog,
+    leaving,
     stayOnPage,
     saveAndContinue,
     discardAndContinue,
@@ -86,70 +131,96 @@ export default function ReviewScreen({
     return statusFilter === "all" || statusFilter === status;
   });
   const groups = [...new Set(visible.map((field) => field.group))];
+  const textPage = !!page && isTextPage(page.type);
   return (
     <>
-      <header className="topbar">
+      <header className="flex items-center justify-between gap-4 border-b px-6 py-4">
         <div>
-          <h1>Wilfred Prest Survey</h1>
-          <p>Review Survey Card</p>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Wilfred Prest Survey
+          </h1>
+          <p className="text-sm text-muted-foreground">Review Survey Card</p>
         </div>
       </header>
       <main>
         {!session.surveyId ? (
-          <div className="empty" role="status">
+          <div className="p-8 text-center text-muted-foreground" role="status">
             Select a survey to review.
           </div>
         ) : error ? (
-          <div className="empty" role="alert">
-            {error}
-            <button onClick={() => setAttempt((a) => a + 1)}>Try again</button>
-          </div>
+          <Alert variant="destructive" className="m-6 w-auto">
+            <AlertDescription className="flex items-center gap-4">
+              {error}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAttempt((a) => a + 1)}
+              >
+                Try again
+              </Button>
+            </AlertDescription>
+          </Alert>
         ) : !page || !survey ? (
-          <div className="empty" role="status">
+          <div
+            className="flex items-center justify-center gap-2 p-8 text-muted-foreground"
+            role="status"
+          >
+            <Spinner aria-hidden="true" />
             Loading survey and source images…
           </div>
         ) : (
-          <div className="review-grid">
-            <section className="extracted">
-              <div className="page-heading" data-page-id={page.id}>
-                <h2>
+          <div className="grid grid-cols-1 md:h-[calc(100dvh-8.5rem)] md:grid-cols-[46%_54%]">
+            <section className="flex h-[560px] min-w-0 flex-col overflow-hidden border-b px-4 pt-4 md:h-auto md:border-r md:border-b-0 md:px-6">
+              <div
+                className="flex flex-wrap items-center gap-2"
+                data-page-id={page.id}
+              >
+                <h2 className="min-w-0 flex-1 basis-full text-base font-semibold min-[1150px]:basis-auto">
                   {page.id} · {getPageName(page.type)}{" "}
                 </h2>
-                <span className="review-progress">
-                  {page.fields.length
-                    ? Math.round(
-                        (Object.keys(pageReviews).length / page.fields.length) *
-                          100,
-                      )
-                    : 0}
-                  % reviewed
-                </span>
+                <Badge variant="outline">
+                  {`${
+                    page.fields.length
+                      ? Math.round(
+                          (Object.keys(pageReviews).length /
+                            page.fields.length) *
+                            100,
+                        )
+                      : 0
+                  }% reviewed`}
+                </Badge>
                 <PageActions key={page.id} session={session} toolbar={transcribeToolbar} />
-                <span className="flag-progress">
+                <Badge variant="outline">
                   {flagsLeft ? `${flagsLeft} need checking` : "No flags"}
-                </span>
+                </Badge>
                 {/* TODO:support page-category changes
                 <button disabled title="Change page category not implemented yet">
                   Change page category
                 </button>
                 */}
               </div>
-              <div className="filters">
-                <label className="search">
-                  <Search size={15} />
-                  <input
+              <div className="mt-4 flex items-center">
+                <div className="relative ml-auto flex w-full max-w-48 items-center">
+                  <Search
+                    className="pointer-events-none absolute left-2.5 size-4 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <Input
+                    className="pl-8"
                     aria-label="Search fields"
                     placeholder="Search fields…"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
-                </label>
+                </div>
               </div>
-              <div className="field-scroll" key={page.id}>
+              <div className="mt-3 min-h-0 flex-1 overflow-auto" key={page.id}>
                 {!visible.length ? (
-                  <div className="empty">
+                  <div className="p-8 text-center text-muted-foreground">
                     No fields match your filters.
-                    <button
+                    <Button
+                      variant="outline"
+                      className="m-4"
                       onClick={() => {
                         setQuery("");
                         setFilter("all");
@@ -157,249 +228,309 @@ export default function ReviewScreen({
                       }}
                     >
                       Clear filters
-                    </button>
+                    </Button>
                   </div>
                 ) : (
-                  <table
-                    className={
-                      isTextPage(page.type) ? "notes-table" : undefined
-                    }
-                  >
-                    <thead>
-                      <tr>
-                        <th>Sub-field</th>
-                        <th>Value</th>
-                        <th>
-                          <select
-                            className="flag-filter"
+                  <table className="w-full table-fixed text-xs">
+                    <TableHeader className="sticky top-0 z-30 bg-background">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead
+                          className={cn(
+                            "h-9 px-2 text-xs font-normal text-muted-foreground",
+                            textPage ? "w-[13%]" : "w-[32%]",
+                          )}
+                        >
+                          Sub-field
+                        </TableHead>
+                        <TableHead
+                          className={cn(
+                            "h-9 px-2 text-xs font-normal text-muted-foreground",
+                            textPage ? "w-[56%]" : "w-[23%]",
+                          )}
+                        >
+                          Value
+                        </TableHead>
+                        <TableHead
+                          className={cn(
+                            "h-9 px-2 text-xs font-normal",
+                            textPage ? "w-[12%]" : "w-[21%]",
+                          )}
+                        >
+                          <NativeSelect
+                            size="sm"
+                            className="w-full"
                             aria-label="Filter fields"
                             value={filter}
                             onChange={(e) => setFilter(e.target.value)}
                           >
-                            <option value="all">Flag</option>
-                            <option value="flagged">All flagged fields</option>
+                            <NativeSelectOption value="all">
+                              Flag
+                            </NativeSelectOption>
+                            <NativeSelectOption value="flagged">
+                              All flagged fields
+                            </NativeSelectOption>
                             {Object.entries(flagCategories).map(
                               ([value, label]) => (
-                                <option key={value} value={value}>
+                                <NativeSelectOption key={value} value={value}>
                                   {label}
-                                </option>
+                                </NativeSelectOption>
                               ),
                             )}
-                          </select>
-                        </th>
-                        <th>
-                          <select
-                            className="status-filter"
+                          </NativeSelect>
+                        </TableHead>
+                        <TableHead
+                          className={cn(
+                            "h-9 px-2 text-xs font-normal",
+                            textPage ? "w-[19%]" : "w-[24%]",
+                          )}
+                        >
+                          <NativeSelect
+                            size="sm"
+                            className="w-full"
                             aria-label="Filter by review status"
                             value={statusFilter}
                             onChange={(event) =>
                               setStatusFilter(event.target.value)
                             }
                           >
-                            <option value="all">Status</option>
+                            <NativeSelectOption value="all">
+                              Status
+                            </NativeSelectOption>
                             {[
                               "Reviewed",
                               "Unsaved",
                               "Blank",
                               "Transcribed",
                             ].map((status) => (
-                              <option key={status} value={status}>
+                              <NativeSelectOption key={status} value={status}>
                                 {status}
-                              </option>
+                              </NativeSelectOption>
                             ))}
-                          </select>
-                        </th>
-                      </tr>
-                    </thead>
-                    {groups.map((group) => (
-                      <tbody key={group}>
-                        <tr className="group-row">
-                          <th colSpan={4}>
-                            <button
-                              className="group-toggle"
-                              aria-expanded={
-                                !collapsedGroups[
-                                  JSON.stringify([survey.id, page.id, group])
-                                ]
-                              }
-                              onClick={() => {
-                                const key = JSON.stringify([
-                                  survey.id,
-                                  page.id,
-                                  group,
-                                ]);
-                                setCollapsedGroups((current) => ({
-                                  ...current,
-                                  [key]: !current[key],
-                                }));
-                              }}
+                          </NativeSelect>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    {groups.map((group) => {
+                      const groupKey = JSON.stringify([
+                        survey.id,
+                        page.id,
+                        group,
+                      ]);
+                      const collapsed = collapsedGroups[groupKey];
+                      return (
+                        <TableBody key={group}>
+                          <TableRow className="hover:bg-transparent">
+                            <TableHead
+                              colSpan={4}
+                              className="sticky top-9 z-20 h-auto bg-muted p-0"
                             >
-                              {collapsedGroups[
-                                JSON.stringify([survey.id, page.id, group])
-                              ] ? (
-                                <ChevronRight size={16} aria-hidden="true" />
-                              ) : (
-                                <ChevronDown size={16} aria-hidden="true" />
-                              )}
-                              {group}
-                            </button>
-                          </th>
-                        </tr>
-                        {!collapsedGroups[
-                          JSON.stringify([survey.id, page.id, group])
-                        ] &&
-                          visible
-                            .filter((f) => f.group === group)
-                            .map((field) => {
-                              const flags = page.flags.filter(
-                                (f) => f.fieldId === field.id,
-                              );
-                              const checked = !!pageReviews[field.id];
-                              return (
-                                <React.Fragment key={field.id}>
-                                  <tr
-                                    className={`field ${flags.length && !checked ? "flagged" : ""} ${selection?.pageId === page.id && selection.fieldId === field.id ? "selected-field" : ""}`}
-                                    onClick={() =>
-                                      setSelection({
-                                        pageId: page.id,
-                                        fieldId: field.id,
-                                        token: Date.now(),
-                                      })
+                              <Button
+                                variant="ghost"
+                                className="h-auto w-full justify-start rounded-none px-2 py-2 text-sm font-semibold"
+                                aria-expanded={!collapsed}
+                                onClick={() =>
+                                  setCollapsedGroups((current) => ({
+                                    ...current,
+                                    [groupKey]: !current[groupKey],
+                                  }))
+                                }
+                              >
+                                {collapsed ? (
+                                  <ChevronRight aria-hidden="true" />
+                                ) : (
+                                  <ChevronDown aria-hidden="true" />
+                                )}
+                                {group}
+                              </Button>
+                            </TableHead>
+                          </TableRow>
+                          {!collapsed &&
+                            visible
+                              .filter((f) => f.group === group)
+                              .map((field) => {
+                                const flags = page.flags.filter(
+                                  (f) => f.fieldId === field.id,
+                                );
+                                const checked = !!pageReviews[field.id];
+                                const locate = () =>
+                                  setSelection({
+                                    pageId: page.id,
+                                    fieldId: field.id,
+                                    token: Date.now(),
+                                  });
+                                return (
+                                  <TableRow
+                                    key={field.id}
+                                    className="cursor-pointer"
+                                    data-state={
+                                      selection?.pageId === page.id &&
+                                      selection.fieldId === field.id
+                                        ? "selected"
+                                        : undefined
                                     }
+                                    onClick={locate}
                                   >
-                                    <td className="field-label">
-                                      <button
-                                        className="locate-field"
+                                    <TableCell
+                                      className={cn(
+                                        cell,
+                                        textPage
+                                          ? "pl-2"
+                                          : "pl-5 max-[1150px]:pl-2",
+                                      )}
+                                    >
+                                      <Button
+                                        variant="link"
+                                        className="h-auto justify-start p-0 text-left text-xs font-normal whitespace-normal text-muted-foreground hover:underline max-md:text-[11px]"
                                         aria-label={`Locate ${field.group}: ${field.label} in image`}
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          setSelection({
-                                            pageId: page.id,
-                                            fieldId: field.id,
-                                            token: Date.now(),
-                                          });
+                                          locate();
                                         }}
                                       >
                                         {field.label}
-                                      </button>
-                                    </td>
-                                    <td>
-                                      <div className="value-cell">
+                                      </Button>
+                                    </TableCell>
+                                    <TableCell className={cell}>
+                                      <div className="flex items-start justify-between gap-1.5">
                                         <span
-                                          className={
-                                            isTextPage(page.type)
-                                              ? "notes-value"
-                                              : "value"
-                                          }
+                                          className={cn(
+                                            "min-w-0 whitespace-pre-wrap break-words",
+                                            textPage &&
+                                              "min-h-[260px] text-sm leading-7",
+                                          )}
                                         >
                                           {(pageReviews[field.id]
                                             ? pageReviews[field.id].value
                                             : field.value) || "–"}
                                         </span>
-                                        <button
-                                          className="edit-button"
+                                        <Button
+                                          variant="ghost"
+                                          size="icon-xs"
+                                          className="shrink-0"
                                           disabled={saving}
                                           onClick={() => beginEdit(field)}
                                           aria-label={`Edit ${field.label}`}
                                           title="Edit or review this field"
                                         >
-                                          <Pencil size={15} />
-                                        </button>
+                                          <Pencil />
+                                        </Button>
                                       </div>
-                                    </td>
-                                    <td>
+                                    </TableCell>
+                                    <TableCell className={cell}>
                                       {flags.length ? (
-                                        <details className="flag-details">
-                                          <summary>
-                                            {checked ? (
-                                              <CircleCheck size={18} />
-                                            ) : (
-                                              <TriangleAlert size={18} />
-                                            )}
-                                            <span>
-                                              {checked
-                                                ? "Checked"
-                                                : [
-                                                    ...new Set(
-                                                      flags.map(
-                                                        (flag) =>
-                                                          flagLabels[flag.kind],
-                                                      ),
-                                                    ),
-                                                  ].join(", ")}
-                                            </span>
-                                          </summary>
-                                          {flags.map((flag) => (
-                                            <div
-                                              className="flag-reason"
-                                              key={flag.id}
+                                        <Collapsible className="rounded-md data-[state=open]:bg-muted data-[state=open]:p-1.5">
+                                          <CollapsibleTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="xs"
+                                              className="h-auto justify-start gap-1.5 p-0 text-left text-[11px] leading-tight font-normal whitespace-normal hover:bg-transparent"
                                             >
-                                              <strong>
-                                                {flagLabels[flag.kind]}
-                                              </strong>
-                                              <p>{flag.reason}</p>
-                                            </div>
-                                          ))}
-                                        </details>
+                                              {checked ? (
+                                                <CircleCheck />
+                                              ) : (
+                                                <TriangleAlert className="text-destructive" />
+                                              )}
+                                              <span>
+                                                {checked
+                                                  ? "Checked"
+                                                  : [
+                                                      ...new Set(
+                                                        flags.map(
+                                                          (flag) =>
+                                                            flagLabels[
+                                                              flag.kind
+                                                            ],
+                                                        ),
+                                                      ),
+                                                    ].join(", ")}
+                                              </span>
+                                            </Button>
+                                          </CollapsibleTrigger>
+                                          <CollapsibleContent>
+                                            {flags.map((flag) => (
+                                              <FlagReason
+                                                key={flag.id}
+                                                flag={flag}
+                                              />
+                                            ))}
+                                          </CollapsibleContent>
+                                        </Collapsible>
                                       ) : (
                                         "—"
                                       )}
-                                    </td>
-                                    <td>
-                                      <span className="field-status">
+                                    </TableCell>
+                                    <TableCell className={cell}>
+                                      <Badge
+                                        variant={
+                                          pageReviews[field.id]?.savedAt
+                                            ? "secondary"
+                                            : "outline"
+                                        }
+                                        className="h-auto py-0.5 text-left whitespace-normal break-words"
+                                      >
                                         {pageReviews[field.id]
                                           ? `${pageReviews[field.id].savedAt ? "Reviewed" : "Unsaved"} by: ${pageReviews[field.id].reviewer}`
                                           : field.value === null ||
                                               field.value === ""
                                             ? "Blank"
                                             : "Transcribed"}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                </React.Fragment>
-                              );
-                            })}
-                      </tbody>
-                    ))}
+                                      </Badge>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                        </TableBody>
+                      );
+                    })}
                   </table>
                 )}
               </div>
-              <div className="panel-footer">
+              <div className="border-t py-2.5 text-[10px] text-muted-foreground">
                 {visible.length} of {page.fields.length} fields
               </div>
             </section>
-            <section className="source">
-              <div className="source-heading">
+            <section className="flex h-[650px] min-h-0 min-w-0 flex-col px-4 py-4 md:h-auto md:pr-5 md:pl-6">
+              <div className="mb-2 flex items-start justify-between gap-4">
                 <div>
-                  <h2>Transcript Review</h2>
-                  <nav className="pager" aria-label="Survey pages">
-                    <button
+                  <h2 className="mb-1 text-base font-semibold">
+                    Transcript Review
+                  </h2>
+                  <nav
+                    className="flex items-center gap-3 text-sm"
+                    aria-label="Survey pages"
+                  >
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
                       aria-label="Previous page"
                       disabled={saving || index === 0}
                       onClick={() => navigate(index - 1)}
                     >
-                      <ChevronLeft size={18} />
-                    </button>
+                      <ChevronLeft />
+                    </Button>
                     <span>
                       Page {index + 1} of {survey.pages.length}
                     </span>
-                    <button
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
                       aria-label="Next page"
                       disabled={saving || index === survey.pages.length - 1}
                       onClick={() => navigate(index + 1)}
                     >
-                      <ChevronRight size={18} />
-                    </button>
+                      <ChevronRight />
+                    </Button>
                   </nav>
                 </div>
-                <div className="page-transcription-toolbar"><div ref={setTranscribeToolbar} />
-                <ExportDialog
-                  surveyId={survey.id}
-                  initialBundleId={survey.bundleId}
-                  hasDrafts={Object.values(session.reviews).some((fields) =>
-                    Object.values(fields).some((review) => !review.savedAt),
-                  )}
-                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center" ref={setTranscribeToolbar} />
+                  <ExportDialog
+                    surveyId={survey.id}
+                    initialBundleId={survey.bundleId}
+                    hasDrafts={Object.values(session.reviews).some((fields) =>
+                      Object.values(fields).some((review) => !review.savedAt),
+                    )}
+                  />
                 </div>
               </div>
               <ImageViewer
@@ -407,10 +538,13 @@ export default function ReviewScreen({
                 page={page}
                 selection={selection?.pageId === page.id ? selection : null}
               />
-              <div className="reviewer-controls">
-                <label>
-                  Reviewer name *
-                  <select
+              <div className="mt-2.5 flex flex-wrap items-end justify-end gap-2">
+                <Field className="w-auto flex-1 md:w-[250px] md:flex-none">
+                  <FieldLabel htmlFor="reviewer-name" className="text-xs">
+                    Reviewer name *
+                  </FieldLabel>
+                  <NativeSelect
+                    id="reviewer-name"
                     aria-label="Reviewer name"
                     value={reviewer}
                     onChange={(e) => {
@@ -419,25 +553,30 @@ export default function ReviewScreen({
                       } else setReviewer(e.target.value);
                     }}
                   >
-                    <option value="">Select reviewer</option>
+                    <NativeSelectOption value="">
+                      Select reviewer
+                    </NativeSelectOption>
                     {reviewers.map((person) => (
-                      <option key={person.id} value={person.name}>
+                      <NativeSelectOption key={person.id} value={person.name}>
                         {person.name}
-                      </option>
+                      </NativeSelectOption>
                     ))}
-                    <option value="__add__">+ Add reviewer…</option>
-                  </select>
-                </label>
-                <button onClick={() => setAdding((a) => !a)}>
+                    <NativeSelectOption value="__add__">
+                      + Add reviewer…
+                    </NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+                <Button variant="outline" onClick={() => setAdding((a) => !a)}>
                   Add reviewer
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="outline"
                   disabled={saving || !reviewer || !page.fields.length}
                   onClick={reviewAll}
                 >
                   Mark all fields as reviewed
-                </button>
-                <button
+                </Button>
+                <Button
                   disabled={
                     saving ||
                     !reviewer ||
@@ -446,33 +585,41 @@ export default function ReviewScreen({
                   onClick={savePage}
                 >
                   {saving ? "Saving…" : "Save Page Transcript"}
-                </button>
+                </Button>
               </div>
               {adding && !editing && (
                 <form
-                  className="add-reviewer"
+                  className="mt-2 flex justify-end gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
                     addReviewer();
                   }}
                 >
-                  <input
+                  <Input
                     autoFocus
+                    className="max-w-56 min-w-0"
                     aria-label="New reviewer name"
                     placeholder="Enter reviewer name"
                     maxLength={80}
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                   />
-                  <button disabled={!newName.trim()} type="submit">
+                  <Button disabled={!newName.trim()} type="submit">
                     Add
-                  </button>
-                  <button type="button" onClick={() => setAdding(false)}>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    type="button"
+                    onClick={() => setAdding(false)}
+                  >
                     Cancel
-                  </button>
+                  </Button>
                 </form>
               )}
-              <p className="save-help" role="status">
+              <p
+                className="mt-1.5 text-right text-xs leading-snug text-muted-foreground"
+                role="status"
+              >
                 {message ||
                   "Save page transcript saves your reviews. Select a reviewer before applying an edit."}
               </p>
@@ -480,159 +627,190 @@ export default function ReviewScreen({
           </div>
         )}
       </main>
-      <dialog
-        ref={navigationDialog}
-        className="edit-dialog"
-        aria-labelledby="unsaved-reviews-heading"
-        onCancel={(event) => {
-          event.preventDefault();
-          stayOnPage();
+      <Dialog
+        open={leaving}
+        onOpenChange={(open) => {
+          if (!open) stayOnPage();
         }}
       >
-        <h2 id="unsaved-reviews-heading">Save your reviews before leaving?</h2>
-        <p>
-          This page has unsaved reviews. Save them or discard them before
-          continuing.
-        </p>
-        <p>
-          Discarding restores the last saved values. Previously saved reviews
-          are kept.
-        </p>
-        <div className="dialog-actions">
-          <button autoFocus disabled={saving} onClick={stayOnPage}>
-            Stay here
-          </button>
-          <button disabled={saving} onClick={discardAndContinue}>
-            Discard reviews and continue
-          </button>
-          <button disabled={saving || !reviewer} onClick={saveAndContinue}>
-            {saving ? "Saving…" : "Save and continue"}
-          </button>
-        </div>
-        <p role="status">{message}</p>
-      </dialog>
-      <dialog
-        ref={editor}
-        className="edit-dialog"
-        onCancel={() => setEditing(null)}
-      >
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!adding && !creatingReviewer) applyEdit();
-          }}
+        <DialogContent
+          showCloseButton={false}
+          className="sm:max-w-xl"
+          onInteractOutside={(event) => event.preventDefault()}
         >
-          <h2>Edit field</h2>
-          {/* Explain each flag on the selected field before the reviewer edits it. */}
-          {page?.flags
-            .filter((flag) => flag.fieldId === editing?.id)
-            .map((flag) => (
-              <div className="flag-reason" key={flag.id}>
-                <strong>{flagLabels[flag.kind]}</strong>
-                <p>{flag.reason}</p>
-              </div>
-            ))}
-          <p className="edit-context">
-            {page && getPageName(page.type)} · {editing?.label}{" "}
+          <DialogHeader>
+            <DialogTitle>Save your reviews before leaving?</DialogTitle>
+            <DialogDescription>
+              This page has unsaved reviews. Save them or discard them before
+              continuing.
+            </DialogDescription>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Discarding restores the last saved values. Previously saved reviews
+            are kept.
           </p>
-          <label>
-            Extracted value
-            <div className="original-value">{editing?.value || "Blank"}</div>
-          </label>
-          <label htmlFor="field-value">Reviewed value</label>
-          <textarea
-            autoFocus
-            id="field-value"
-            rows={page && isTextPage(page.type) ? 10 : 4}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-          />
-          <p className="edit-help">
-            Leave empty to record a blank value. Once applied, this field&apos;s
-            flags show as checked.
-          </p>
-          <label htmlFor="edit-reviewer">Reviewer *</label>
-          <select
-            id="edit-reviewer"
-            value={adding ? "__add__" : reviewer}
-            disabled={creatingReviewer}
-            onChange={(e) => {
-              if (e.target.value === "__add__") setAdding(true);
-              else {
-                setAdding(false);
-                setReviewer(e.target.value);
-              }
+          <DialogFooter>
+            <Button
+              autoFocus
+              variant="outline"
+              disabled={saving}
+              onClick={stayOnPage}
+            >
+              Stay here
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={saving}
+              onClick={discardAndContinue}
+            >
+              Discard reviews and continue
+            </Button>
+            <Button disabled={saving || !reviewer} onClick={saveAndContinue}>
+              {saving ? "Saving…" : "Save and continue"}
+            </Button>
+          </DialogFooter>
+          <p role="status">{message}</p>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="max-h-[calc(100dvh-2rem)] overflow-y-auto data-[state=closed]:animate-none sm:max-w-lg"
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <form
+            className="grid gap-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!adding && !creatingReviewer) applyEdit();
             }}
           >
-            <option value="">Select reviewer</option>
-            {reviewers.map((person) => (
-              <option key={person.id} value={person.name}>
-                {person.name}
-              </option>
-            ))}
-            <option value="__add__">+ Add reviewer…</option>
-          </select>
-          {adding && (
-            <div className="add-reviewer">
-              <input
+            <DialogHeader>
+              <DialogTitle>Edit field</DialogTitle>
+            </DialogHeader>
+            {/* Explain each flag on the selected field before the reviewer edits it. */}
+            {page?.flags
+              .filter((flag) => flag.fieldId === editing?.id)
+              .map((flag) => (
+                <FlagReason key={flag.id} flag={flag} />
+              ))}
+            <DialogDescription>
+              {page && getPageName(page.type)} · {editing?.label}{" "}
+            </DialogDescription>
+            <Field>
+              <FieldLabel>Extracted value</FieldLabel>
+              <div className="max-h-30 overflow-auto rounded-md bg-muted p-2.5 break-words whitespace-pre-wrap">
+                {editing?.value || "Blank"}
+              </div>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="field-value">Reviewed value</FieldLabel>
+              <Textarea
                 autoFocus
-                aria-label="New reviewer name"
-                placeholder="Enter reviewer name"
-                maxLength={80}
-                value={newName}
-                disabled={creatingReviewer}
-                onChange={(event) => setNewName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") event.preventDefault();
-                }}
+                id="field-value"
+                rows={page && isTextPage(page.type) ? 10 : 4}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
               />
-              <button
-                type="button"
-                disabled={creatingReviewer || !newName.trim()}
-                onClick={async () => {
-                  setCreatingReviewer(true);
-                  try {
-                    await addReviewer();
-                  } finally {
-                    setCreatingReviewer(false);
+              <FieldDescription>
+                Leave empty to record a blank value. Once applied, this
+                field&apos;s flags show as checked.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="edit-reviewer">Reviewer *</FieldLabel>
+              <NativeSelect
+                id="edit-reviewer"
+                value={adding ? "__add__" : reviewer}
+                disabled={creatingReviewer}
+                onChange={(e) => {
+                  if (e.target.value === "__add__") setAdding(true);
+                  else {
+                    setAdding(false);
+                    setReviewer(e.target.value);
                   }
                 }}
               >
-                {creatingReviewer ? "Adding…" : "Add reviewer"}
-              </button>
-              <button
+                <NativeSelectOption value="">
+                  Select reviewer
+                </NativeSelectOption>
+                {reviewers.map((person) => (
+                  <NativeSelectOption key={person.id} value={person.name}>
+                    {person.name}
+                  </NativeSelectOption>
+                ))}
+                <NativeSelectOption value="__add__">
+                  + Add reviewer…
+                </NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            {adding && (
+              <div className="flex gap-2">
+                <Input
+                  autoFocus
+                  className="min-w-0"
+                  aria-label="New reviewer name"
+                  placeholder="Enter reviewer name"
+                  maxLength={80}
+                  value={newName}
+                  disabled={creatingReviewer}
+                  onChange={(event) => setNewName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.preventDefault();
+                  }}
+                />
+                <Button
+                  type="button"
+                  disabled={creatingReviewer || !newName.trim()}
+                  onClick={async () => {
+                    setCreatingReviewer(true);
+                    try {
+                      await addReviewer();
+                    } finally {
+                      setCreatingReviewer(false);
+                    }
+                  }}
+                >
+                  {creatingReviewer ? "Adding…" : "Add reviewer"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={creatingReviewer}
+                  onClick={() => setAdding(false)}
+                >
+                  Cancel adding
+                </Button>
+              </div>
+            )}
+            <p role="status">{message}</p>
+            <DialogFooter>
+              <Button
                 type="button"
-                disabled={creatingReviewer}
-                onClick={() => setAdding(false)}
+                variant="outline"
+                onClick={() => setEditing(null)}
               >
-                Cancel adding
-              </button>
-            </div>
-          )}
-          <p role="status">{message}</p>
-          <div className="dialog-actions">
-            <button
-              type="button"
-              onClick={() => {
-                editor.current?.close();
-                setEditing(null);
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!reviewer || adding || creatingReviewer}
-            >
-              Apply review
-            </button>
-          </div>
-          <p className="edit-help">
-            Applying a review creates an unsaved change. Save the page to store
-            it permanently.
-          </p>
-        </form>
-      </dialog>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!reviewer || adding || creatingReviewer}
+              >
+                Apply review
+              </Button>
+            </DialogFooter>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Applying a review creates an unsaved change. Save the page to
+              store it permanently.
+            </p>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

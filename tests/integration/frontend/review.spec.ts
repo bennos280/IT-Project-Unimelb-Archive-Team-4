@@ -1,5 +1,5 @@
 // Real browser interactions with an isolated, per-test API fixture.
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Locator, type Page } from "@playwright/test";
 import type { Survey } from "../../../frontend/src/review-screen/model";
 
 // Defines the saved review returned by mock API.
@@ -151,11 +151,33 @@ const test = base.extend<{ api: State }>({
   },
 });
 
+// Every field row, identified by its edit button.
+const fieldRows = (page: Page) =>
+  page.getByRole("row").filter({
+    has: page.getByRole("button", { name: /^Edit / }),
+  });
+
 // Finds the Address row using its edit button.
 const address = (page: Page) =>
-  page.locator("tr.field").filter({
+  page.getByRole("row").filter({
     has: page.getByRole("button", { name: "Edit Address", exact: true }),
   });
+
+// The page heading carries the current page ID.
+const pageHeading = (page: Page) => page.locator("[data-page-id]");
+
+// The scan image for the current page.
+const scanImage = (page: Page) => page.getByRole("img", { name: /^Original / });
+
+// The scrollable scan viewport.
+const viewport = (page: Page) => page.getByLabel(/^Survey scan\./);
+
+// The zoom percentage between the zoom buttons.
+const zoomLevel = (page: Page) =>
+  page.getByRole("status").filter({ hasText: /^\d+%$/ });
+
+// The field value shown in a row's value cell.
+const valueOf = (row: Locator) => row.getByRole("cell").nth(1);
 
 // Opens Address, enters a value, and applies an unsaved review.
 // The caller must select a reviewer first.
@@ -180,16 +202,15 @@ test("Next/Previous show matching page data and image", async ({ page }) => {
   ).toBeDisabled();
   for (let index = 0; index < demo.pages.length; index++) {
     const source = demo.pages[index];
-    await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id", source.id);
-    await expect(page.locator("tr.field")).toHaveCount(source.fields.length);
-    await expect(page.locator(".scan-stage img")).toHaveAttribute(
+    await expect(pageHeading(page)).toHaveAttribute("data-page-id", source.id);
+    await expect(fieldRows(page)).toHaveCount(source.fields.length);
+    await expect(scanImage(page)).toHaveAttribute(
       "src",
       source.imageUrl,
     );
     await expect
       .poll(() =>
-        page
-          .locator(".scan-stage img")
+        scanImage(page)
           .evaluate(
             (img: HTMLImageElement) => img.complete && img.naturalWidth > 0,
           ),
@@ -206,7 +227,7 @@ test("Next/Previous show matching page data and image", async ({ page }) => {
   await page
     .getByRole("button", { name: "Previous page", exact: true })
     .click();
-  await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id",
+  await expect(pageHeading(page)).toHaveAttribute("data-page-id",
     demo.pages[1].id,
   );
 });
@@ -221,7 +242,7 @@ test("Search and Clear filters return expected rows", async ({ page }) => {
     .fill("no-match-987654321");
   await expect(page.getByText("No fields match your filters.")).toBeVisible();
   await page.getByRole("button", { name: "Clear filters" }).click();
-  await expect(page.locator("tr.field")).toHaveCount(
+  await expect(fieldRows(page)).toHaveCount(
     demo.pages[0].fields.length,
   );
 });
@@ -232,12 +253,12 @@ test("Flag filter and disclosure show the reason", async ({ page }) => {
   await page
     .getByRole("combobox", { name: "Filter fields" })
     .selectOption("flagged");
-  await expect(page.locator("tr.field")).toHaveCount(
+  await expect(fieldRows(page)).toHaveCount(
     new Set(demo.pages[0].flags.map((f) => f.fieldId)).size,
   );
-  const disclosure = page.locator(".flag-details").first();
-  await disclosure.locator("summary").click();
-  await expect(disclosure.locator(".flag-reason p").first()).toHaveText(
+  const row = address(page);
+  await row.getByRole("button", { name: "Uncertain values" }).click();
+  await expect(row.getByText(demo.pages[0].flags[0].reason)).toHaveText(
     demo.pages[0].flags[0].reason,
   );
 });
@@ -246,15 +267,14 @@ test("Flag filter and disclosure show the reason", async ({ page }) => {
 // fits the complete scan inside the viewer without significant overflow.
 test("Zoom and Fit to Page change the image scale", async ({ page }) => {
   await page.getByRole("button", { name: "Zoom in", exact: true }).click();
-  await expect(page.locator(".zoom output")).toHaveText("125%");
+  await expect(zoomLevel(page)).toHaveText("125%");
   await page.getByRole("button", { name: "Zoom out", exact: true }).click();
-  await expect(page.locator(".zoom output")).toHaveText("100%");
+  await expect(zoomLevel(page)).toHaveText("100%");
   await expect(page.getByRole("button", { name: "Fit to Page" })).toBeEnabled();
   await page.getByRole("button", { name: "Fit to Page" }).click();
   await expect
     .poll(() =>
-      page
-        .locator(".image-viewport")
+      viewport(page)
         .evaluate(
           (el) =>
             el.scrollWidth <= el.clientWidth + 2 &&
@@ -268,12 +288,14 @@ test("Zoom and Fit to Page change the image scale", async ({ page }) => {
 // This does not check whether the highlight's coordinates are correct.
 test("Clicking Address highlights its scan area", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Fit to Page" })).toBeEnabled();
-  await address(page).locator(".locate-field").click();
-  await expect(page.locator(".source-highlight")).toHaveAttribute(
+  await address(page)
+    .getByRole("button", { name: "Locate Address: Address in image" })
+    .click();
+  await expect(page.getByLabel(/^Highlighted source/)).toHaveAttribute(
     "aria-label",
     "Highlighted source: Address",
   );
-  await expect(page.locator(".zoom output")).toHaveText("200%");
+  await expect(zoomLevel(page)).toHaveText("200%");
 });
 
 // Checks that applying a review requires a reviewer and cancelling the
@@ -282,7 +304,7 @@ test("Cancel discards draft text and reviewer is required", async ({
   page,
   api,
 }) => {
-  const original = await address(page).locator(".value").innerText();
+  const original = await valueOf(address(page)).innerText();
   await page.getByRole("button", { name: "Edit Address", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Apply review" }),
@@ -294,7 +316,7 @@ test("Cancel discards draft text and reviewer is required", async ({
     .getByRole("dialog")
     .getByRole("button", { name: "Cancel", exact: true })
     .click();
-  await expect(address(page).locator(".value")).toHaveText(original);
+  await expect(valueOf(address(page))).toHaveText(original);
   expect(api.saves).toBe(0);
 });
 
@@ -317,7 +339,7 @@ test("Apply creates draft; Save persists and reload restores it", async ({
   expect(api.reviews[demo.pages[0].id].address.value).toBe("10 Test Street");
   expect(api.revisions[demo.pages[0].id]).toBe(1);
   await page.reload();
-  await expect(address(page).locator(".value")).toHaveText("10 Test Street");
+  await expect(valueOf(address(page))).toHaveText("10 Test Street");
   await expect(address(page)).toContainText("Reviewed by: Test reviewer");
 });
 
@@ -335,11 +357,11 @@ test("Rejected save displays reason and retains unsaved correction", async ({
   await page
     .getByRole("button", { name: "Save Page Transcript", exact: true })
     .click();
-  await expect(page.locator(".save-help")).toHaveText(
-    "Page changed in another tab.",
-  );
+  await expect(
+    page.getByRole("status").filter({ hasText: "Page changed in another tab." }),
+  ).toHaveText("Page changed in another tab.");
   await expect(address(page)).toContainText("Unsaved by: Test reviewer");
-  await expect(address(page).locator(".value")).toHaveText("Keep this draft");
+  await expect(valueOf(address(page))).toHaveText("Keep this draft");
   expect(api.saves).toBe(0);
 });
 
@@ -359,15 +381,15 @@ test("Review all preserves correction and saves all fields", async ({
       exact: true,
     })
     .click();
-  await expect(page.locator(".review-progress")).toHaveText("100% reviewed");
-  await expect(address(page).locator(".value")).toHaveText(
+  await expect(page.getByText(/^\d+% reviewed$/)).toHaveText("100% reviewed");
+  await expect(valueOf(address(page))).toHaveText(
     "Preserve this correction",
   );
   await page
     .getByRole("button", { name: "Save Page Transcript", exact: true })
     .click();
   await expect(
-    page.locator(".field-status").filter({ hasText: "Reviewed by:" }),
+    fieldRows(page).filter({ hasText: "Reviewed by:" }),
   ).toHaveCount(demo.pages[0].fields.length);
   expect(Object.keys(api.reviews[demo.pages[0].id])).toHaveLength(
     demo.pages[0].fields.length,
@@ -391,7 +413,7 @@ test("Review all keeps another reviewer's saved review", async ({
   };
   api.revisions[demo.pages[0].id] = 1;
   await page.reload();
-  const municipality = page.locator("tr.field").filter({
+  const municipality = fieldRows(page).filter({
     has: page.getByRole("button", { name: "Edit Municipality", exact: true }),
   });
   await expect(municipality).toContainText("Reviewed by: Other reviewer");
@@ -405,7 +427,7 @@ test("Review all keeps another reviewer's saved review", async ({
     })
     .click();
   await expect(municipality).toContainText("Reviewed by: Other reviewer");
-  await expect(municipality.locator(".value")).toHaveText("Saved earlier");
+  await expect(valueOf(municipality)).toHaveText("Saved earlier");
 });
 
 // Checks that a failed survey load displays an error and Try again
@@ -494,7 +516,7 @@ test.describe("Unsaved navigation", () => {
       .click();
 
     await expect(leaveDialog(page)).not.toBeVisible();
-    await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id",
+    await expect(pageHeading(page)).toHaveAttribute("data-page-id",
       demo.pages[1].id,
     );
 
@@ -506,7 +528,7 @@ test.describe("Unsaved navigation", () => {
     // Returning to the page should show the saved correction.
     await page.getByLabel("Previous page", { exact: true }).click();
 
-    await expect(address(page).locator(".value")).toHaveText(
+    await expect(valueOf(address(page))).toHaveText(
       "Saved before leaving",
     );
     await expect(address(page)).toContainText("Reviewed by:");
@@ -543,14 +565,14 @@ test.describe("Unsaved navigation", () => {
       })
       .click();
 
-    await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id",
+    await expect(pageHeading(page)).toHaveAttribute("data-page-id",
       demo.pages[1].id,
     );
 
     await page.getByLabel("Previous page", { exact: true }).click();
 
     // Discard must preserve the earlier saved correction.
-    await expect(address(page).locator(".value")).toHaveText("Saved address");
+    await expect(valueOf(address(page))).toHaveText("Saved address");
     await expect(address(page)).toContainText("Reviewed by:");
     expect(api.saves).toBe(1);
   });
@@ -579,13 +601,13 @@ test.describe("Unsaved navigation", () => {
       "Page changed",
     );
 
-    await expect(page.locator(".page-heading")).toHaveAttribute("data-page-id",
+    await expect(pageHeading(page)).toHaveAttribute("data-page-id",
       demo.pages[0].id,
     );
 
     await leaveDialog(page).getByRole("button", { name: "Stay here" }).click();
 
-    await expect(address(page).locator(".value")).toHaveText("Keep this draft");
+    await expect(valueOf(address(page))).toHaveText("Keep this draft");
     await expect(address(page)).toContainText("Unsaved by:");
     expect(api.saves).toBe(0);
   });
@@ -617,9 +639,7 @@ test("adds a reviewer inside the field editor without losing the draft", async (
   page,
 }) => {
   await page.getByRole("button", { name: "Edit Address", exact: true }).click();
-  const dialog = page.locator("dialog.edit-dialog").filter({
-    has: page.getByRole("heading", { name: "Edit field", exact: true }),
-  });
+  const dialog = page.getByRole("dialog", { name: "Edit field", exact: true });
   await dialog
     .getByLabel("Reviewed value", { exact: true })
     .fill("Draft address");
