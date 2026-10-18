@@ -2,10 +2,18 @@ from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, ForeignKey, 
                         Text, false, func)
 from backend.db.database import Base
 
+#a set of documents digitised together, with its own bundles and page types; the Wilfred Prest Survey is collection 1
+class Collection(Base):
+    __tablename__ = "collections"
+    collection_id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, unique=True)
+
+#ponytail: a new bundle or page type joins collection 1 until there is a way to choose one
 class Bundle(Base):
     __tablename__ = "bundles"
     bundle_id = Column(String, primary_key=True)
     source_pdf = Column(String, nullable=False)
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False, server_default="1")
 
 class Survey(Base):
     __tablename__ = "surveys"
@@ -16,6 +24,7 @@ class Survey(Base):
 class PageType(Base):
     __tablename__ = "page_types"
     name = Column(String, primary_key=True)
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False, server_default="1")
     built_in = Column(Boolean, nullable=False, default=False, server_default=false())
     reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #None: built in
     created_at = Column(DateTime, nullable=True, server_default=func.now()) #UTC

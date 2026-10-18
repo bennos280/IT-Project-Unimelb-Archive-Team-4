@@ -131,3 +131,27 @@ def test_006_adds_the_area_and_region_columns_and_saves_only_the_changed_instruc
     assert not {"area", "region"} & {r[1] for r in rows(db, "PRAGMA table_info(annotations)")} and len(rows(db, versions)) == 6
     database.migrate(url)
     assert len(rows(db, versions)) == 6  # the newest versions already match the files
+
+
+def test_007_puts_every_bundle_and_page_type_in_the_wilfred_prest_survey_collection(url, tmp_path):
+    """The committed db at 006 gets collections on the next start: its bundles and page types (built in or added from the
+    app) all join collection 1, a bundle added later joins it too, and the reviewers' edits stay."""
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "006")
+    assert rows(db, "SELECT name FROM sqlite_master WHERE name = 'collections'") == []
+    with database.make_engine(url).begin() as con:
+        con.exec_driver_sql("INSERT INTO page_types(name) VALUES('ledger')")
+    database.migrate(url)
+    assert rows(db, "SELECT collection_id, name FROM collections") == [(1, "Wilfred Prest Survey")]
+    assert rows(db, "SELECT bundle_id, collection_id FROM bundles") == [("b", 1)]
+    assert rows(db, "SELECT name, collection_id FROM page_types ORDER BY name") == [
+        ("coded", 1), ("ledger", 1), ("main", 1), ("notes", 1), ("other", 1)]
+    assert rows(db, "SELECT edit_text FROM edits") == [("6 Peel St.",)]
+    with database.make_engine(url).begin() as con:
+        con.exec_driver_sql("INSERT INTO bundles(bundle_id, source_pdf) VALUES('c', 'c.pdf')")
+    assert rows(db, "SELECT collection_id FROM bundles WHERE bundle_id = 'c'") == [(1,)]
+    command.downgrade(config, "006")
+    assert rows(db, "SELECT name FROM sqlite_master WHERE name = 'collections'") == []
+    assert "collection_id" not in {r[1] for r in rows(db, "PRAGMA table_info(bundles)")} | {r[1] for r in rows(db, "PRAGMA table_info(page_types)")}
+    assert rows(db, "SELECT edit_text FROM edits") == [("6 Peel St.",)]

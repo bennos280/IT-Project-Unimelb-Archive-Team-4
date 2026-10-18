@@ -126,7 +126,8 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
             "fields": fields_list,
             "flags": page_flags(db, p, fields_list),
         })
-    return {"id":survey_id, "bundleId":survey.bundle_id, "title":"Wilfred Prest Survey", "pages":pages_list}
+    collection = db.get(models.Collection, db.get(models.Bundle, survey.bundle_id).collection_id)
+    return {"id":survey_id, "bundleId":survey.bundle_id, "title":collection.name, "pages":pages_list}
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
 #and black and white (the scan itself if that fails)

@@ -43,6 +43,12 @@ def test_get_survey_success(client, db):
     assert data["pages"][0]["imageUrl"] == "http://testserver/pages/12345_00001/image"
     assert data["pages"][0]["flags"] == []
 
+def test_a_surveys_title_is_its_collections_name(client, db):
+    add_in_order(db, models.Survey(survey_id="12345", bundle_id="6789"))
+    db.get(models.Collection, 1).name = "Shipping manifests"
+    db.commit()
+    assert client.get("/survey/12345").json()["title"] == "Shipping manifests"
+
 #------------------------------------------------- get_reviewers()
 def test_get_reviewers_empty(client):
     response = client.get("/reviewers")
