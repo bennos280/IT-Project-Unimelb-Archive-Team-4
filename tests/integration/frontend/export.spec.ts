@@ -190,7 +190,7 @@ test("dashboard exports the selected bundle ID rather than its display number", 
     });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "123", exact: true }).click();
+  await page.getByRole("link", { name: "123", exact: true }).click();
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(
     page.getByRole("radio", { name: /Export bundle JSON/ }),
@@ -320,7 +320,7 @@ for (const selectedBundle of [false, true]) {
     });
     await page.goto("/");
     if (selectedBundle)
-      await page.getByRole("button", { name: "123", exact: true }).click();
+      await page.getByRole("link", { name: "123", exact: true }).click();
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const warning = page.getByText(
       /This contains fields that are still awaiting review/,

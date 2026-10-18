@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Minus, Maximize, Search } from "lucide-react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { Info, Plus, Minus, Maximize, Search } from "lucide-react";
 import type { SurveyPage } from "./model";
 import { getPageName, isTextPage } from "./model";
 import { getSourceRegion } from "./fieldLocations";
@@ -20,15 +20,32 @@ export default function ImageViewer({
   const stage = useRef<HTMLDivElement>(null);
   const image = useRef<HTMLImageElement>(null);
   const [loaded, setLoaded] = useState(false);
+  // The selection whose note the reviewer dismissed by zooming themselves.
+  const [dismissed, setDismissed] = useState<number | null>(null);
   const selectedField = page.fields.find((f) => f.id === selection?.fieldId);
   const region = useMemo(
     () =>
       selectedField ? getSourceRegion(page.type, selectedField.id) : undefined,
     [page.type, selectedField],
   );
+  // A field with no mapped region shows the whole card and says why nothing is highlighted.
+  const note =
+    selection && selectedField && !region && loaded && !error && !isTextPage(page.type) && selection.token !== dismissed
+      ? selectedField.id.startsWith("annotations.")
+        ? selectedField.location
+          ? `Annotation: ${selectedField.location}`
+          : "Annotations can be anywhere on the card"
+        : "This field has no fixed place on the card"
+      : "";
+  const fitWholeCard = useEffectEvent(() => fitToPage());
   // Zoom first, then centre the selected region after the resized image has rendered.
   useEffect(() => {
-    if (!selection || !region || !loaded || isTextPage(page.type)) return;
+    if (!selection || !selectedField || !loaded || isTextPage(page.type)) return;
+    if (!region) {
+      if (selection.token === dismissed) return;
+      const frame = requestAnimationFrame(fitWholeCard);
+      return () => cancelAnimationFrame(frame);
+    }
     let second = 0;
     const first = requestAnimationFrame(() => {
       setZoom(200);
@@ -50,7 +67,7 @@ export default function ImageViewer({
       cancelAnimationFrame(first);
       cancelAnimationFrame(second);
     };
-  }, [selection, region, loaded, page.type]);
+  }, [selection, selectedField, region, loaded, page.type, dismissed]);
   const viewport = useRef<HTMLDivElement>(null);
   const drag = useRef<{
     x: number;
@@ -58,8 +75,11 @@ export default function ImageViewer({
     left: number;
     top: number;
   } | null>(null);
+  // Zooming by hand hides the current selection's note.
+  const dismiss = () => setDismissed(selection?.token ?? null);
   // Increment zoom within the supported 1–300 percent range.
   const change = (delta: number) => {
+    dismiss();
     setZoom((z) => Math.max(1, Math.min(300, z + delta)));
   };
   // Calculate a scale that fits the full image inside the viewport, accounting for borders and padding.
@@ -92,72 +112,85 @@ export default function ImageViewer({
   }
   return (
     <div className="@container flex min-h-0 flex-1 flex-col">
-      <div
-        className="min-h-[180px] flex-1 cursor-grab touch-none overflow-auto rounded-md border bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing [&:fullscreen]:p-5"
-        ref={viewport}
-        tabIndex={0}
-        aria-label="Survey scan. Use arrow keys to pan and plus or minus to zoom."
-        onKeyDown={(e) => {
-          // Handle keyboard zoom while the viewport has focus.
-          if (e.key === "+" || e.key === "=") change(25);
-          if (e.key === "-") change(-25);
-        }}
-        onPointerDown={(e) => {
-          // Record the pointer and scroll origin so dragging pans the image.
-          if (e.button !== 0) return;
-          const el = e.currentTarget;
-          drag.current = {
-            x: e.clientX,
-            y: e.clientY,
-            left: el.scrollLeft,
-            top: el.scrollTop,
-          };
-          el.setPointerCapture(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          // Apply the drag displacement to the viewport scroll position.
-          if (!drag.current) return;
-          e.currentTarget.scrollLeft =
-            drag.current.left - e.clientX + drag.current.x;
-          e.currentTarget.scrollTop =
-            drag.current.top - e.clientY + drag.current.y;
-        }}
-        onPointerUp={() => (drag.current = null)}
-        onPointerCancel={() => (drag.current = null)}
-      >
-        {error ? (
-          <div className="p-8 text-center text-muted-foreground">
-            The source image could not be loaded. Check its URL in database.
-          </div>
-        ) : (
-          <div
-            className="relative shrink-0 leading-[0]"
-            ref={stage}
-            style={{ width: `${zoom}%` }}
-          >
-            <img
-              ref={image}
-              className="block h-auto w-full max-w-none select-none"
-              src={page.imageUrl}
-              alt={`Original ${getPageName(page.type)} for survey ${page.id}`}
-              draggable={false}
-              onLoad={() => setLoaded(true)}
-              onError={() => setError(true)}
-            />
-            {region && (
-              <div
-                className="pointer-events-none absolute box-border rounded-lg bg-primary/20 ring-1 ring-primary/40"
-                aria-label={`Highlighted source: ${selectedField?.label}`}
-                style={{
-                  left: `${region.x * 100}%`,
-                  top: `${region.y * 100}%`,
-                  width: `${region.width * 100}%`,
-                  height: `${region.height * 100}%`,
-                }}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          role="status"
+          className={
+            note
+              ? "pointer-events-none absolute top-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-background/95 px-3.5 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground shadow-sm"
+              : "sr-only"
+          }
+        >
+          {note && <Info className="size-4" aria-hidden />}
+          {note}
+        </div>
+        <div
+          className="min-h-[180px] flex-1 cursor-grab touch-none overflow-auto rounded-md border bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing [&:fullscreen]:p-5"
+          ref={viewport}
+          tabIndex={0}
+          aria-label="Survey scan. Use arrow keys to pan and plus or minus to zoom."
+          onKeyDown={(e) => {
+            // Handle keyboard zoom while the viewport has focus.
+            if (e.key === "+" || e.key === "=") change(25);
+            if (e.key === "-") change(-25);
+          }}
+          onPointerDown={(e) => {
+            // Record the pointer and scroll origin so dragging pans the image.
+            if (e.button !== 0) return;
+            const el = e.currentTarget;
+            drag.current = {
+              x: e.clientX,
+              y: e.clientY,
+              left: el.scrollLeft,
+              top: el.scrollTop,
+            };
+            el.setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => {
+            // Apply the drag displacement to the viewport scroll position.
+            if (!drag.current) return;
+            e.currentTarget.scrollLeft =
+              drag.current.left - e.clientX + drag.current.x;
+            e.currentTarget.scrollTop =
+              drag.current.top - e.clientY + drag.current.y;
+          }}
+          onPointerUp={() => (drag.current = null)}
+          onPointerCancel={() => (drag.current = null)}
+        >
+          {error ? (
+            <div className="p-8 text-center text-muted-foreground">
+              The source image could not be loaded. Check its URL in database.
+            </div>
+          ) : (
+            <div
+              className="relative shrink-0 leading-[0]"
+              ref={stage}
+              style={{ width: `${zoom}%` }}
+            >
+              <img
+                ref={image}
+                className="block h-auto w-full max-w-none select-none"
+                src={page.imageUrl}
+                alt={`Original ${getPageName(page.type)} for survey ${page.id}`}
+                draggable={false}
+                onLoad={() => setLoaded(true)}
+                onError={() => setError(true)}
               />
-            )}
-          </div>
-        )}
+              {region && (
+                <div
+                  className="pointer-events-none absolute box-border rounded-lg bg-primary/20 ring-1 ring-primary/40"
+                  aria-label={`Highlighted source: ${selectedField?.label}`}
+                  style={{
+                    left: `${region.x * 100}%`,
+                    top: `${region.y * 100}%`,
+                    width: `${region.width * 100}%`,
+                    height: `${region.height * 100}%`,
+                  }}
+                />
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <div className="mt-2.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-lg border p-1.5 @max-[570px]:grid-cols-2">
         <div className="flex items-center gap-2 justify-self-start">
@@ -188,7 +221,10 @@ export default function ImageViewer({
             variant="outline"
             size="sm"
             disabled={!loaded || error}
-            onClick={fitToPage}
+            onClick={() => {
+              dismiss();
+              fitToPage();
+            }}
           >
             <Maximize /> Fit to Page
           </Button>
@@ -197,6 +233,7 @@ export default function ImageViewer({
             size="sm"
             onClick={() => {
               // Reset to the viewer-width baseline and return to the image origin.
+              dismiss();
               setZoom(100);
               viewport.current?.scrollTo(0, 0);
             }}

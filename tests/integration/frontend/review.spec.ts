@@ -298,6 +298,53 @@ test("Clicking Address highlights its scan area", async ({ page }) => {
   await expect(zoomLevel(page)).toHaveText("200%");
 });
 
+// Checks that a field with no mapped scan area shows the whole card and says why.
+test("Clicking an annotation shows the whole card and a note", async ({ page }) => {
+  const withAnnotation = structuredClone(demo);
+  withAnnotation.pages[0].fields.push({
+    id: "annotations.0",
+    label: "Annotation",
+    group: "Annotations",
+    value: "Red star",
+    location: "top-left, right of dwelling number",
+  });
+  await page.route("**/api/survey/**", (route) =>
+    route.fulfill({ json: withAnnotation }),
+  );
+  await page.reload();
+  const fit = page.getByRole("button", { name: "Fit to Page" });
+  await expect(fit).toBeEnabled();
+  await fit.click();
+  const wholeCard = await zoomLevel(page).textContent();
+  const locateAddress = address(page).getByRole("button", {
+    name: "Locate Address: Address in image",
+  });
+  await locateAddress.click();
+  await expect(zoomLevel(page)).toHaveText("200%");
+  const annotation = page.getByRole("row").filter({
+    has: page.getByRole("button", { name: "Edit Annotation", exact: true }),
+  });
+  await expect(annotation).toContainText("top-left, right of dwelling number");
+  await annotation
+    .getByRole("button", { name: "Locate Annotations: Annotation in image" })
+    .click();
+  const note = page
+    .getByRole("status")
+    .filter({ hasText: "Annotation: top-left, right of dwelling number" });
+  await expect(note).toBeVisible();
+  await expect(zoomLevel(page)).toHaveText(wholeCard!);
+  await expect(page.getByLabel(/^Highlighted source/)).toHaveCount(0);
+  // Zooming by hand hides the note; a mapped field still highlights and zooms.
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await expect(note).toHaveCount(0);
+  await locateAddress.click();
+  await expect(page.getByLabel(/^Highlighted source/)).toHaveAttribute(
+    "aria-label",
+    "Highlighted source: Address",
+  );
+  await expect(zoomLevel(page)).toHaveText("200%");
+});
+
 // Checks that applying a review requires a reviewer and cancelling the
 // editor leaves the original value unchanged without saving.
 test("Cancel discards draft text and reviewer is required", async ({

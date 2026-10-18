@@ -6,6 +6,10 @@ const incompleteNotice = (page: Page) =>
   page.getByRole("status").filter({ hasText: /has not (finished processing|been processed yet)/ });
 const filters = (page: Page) => page.getByTestId("progress-filters");
 const bundleRows = (page: Page) => page.locator("tbody").getByRole("row");
+const pageRow = (page: Page, label: string) =>
+  bundleRows(page).filter({
+    has: page.getByRole("link", { name: new RegExp(`^(Review|View|Transcribe) ${label}$`) }),
+  });
 
 test.describe("Progress navigation and layout", () => {
   const survey = {
@@ -148,14 +152,13 @@ test.describe("Progress navigation and layout", () => {
 
       await page.goto("/");
       const bundleRow = bundleRows(page).filter({
-        has: page.getByRole("button", { name: "216417", exact: true }),
+        has: page.getByRole("link", { name: "216417", exact: true }),
       });
       await expect(meter(bundleRow)).toContainText("0 / 3 reviewed · 0%");
-      await page.getByRole("button", { name: "216417", exact: true }).click();
-      const firstRow = bundleRows(page)
-        .filter({ has: page.getByRole("cell", { name: "Pg 1", exact: true }) });
+      await page.getByRole("link", { name: "216417", exact: true }).click();
+      const firstRow = pageRow(page, "Pg 1");
       await expect(firstRow).toContainText("5 need checking");
-      await firstRow.getByRole("link", { name: "Review", exact: true }).click();
+      await firstRow.getByRole("link", { name: "Review Pg 1", exact: true }).click();
       await expect(page.getByRole("heading", { name: "216417/p0 ·" })).toBeVisible();
       await page
         .getByRole("combobox", { name: "Reviewer name", exact: true })
@@ -197,7 +200,7 @@ test.describe("Progress navigation and layout", () => {
           complete ? "2" : "3",
         );
       }
-      await page.getByRole("button", { name: "216417", exact: true }).click();
+      await page.getByRole("link", { name: "216417", exact: true }).click();
       await expect(firstRow.getByRole("cell").nth(3)).toHaveText(
         complete ? "Reviewed" : "Ready to review",
       );
@@ -206,7 +209,7 @@ test.describe("Progress navigation and layout", () => {
       );
       await expect(
         firstRow.getByRole("link", {
-          name: complete ? "View" : "Review",
+          name: complete ? "View Pg 1" : "Review Pg 1",
           exact: true,
         }),
       ).toBeVisible();
@@ -251,24 +254,22 @@ test.describe("Progress navigation and layout", () => {
       .selectOption("Ready to review");
 
     await expect(
-      page.getByRole("button", { name: "216417", exact: true }),
+      page.getByRole("link", { name: "216417", exact: true }),
     ).toBeVisible();
   });
 
   test("opens bundle pages with matching review targets", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "216417", exact: true }).click();
+    await page.getByRole("link", { name: "216417", exact: true }).click();
 
     await expect(
       page.getByRole("heading", { name: "Bundle Number · 216417" }),
     ).toBeVisible();
 
-    const notesRow = bundleRows(page).filter({
-      has: page.getByRole("cell", { name: "Pg 2", exact: true }),
-    });
+    const notesRow = pageRow(page, "Pg 2");
 
     await expect(
-      notesRow.getByRole("link", { name: "Review", exact: true }),
+      notesRow.getByRole("link", { name: "Review Pg 2", exact: true }),
     ).toHaveAttribute("href", "/?survey=216417_1&page=216417%2Fp1");
 
     await page.getByRole("button", { name: "Back to all bundles" }).click();
@@ -291,17 +292,13 @@ test.describe("Progress navigation and layout", () => {
   ]) {
     test(`${label} opens its matching US7 page`, async ({ page }) => {
       await page.goto("/");
-      await page.getByRole("button", { name: "216417", exact: true }).click();
+      await page.getByRole("link", { name: "216417", exact: true }).click();
 
-      const row = bundleRows(page).filter({
-        has: page.getByRole("cell", { name: label, exact: true }),
-      });
+      const row = pageRow(page, label);
 
-      await expect(
-        row.getByRole("link", { name: label, exact: true }),
-      ).toHaveCount(0);
+      await expect(row.getByRole("link")).toHaveCount(1);
 
-      await row.getByRole("link", { name: "Review", exact: true }).click();
+      await row.getByRole("link", { name: `Review ${label}`, exact: true }).click();
 
       await expect(page.getByRole("heading", { name: `${pageId} ·` })).toBeVisible();
       await expect(
@@ -314,7 +311,7 @@ test.describe("Progress navigation and layout", () => {
     test(`page table keeps actions visible at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/");
-      await page.getByRole("button", { name: "216417", exact: true }).click();
+      await page.getByRole("link", { name: "216417", exact: true }).click();
 
       await expect(
         page.getByRole("columnheader", { name: "Flags", exact: true }),
@@ -328,7 +325,7 @@ test.describe("Progress navigation and layout", () => {
         page.getByRole("cell", { name: "5 need checking", exact: true }),
       ).toBeVisible();
 
-      const links = page.getByRole("link", { name: "Review", exact: true });
+      const links = page.getByRole("link", { name: /^Review Pg \d$/ });
       await expect(links).toHaveCount(3);
 
       for (const link of await links.all()) {
@@ -437,7 +434,7 @@ test.describe("Progress and transcription states", () => {
   }
 
   async function openBundle(page: Page) {
-    await page.getByRole("button", { name: "216424", exact: true }).click();
+    await page.getByRole("link", { name: "216424", exact: true }).click();
   }
 
   test("untouched bundle prompts Transcribe and shows no reviewable pages", async ({
@@ -487,7 +484,7 @@ test.describe("Progress and transcription states", () => {
       page.getByRole("cell", { name: "partial-model", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "Review", exact: true }),
+      page.getByRole("link", { name: /^(Review|View|Transcribe) / }),
     ).toHaveCount(0);
   });
 
@@ -539,6 +536,102 @@ test.describe("Progress and transcription states", () => {
     ).toBeDisabled();
   });
 
+  test("bundle, page and status stay in the URL across reload and Back", async ({
+    page,
+  }) => {
+    await mock(page, { loaded: true, count: 11 });
+    await openBundle(page);
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(page).toHaveURL(/\/\?bundle=216424&page=2$/);
+    await page.reload();
+    await expect(page.getByText("Showing 10–11 of 11 pages")).toBeVisible();
+    await page.getByLabel("Status").selectOption("Ready to review");
+    await expect(page).toHaveURL(/\/\?bundle=216424&status=Ready\+to\+review$/);
+    await page.goBack();
+    await expect(page.getByText("Showing 10–11 of 11 pages")).toBeVisible();
+    await page.goBack();
+    await expect(page.getByText("Showing 1–9 of 11 pages")).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/:\d+\/$/);
+    await expect(page.getByRole("link", { name: "216424", exact: true })).toBeVisible();
+  });
+
+  test("clicking a bundle row opens it, but its Transcribe button only opens the dialog", async ({
+    page,
+  }) => {
+    await mock(page);
+    const row = bundleRows(page).filter({
+      has: page.getByRole("link", { name: "216424", exact: true }),
+    });
+    await row.getByRole("button", { name: "Transcribe", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Transcribe scans" })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
+    await expect(page).toHaveURL(/:\d+\/$/);
+    // The row link's overlay covers the Total pages cell, so click its centre with the mouse.
+    const box = await row.getByRole("cell").nth(1).boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await expect(page.getByRole("heading", { name: "Bundle Number · 216424" })).toBeVisible();
+    await expect(page).toHaveURL(/\/\?bundle=216424$/);
+  });
+
+  test("a failed bundle's Retry and error buttons act without opening the bundle", async ({
+    page,
+  }) => {
+    await mock(page, { status: "failed" });
+    const row = bundleRows(page).filter({
+      has: page.getByRole("link", { name: "216424", exact: true }),
+    });
+    await row.getByRole("button", { name: "Retry transcription", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Transcribe scans" })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await row.getByRole("button", { name: "more details here" }).click();
+    await expect(page.getByRole("dialog")).toContainText("Test transcription failure");
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
+    await expect(page).toHaveURL(/:\d+\/$/);
+  });
+
+  test("bundle rows have one keyboard stop, an Actions header, and open natively in a new tab", async ({
+    page,
+  }) => {
+    await page.context().route("**/api/**", (route) => route.abort());
+    await mock(page, { loaded: true });
+    await expect(page.getByRole("columnheader", { name: "Actions", exact: true })).toHaveCount(1);
+    const row = bundleRows(page).filter({
+      has: page.getByRole("link", { name: "216424", exact: true }),
+    });
+    await expect(row.getByRole("link")).toHaveCount(1);
+    await expect(row.getByRole("button")).toHaveCount(0);
+    const link = row.getByRole("link", { name: "216424", exact: true });
+    await expect(link).toHaveAttribute("href", "/?bundle=216424");
+    const opened = page.context().waitForEvent("page");
+    await link.click({ modifiers: ["Control"] });
+    const tab = await opened;
+    expect(new URL(tab.url()).search).toBe("?bundle=216424");
+    await tab.close();
+    await expect(page).toHaveURL(/:\d+\/$/);
+    await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
+    await link.focus();
+    await expect(link).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { name: "Bundle Number · 216424" })).toBeVisible();
+    await expect(page).toHaveURL(/\/\?bundle=216424$/);
+    await expect(page.getByRole("columnheader", { name: "Actions", exact: true })).toHaveCount(1);
+  });
+
+  test("clicking a plain cell in a page row opens that page", async ({ page }) => {
+    await mock(page, { loaded: true });
+    await openBundle(page);
+    const box = await pageRow(page, "Pg 2").getByRole("cell").nth(1).boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await expect(page).toHaveURL(/\/\?survey=s&page=p2/);
+  });
+
   test("failed progress request can be retried", async ({ page }) => {
     await mock(page, { loaded: true });
     let failed = true;
@@ -553,7 +646,7 @@ test.describe("Progress and transcription states", () => {
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(page.getByRole("alert")).toHaveCount(0);
     await expect(
-      page.getByRole("button", { name: "216424", exact: true }),
+      page.getByRole("link", { name: "216424", exact: true }),
     ).toBeVisible();
   });
 
@@ -576,6 +669,33 @@ test.describe("Progress and transcription states", () => {
       page.getByText("1 / 2 reviewed · 50%", { exact: true }),
     ).toBeVisible({ timeout: 10000 });
   });
+  test("polling waits for a slow refresh instead of piling up requests", async ({
+    page,
+  }) => {
+    await page.clock.install();
+    await mock(page, { loaded: true });
+    await expect(page.getByText("0 / 2 reviewed · 0%", { exact: true })).toBeVisible();
+    let calls = 0;
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route("**/api/progress", async (route) => {
+      calls++;
+      await held;
+      await route.fulfill({ json: [{ id: "b", pages: [readyPage(1), readyPage(2)] }] });
+    });
+    await page.clock.runFor(5000);
+    await expect.poll(() => calls).toBe(1);
+    await page.clock.runFor(20000);
+    // A request sent after the timers proves every poll they started has reached the routes.
+    await Promise.all([
+      page.waitForRequest("**/api/sync"),
+      page.evaluate(() => fetch("/api/sync").catch(() => {})),
+    ]);
+    expect(calls).toBe(1);
+    release();
+    await page.clock.runFor(5000);
+    await expect.poll(() => calls).toBe(2);
+  });
 });
 
 test('awaiting transcription page has a Transcribe action targeting its survey page', async ({ page }) => {
@@ -586,10 +706,10 @@ test('awaiting transcription page has a Transcribe action targeting its survey p
     return route.fulfill({status:404,json:{detail:'Unexpected test request'}});
   });
   await page.goto('/');
-  await page.getByRole('button',{name:'b',exact:true}).click();
+  await page.getByRole('link',{name:'b',exact:true}).click();
   const row=bundleRows(page).filter({hasText:'Pg 4'});
-  await expect(row.getByRole('link',{name:'Transcribe',exact:true})).toHaveAttribute('href','/?survey=s1&page=b%2Fp4&action=transcribe');
-  await expect(row.getByRole('link',{name:'Review',exact:true})).toHaveCount(0);
+  await expect(row.getByRole('link',{name:'Transcribe Pg 4',exact:true})).toHaveAttribute('href','/?survey=s1&page=b%2Fp4&action=transcribe');
+  await expect(row.getByRole('link',{name:'Review Pg 4',exact:true})).toHaveCount(0);
 });
 
 test.describe("Pages without a survey", () => {
@@ -633,7 +753,7 @@ test.describe("Pages without a survey", () => {
     });
     await page.goto("/");
     return page.getByRole("row").filter({
-      has: page.getByRole("button", { name: "test-bundle", exact: true }),
+      has: page.getByRole("link", { name: "test-bundle", exact: true }),
     });
   }
 
@@ -641,17 +761,30 @@ test.describe("Pages without a survey", () => {
     const row = await showBundle(page, true);
     await expect(row.locator("td").nth(1)).toHaveText("2");
     await expect(meter(row)).toContainText("1 / 1 reviewed · 100%");
-    await expect(meter(row)).toContainText("1 pages not in a survey");
+    await expect(meter(row)).toContainText("1 page not in a survey");
     const progress = row.getByRole("progressbar");
     await expect(progress).toHaveAttribute("aria-valuenow", "1");
     await expect(progress).toHaveAttribute("aria-valuemax", "1");
+  });
+
+  test("a page without a survey is not clickable but explains itself", async ({ page }) => {
+    const row = await showBundle(page, true);
+    await row.getByRole("link", { name: "test-bundle", exact: true }).click();
+    const unassigned = bundleRows(page).filter({ hasText: "Pg 2" });
+    await expect(unassigned.getByRole("link")).toHaveCount(0);
+    await expect(unassigned).toHaveCSS("cursor", "auto");
+    await expect(unassigned.getByTitle("This page has no survey assignment")).toHaveText("—");
+    const assigned = bundleRows(page).filter({ hasText: "Pg 1" });
+    await expect(assigned.getByRole("link", { name: "View Pg 1", exact: true })).toBeVisible();
+    await expect(assigned).toHaveCSS("cursor", "pointer");
+    await expect(page.getByRole("columnheader", { name: "Actions", exact: true })).toHaveCount(1);
   });
 
   test("a bundle with only unassigned pages has no review percentage", async ({ page }) => {
     const row = await showBundle(page, false);
     await expect(row.locator("td").nth(1)).toHaveText("1");
     await expect(meter(row)).toContainText("No reviewable pages");
-    await expect(meter(row)).toContainText("1 pages not in a survey");
+    await expect(meter(row)).toContainText("1 page not in a survey");
     await expect(meter(row)).not.toContainText("%");
     await expect(row.getByRole("progressbar")).toHaveCount(0);
   });

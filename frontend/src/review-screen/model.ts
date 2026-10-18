@@ -33,6 +33,8 @@ export type Field = {
   label: string;
   group: string;
   value: string | null;
+  // Where the transcription saw a field with no fixed place, such as an annotation.
+  location?: string | null;
 };
 
 // Represents one page of a survey, including its source image,

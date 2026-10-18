@@ -392,17 +392,24 @@ export default function ReviewScreen({
                                     </TableCell>
                                     <TableCell className={cell}>
                                       <div className="flex items-start justify-between gap-1.5">
-                                        <span
-                                          className={cn(
-                                            "min-w-0 whitespace-pre-wrap break-words",
-                                            textPage &&
-                                              "min-h-[260px] text-sm leading-7",
+                                        <div className="min-w-0">
+                                          <span
+                                            className={cn(
+                                              "whitespace-pre-wrap break-words",
+                                              textPage &&
+                                                "min-h-[260px] text-sm leading-7",
+                                            )}
+                                          >
+                                            {(pageReviews[field.id]
+                                              ? pageReviews[field.id].value
+                                              : field.value) || "–"}
+                                          </span>
+                                          {field.location && (
+                                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                              {field.location}
+                                            </p>
                                           )}
-                                        >
-                                          {(pageReviews[field.id]
-                                            ? pageReviews[field.id].value
-                                            : field.value) || "–"}
-                                        </span>
+                                        </div>
                                         <Button
                                           variant="ghost"
                                           size="icon-xs"
