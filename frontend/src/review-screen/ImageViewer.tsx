@@ -25,30 +25,41 @@ export default function ImageViewer({
   const selectedField = page.fields.find((f) => f.id === selection?.fieldId);
   const region = useMemo(
     () =>
-      selectedField ? getSourceRegion(page.type, selectedField.id) : undefined,
+      selectedField
+        ? (selectedField.sourceRegion ??
+          getSourceRegion(page.type, selectedField.id))
+        : undefined,
     [page.type, selectedField],
   );
-  // A field with no mapped region shows the whole card and says why nothing is highlighted.
+  // A field with no mapped region shows the whole card and says why nothing is highlighted;
+  // an annotation shows where the transcription saw it even when its area is highlighted.
+  const isAnnotation = !!selectedField?.id.startsWith("annotations.");
   const note =
-    selection && selectedField && !region && loaded && !error && !isTextPage(page.type) && selection.token !== dismissed
-      ? selectedField.id.startsWith("annotations.")
+    selection && selectedField && loaded && !error && !isTextPage(page.type) && selection.token !== dismissed
+      ? isAnnotation
         ? selectedField.location
           ? `Annotation: ${selectedField.location}`
-          : "Annotations can be anywhere on the card"
-        : "This field has no fixed place on the card"
+          : region
+            ? ""
+            : "Annotations can be anywhere on the card"
+        : region
+          ? ""
+          : "This field has no fixed place on the card"
       : "";
   const fitWholeCard = useEffectEvent(() => fitToPage());
   // Zoom first, then centre the selected region after the resized image has rendered.
   useEffect(() => {
     if (!selection || !selectedField || !loaded || isTextPage(page.type)) return;
+    // Zooming by hand keeps the reviewer's zoom.
+    if (selection.token === dismissed) return;
     if (!region) {
-      if (selection.token === dismissed) return;
       const frame = requestAnimationFrame(fitWholeCard);
       return () => cancelAnimationFrame(frame);
     }
     let second = 0;
     const first = requestAnimationFrame(() => {
-      setZoom(200);
+      // A box wider than 42.5% of the card zooms less so that it fits.
+      setZoom(Math.min(200, Math.max(100, 85 / region.width)));
       second = requestAnimationFrame(() => {
         if (!viewport.current || !stage.current) return;
         const box = stage.current;

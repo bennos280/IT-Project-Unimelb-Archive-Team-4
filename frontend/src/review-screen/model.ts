@@ -35,6 +35,9 @@ export type Field = {
   value: string | null;
   // Where the transcription saw a field with no fixed place, such as an annotation.
   location?: string | null;
+  // The named part of the card an annotation is in, and its label; sourceRegion is that part's box.
+  area?: string | null;
+  areaLabel?: string | null;
 };
 
 // Represents one page of a survey, including its source image,

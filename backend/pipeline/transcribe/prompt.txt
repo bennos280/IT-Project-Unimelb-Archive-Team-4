@@ -2,7 +2,11 @@ Transcribe this card exactly as written. Don't fix spelling, don't convert money
 
 Empty box = null. Can't read it = [?], keeping whatever you can read (35 Br[?]ghton Road). A deliberate strike mark = "/". If one printed option is crossed out, write the one that's left. If the writing was corrected, use the final version.
 
-Loose pencil or red-pencil marks that aren't in a printed box go in annotations as {raw, location}. Don't guess what they mean. The big number at the top is archive_reference. A dwelling number can end in a flat letter (24A, 24B): keep the letter as a letter, not a digit.
+Loose pencil or red-pencil marks that aren't in a printed box go in annotations as {raw, location, area}: area is the name of the part of the card the mark is in, from the list for that page type below (null if none fits, or on a notes page). Don't guess what they mean. The big number at the top is archive_reference. A dwelling number can end in a flat letter (24A, 24B): keep the letter as a letter, not a digit.
+
+Annotation areas, main form: top_left_corner (dwelling number), header (title, archive number), top_right_corner (date, investigator), address_block, dwelling_block (type, storeys, garden), tenure_block (rent, length of residence), right_margin (the codes), left_margin (row labels), residents_table, rooms_block (rooms, bath, WC, wash-house), kitchen_block, bottom_left, bottom_centre, bottom_right.
+
+Annotation areas, coded card: top_left_corner, top_right_corner, left_column (household counts), middle_column (income, occupation, house), right_column (rooms), left_margin, bottom_left, bottom_centre, bottom_right.
 
 Main survey form only: the pencil number in the top-left corner (usually red, sometimes grey) is number_of_dwelling. One entry in residents per column that has Relationship / Age / Earning Status filled in, left to right. Anything in the Died or Living Elsewhere rows goes in other_children. The two stacked codes in the right margin are industry_of_head_code (top) and occupation_of_head_code (bottom).
 

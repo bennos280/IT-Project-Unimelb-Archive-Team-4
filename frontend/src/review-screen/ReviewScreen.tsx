@@ -420,9 +420,11 @@ export default function ReviewScreen({
                                               ? pageReviews[field.id].value
                                               : field.value) || "–"}
                                           </span>
-                                          {field.location && (
+                                          {(field.areaLabel || field.location) && (
                                             <p className="mt-0.5 text-xs text-muted-foreground">
-                                              {field.location}
+                                              {[field.areaLabel, field.location]
+                                                .filter(Boolean)
+                                                .join(" · ")}
                                             </p>
                                           )}
                                         </div>

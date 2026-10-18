@@ -26,9 +26,11 @@ BROKEN = [
     ("main", "[]", "main: must be a JSON object of fields"),
     ("followup", "{}", "followup: needs at least one field"),
     ("main", main_with(number_of_dwelling="DROP"), "main: needs 'number_of_dwelling'"),
-    ("notes", '{"annotations": [{"raw": null, "location": null}]}', "notes: needs 'text'"),
+    ("notes", '{"annotations": [{"raw": null, "location": null, "area": null}]}', "notes: needs 'text'"),
     ("main", main_with(model=None), "main: 'model' is filled in by the pipeline"),
     ("main", main_with(annotations=[{"raw": None}]), "main: 'annotations' must be"),
+    ("main", main_with(annotations=[{"raw": None, "location": None}]), "main: 'annotations' must be"),  # no area
+    ("coded", json.dumps({**json.loads(TEXTS["coded"]), "annotations": [{"raw": None, "location": None}]}), "coded: 'annotations' must be"),
     ("main", main_with(residents={"age": None}), "main: 'residents' must be a list holding one object of null fields"),
     ("main", main_with(other_children={"died": []}), "main: 'other_children' must be"),
     ("main", main_with(**{"kitchen.shared": None}), "main: 'kitchen.shared': names are lower-case"),

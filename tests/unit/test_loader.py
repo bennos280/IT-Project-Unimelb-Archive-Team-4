@@ -116,3 +116,22 @@ def test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other(tmp_path, monk
     loader.dump_into_db(out / "manifest.json")
     db = sqlite3.connect(tmp_path / "test.db")
     assert db.execute("SELECT category FROM pages WHERE page_id = '216412_00003'").fetchone() == ("other",)
+
+
+def test_an_annotation_is_stored_with_its_area_when_the_page_type_has_it(tmp_path, monkeypatch):
+    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+    database.migrate(url)
+    monkeypatch.setattr(database, "engine", database.make_engine(url))
+    out = run_folder(tmp_path)
+    for stem, annotations in (("216412_00001", [{"raw": "R", "location": "right margin", "area": "right_margin"},
+                                                {"raw": "/", "location": "by the kitchen", "area": "middle_column"},  # a coded card's area
+                                                {"raw": "x", "location": "somewhere", "area": None},
+                                                {"raw": "old", "location": "a transcript from before areas"}]),
+                              ("216412_00002", [{"raw": "9", "location": "bottom-left", "area": "bottom_left"}])):
+        path = out / "transcribe" / f"{stem}.json"
+        path.write_text(json.dumps({**json.loads(path.read_text(encoding="utf-8")), "annotations": annotations}), encoding="utf-8")
+    loader.dump_into_db(out / "manifest.json")
+    db = sqlite3.connect(tmp_path / "test.db")
+    assert db.execute("SELECT page_id, annotation_no, text_raw, area FROM annotations ORDER BY page_id, annotation_no").fetchall() == [
+        ("216412_00001", 0, "R", "right_margin"), ("216412_00001", 1, "/", None), ("216412_00001", 2, "x", None),
+        ("216412_00001", 3, "old", None), ("216412_00002", 0, "9", "bottom_left")]

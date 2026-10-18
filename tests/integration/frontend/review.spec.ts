@@ -345,6 +345,105 @@ test("Clicking an annotation shows the whole card and a note", async ({ page }) 
   await expect(zoomLevel(page)).toHaveText("200%");
 });
 
+// Checks that an annotation with an area highlights it, zooms to fit it (between 100% and 200%) and still shows the note.
+test("Clicking an annotation with an area highlights the area and shows the note", async ({ page }) => {
+  const withArea = structuredClone(demo);
+  withArea.pages[0].fields.push({
+    id: "annotations.0",
+    label: "Annotation",
+    group: "Annotations",
+    value: "Red star",
+    location: "right of the kitchen heading",
+    area: "kitchen_block",
+    areaLabel: "Kitchen",
+    sourceRegion: { x: 0.5, y: 0.5, width: 0.5, height: 0.5 },
+  });
+  await page.route("**/api/survey/**", (route) =>
+    route.fulfill({ json: withArea }),
+  );
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Fit to Page" })).toBeEnabled();
+  const annotation = page.getByRole("row").filter({
+    has: page.getByRole("button", { name: "Edit Annotation", exact: true }),
+  });
+  await expect(annotation).toContainText("Kitchen");
+  await expect(annotation).toContainText("right of the kitchen heading");
+  await annotation
+    .getByRole("button", { name: "Locate Annotations: Annotation in image" })
+    .click();
+  await expect(page.getByLabel(/^Highlighted source/)).toHaveAttribute(
+    "aria-label",
+    "Highlighted source: Annotation",
+  );
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: "Annotation: right of the kitchen heading" }),
+  ).toBeVisible();
+  await expect
+    .poll(async () => parseInt((await zoomLevel(page).textContent()) ?? "0"))
+    .toBe(170);
+  // Zooming by hand keeps the new zoom and keeps the highlight.
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await expect(zoomLevel(page)).toHaveText("195%");
+  await page.waitForTimeout(500);
+  await expect(zoomLevel(page)).toHaveText("195%");
+  await expect(page.getByLabel(/^Highlighted source/)).toHaveCount(1);
+});
+
+// Checks that an annotation with its own region (a row of the residents table) highlights that region, not its whole area.
+test("Clicking an annotation with a region highlights the region", async ({ page }) => {
+  const withRegion = structuredClone(demo);
+  withRegion.pages[0].fields.push({
+    id: "annotations.0",
+    label: "Annotation",
+    group: "Annotations",
+    value: "Red tick",
+    location: "residential pref row (red)",
+    area: "residents_table",
+    areaLabel: "Residents table",
+    sourceRegion: { x: 0.25, y: 0.5, width: 0.5, height: 0.125 },
+  });
+  await page.route("**/api/survey/**", (route) =>
+    route.fulfill({ json: withRegion }),
+  );
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Fit to Page" })).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Locate Annotations: Annotation in image" })
+    .click();
+  const highlight = page.getByLabel(/^Highlighted source/);
+  await expect(highlight).toHaveAttribute(
+    "style",
+    /left: 25%; top: 50%; width: 50%; height: 12\.5%/,
+  );
+  await expect
+    .poll(async () => parseInt((await zoomLevel(page).textContent()) ?? "0"))
+    .toBe(170);
+  // The highlight is the band, a small part of the page image.
+  const band = await highlight.boundingBox();
+  const image = await page.getByRole("img", { name: /^Original/ }).boundingBox();
+  expect(band!.width / image!.width).toBeCloseTo(0.5, 1);
+  expect(band!.height / image!.height).toBeCloseTo(0.125, 1);
+});
+
+// Checks that a field's own sourceRegion is used instead of the shared one, and that a wide one zooms less than 200%.
+test("A field's own wide region is highlighted at a lower zoom", async ({ page }) => {
+  const wide = structuredClone(demo);
+  wide.pages[0].fields[1].sourceRegion = { x: 0, y: 0.3, width: 0.9, height: 0.4 };
+  await page.route("**/api/survey/**", (route) => route.fulfill({ json: wide }));
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Fit to Page" })).toBeEnabled();
+  await page
+    .getByRole("button", { name: "Locate Address: Municipality in image" })
+    .click();
+  await expect(page.getByLabel(/^Highlighted source/)).toHaveAttribute(
+    "aria-label",
+    "Highlighted source: Municipality",
+  );
+  await expect(zoomLevel(page)).toHaveText("100%");
+});
+
 // Checks that applying a review requires a reviewer and cancelling the
 // editor leaves the original value unchanged without saving.
 test("Cancel discards draft text and reviewer is required", async ({
