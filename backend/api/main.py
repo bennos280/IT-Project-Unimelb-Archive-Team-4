@@ -9,7 +9,7 @@ from functools import cache
 import json
 import sqlite3
 import threading
-from backend.db import app_settings, database, instructions, loader, models
+from backend.db import app_settings, database, grouping, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
@@ -313,7 +313,7 @@ def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depen
         raise HTTPException(status_code=409, detail="Someone saved a newer version: reload it and make your change again.")
     if kind in current and payload.body.replace("\r\n", "\n") == current[kind].body.replace("\r\n", "\n"):
         raise HTTPException(status_code=400, detail="Nothing changed.")
-    if found := instructions.problems(kind, payload.body, {k: v.body for k, v in current.items()}):
+    if found := instructions.problems(kind, payload.body, {k: v.body for k, v in current.items()}, grouping.required_fields(db)):
         raise HTTPException(status_code=400, detail=found)
     version = models.InstructionVersion(kind=kind, body=payload.body, sha256=instructions.sha256(payload.body),
                                         reviewer_id=reviewer.reviewer_id, note=payload.note)

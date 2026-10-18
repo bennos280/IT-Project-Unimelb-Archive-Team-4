@@ -11,7 +11,7 @@ from filelock import FileLock, Timeout
 from sqlalchemy import func
 
 from backend import scans
-from backend.db import app_settings, database, instructions, loader, models
+from backend.db import app_settings, database, grouping, instructions, loader, models
 from backend.pipeline import run as pipeline
 from backend.common import ROOT, settings
 
@@ -82,7 +82,8 @@ def run_bundle(db, job, progress):
     if active and not (ROOT / active.path).is_file():
         raise SystemExit(f"page sorting model {active.model_id}'s file {active.path} is missing: choose another model, or retrain")
     run = pipeline.Run(pdf, out, progress=progress, texts=instructions.texts(db), #the newest versions, as the job starts
-                       sorting_model=ROOT / active.path if active else None)
+                       sorting_model=ROOT / active.path if active else None,
+                       grouping=grouping.rule(db, 1)) #ponytail: a new bundle joins collection 1 (models.Bundle)
     run.transcription_config = {field.upper(): value for field, value in transcription_choice(db, job).items()}
     pipeline.run_steps(run, pipeline.FULL)
     if not run.pages:

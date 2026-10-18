@@ -9,6 +9,7 @@ from backend.pipeline.transcribe.transcribe import read_texts
 from tests.unit.test_backend_api import add_in_order
 
 TEXTS = read_texts()  # today's prompt.txt and templates
+PREST = {"main": "number_of_dwelling", "coded": "number_of_dwelling"}  # the field Prest's grouping reads, as migration 010 sets it
 
 
 def main_with(**changes):
@@ -26,7 +27,6 @@ BROKEN = [
     ("main", "[]", "main: must be a JSON object of fields"),
     ("followup", "{}", "followup: needs at least one field"),
     ("main", main_with(number_of_dwelling="DROP"), "main: needs 'number_of_dwelling'"),
-    ("notes", '{"annotations": [{"raw": null, "location": null, "area": null}]}', "notes: needs 'text'"),
     ("main", main_with(model=None), "main: 'model' is filled in by the pipeline"),
     ("main", main_with(annotations=[{"raw": None}]), "main: 'annotations' must be"),
     ("main", main_with(annotations=[{"raw": None, "location": None}]), "main: 'annotations' must be"),  # no area
@@ -43,7 +43,7 @@ BROKEN = [
 
 @pytest.mark.parametrize("kind, body, problem", BROKEN, ids=[problem for _, _, problem in BROKEN])
 def test_a_template_that_would_break_the_pipeline_or_the_review_screen_is_refused(kind, body, problem):
-    assert any(found.startswith(problem) for found in instructions.problems(kind, body, TEXTS))
+    assert any(found.startswith(problem) for found in instructions.problems(kind, body, TEXTS, PREST))
 
 
 def test_an_empty_prompt_is_refused():

@@ -11,7 +11,6 @@ from backend.db.loader import META
 PROMPT = "prompt"
 KEY = re.compile(r"[a-z][a-z0-9_]*")  #field ids join keys with "." and labels split them at "_"
 MAX_CHARS = 32_000  #the prompt, template and schema go on one command line; Windows allows 32,767
-REQUIRED = {"main": "number_of_dwelling", "coded": "number_of_dwelling", "notes": "text"}  #grouping and the review screen read these
 SHAPES = {"annotations": [{"raw": None, "location": None, "area": None}],  #the loader stores these as their own tables
           "other_children": {"died": [], "living_elsewhere": []}}
 
@@ -30,8 +29,8 @@ def texts(db):
     return {kind: v.body for kind, v in newest(db).items()} or None
 
 
-#why body can't be saved as kind's newest version; [] if it can
-def problems(kind, body, current):
+#why body can't be saved as kind's newest version; [] if it can. required: page type -> the field grouping reads (grouping.required_fields)
+def problems(kind, body, current, required=None):
     from backend.pipeline.transcribe.transcribe import claude_args, full_prompt
     texts = {**current, kind: body}
     if not texts.get(PROMPT, "").strip():
@@ -46,7 +45,7 @@ def problems(kind, body, current):
         if not isinstance(template, dict):
             found.append(f"{name}: must be a JSON object of fields")
             continue
-        found += [f"{name}: {problem}" for problem in template_problems(name, template)]
+        found += [f"{name}: {problem}" for problem in template_problems(name, template, (required or {}).get(name))]
         prompt = full_prompt(texts[PROMPT], template)
         line = subprocess.list2cmdline(claude_args("x" * 260, prompt, template, "claude-opus-5-5", "medium"))  #a long image path
         if len(line) > MAX_CHARS:
@@ -55,11 +54,11 @@ def problems(kind, body, current):
     return found
 
 
-def template_problems(kind, template):
+def template_problems(kind, template, required=None):
     found = [] if template else ["needs at least one field"]
     found += [f"'{key}' is filled in by the pipeline" for key in META if key in template]
-    if kind in REQUIRED and REQUIRED[kind] not in template:
-        found.append(f"needs '{REQUIRED[kind]}'")
+    if required and required not in template:
+        found.append(f"needs '{required}'")
     for key, value in template.items():
         if key in SHAPES:
             if value != SHAPES[key]:

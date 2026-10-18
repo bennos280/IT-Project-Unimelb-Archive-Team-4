@@ -8,6 +8,7 @@ import re
 import sys
 import tempfile
 import time
+from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -34,6 +35,7 @@ class Run:
     texts: dict[str, str] | None = None                  # the prompt and templates to read with (a job: the db's); None: the files
     transcription_config: dict[str, str] | None = None
     sorting_model: Path | None = None                    # retrained page sorting's weights; None: the shipped model
+    grouping: dict | None = None                         # how pages group into surveys (backend.db.grouping.rule); None: one each
     progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
 
     def flag(self, page: dict, step: str, reason: str) -> None:
@@ -163,6 +165,18 @@ def transcription_config(chosen: dict | None = None) -> dict:
     return {**settings(), **chosen}
 
 
+def grouping_rule() -> dict:
+    """How the command line's bundles group into surveys: collection 1's rule, from the db; a db the app hasn't updated yet
+    has none, so the run exits."""
+    from sqlalchemy.exc import OperationalError
+    from backend.db import database, grouping
+    with database.SessionLocal() as db:
+        try:
+            return grouping.rule(db, 1)  # ponytail: a new bundle joins collection 1 (models.Bundle)
+        except OperationalError:
+            sys.exit("The db has no grouping rule yet: start the app once to update the db, then run this again.")
+
+
 def step_transcribe(run: Run) -> None:
     """Each labelled page -> out/transcribe/<file>.json, READERS at a time, each saved as soon as it is read (paid: only
     with --transcribe). A failed page stops the step once the reads under way are saved."""
@@ -215,29 +229,36 @@ def step_transcribe(run: Run) -> None:
 
 
 def step_group(run: Run) -> None:
-    """Pages -> surveys. A main form starts a survey and the pages after it join it, except coded cards; a main form
-    with no new dwelling number, not straight after a coded card, is a second sheet of the same survey. A flat
-    letter is part of the number (24A is not 24B). A coded card joins the survey before or after it whose main form
-    has its dwelling number, else the only survey anywhere with that number that no neighbouring card matched,
-    else the neighbour no card matched, else the side most matched cards joined."""
+    """Pages -> surveys, by the collection's rule (run.grouping). A page of a type that starts a survey starts one and the
+    pages after it join it, except the types matched by number; one showing no new number, not straight after a matched
+    page, is a second sheet of the same survey. A letter after the number is part of it (24A is not 24B). A matched page
+    joins the survey before or after it whose start page shows its number, else the only survey anywhere with that number
+    that no neighbouring matched page took, else the neighbour none took, else the side most matched pages joined. With no
+    type that starts a survey, each page is one."""
+    rule = run.grouping or {}
+    starts, by_key, key, labels = rule.get("starts", set()), rule.get("matched", set()), rule.get("key"), rule.get("labels", {})
+    if not starts:
+        for page in run.pages:
+            page["survey"] = None if page["label"] == "blank" else Path(page["file"]).stem
+        return
     surveys, cards, last = [], [], None
     for i, page in enumerate(run.pages):
         page["survey"], found = None, set()
-        if page.get("transcript"):
+        if key and page.get("transcript"):
             answer = json.loads((run.out / page["transcript"]).read_text(encoding="utf-8"))
-            text = str(answer.get("number_of_dwelling") or "")
+            text = str(answer.get(key) or "")
             found = {n.lstrip("0") + flat.upper() for n, flat in re.findall(r"(\d+)\s*([A-Za-z]?)(?![A-Za-z])", text)} - {""}
-        if page["label"] == "coded":
+        if page["label"] in by_key:
             cards.append((i, page, found))
-        elif page["label"] == "main" and (not surveys or last == "coded" or not found <= surveys[-1]["main"]):
+        elif page["label"] in starts and (not surveys or not key or last in by_key or not found <= surveys[-1]["main"]):
             surveys.append({"start": i, "pages": [page], "main": set(found), "card": set()})
         elif surveys:
             surveys[-1]["pages"].append(page)
-            if page["label"] == "main":
+            if page["label"] in starts:
                 surveys[-1]["main"] |= found
         if page["label"] != "blank":
             last = page["label"]
-    beside = {}  # card index -> (index of the first survey after it, index of the one neighbour matching it or None)
+    beside = {}  # matched page index -> (index of the first survey after it, index of the one neighbour matching it or None)
     for i, _, found in cards:
         k = sum(s["start"] < i for s in surveys)
         match = [j for j in (k - 1, k) if 0 <= j < len(surveys) and found & surveys[j]["main"]]
@@ -254,17 +275,18 @@ def step_group(run: Run) -> None:
         if j is not None:
             surveys[j]["pages"].append(page)
             surveys[j]["card"] |= found
-    taken = set()
+    words, taken = (key or "").replace("_", " "), set()
     for s in surveys:
-        coded = sum(p["label"] == "coded" for p in s["pages"])
+        counts = Counter(p["label"] for p in s["pages"])
         number = max(sorted(s["main"] & s["card"] or s["card"] or s["main"]), key=len, default="")
         name = f"{run.input.stem}-{number}"
-        problems = [f"{coded} coded cards"] if coded != 1 else []
-        if coded and number and not s["main"] & s["card"]:
-            problems.append("its main form and coded card do not show the same dwelling number")
-        if not number or name in taken:
-            problems.append(f"dwelling number {number} is also used by an earlier survey in this bundle" if number
-                            else "no dwelling number")
+        problems = [f"expected one {labels.get(t, t)}, found {counts[t]}" for t in sorted(by_key) if counts[t] != 1]
+        if any(counts[t] for t in by_key) and number and not s["main"] & s["card"]:
+            problems.append(f"its pages don't agree on '{words}'")
+        if not key:
+            name = Path(s["pages"][0]["file"]).stem
+        elif not number or name in taken:
+            problems.append(f"'{words}' {number} is also used by an earlier survey in this bundle" if number else f"no '{words}'")
             name = Path(s["pages"][0]["file"]).stem
         taken.add(name)
         for p in s["pages"]:
@@ -273,7 +295,8 @@ def step_group(run: Run) -> None:
             run.flag(s["pages"][0], "group", f"survey {name}: " + "; ".join(problems))
     loose = [p for p in run.pages if p["survey"] is None and p["label"] != "blank"]
     if loose:
-        run.flag(loose[0], "group", f"{len(loose)} page(s) before the first main form belong to no survey")
+        first = " or ".join(sorted(labels.get(t, t) for t in starts))
+        run.flag(loose[0], "group", f"{len(loose)} page(s) before the first {first} belong to no survey")
 
 
 def step_validate(run: Run) -> None:
@@ -347,9 +370,10 @@ def main(argv=None) -> int:
         print(f"nothing to do: every input in DATA has completed the requested steps under {output}")
         return 0
     chosen = transcription_config() if opts.transcribe else {}
+    rule = grouping_rule() if opts.transcribe else None
     print(f"{len(inputs)} to process -> {output}" + (f"   ({chosen['PROVIDER']}: {chosen['MODEL']})" if opts.transcribe else ""))
     for path in inputs:
-        run_steps(Run(path.resolve(), output / path.stem), steps)
+        run_steps(Run(path.resolve(), output / path.stem, grouping=rule), steps)
     return 0
 
 

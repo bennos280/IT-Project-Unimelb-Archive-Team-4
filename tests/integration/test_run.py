@@ -33,9 +33,9 @@ def survey(tmp_path, monkeypatch):
         Image.new("RGB", (8, 8), (i, i, i)).save(source / f"page{i}.png")
     config = {"DATA": str(data), "OUTPUT": str(output)}
     monkeypatch.setattr(run, "settings", lambda: config)
-    engine = database.make_engine(f"sqlite:///{(tmp_path / 'choice.db').as_posix()}")
-    models.Base.metadata.create_all(engine)
-    monkeypatch.setattr(database, "SessionLocal", sessionmaker(autoflush=False, bind=engine))
+    url = f"sqlite:///{(tmp_path / 'choice.db').as_posix()}"
+    database.migrate(url)  # as the real db: collection 1 and its grouping rule
+    monkeypatch.setattr(database, "SessionLocal", sessionmaker(autoflush=False, bind=database.make_engine(url)))
     save_choice()
     monkeypatch.setattr(identify, "identify_pages", labels)
 
@@ -295,3 +295,12 @@ def test_a_damaged_manifest_is_logged_before_the_run_starts_again(tmp_path, capl
     assert len(caplog.records) == 1 and "manifest.json can't be read" in caplog.records[0].getMessage()
     assert run.read_manifest(tmp_path / "no run yet") == {}  # no manifest yet: nothing to log
     assert len(caplog.records) == 1
+
+
+def test_the_command_line_exits_on_a_db_the_app_has_not_updated(survey, monkeypatch, tmp_path):
+    """A db before 010 has no grouping rule: the run says to start the app first instead of failing on a missing column."""
+    from alembic import command
+    url = f"sqlite:///{(tmp_path / 'choice.db').as_posix()}"
+    command.downgrade(database.alembic_config(url), "009")
+    with pytest.raises(SystemExit, match="start the app once to update the db"):
+        run.main(["--transcribe"])

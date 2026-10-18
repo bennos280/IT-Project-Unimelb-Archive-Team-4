@@ -7,6 +7,7 @@ class Collection(Base):
     __tablename__ = "collections"
     collection_id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
+    record_key = Column(String, nullable=True) #the field holding a survey's number, which ties its pages together; None: page order only
 
 #ponytail: a new bundle or page type joins collection 1 until there is a way to choose one
 class Bundle(Base):
@@ -31,6 +32,9 @@ class PageType(Base):
     label = Column(String, nullable=False, default=lambda ctx: ctx.get_current_parameters()["name"]) #the name if not given
     #its collection's Unknown type: a page sorting couldn't place waits here, unread and flagged, for a reviewer to pick its type
     unknown = Column(Boolean, nullable=False, default=False, server_default=false())
+    starts_record = Column(Boolean, nullable=False, default=False, server_default=false()) #a page of this type starts a survey
+    #a page of this type joins the survey whose number it shows, not just the one it follows
+    matched_by_key = Column(Boolean, nullable=False, default=False, server_default=false())
     built_in = Column(Boolean, nullable=False, default=False, server_default=false())
     reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #None: built in
     created_at = Column(DateTime, nullable=True, server_default=func.now()) #UTC

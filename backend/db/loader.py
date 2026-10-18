@@ -39,7 +39,9 @@ def dump_into_db(manifest_path):
                 raise ValueError(f"Bundle {bundle_id}'s collection has no Unknown page type to store {p['file']} as.")
             insert_page(Path(p["file"]).stem, page, stored_path(p["path"]), category,
                         p.get("survey"), bundle_id, con, transcripts.get(p["file"], {}).get("request") if page else None)
-        insert_flags(run_folder / "review.json", con)
+        key = con.exec_driver_sql("SELECT record_key FROM collections WHERE collection_id ="
+                                  " (SELECT collection_id FROM bundles WHERE bundle_id = ?)", (bundle_id,)).scalar()
+        insert_flags(run_folder / "review.json", con, key)
         insert_check_flags(run_folder / "validation" / "output_flagged.json", con)
 
 
@@ -109,8 +111,8 @@ def decode(title, raw):
                 meaning = text
     return meaning
 
-#grouping problems become flags, on the page's dwelling number if it has one
-def insert_flags(review_p, con):
+#grouping problems become flags, on the page's survey number (the collection's key field) if it has one
+def insert_flags(review_p, con, key):
     if not review_p.is_file():
         return
     for entry in json.loads(review_p.read_text(encoding="utf-8")):
@@ -118,7 +120,7 @@ def insert_flags(review_p, con):
             continue
         page_id = Path(entry["file"]).stem
         field = con.exec_driver_sql("""SELECT field_title FROM fields WHERE page_id = ?
-            ORDER BY field_title != 'number_of_dwelling', rowid LIMIT 1""", (page_id,)).fetchone()
+            ORDER BY field_title IS NOT ?, rowid LIMIT 1""", (page_id, key)).fetchone()
         if field is not None: #a blank page isn't in the db
             con.exec_driver_sql("""INSERT INTO flags(page_id, field_title, kind, reason)
                 VALUES(?, ?, 'inconsistency', ?)""", (page_id, field[0], "Grouping: " + entry["reason"].split(": ", 1)[-1]))

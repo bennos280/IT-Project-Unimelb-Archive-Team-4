@@ -190,3 +190,18 @@ def test_009_makes_other_the_unknown_type_and_allows_one_per_collection(url, tmp
     command.downgrade(config, "008")
     assert "unknown" not in {r[1] for r in rows(db, "PRAGMA table_info(page_types)")}
     assert rows(db, "SELECT label FROM page_types WHERE name = 'other'") == [("Other page",)]
+
+
+def test_010_gives_prest_its_grouping_rule(url, tmp_path):
+    """Main pages start a survey, coded cards join the one with their dwelling number."""
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "009")
+    database.migrate(url)
+    assert rows(db, "SELECT collection_id, record_key FROM collections") == [(1, "number_of_dwelling")]
+    assert rows(db, "SELECT name, starts_record, matched_by_key FROM page_types ORDER BY name") == [
+        ("coded", 0, 1), ("main", 1, 0), ("notes", 0, 0), ("other", 0, 0)]
+    assert rows(db, "SELECT edit_text FROM edits") == [("6 Peel St.",)]
+    command.downgrade(config, "009")
+    assert "record_key" not in {r[1] for r in rows(db, "PRAGMA table_info(collections)")}
+    assert not {"starts_record", "matched_by_key"} & {r[1] for r in rows(db, "PRAGMA table_info(page_types)")}
