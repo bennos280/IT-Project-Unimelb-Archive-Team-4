@@ -693,8 +693,13 @@ test.describe("Progress and transcription states", () => {
     ]);
     expect(calls).toBe(1);
     release();
-    await page.clock.runFor(5000);
-    await expect.poll(() => calls).toBe(2);
+    // Polling resumes once the slow refresh finishes; it ends asynchronously, so keep ticking until a poll goes out.
+    await expect
+      .poll(async () => {
+        await page.clock.runFor(5000);
+        return calls;
+      })
+      .toBeGreaterThanOrEqual(2);
   });
 });
 
