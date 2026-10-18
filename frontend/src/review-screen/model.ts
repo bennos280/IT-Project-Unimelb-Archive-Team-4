@@ -118,9 +118,9 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
   return s;
 }
 
-// Notes and other pages hold one free-text field.
-export function isTextPage(type: PageType): boolean {
-  return type === "notes" || type === "other";
+// A page of free writing: its writing is the field "text" (its annotations are fields too).
+export function isTextPage(page: SurveyPage): boolean {
+  return page.fields.some((field) => field.id === "text");
 }
 // The page type's label from the db, else its name.
 export function getPageName(page: SurveyPage): string {

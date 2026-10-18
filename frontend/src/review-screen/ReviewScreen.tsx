@@ -133,7 +133,7 @@ export default function ReviewScreen({
     return statusFilter === "all" || statusFilter === status;
   });
   const groups = [...new Set(visible.map((field) => field.group))];
-  const textPage = !!page && isTextPage(page.type);
+  const textPage = !!page && isTextPage(page);
   // The dashboard names a bundle by its /bundles name; the id is accepted too when that is unavailable.
   const bundleId = survey?.bundleId;
   const [bundleNames, setBundleNames] = useState<{ bundle: string; name: string }[]>([]);
@@ -738,7 +738,7 @@ export default function ReviewScreen({
               <Textarea
                 autoFocus
                 id="field-value"
-                rows={page && isTextPage(page.type) ? 10 : 4}
+                rows={page && isTextPage(page) ? 10 : 4}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
               />

@@ -165,7 +165,7 @@ def test_008_labels_the_page_types_as_the_review_screen_named_them_and_keeps_lab
     command.downgrade(config, "007")
     with database.make_engine(url).begin() as con:
         con.exec_driver_sql("INSERT INTO page_types(name) VALUES('ledger')")
-    database.migrate(url)
+    command.upgrade(config, "008")
     assert rows(db, "SELECT name, label FROM page_types ORDER BY name") == [
         ("coded", "Coded page"), ("ledger", "ledger"), ("main", "Main page"), ("notes", "Notes page"), ("other", "Other page")]
     with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
@@ -173,3 +173,20 @@ def test_008_labels_the_page_types_as_the_review_screen_named_them_and_keeps_lab
     assert rows(db, "SELECT edit_text FROM edits") == [("6 Peel St.",)]
     command.downgrade(config, "007")
     assert "label" not in {r[1] for r in rows(db, "PRAGMA table_info(page_types)")}
+
+
+def test_009_makes_other_the_unknown_type_and_allows_one_per_collection(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "008")
+    with database.make_engine(url).begin() as con:
+        con.exec_driver_sql("INSERT INTO page_types(name, label) VALUES('ledger', 'Ledger')")
+    database.migrate(url)
+    assert rows(db, "SELECT name, label, unknown FROM page_types ORDER BY name") == [
+        ("coded", "Coded page", 0), ("ledger", "Ledger", 0), ("main", "Main page", 0), ("notes", "Notes page", 0), ("other", "Unknown", 1)]
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        sqlite3.connect(db).execute("UPDATE page_types SET unknown = 1 WHERE name = 'ledger'")
+    assert rows(db, "SELECT edit_text FROM edits") == [("6 Peel St.",)]
+    command.downgrade(config, "008")
+    assert "unknown" not in {r[1] for r in rows(db, "PRAGMA table_info(page_types)")}
+    assert rows(db, "SELECT label FROM page_types WHERE name = 'other'") == [("Other page",)]

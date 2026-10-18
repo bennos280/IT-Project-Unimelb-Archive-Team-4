@@ -97,14 +97,14 @@ def page_fields(db, p):
                             **({"areaLabel": areas.label(p.category, a.area), "sourceRegion": box} if box else {})})
     return fields_list
 
-#what to check on a page: stored flags, unreadable ([?]) text, and an other page
+#what to check on a page: stored flags, unreadable ([?]) text, and a page of its collection's Unknown type
 def page_flags(db, p, fields_list):
     flags = [{"id": f"flag-{fl.flag_id}", "fieldId": fl.field_title, "kind": fl.kind, "reason": fl.reason}
              for fl in db.query(models.Flag).filter(models.Flag.page_id == p.page_id).order_by(models.Flag.flag_id)]
     flags += [{"id": f"unreadable-{f['id']}", "fieldId": f["id"], "kind": "uncertain",
                "reason": "The model couldn't read part of this ([?]): compare it with the scan."}
               for f in fields_list if "[?]" in (f["value"] or "")]
-    if p.category == loader.OTHER_CAT and any(f["id"] == "text" for f in fields_list):
+    if db.get(models.PageType, p.category).unknown and any(f["id"] == "text" for f in fields_list):
         flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain", "reason": OTHER_PAGE})
     return flags
 
@@ -117,11 +117,11 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
 
     pages_list = []
     for p in db.query(models.Page).filter(models.Page.survey_id == survey_id).order_by(models.Page.page_id):
-        fields_list = page_fields(db, p)
+        fields_list, page_type = page_fields(db, p), db.get(models.PageType, p.category)
         pages_list.append({
             "id": p.page_id,
             "type": p.category,
-            "typeLabel": db.get(models.PageType, p.category).label,
+            "typeLabel": page_type.label,
             "needsTranscription": p.needs_transcription,
             "imageUrl": str(request.url_for("page_image", page_id=p.page_id)),
             "fields": fields_list,
@@ -298,12 +298,13 @@ def get_instruction_versions(kind: str, db: Session = Depends(get_db)):
     names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
     return [version_json(v, names) for v in versions]
 
-#saves a new version of the prompt or of a page type's template (other has none), used from the next job on; checked first
+#saves a new version of the prompt or of a page type's template (an Unknown type has none), used from the next job on; checked first
 @app.post("/instructions/{kind}", status_code=201)
 def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depends(get_db)):
     write_lock(db)
     current = instructions.newest(db)
-    if kind != instructions.PROMPT and (kind == loader.OTHER_CAT or not db.get(models.PageType, kind)):
+    page_type = db.get(models.PageType, kind)
+    if kind != instructions.PROMPT and (not page_type or page_type.unknown):
         raise HTTPException(status_code=404, detail=f"No prompt or page type called {kind}.")
     reviewer = db.get(models.Reviewer, payload.reviewerId)
     if reviewer is None:
@@ -373,7 +374,8 @@ def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depend
     page = db.get(models.Page, page_id)
     if page is None:
         raise HTTPException(status_code=404, detail="Page not found.")
-    if not db.get(models.PageType, payload.pageType):
+    new_type = db.get(models.PageType, payload.pageType)
+    if not new_type:
         raise HTTPException(status_code=400, detail=f"No page type called {payload.pageType}.")
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
@@ -383,10 +385,10 @@ def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depend
         raise HTTPException(status_code=409, detail="This page has saved reviews, which reading it again would lose.")
     if db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.status.in_(("waiting", "running"))).first():
         raise HTTPException(status_code=409, detail="This page is already waiting to be read again.")
-    if payload.pageType == loader.OTHER_CAT:
+    if new_type.unknown:
         loader.clear_content(page_id, db.connection())
-        loader.insert_content(page_id, None, loader.OTHER_CAT, db.connection())
-        page.category, page.revision_no = loader.OTHER_CAT, (page.revision_no or 0) + 1
+        loader.insert_content(page_id, None, new_type.name, db.connection())
+        page.category, page.revision_no = new_type.name, (page.revision_no or 0) + 1
         page.provider = page.model = page.effort = page.runtime = page.prompt_version_id = page.template_version_id = None
         db.commit()
         return {"pageType": page.category, "job": None}
@@ -624,13 +626,14 @@ def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
     identified = {Path(page["file"]).stem: page for page in manifest.get("pages", []) if page.get("file")}
     # Published page images are available before identification completes.
     extracted = {path.stem for path in (folder / "pages").glob("*.png")}
+    unknown = {name for (name,) in db.query(models.PageType.name).filter(models.PageType.unknown)}
     result = []
     for page_id in sorted(extracted | identified.keys() | completed.keys()):
         page = completed.get(page_id)
         category = identified.get(page_id, {}).get("label") or (page or {}).get("category") or "unidentified"
         status = ("Transcribed — not grouped" if page else
                   "Not required" if category == "blank" else
-                  "Needs identification" if category in ("unidentified", "review", "other") else
+                  "Needs identification" if category in {"unidentified", "review", *unknown} else
                   "Awaiting transcription")
         result.append({"id": page_id, "category": category, "status": status,
                        "data": page["data"] if page else None})
@@ -788,8 +791,8 @@ def classify_page(page_id: str, payload: PageClassificationRequest, db: Session 
     from backend.db.page_history import snapshot
     snapshot(db, page_id, payload.reviewerId, "change_type")
     page.category = payload.pageType
-    # Other pages have no transcription template.
-    page.needs_transcription = payload.pageType != loader.OTHER_CAT
+    # An Unknown type's pages wait, unread, for a reviewer to pick their type.
+    page.needs_transcription = not db.get(models.PageType, payload.pageType).unknown
     page.revision_no = (page.revision_no or 0) + 1
     page.checked_revision = None
     db.commit()

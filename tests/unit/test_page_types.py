@@ -66,7 +66,7 @@ def test_a_page_types_label_is_what_people_see_and_is_unique_in_its_collection(c
     assert (taken.status_code, taken.json()["detail"]) == (409, "There is already a page type labelled Follow-up visit.")
     assert create("visit", "Main page").status_code == 409  # a built-in type's label
     assert {t["name"]: t["label"] for t in client.get("/page-types").json()} == {
-        "coded": "Coded page", "main": "Main page", "notes": "Notes page", "other": "Other page",
+        "coded": "Coded page", "main": "Main page", "notes": "Notes page", "other": "Unknown",
         "followup": "Follow-up visit", "letter": "letter"}
     assert client.get("/survey/s").json()["pages"][0]["typeLabel"] == "Main page"
 
@@ -98,6 +98,19 @@ def test_a_page_made_other_is_emptied_at_once(client, setup):
     setup.expire_all()
     page = setup.get(models.Page, PAGE)
     assert (page.category, page.revision_no, page.model, fields(setup)) == ("other", 1, None, {"text": None})
+
+
+def test_the_unknown_setting_decides_not_the_name_other(client, setup):
+    """Made the collection's Unknown type, any page type is emptied at once, can't have a template and is flagged for a
+    check; other, no longer Unknown, is read like any type."""
+    setup.get(models.PageType, "other").unknown = False
+    setup.add(models.PageType(name="unsorted", label="Unsorted", unknown=True))
+    setup.commit()
+    assert client.post("/instructions/unsorted", json={"body": FOLLOWUP, "basedOn": None, "reviewerId": 1}).status_code == 404
+    assert change(client, "other").json()["detail"] == "Give other a template first."
+    assert change(client, "unsorted").json() == {"pageType": "unsorted", "job": None}
+    page = client.get("/survey/s").json()["pages"][0]
+    assert (page["type"], page["typeLabel"], [f["fieldId"] for f in page["flags"]]) == ("unsorted", "Unsorted", ["text"])
 
 
 def test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown(client, setup):

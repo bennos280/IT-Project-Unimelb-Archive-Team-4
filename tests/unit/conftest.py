@@ -14,10 +14,11 @@ def sessions(tmp_path):
     committed."""
     engine = make_engine(f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
     models.Base.metadata.create_all(engine)
-    with engine.begin() as con:  #as migrations 001, 007 and 008 add them
+    with engine.begin() as con:  #as migrations 001 and 007-009 add them
         con.execute(models.Collection.__table__.insert(), [{"collection_id": 1, "name": "Wilfred Prest Survey"}])
-        con.execute(models.PageType.__table__.insert(), [{"name": name, "label": label, "built_in": True} for name, label in (
-            ("main", "Main page"), ("notes", "Notes page"), ("coded", "Coded page"), ("other", "Other page"))])
+        con.execute(models.PageType.__table__.insert(), [
+            {"name": name, "label": label, "built_in": True, "unknown": name == "other"}
+            for name, label in (("main", "Main page"), ("notes", "Notes page"), ("coded", "Coded page"), ("other", "Unknown"))])
     yield sessionmaker(autoflush=False, bind=engine)
     engine.dispose()
 

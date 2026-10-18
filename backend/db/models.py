@@ -1,5 +1,5 @@
-from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, ForeignKey, ForeignKeyConstraint, Integer, Numeric, String,
-                        Text, UniqueConstraint, false, func)
+from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric,
+                        String, Text, UniqueConstraint, false, func, text)
 from backend.db.database import Base
 
 #a set of documents digitised together, with its own bundles and page types; the Wilfred Prest Survey is collection 1
@@ -24,10 +24,13 @@ class Survey(Base):
 #name: the id that pages, jobs and templates use, unique across collections; label: what people see, unique within a collection
 class PageType(Base):
     __tablename__ = "page_types"
-    __table_args__ = (UniqueConstraint("collection_id", "label"),)
+    __table_args__ = (UniqueConstraint("collection_id", "label"),
+                      Index("uq_page_types_unknown", "collection_id", unique=True, sqlite_where=text("unknown"))) #one per collection
     name = Column(String, primary_key=True)
     collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False, server_default="1")
     label = Column(String, nullable=False, default=lambda ctx: ctx.get_current_parameters()["name"]) #the name if not given
+    #its collection's Unknown type: a page sorting couldn't place waits here, unread and flagged, for a reviewer to pick its type
+    unknown = Column(Boolean, nullable=False, default=False, server_default=false())
     built_in = Column(Boolean, nullable=False, default=False, server_default=false())
     reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #None: built in
     created_at = Column(DateTime, nullable=True, server_default=func.now()) #UTC

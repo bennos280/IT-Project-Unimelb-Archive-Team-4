@@ -8,7 +8,6 @@ from backend.common import ROOT, settings
 from backend.pipeline.transcribe import areas
 
 CODED_DICT = Path(__file__).parent / "data_dict.json"
-OTHER_CAT = "other" #a page identify wasn't sure about
 META = ("provider", "model", "effort", "seconds") #how a page was read
 
 #a run's pages into the db, all or nothing
@@ -26,13 +25,18 @@ def dump_into_db(manifest_path):
                                    (bundle_id, stored_path(data["input"]))).rowcount:
             print(f"{bundle_id} is already in the database.")
             return
-        page_types = {name for (name,) in con.exec_driver_sql("SELECT name FROM page_types")}
+        #the bundle's collection's page types; a page sorting couldn't place, or not read, is its Unknown type
+        types = con.exec_driver_sql("SELECT name, unknown FROM page_types WHERE collection_id ="
+                                    " (SELECT collection_id FROM bundles WHERE bundle_id = ?)", (bundle_id,)).fetchall()
+        page_types, unknown = {name for name, _ in types}, next((name for name, is_unknown in types if is_unknown), None)
         for p in data["pages"]:
             if p.get("path") is None or p.get("label") in (None, "blank"):
                 continue
             #a manifest written on Windows uses \
             page = run_folder / p["transcript"].replace("\\", "/") if p.get("transcript") else None
-            category = p["label"] if page and p["label"] in page_types else OTHER_CAT
+            category = p["label"] if page and p["label"] in page_types else unknown
+            if category is None:
+                raise ValueError(f"Bundle {bundle_id}'s collection has no Unknown page type to store {p['file']} as.")
             insert_page(Path(p["file"]).stem, page, stored_path(p["path"]), category,
                         p.get("survey"), bundle_id, con, transcripts.get(p["file"], {}).get("request") if page else None)
         insert_flags(run_folder / "review.json", con)
