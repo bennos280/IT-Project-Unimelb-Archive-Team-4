@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 
+import AppHeader from "@/components/AppHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -94,17 +95,10 @@ export default function ImportScreen() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="flex items-center justify-between gap-4 border-b px-6 py-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Wilfred Prest Survey</h1>
-        <Button asChild variant="outline">
-          <a href="/">
-            <ArrowLeft /> Back to all bundles
-          </a>
-        </Button>
-      </header>
+      <AppHeader crumbs={[{ label: "All bundles", href: "/" }, { label: "Import" }]} />
       <main className="mx-auto max-w-6xl space-y-4 p-6">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Import survey bundles</h2>
+          <h1 className="text-2xl font-semibold tracking-tight">Import survey bundles</h1>
           <p className="text-sm text-muted-foreground">
             Upload your survey files and enter a bundle number for each file.
             A PDF is a whole bundle. For page images, give every page of a bundle
@@ -155,9 +149,9 @@ export default function ImportScreen() {
             <AlertDescription>{message}</AlertDescription>
           </Alert>
         )}
-        <h3 aria-live="polite" className="pt-2 text-lg font-semibold tracking-tight">
+        <h2 aria-live="polite" className="pt-2 text-lg font-semibold tracking-tight">
           Selected files ({files.length})
-        </h3>
+        </h2>
         {files.length === 0 ? (
           <p className="text-sm text-muted-foreground">No files selected.</p>
         ) : (
