@@ -181,6 +181,7 @@ for (const changeType of [true, false]) {
             {
               id: "b/p4",
               type: category,
+              typeLabel: category === "coded" ? "Coded page" : "Main page",
               needsTranscription: needed,
               imageUrl: "/scan.svg",
               fields: [

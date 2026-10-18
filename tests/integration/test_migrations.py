@@ -155,3 +155,21 @@ def test_007_puts_every_bundle_and_page_type_in_the_wilfred_prest_survey_collect
     assert rows(db, "SELECT name FROM sqlite_master WHERE name = 'collections'") == []
     assert "collection_id" not in {r[1] for r in rows(db, "PRAGMA table_info(bundles)")} | {r[1] for r in rows(db, "PRAGMA table_info(page_types)")}
     assert rows(db, "SELECT edit_text FROM edits") == [("6 Peel St.",)]
+
+
+def test_008_labels_the_page_types_as_the_review_screen_named_them_and_keeps_labels_unique_in_a_collection(url, tmp_path):
+    """The built-in types get the review screen's names, one added from the app is labelled with its name, and a second
+    type with a label already used in its collection is refused."""
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "007")
+    with database.make_engine(url).begin() as con:
+        con.exec_driver_sql("INSERT INTO page_types(name) VALUES('ledger')")
+    database.migrate(url)
+    assert rows(db, "SELECT name, label FROM page_types ORDER BY name") == [
+        ("coded", "Coded page"), ("ledger", "ledger"), ("main", "Main page"), ("notes", "Notes page"), ("other", "Other page")]
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        sqlite3.connect(db).execute("INSERT INTO page_types(name, label) VALUES('cargo', 'Main page')")
+    assert rows(db, "SELECT edit_text FROM edits") == [("6 Peel St.",)]
+    command.downgrade(config, "007")
+    assert "label" not in {r[1] for r in rows(db, "PRAGMA table_info(page_types)")}

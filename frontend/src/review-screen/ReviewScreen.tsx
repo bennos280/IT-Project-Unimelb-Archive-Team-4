@@ -192,7 +192,7 @@ export default function ReviewScreen({
                 data-page-id={page.id}
               >
                 <h2 className="min-w-0 flex-1 basis-full text-base font-semibold min-[1150px]:basis-auto">
-                  {page.id} · {getPageName(page.type)}{" "}
+                  {page.id} · {getPageName(page)}{" "}
                 </h2>
                 <Badge variant="outline">
                   {`${
@@ -725,7 +725,7 @@ export default function ReviewScreen({
                 <FlagReason key={flag.id} flag={flag} />
               ))}
             <DialogDescription>
-              {page && getPageName(page.type)} · {editing?.label}{" "}
+              {page && getPageName(page)} · {editing?.label}{" "}
             </DialogDescription>
             <Field>
               <FieldLabel>Extracted value</FieldLabel>

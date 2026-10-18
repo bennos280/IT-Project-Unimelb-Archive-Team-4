@@ -121,6 +121,7 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
         pages_list.append({
             "id": p.page_id,
             "type": p.category,
+            "typeLabel": db.get(models.PageType, p.category).label,
             "needsTranscription": p.needs_transcription,
             "imageUrl": str(request.url_for("page_image", page_id=p.page_id)),
             "fields": fields_list,
@@ -324,6 +325,7 @@ def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depen
 class PageTypeRequest(BaseModel):
     name: str
     reviewerId: int
+    label: str | None = None #what people see; the name if not given
 
 class PageTypeChange(BaseModel):
     pageType: str
@@ -338,23 +340,30 @@ RESERVED = {instructions.PROMPT, "blank", "review"} #the prompt's kind, and what
 @app.get("/page-types")
 def get_page_types(db: Session = Depends(get_db)):
     templates = instructions.newest(db)
-    return [{"name": t.name, "builtIn": t.built_in, "templateVersion": templates[t.name].version_id if t.name in templates else None}
+    return [{"name": t.name, "label": t.label, "builtIn": t.built_in,
+             "templateVersion": templates[t.name].version_id if t.name in templates else None}
             for t in db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)]
 
 #adds a page type; POST /instructions/{name} gives it a template, and only then can pages be read as it
 @app.post("/page-types", status_code=201)
 def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
-    name = payload.name.strip()
+    name, label = payload.name.strip(), (payload.label or payload.name).strip()
     write_lock(db)
     if not instructions.KEY.fullmatch(name) or name in RESERVED:
         raise HTTPException(status_code=400, detail="A page type's name is lower-case letters, digits and _, starting with a letter.")
+    if not label:
+        raise HTTPException(status_code=400, detail="A page type's label can't be empty.")
     if db.get(models.PageType, name):
         raise HTTPException(status_code=409, detail=f"There is already a page type called {name}.")
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
-    db.add(models.PageType(name=name, reviewer_id=payload.reviewerId))
-    db.commit()
-    return {"name": name, "builtIn": False, "templateVersion": None}
+    try:
+        db.add(models.PageType(name=name, label=label, reviewer_id=payload.reviewerId))
+        db.commit()
+    except IntegrityError: #the label is taken in the collection
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
+    return {"name": name, "label": label, "builtIn": False, "templateVersion": None}
 
 #reads a page again as another page type, replacing what was read off it: queued for the worker, or for other done now (an
 #empty page to type into). A page with saved reviews keeps its type, as reading it again would lose them.

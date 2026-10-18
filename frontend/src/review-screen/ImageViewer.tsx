@@ -182,7 +182,7 @@ export default function ImageViewer({
                 ref={image}
                 className="block h-auto w-full max-w-none select-none"
                 src={page.imageUrl}
-                alt={`Original ${getPageName(page.type)} for survey ${page.id}`}
+                alt={`Original ${getPageName(page)} for survey ${page.id}`}
                 draggable={false}
                 onLoad={() => setLoaded(true)}
                 onError={() => setError(true)}

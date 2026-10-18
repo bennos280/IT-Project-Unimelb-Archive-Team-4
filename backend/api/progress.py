@@ -36,6 +36,7 @@ def review_progress(db):
     for b in db.query(models.Bundle).order_by(models.Bundle.bundle_id):
         parent = PurePosixPath(b.source_pdf.replace("\\", "/")).parent.name
         bundles[b.bundle_id] = {"id": b.bundle_id, "name": parent if parent.isdigit() else b.bundle_id, "pages": []}
+    labels = dict(db.query(models.PageType.name, models.PageType.label))
     for p in db.query(models.Page).order_by(models.Page.page_id):
         if p.category == "other":
             flagged[p.page_id].add("text")
@@ -47,7 +48,7 @@ def review_progress(db):
             "Ready to review"
         )
         pages.append({"id": p.page_id, "label": f"Pg {len(pages) + 1}",
-                      "category": {"main": "Main page", "notes": "Notes", "coded": "Coded", "other": "Other"}.get(p.category, p.category),
+                      "category": labels[p.category],
                       "status": status, "model": p.model, "flagCount": len(flagged[p.page_id] - reviewed[p.page_id]),
                       "surveyId": p.survey_id, "reviewPageId": p.page_id})
     return list(bundles.values())

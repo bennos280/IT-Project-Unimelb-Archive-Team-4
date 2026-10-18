@@ -55,6 +55,22 @@ def test_a_new_page_type_needs_a_template_before_pages_are_read_as_it(client, se
     assert change(client, "followup").status_code == 409  # already waiting
 
 
+def test_a_page_types_label_is_what_people_see_and_is_unique_in_its_collection(client, setup):
+    def create(name, label=None):
+        return client.post("/page-types", json={"name": name, "label": label, "reviewerId": 1})
+
+    assert create("followup", "Follow-up visit").json()["label"] == "Follow-up visit"
+    assert create("letter").json()["label"] == "letter"  # the name if not given
+    assert create("visit", " ").status_code == 400
+    taken = create("visit", "Follow-up visit")
+    assert (taken.status_code, taken.json()["detail"]) == (409, "There is already a page type labelled Follow-up visit.")
+    assert create("visit", "Main page").status_code == 409  # a built-in type's label
+    assert {t["name"]: t["label"] for t in client.get("/page-types").json()} == {
+        "coded": "Coded page", "main": "Main page", "notes": "Notes page", "other": "Other page",
+        "followup": "Follow-up visit", "letter": "letter"}
+    assert client.get("/survey/s").json()["pages"][0]["typeLabel"] == "Main page"
+
+
 def test_reading_a_page_again_without_a_choice_uses_the_saved_one_or_is_refused(client, setup):
     client.post("/page-types", json={"name": "followup", "reviewerId": 1})
     client.post("/instructions/followup", json={"body": FOLLOWUP, "basedOn": None, "reviewerId": 1})
