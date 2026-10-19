@@ -15,8 +15,10 @@ It installs everything PrestCribe needs (the first time downloads a few GB), add
 opens the app in your browser. Next time, double-click the icon; close its window to stop it. Run the same line again to
 update: your database, scans and results are kept (in `%LOCALAPPDATA%\PrestCribe`).
 
-Reading pages uses [Claude Code](https://claude.com/claude-code) or the Codex CLI with your own subscription: install one and
-sign in, then choose the model on PrestCribe's Settings page (the gear button).
+Reading pages uses [Claude Code](https://claude.com/claude-code) or the Codex CLI with your own subscription (install one and
+sign in), an API key from Anthropic, OpenAI, Google (Gemini) or OpenRouter, or a model on your own computer through
+[Ollama](https://ollama.com). Add keys and choose the model on PrestCribe's Settings page (the gear button); keys stay on your
+computer, never in a PrestCribe file.
 
 ## Developer setup
 

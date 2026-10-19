@@ -11,6 +11,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { backendRequest, providerNames } from "../progress/backend";
 import type { ModelChoice } from "../progress/ModelControls";
+import ApiKeys, { type ApiKey } from "./ApiKeys";
+
+const hasKey = (k: ApiKey) => !k.needsKey || k.saved || k.fromEnvironment; // Ollama needs none
 import TranscriptionDefaults from "./TranscriptionDefaults";
 
 type Connection = {
@@ -50,11 +53,12 @@ const TEST_NOTE = "Sends one tiny request on your plan.";
 function Checklist({ saved, signedIn }: { saved: ModelChoice | null | undefined; signedIn: Record<string, boolean> | null }) {
   const loaded = saved !== undefined && signedIn !== null;
   const name = saved && (providerNames[saved.provider] ?? saved.provider);
-  const signed = loaded && (saved ? Boolean(signedIn[saved.provider]) : signedIn.claude || signedIn.codex);
+  const signed = loaded && (saved ? Boolean(signedIn[saved.provider]) : Object.values(signedIn).some(Boolean));
   const line = loaded && signed ? saved : null;
   const items = [
     { done: saved !== null, text: "Choose a transcription model", href: "#transcription-defaults" },
-    { done: signed, text: name ? `Sign in to ${name}` : "Sign in to Claude Code or the Codex CLI", href: "#connections" },
+    { done: signed, text: name ? `Sign in to ${name}, or give it a key` : "Sign in to Claude Code or the Codex CLI, or add an API key",
+      href: saved && !["claude", "codex"].includes(saved.provider) ? "#api-keys" : "#connections" },
   ];
   return (
     <>
@@ -118,6 +122,9 @@ export default function SettingsScreen() {
   const [busy, setBusy] = useState(false);
   const [signingOut, setSigningOut] = useState<(typeof providers)[number] | null>(null);
   const [saved, setSaved] = useState<ModelChoice | null | undefined>(undefined); // the saved transcription choice; undefined until loaded
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [keysVersion, setKeysVersion] = useState(0); // a key saved or removed: the model lists load again
+  const keysChanged = useCallback((keys: ApiKey[]) => { setApiKeys(keys); setKeysVersion((n) => n + 1); }, []);
   const [tests, setTests] = useState<Partial<Record<string, TestState>>>({});
   const polling = Boolean(data && (data.claude.login.running || data.codex.login.running));
 
@@ -185,8 +192,9 @@ export default function SettingsScreen() {
   }
 
   // What stops each provider from transcribing, for the warning under the defaults.
-  const notReady: Record<string, string> = Object.fromEntries(
-    data ? providers.filter((p) => badge(data[p.id]).label !== "Ready").map((p) => [p.id, badge(data[p.id]).label]) : []);
+  const notReady: Record<string, string> = Object.fromEntries([
+    ...(data ? providers.filter((p) => badge(data[p.id]).label !== "Ready").map((p) => [p.id, badge(data[p.id]).label]) : []),
+    ...apiKeys.filter((k) => !hasKey(k)).map((k) => [k.provider, "No key"])]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -198,9 +206,10 @@ export default function SettingsScreen() {
               <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
               <p className="text-sm text-muted-foreground">Transcription model and accounts</p>
             </div>
-            <Checklist saved={saved} signedIn={data && { claude: data.claude.signedIn, codex: data.codex.signedIn }} />
+            <Checklist saved={saved} signedIn={data && { claude: data.claude.signedIn, codex: data.codex.signedIn,
+              ...Object.fromEntries(apiKeys.map((k) => [k.provider, hasKey(k)])) }} />
           </div>
-          <TranscriptionDefaults notReady={notReady} onSaved={setSaved} />
+          <TranscriptionDefaults notReady={notReady} onSaved={setSaved} version={keysVersion} />
           <section id="connections" className="space-y-3">
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Accounts</h2>
@@ -320,6 +329,7 @@ export default function SettingsScreen() {
               </div>
             )}
           </section>
+          <ApiKeys onChange={keysChanged} />
           <Folders />
         </main>
       </TooltipProvider>

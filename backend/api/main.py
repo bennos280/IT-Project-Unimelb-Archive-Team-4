@@ -19,7 +19,8 @@ from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
 from datetime import datetime, timezone
 from backend.common import ROOT, find_images, settings
-from backend.pipeline.transcribe import areas
+from backend.pipeline.transcribe import areas, providers
+from backend.pipeline.transcribe.transcribe import ALL_PROVIDERS
 
 from backend.api.uploads import archive_sources, upload_bundle
 from backend.api import connections, transcription_options
@@ -864,7 +865,7 @@ def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depend
     model, provider, effort = chosen["model"], chosen["provider"], chosen["effort"]
     if not model or len(model) > 200 or any(c.isspace() for c in model) or model.startswith("-") or "+" in model:
         raise HTTPException(400, "Select a valid model.")
-    if provider not in ("claude", "codex") or not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
+    if provider not in ALL_PROVIDERS or not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
         raise HTTPException(400, "Select a valid provider and effort.")
     job = models.Job(kind="page", page_id=page_id, page_type=payload.pageType, reviewer_id=payload.reviewerId,
                      **{f"transcription_{field}": value for field, value in chosen.items()})
@@ -940,8 +941,8 @@ def chosen_transcription(db, provider, model, effort):
 def check_transcription(provider, model, effort):
     if not model or len(model) > 200 or any(c.isspace() for c in model) or model.startswith("-") or "+" in model:
         raise HTTPException(status_code=400, detail="Enter a valid model name.")
-    if provider not in ("claude", "codex"):
-        raise HTTPException(status_code=400, detail="Choose Claude or Codex.")
+    if provider not in ALL_PROVIDERS:
+        raise HTTPException(status_code=400, detail="Choose a provider.")
     if not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
         raise HTTPException(status_code=400, detail="Enter a valid effort level.")
 
@@ -1524,7 +1525,7 @@ def transcribe_page(page_id: str, payload: PageTranscriptionRequest, db: Session
         raise HTTPException(400, f"No transcription template is configured for {page.category}. Choose a page type with a template first.")
     if not payload.model.strip() or len(payload.model) > 200 or any(c.isspace() for c in payload.model) or payload.model.startswith("-") or "+" in payload.model:
         raise HTTPException(400, "Enter a valid model name.")
-    if payload.provider not in ("claude", "codex") or not payload.effort or len(payload.effort) > 40 or any(c.isspace() for c in payload.effort) or payload.effort.startswith("-"):
+    if payload.provider not in ALL_PROVIDERS or not payload.effort or len(payload.effort) > 40 or any(c.isspace() for c in payload.effort) or payload.effort.startswith("-"):
         raise HTTPException(400, "Enter a valid provider and effort.")
     job = models.Job(kind="page", page_id=page_id, page_type=page.category, reviewer_id=payload.reviewerId,
                      base_revision=page.revision_no or 0, transcription_model=payload.model,
@@ -1606,3 +1607,26 @@ async def open_state(request: Request, db: Session = Depends(get_db)):
         found.close()
     database.migrate(f"sqlite:///{db.get_bind().url.database}")
     return {"opened": True}
+
+
+#--API KEYS--# for transcribing through an AI company's API (backend/pipeline/transcribe/providers.py): kept on this computer,
+#never in the database, and never sent back; each provider says whether it has one, and where to get one
+class ApiKey(BaseModel):
+    key: str = ""  #"": forget the saved one
+
+@app.get("/api-keys")
+def get_api_keys():
+    saved = providers.saved_keys()
+    return [{"provider": name, "label": p["label"], "keysUrl": p["keys"], "needsKey": p["env"] is not None,
+             "saved": name in saved, "fromEnvironment": name not in saved and bool(p["env"] and os.environ.get(p["env"]))}
+            for name, p in providers.PROVIDERS.items()]
+
+@app.put("/api-keys/{provider}")
+def put_api_key(provider: str, payload: ApiKey):
+    if provider not in providers.PROVIDERS or providers.PROVIDERS[provider]["env"] is None:
+        raise HTTPException(status_code=404, detail="No provider with a key called that.")
+    value = payload.key.strip()
+    if value and (len(value) > 500 or any(c.isspace() for c in value)):
+        raise HTTPException(status_code=400, detail="That doesn't look like a key.")
+    providers.save_key(provider, value)
+    return get_api_keys()

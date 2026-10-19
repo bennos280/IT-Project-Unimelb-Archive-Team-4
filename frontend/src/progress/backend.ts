@@ -12,7 +12,11 @@ export async function backendRequest<T>(path: string, options: RequestInit = {})
   if (response.status === 204) return undefined as T;
   return response.json();
 }
-export const providerNames: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI" };
+// Each transcription provider: the two programs signed in on this computer, then the APIs with a key (providers.py).
+export const providerNames: Record<string, string> = {
+  claude: "Claude Code", codex: "Codex CLI", anthropic: "Claude API", openai: "OpenAI API", gemini: "Gemini API", openrouter: "OpenRouter",
+  ollama: "Ollama (this computer)",
+};
 // The archive's website; a series' page is /nodes/view/<its number>, and an item's /nodes/view/<its name>.
 export const ARCHIVE = "https://archives.library.unimelb.edu.au";
 // What a bundle's processing step is doing, in words for reviewers.

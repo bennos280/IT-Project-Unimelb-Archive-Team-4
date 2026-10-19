@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { providerNames } from "./backend";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -29,7 +30,7 @@ export function ModelFields({data,choice,setChoice,busy,onViewTable}:{data:Model
       <Field>
         <FieldLabel htmlFor={`${id}-provider`}>Provider</FieldLabel>
         <NativeSelect id={`${id}-provider`} className="w-full" value={choice.provider} disabled={busy} onChange={(e) => setChoice({ ...choice, provider: e.target.value, model: "" })}>
-          {!choice.provider && <option value="" disabled>Choose…</option>}<option value="claude">Claude</option><option value="codex">Codex</option>
+          {!choice.provider && <option value="" disabled>Choose…</option>}{Object.entries(providerNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </NativeSelect>
       </Field>
       <Field>
