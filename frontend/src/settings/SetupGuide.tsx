@@ -7,7 +7,6 @@ import { Spinner } from "@/components/ui/spinner";
 import SetupChecklist from "../progress/SetupChecklist";
 import { backendRequest, itemTitle, type ArchiveItem } from "../progress/backend";
 import type { PageType } from "./PageTypesScreen";
-import type { Reviewer } from "./ReviewerField";
 import SamplePanel, { type Labels } from "./SamplePanel";
 
 type Listed = { items: { name: string; archive: ArchiveItem | null }[]; page: number; total: number };
@@ -29,8 +28,6 @@ export default function SetupGuide({ collectionId }: { collectionId: number }) {
   const [attempt, setAttempt] = useState(0);
   const [types, setTypes] = useState<PageType[]>([]);
   const [labels, setLabels] = useState<{ of: string; pages: Labels } | null>(null);
-  const [reviewers, setReviewers] = useState<Reviewer[] | null>(null); // null: loading
-  const [reviewerId, setReviewerId] = useState("");
   const [changes, setChanges] = useState(0); // a page type or template saved: loaded again
   const item = listed?.items[0];
   const name = item?.name;
@@ -62,9 +59,6 @@ export default function SetupGuide({ collectionId }: { collectionId: number }) {
     backendRequest<PageType[]>(`/page-types?collection=${collectionId}`).then((found) => { if (current) setTypes(found); }).catch(() => {});
     return () => { current = false; };
   }, [collectionId, changes]);
-  useEffect(() => {
-    backendRequest<Reviewer[]>("/reviewers").then(setReviewers).catch(() => setReviewers([]));
-  }, []);
   useEffect(() => {
     if (!name) return;
     let current = true;
@@ -169,10 +163,8 @@ export default function SetupGuide({ collectionId }: { collectionId: number }) {
         )}
       </section>
       <div className="space-y-4">
-        {name && pages !== null && reviewers && (
+        {name && pages !== null && (
           <SamplePanel key={name} collectionId={collectionId} item={name} page={page} types={types} labels={said}
-            reviewers={reviewers} reviewerId={reviewerId} onReviewer={setReviewerId}
-            onAddReviewer={(person) => setReviewers((r) => [...(r ?? []).filter((p) => p.id !== person.id), person])}
             onLabels={(found) => setLabels({ of: name, pages: found })} onChanged={() => setChanges((n) => n + 1)} />
         )}
         <SetupChecklist collectionId={collectionId} inSetup sample={name} version={changes} />

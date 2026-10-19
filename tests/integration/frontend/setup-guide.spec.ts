@@ -137,7 +137,6 @@ test("a series not set up opens Setup on its first item, every page on screen be
 test("the page shown is said to be a new page type, named beside it, and that type's fields listed and saved as its template", async ({ page }) => {
   const { state } = await mock(page);
   await page.goto("/?collection=2&view=setup");
-  await panel(page).getByLabel("Saved as").selectOption("Ben");
   await expect(panel(page).getByLabel("Page 1 is a")).toHaveValue("");
   await panel(page).getByLabel("Page 1 is a").selectOption("New page type…");
   await panel(page).getByLabel("New page type").fill("Casualty card");
@@ -194,7 +193,6 @@ test("a template's fields changed beside the scan keep each kept field's descrip
   await strip(page).getByRole("button", { name: "Page 3" }).click(); // another page and back: what's typed stays
   await strip(page).getByRole("button", { name: "Page 1, Letter" }).click();
   await expect(fields.getByLabel("Field 2", { exact: true })).toHaveValue("Place");
-  await panel(page).getByLabel("Saved as").selectOption("Ben");
   await fields.getByRole("button", { name: "Save template" }).click();
   await expect.poll(() => state.sent.length).toBe(1);
   expect(state.sent[0]).toEqual({ "POST /api/instructions/letter": {

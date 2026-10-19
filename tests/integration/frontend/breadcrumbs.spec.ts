@@ -39,7 +39,7 @@ async function mockApi(page: Page, { noItemInfo = false, archive = false, whole 
         ...(noItemInfo ? {} : { item: { name: "216417", archive: archiveItem } }),
       } });
     if (path === "/api/reviews/216417_1") return route.fulfill({ json: { reviews: {}, revisions: {} } });
-    if (path === "/api/reviewers") return route.fulfill({ json: [] });
+    if (path === "/api/reviewers") return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
     if (path === "/api/collections/1") return route.fulfill({ json: COLLECTION });
     if (path === "/api/collections/2") return route.fulfill({ json: DIARIES });
     if (path === "/api/collections") return route.fulfill({ json: [COLLECTION, DIARIES] });

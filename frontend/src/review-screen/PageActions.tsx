@@ -30,7 +30,7 @@ const NO_CHOICE: ModelChoice = {model:'',provider:'',effort:''}; // nothing pref
 
 // Acts on the selected page, using backend checks rather than changing local sample data.
 export default function PageActions({ session, toolbar }: { session: ReturnType<typeof useReviewSession>; toolbar: HTMLDivElement | null }) {
-  const { page, reviewer, reviewers, reviews, saving, setAttempt } = session;
+  const { page, reviewerId, reviews, saving, setAttempt } = session;
   const words = recordWords(session.survey?.recordName);
   const pageId = page?.id;
   const uid = useId();
@@ -50,7 +50,6 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
   const [job, setJob] = useState<Job | null>(null);
   const pendingJob = useRef<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const reviewerId = reviewers.find(person => person.name === reviewer)?.id;
   const dirty = Object.values(reviews).some(fields => Object.values(fields).some(value => !value.savedAt));
   const dirtyRef = useRef(dirty);
   useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
@@ -175,7 +174,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
         </DialogHeader>
         {loading && <p role="status" className="flex items-center gap-2 text-muted-foreground"><Spinner role={undefined} aria-hidden="true" />Loading…</p>}
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-        {(dirty||(!reviewerId && mode!=='transcribe'))&&<Alert role={undefined}><AlertDescription>{dirty?'Save or discard your pending reviews before changing this page.':'Select a reviewer in the review screen first.'}</AlertDescription></Alert>}
+        {dirty&&<Alert role={undefined}><AlertDescription>Save or discard your pending reviews before changing this page.</AlertDescription></Alert>}
         {showModels && modelData ? <ModelTable data={modelData} /> : <>
         {context && (mode==='move'?<FieldGroup className="gap-4">
           <Field>
@@ -198,16 +197,12 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
             <NativeSelect id={`${uid}-type`} className="w-full" value={type} onChange={e=>setType(e.target.value)}>{(context.pageTypes ?? []).map(t=><option key={t.name} value={t.name}>{t.label}</option>)}</NativeSelect>
           </Field>
         </FieldGroup>:<FieldGroup className="gap-4">
-          <Field>
-            <FieldLabel htmlFor={`${uid}-reviewer`}>Reviewer</FieldLabel>
-            <NativeSelect id={`${uid}-reviewer`} aria-label="Reviewer" className="w-full" value={reviewer} onChange={e=>session.setReviewer(e.target.value)}><option value="">Select reviewer</option>{reviewers.map(person=><option key={person.id} value={person.name}>{person.name}</option>)}</NativeSelect>
-          </Field>
           {modelData && <ModelFields data={modelData} choice={choice} setChoice={setChoice} busy={busy} onViewTable={()=>setShowModels(true)} />}
           {context.hasReviews && <Alert role={undefined}><AlertDescription>Successful transcription replaces the current fields and resets their review status. Your previous data and saved reviews will be retained in history.</AlertDescription></Alert>}
         </FieldGroup>)}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={()=>setDialogOpen(false)}>Cancel</Button>
-          <Button disabled={loading||!context||busy||saving||dirty||!reviewerId||running||(mode==='move'?!target:mode==='type'?type===context.category:!modelData||!choice.provider||!choice.model.trim()||!choice.effort.trim())} onClick={()=>void submit()}>{busy?'Saving…':mode==='move'?'Move page':mode==='type'?'Change page type':'Transcribe'}</Button>
+          <Button disabled={loading||!context||busy||saving||dirty||running||(mode==='move'?!target:mode==='type'?type===context.category:!modelData||!choice.provider||!choice.model.trim()||!choice.effort.trim())} onClick={()=>void submit()}>{busy?'Saving…':mode==='move'?'Move page':mode==='type'?'Change page type':'Transcribe'}</Button>
         </DialogFooter>
         </>}
         {showModels && <Button variant="outline" className="justify-self-start" onClick={()=>setShowModels(false)}>Back to transcription</Button>}

@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { backendRequest } from "../progress/backend";
 import {
   Table,
   TableBody,
@@ -240,7 +241,43 @@ export default function ImportScreen() {
             Import files
           </Button>
         </footer>
+        <OpenFile />
       </main>
     </div>
+  );
+}
+
+// A PrestCribe file saved from Export on another computer, opened in place of everything here (what's here is kept as a backup).
+function OpenFile() {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function open() {
+    if (!file || !window.confirm(`Replace everything in this PrestCribe with ${file.name}? What's here now is kept as a backup.`)) return;
+    setBusy(true);
+    setError("");
+    try {
+      await backendRequest("/state", { method: "POST", body: file });
+      location.href = "/";
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not open it.");
+      setBusy(false);
+    }
+  }
+  return (
+    <section aria-labelledby="open-file" className="space-y-3 rounded-lg border p-5">
+      <div>
+        <h2 id="open-file" className="text-lg font-semibold tracking-tight">Open a PrestCribe file</h2>
+        <p className="text-sm text-muted-foreground">
+          Saved from Export on another computer: its series, setup, transcriptions and reviews. It replaces everything here.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input type="file" accept=".prestcribe,.db" aria-label="PrestCribe file" className="max-w-sm"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <Button disabled={busy || !file} onClick={open}>{busy ? "Opening…" : "Open"}</Button>
+      </div>
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    </section>
   );
 }

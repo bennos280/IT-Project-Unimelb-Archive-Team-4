@@ -7,8 +7,8 @@ import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/c
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { me } from "../person";
 import { backendRequest } from "../progress/backend";
-import ReviewerField, { type Reviewer } from "./ReviewerField";
 import { fieldsOf, parseTemplate } from "./rules";
 import {
   cleanCheck, newCheck, ops, sentence, states, unfinished, type Check, type CheckVersion, type FieldChoice, type Op, type State,
@@ -21,14 +21,13 @@ const same = (a: Check[], b: Check[]) => JSON.stringify(a.map(cleanCheck)) === J
 
 // A series' checks across fields: listed in words, added and changed with a builder, switched on and off, saved together as a new
 // version (an older one can be brought back), and run over the series' pages again as a task.
-export default function ChecksSection({ collectionId, types, reviewers, onAddReviewer }: {
-  collectionId: number; types: PageType[]; reviewers: Reviewer[]; onAddReviewer: (person: Reviewer) => void;
+export default function ChecksSection({ collectionId, types }: {
+  collectionId: number; types: PageType[];
 }) {
   const [versions, setVersions] = useState<CheckVersion[] | null>(null); // newest first
   const [choices, setChoices] = useState<FieldChoice[]>([]);
   const [checks, setChecks] = useState<Check[]>([]);
   const [editing, setEditing] = useState<{ check: Check; at: number } | null>(null); // at -1: a new one
-  const [reviewerId, setReviewerId] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,7 +55,7 @@ export default function ChecksSection({ collectionId, types, reviewers, onAddRev
     setError("");
     try {
       await backendRequest(`/collections/${collectionId}/checks`, json("POST", {
-        checks: checks.map(cleanCheck), basedOn: newest?.id ?? null, reviewerId: Number(reviewerId), note: note.trim() || null }));
+        checks: checks.map(cleanCheck), basedOn: newest?.id ?? null, reviewerId: me().id, note: note.trim() || null }));
       setNote("");
       load();
     } catch (e) {
@@ -135,13 +134,12 @@ export default function ChecksSection({ collectionId, types, reviewers, onAddRev
       )}
       {changed && (
         <div className="flex max-w-3xl flex-wrap items-end gap-2">
-          <div className="min-w-56 flex-1"><ReviewerField reviewers={reviewers} value={reviewerId} onChange={setReviewerId} onAddReviewer={onAddReviewer} /></div>
           <Field className="min-w-56 flex-1">
             <FieldLabel htmlFor="checks-note">Note</FieldLabel>
             <Input id="checks-note" placeholder="What changed, e.g. added the rooms check" value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
           <Button variant="outline" disabled={busy} onClick={() => setChecks(newest?.checks ?? [])}>Discard</Button>
-          <Button disabled={busy || !reviewerId} onClick={save}>Save checks</Button>
+          <Button disabled={busy} onClick={save}>Save checks</Button>
         </div>
       )}
       {versions && versions.length > 0 && (

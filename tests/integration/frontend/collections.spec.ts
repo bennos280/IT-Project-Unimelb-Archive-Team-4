@@ -46,7 +46,7 @@ async function mockApi(page: Page, { archiveDown = false, slowNode = 0, fill = {
     if (path === "/api/export/bundles") return route.fulfill({ json: [] });
     if (path === "/api/jobs") return route.fulfill({ json: [] });
     if (path === "/api/page-types") return route.fulfill({ json: [] });
-    if (path === "/api/reviewers") return route.fulfill({ json: [] });
+    if (path === "/api/reviewers") return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
   return calls;

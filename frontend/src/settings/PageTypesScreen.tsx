@@ -11,11 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { me } from "../person";
 import { backendRequest } from "../progress/backend";
 import { isSetUp, type SeriesCounts } from "../progress/setup";
 import ChecksSection from "./ChecksSection";
 import FieldRules from "./FieldRules";
-import ReviewerField, { type Reviewer } from "./ReviewerField";
 import { cleanRules, parseTemplate, sameRules, type Rules } from "./rules";
 import SetupGuide from "./SetupGuide";
 import { describe } from "./shapes";
@@ -55,7 +55,6 @@ export default function PageTypesScreen() {
   }
   const [types, setTypes] = useState<PageType[] | null>(null);
   const [collection, setCollection] = useState<(Collection & SeriesCounts) | null>(null);
-  const [reviewers, setReviewers] = useState<Reviewer[]>([]);
   const [loadError, setLoadError] = useState("");
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<PageType | null>(null);
@@ -64,11 +63,9 @@ export default function PageTypesScreen() {
     Promise.all([
       backendRequest<PageType[]>(`/page-types?collection=${collectionId}`),
       backendRequest<Collection & SeriesCounts>(`/collections/${collectionId}`),
-      backendRequest<Reviewer[]>("/reviewers"),
-    ]).then(([t, c, r]) => {
+    ]).then(([t, c]) => {
       setTypes(t);
       setCollection(c);
-      setReviewers(r);
       setLoadError("");
     }).catch((e) => setLoadError(message(e, "Could not load the page types."))), [collectionId]);
   useEffect(() => {
@@ -78,7 +75,6 @@ export default function PageTypesScreen() {
     window.addEventListener("pageshow", restored);
     return () => window.removeEventListener("pageshow", restored);
   }, [load]);
-  const addReviewer = (person: Reviewer) => setReviewers((r) => [...r.filter((p) => p.id !== person.id), person]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -137,17 +133,17 @@ export default function PageTypesScreen() {
             )}
           </TabsContent>
           <TabsContent value="checks">
-            {types && <ChecksSection collectionId={collectionId} types={types} reviewers={reviewers} onAddReviewer={addReviewer} />}
+            {types && <ChecksSection collectionId={collectionId} types={types} />}
           </TabsContent>
         </Tabs>
         )}
       </main>
       {adding && (
-        <AddDialog collectionId={collectionId} reviewers={reviewers} onAddReviewer={addReviewer} onClose={() => setAdding(false)}
+        <AddDialog collectionId={collectionId} onClose={() => setAdding(false)}
           onAdded={(created) => { setAdding(false); setEditing(created); load(); }} />
       )}
       {editing && (
-        <EditDialog type={editing} reviewers={reviewers} onAddReviewer={addReviewer}
+        <EditDialog type={editing}
           onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
       )}
     </div>
@@ -198,13 +194,12 @@ function Levels({ collection, types }: { collection: Collection; types: PageType
   );
 }
 
-function AddDialog({ collectionId, reviewers, onAddReviewer, onClose, onAdded }: {
-  collectionId: number; reviewers: Reviewer[]; onAddReviewer: (person: Reviewer) => void; onClose: () => void;
+function AddDialog({ collectionId, onClose, onAdded }: {
+  collectionId: number; onClose: () => void;
   onAdded: (created: PageType) => void;
 }) {
   const id = useId();
   const [label, setLabel] = useState("");
-  const [reviewerId, setReviewerId] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -212,7 +207,7 @@ function AddDialog({ collectionId, reviewers, onAddReviewer, onClose, onAdded }:
     setBusy(true);
     setError("");
     try {
-      onAdded(await backendRequest<PageType>("/page-types", json("POST", { label, reviewerId: Number(reviewerId), collectionId })));
+      onAdded(await backendRequest<PageType>("/page-types", json("POST", { label, reviewerId: me().id, collectionId })));
     } catch (e) {
       setError(message(e, "Could not add the page type."));
       setBusy(false);
@@ -231,12 +226,11 @@ function AddDialog({ collectionId, reviewers, onAddReviewer, onClose, onAdded }:
             <FieldLabel htmlFor={id}>Label</FieldLabel>
             <Input id={id} value={label} placeholder="e.g. Follow-up visit" onChange={(e) => setLabel(e.target.value)} />
           </Field>
-          <ReviewerField reviewers={reviewers} value={reviewerId} onChange={setReviewerId} onAddReviewer={onAddReviewer} />
         </FieldGroup>
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button disabled={busy || !label.trim() || !reviewerId} onClick={add}>Add</Button>
+          <Button disabled={busy || !label.trim()} onClick={add}>Add</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -245,15 +239,14 @@ function AddDialog({ collectionId, reviewers, onAddReviewer, onClose, onAdded }:
 
 // A page type's label, its template and its fields' rules (each save of those is a new version; an older one can be brought
 // back).
-function EditDialog({ type, reviewers, onAddReviewer, onClose, onSaved }: {
-  type: PageType; reviewers: Reviewer[]; onAddReviewer: (person: Reviewer) => void; onClose: () => void; onSaved: () => void;
+function EditDialog({ type, onClose, onSaved }: {
+  type: PageType; onClose: () => void; onSaved: () => void;
 }) {
   const id = useId();
   const [label, setLabel] = useState(type.label);
   const [versions, setVersions] = useState<Version[]>([]); // newest first
   const [template, setTemplate] = useState<string | null>(type.templateVersion ? null : ""); // null: loading
   const [rules, setRules] = useState<Rules>({});
-  const [reviewerId, setReviewerId] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const newest = versions[0] ?? null;
@@ -278,7 +271,7 @@ function EditDialog({ type, reviewers, onAddReviewer, onClose, onSaved }: {
       if (settingsChanged) await backendRequest(`/page-types/${type.name}`, json("PATCH", { label }));
       if (templateChanged) {
         await backendRequest(`/instructions/${type.name}`,
-          json("POST", { body: template, rules: cleaned, basedOn: newest?.id ?? null, reviewerId: Number(reviewerId) }));
+          json("POST", { body: template, rules: cleaned, basedOn: newest?.id ?? null, reviewerId: me().id }));
       }
       onSaved();
     } catch (e) {
@@ -356,14 +349,13 @@ function EditDialog({ type, reviewers, onAddReviewer, onClose, onSaved }: {
                   <FieldDescription>Using an older version fills it in above; saving makes it the newest.</FieldDescription>
                 </Field>
               )}
-              {templateChanged && <ReviewerField reviewers={reviewers} value={reviewerId} onChange={setReviewerId} onAddReviewer={onAddReviewer} />}
             </>
           )}
         </FieldGroup>
         {error && <Alert variant="destructive"><AlertDescription className="whitespace-pre-line">{error}</AlertDescription></Alert>}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button disabled={busy || !label.trim() || (!settingsChanged && !templateChanged) || (templateChanged && !reviewerId)} onClick={save}>
+          <Button disabled={busy || !label.trim() || (!settingsChanged && !templateChanged)} onClick={save}>
             Save
           </Button>
         </DialogFooter>

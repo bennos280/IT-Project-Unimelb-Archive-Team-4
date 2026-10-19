@@ -1,10 +1,24 @@
-# Prest survey digitisation (Team 4)
+# PrestCribe
 
-1940s University of Melbourne social survey scans -> data. Each PDF page is labelled
-(main / notes / coded / blank, or **review** when the model isn't sure) and, optionally,
-transcribed to JSON by a vision model. Pages a human must check land in `review.json`.
+Turns scanned records from the University of Melbourne Archives into checked, searchable data: add a series, set it up on one
+sample item, read the rest, then check each record.
 
-## Setup
+## Install (Windows)
+
+Open **PowerShell** (Start menu, type "PowerShell"), paste this line and press Enter:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4/releases/latest/download/install.ps1 | iex"
+```
+
+It installs everything PrestCribe needs (the first time downloads a few GB), adds a **PrestCribe** icon to your desktop and
+opens the app in your browser. Next time, double-click the icon; close its window to stop it. Run the same line again to
+update: your database, scans and results are kept (in `%LOCALAPPDATA%\PrestCribe`).
+
+Reading pages uses [Claude Code](https://claude.com/claude-code) or the Codex CLI with your own subscription: install one and
+sign in, then choose the model on PrestCribe's Settings page (the gear button).
+
+## Developer setup
 
 1. Install **uv once** on your computer. On Windows:
 

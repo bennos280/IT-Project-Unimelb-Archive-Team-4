@@ -13,6 +13,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableOpenArrow, TableRow, TableRowLink } from "@/components/ui/table";
 import { ARCHIVE, backendRequest } from "../progress/backend";
 import { isSetUp } from "../progress/setup";
+import type { Reviewer } from "../review-screen/api";
+import Welcome from "./Welcome";
 
 type Collection = {
   id: number; name: string; archiveSeries: number | null; archiveIdentifier: string | null; archiveTitle: string | null;
@@ -30,8 +32,9 @@ const nodeOf = (text: string) => {
   return found ? Number(found[1]) : null;
 };
 
-// Home: every collection, each a series on the University of Melbourne Archives with its own page types and bundles.
-export default function CollectionsScreen() {
+// Home: every collection, each a series on the University of Melbourne Archives with its own page types and bundles; or, until
+// this browser knows who is working (onChosen), a welcome that asks.
+export default function CollectionsScreen({ onChosen }: { onChosen?: (person: Reviewer) => void }) {
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [creating, setCreating] = useState(false);
@@ -43,6 +46,14 @@ export default function CollectionsScreen() {
   }, []);
   useEffect(load, [load]);
 
+  if (onChosen) {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <AppHeader />
+        <main className="p-6"><Welcome onChosen={onChosen} /></main>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader />

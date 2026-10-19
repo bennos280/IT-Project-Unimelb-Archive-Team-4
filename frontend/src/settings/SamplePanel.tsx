@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { me } from "../person";
 import { backendRequest } from "../progress/backend";
 import type { PageType } from "./PageTypesScreen";
-import ReviewerField, { type Reviewer } from "./ReviewerField";
 import { cleanRules, parseTemplate, type Rules, type Template } from "./rules";
 
 type Version = { id: number; body: string; rules: Rules };
@@ -26,10 +26,9 @@ const keyOf = (name: string) => {
 const nameOf = (key: string) => start(key.replaceAll("_", " "));
 
 // Beside a sample's page on screen, setting its series up from it: what kind of page it is (one of the series' page types, or a
-// new one named here), and that kind's fields to read, its template, as a list. Each is saved as whoever is chosen.
-export default function SamplePanel({ collectionId, item, page, types, labels, reviewers, reviewerId, onReviewer, onAddReviewer, onLabels, onChanged }: {
-  collectionId: number; item: string; page: number; types: PageType[]; labels: Labels; reviewers: Reviewer[]; reviewerId: string;
-  onReviewer: (id: string) => void; onAddReviewer: (person: Reviewer) => void; onLabels: (labels: Labels) => void; onChanged: () => void;
+// new one named here), and that kind's fields to read, its template, as a list.
+export default function SamplePanel({ collectionId, item, page, types, labels, onLabels, onChanged }: {
+  collectionId: number; item: string; page: number; types: PageType[]; labels: Labels; onLabels: (labels: Labels) => void; onChanged: () => void;
 }) {
   const id = useId();
   const [addingTo, setAddingTo] = useState<number | null>(null); // the page a new page type is being named for
@@ -59,7 +58,7 @@ export default function SamplePanel({ collectionId, item, page, types, labels, r
     if (value !== "new") void act(() => say(value || null), "Could not save what the page is.");
   }
   const add = () => act(async () => {
-    const created = await backendRequest<PageType>("/page-types", json("POST", { label, reviewerId: Number(reviewerId), collectionId }));
+    const created = await backendRequest<PageType>("/page-types", json("POST", { label, reviewerId: me().id, collectionId }));
     setAddingTo(null);
     setLabel("");
     onChanged(); // listed even if saying what the page is fails
@@ -68,7 +67,6 @@ export default function SamplePanel({ collectionId, item, page, types, labels, r
 
   return (
     <section aria-label="This page" className="space-y-4 rounded-lg border bg-card p-5">
-      <ReviewerField reviewers={reviewers} value={reviewerId} onChange={onReviewer} onAddReviewer={onAddReviewer} />
       <Field>
         <FieldLabel htmlFor={`${id}-type`}>Page {page} is a</FieldLabel>
         <NativeSelect id={`${id}-type`} className="w-full" value={adding ? "new" : type?.name ?? ""} aria-busy={busy}
@@ -81,11 +79,11 @@ export default function SamplePanel({ collectionId, item, page, types, labels, r
       {adding && (
         <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void add(); }}>
           <Input aria-label="New page type" placeholder="Casualty card" value={label} onChange={(e) => setLabel(e.target.value)} autoFocus />
-          <Button type="submit" disabled={busy || !label.trim() || !reviewerId}>Add</Button>
+          <Button type="submit" disabled={busy || !label.trim()}>Add</Button>
         </form>
       )}
       {error && <Alert variant="destructive"><AlertDescription className="whitespace-pre-line">{error}</AlertDescription></Alert>}
-      {type && !adding && <Fields key={`${type.name}-${type.templateVersion}`} collectionId={collectionId} type={type} reviewerId={reviewerId}
+      {type && !adding && <Fields key={`${type.name}-${type.templateVersion}`} collectionId={collectionId} type={type}
         draft={drafts[`${type.name}-${type.templateVersion}`]}
         onDraft={(rows) => setDrafts((d) => ({ ...d, [`${type.name}-${type.templateVersion}`]: rows }))} onSaved={onChanged} />}
     </section>
@@ -94,8 +92,8 @@ export default function SamplePanel({ collectionId, item, page, types, labels, r
 
 // A page type's fields to read, its template, as a list of names (as edited: draft, kept by the panel across pages): saved as a
 // new version of it, each field kept with its description and rules; one whose fields are grouped is edited in Page types.
-function Fields({ collectionId, type, reviewerId, draft, onDraft, onSaved }: {
-  collectionId: number; type: PageType; reviewerId: string; draft?: Row[]; onDraft: (rows: Row[]) => void; onSaved: () => void;
+function Fields({ collectionId, type, draft, onDraft, onSaved }: {
+  collectionId: number; type: PageType; draft?: Row[]; onDraft: (rows: Row[]) => void; onSaved: () => void;
 }) {
   const [newest, setNewest] = useState<Version | null | undefined>(type.templateVersion ? undefined : null); // undefined: loading
   const [saved, setSaved] = useState<Row[]>([{ name: "" }]);
@@ -133,7 +131,7 @@ function Fields({ collectionId, type, reviewerId, draft, onDraft, onSaved }: {
     try {
       await backendRequest(`/instructions/${type.name}`, json("POST", {
         body: JSON.stringify(template, null, 2), rules: cleanRules(newest?.rules ?? {}, template), basedOn: newest?.id ?? null,
-        reviewerId: Number(reviewerId) }));
+        reviewerId: me().id }));
       onSaved();
     } catch (e) {
       setError(message(e, "Could not save its fields."));
@@ -159,7 +157,7 @@ function Fields({ collectionId, type, reviewerId, draft, onDraft, onSaved }: {
       {error && <Alert variant="destructive"><AlertDescription className="whitespace-pre-line">{error}</AlertDescription></Alert>}
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => setRows([...rows, { name: "" }])}><Plus /> Add field</Button>
-        <Button size="sm" disabled={busy || !keys.length || twice || !changed || !reviewerId} onClick={save}>Save template</Button>
+        <Button size="sm" disabled={busy || !keys.length || twice || !changed} onClick={save}>Save template</Button>
       </div>
       <a className="block text-xs text-muted-foreground underline-offset-4 hover:underline" href={full}>Edit as JSON, or set rules for its fields</a>
     </fieldset>

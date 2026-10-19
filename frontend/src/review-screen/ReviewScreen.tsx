@@ -76,7 +76,6 @@ export default function ReviewScreen({
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
-  const [creatingReviewer, setCreatingReviewer] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selection, setSelection] = useState<{
     pageId: string;
@@ -96,12 +95,6 @@ export default function ReviewScreen({
     pageReviews,
     flagsLeft,
     reviewer,
-    setReviewer,
-    reviewers,
-    newName,
-    setNewName,
-    adding,
-    setAdding,
     editing,
     setEditing,
     draft,
@@ -110,7 +103,6 @@ export default function ReviewScreen({
     saving,
     beginEdit,
     applyEdit,
-    addReviewer,
     reviewAll,
     savePage,
     navigate,
@@ -563,39 +555,9 @@ export default function ReviewScreen({
                 selection={selection?.pageId === page.id ? selection : null}
               />
               <div className="mt-2.5 flex flex-wrap items-end justify-end gap-2">
-                <Field className="w-auto flex-1 md:w-[250px] md:flex-none">
-                  <FieldLabel htmlFor="reviewer-name" className="text-xs">
-                    Reviewer name *
-                  </FieldLabel>
-                  <NativeSelect
-                    id="reviewer-name"
-                    aria-label="Reviewer name"
-                    value={reviewer}
-                    onChange={(e) => {
-                      if (e.target.value === "__add__") {
-                        setAdding(true);
-                      } else setReviewer(e.target.value);
-                    }}
-                  >
-                    <NativeSelectOption value="">
-                      Select reviewer
-                    </NativeSelectOption>
-                    {reviewers.map((person) => (
-                      <NativeSelectOption key={person.id} value={person.name}>
-                        {person.name}
-                      </NativeSelectOption>
-                    ))}
-                    <NativeSelectOption value="__add__">
-                      + Add reviewer…
-                    </NativeSelectOption>
-                  </NativeSelect>
-                </Field>
-                <Button variant="outline" onClick={() => setAdding((a) => !a)}>
-                  Add reviewer
-                </Button>
                 <Button
                   variant="outline"
-                  disabled={saving || !reviewer || !page.fields.length}
+                  disabled={saving || !page.fields.length}
                   onClick={reviewAll}
                 >
                   Mark all fields as reviewed
@@ -603,7 +565,6 @@ export default function ReviewScreen({
                 <Button
                   disabled={
                     saving ||
-                    !reviewer ||
                     !Object.values(pageReviews).some((e) => !e.savedAt)
                   }
                   onClick={savePage}
@@ -611,41 +572,12 @@ export default function ReviewScreen({
                   {saving ? "Saving…" : "Save Page Transcript"}
                 </Button>
               </div>
-              {adding && !editing && (
-                <form
-                  className="mt-2 flex justify-end gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    addReviewer();
-                  }}
-                >
-                  <Input
-                    autoFocus
-                    className="max-w-56 min-w-0"
-                    aria-label="New reviewer name"
-                    placeholder="Enter reviewer name"
-                    maxLength={80}
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                  <Button disabled={!newName.trim()} type="submit">
-                    Add
-                  </Button>
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={() => setAdding(false)}
-                  >
-                    Cancel
-                  </Button>
-                </form>
-              )}
               <p
                 className="mt-1.5 text-right text-xs leading-snug text-muted-foreground"
                 role="status"
               >
                 {message ||
-                  "Save page transcript saves your reviews. Select a reviewer before applying an edit."}
+                  `Save page transcript saves your reviews, as ${reviewer}.`}
               </p>
             </section>
           </div>
@@ -711,7 +643,7 @@ export default function ReviewScreen({
             className="grid gap-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!adding && !creatingReviewer) applyEdit();
+              applyEdit();
             }}
           >
             <DialogHeader>
@@ -746,72 +678,6 @@ export default function ReviewScreen({
                 field&apos;s flags show as checked.
               </FieldDescription>
             </Field>
-            <Field>
-              <FieldLabel htmlFor="edit-reviewer">Reviewer *</FieldLabel>
-              <NativeSelect
-                id="edit-reviewer"
-                value={adding ? "__add__" : reviewer}
-                disabled={creatingReviewer}
-                onChange={(e) => {
-                  if (e.target.value === "__add__") setAdding(true);
-                  else {
-                    setAdding(false);
-                    setReviewer(e.target.value);
-                  }
-                }}
-              >
-                <NativeSelectOption value="">
-                  Select reviewer
-                </NativeSelectOption>
-                {reviewers.map((person) => (
-                  <NativeSelectOption key={person.id} value={person.name}>
-                    {person.name}
-                  </NativeSelectOption>
-                ))}
-                <NativeSelectOption value="__add__">
-                  + Add reviewer…
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-            {adding && (
-              <div className="flex gap-2">
-                <Input
-                  autoFocus
-                  className="min-w-0"
-                  aria-label="New reviewer name"
-                  placeholder="Enter reviewer name"
-                  maxLength={80}
-                  value={newName}
-                  disabled={creatingReviewer}
-                  onChange={(event) => setNewName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.preventDefault();
-                  }}
-                />
-                <Button
-                  type="button"
-                  disabled={creatingReviewer || !newName.trim()}
-                  onClick={async () => {
-                    setCreatingReviewer(true);
-                    try {
-                      await addReviewer();
-                    } finally {
-                      setCreatingReviewer(false);
-                    }
-                  }}
-                >
-                  {creatingReviewer ? "Adding…" : "Add reviewer"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={creatingReviewer}
-                  onClick={() => setAdding(false)}
-                >
-                  Cancel adding
-                </Button>
-              </div>
-            )}
             <p role="status">{message}</p>
             <DialogFooter>
               <Button
@@ -821,10 +687,7 @@ export default function ReviewScreen({
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={!reviewer || adding || creatingReviewer}
-              >
+              <Button type="submit">
                 Apply review
               </Button>
             </DialogFooter>

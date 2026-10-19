@@ -90,7 +90,7 @@ const demo: Survey = {
   ],
 };
 
-// Creates a fresh mock API for each test so reviews and reviewers
+// Creates a fresh mock API for each test so reviews
 // are isolated and API requests never reach the real backend.
 const test = base.extend<{ api: State }>({
   api: async ({ page }, use) => {
@@ -101,7 +101,6 @@ const test = base.extend<{ api: State }>({
       reviews: {},
       revisions: {},
     };
-    const people = [{ id: 1, name: "Test reviewer" }];
     // Serve a predictable image so viewer tests do not depend on demo scan files.
     await page.route("**/test-images/*.jpg", (route) =>
       route.fulfill({
@@ -118,18 +117,7 @@ const test = base.extend<{ api: State }>({
         return state.failLoad
           ? reply({ detail: "Test survey unavailable" }, 500)
           : reply(demo);
-      if (path === "/api/reviewers") {
-        if (request.method() === "POST") {
-          const payload = request.postDataJSON();
-          const person = {
-            id: Math.max(0, ...people.map((person) => person.id)) + 1,
-            name: payload.name,
-          };
-          people.push(person);
-          return reply(person);
-        }
-        return reply(people);
-      }
+      if (path === "/api/reviewers") return reply([{ id: 1, name: "Ben" }]);
       if (path.startsWith("/api/reviews/")) {
         if (request.method() === "POST") {
           if (state.failSave)
@@ -187,7 +175,6 @@ const zoomLevel = (page: Page) =>
 const valueOf = (row: Locator) => row.getByRole("cell").nth(1);
 
 // Opens Address, enters a value, and applies an unsaved review.
-// The caller must select a reviewer first.
 async function edit(page: Page, value: string) {
   await page.getByRole("button", { name: "Edit Address", exact: true }).click();
   await page.getByLabel("Reviewed value", { exact: true }).fill(value);
@@ -462,17 +449,14 @@ test("A field's own wide region is highlighted at a lower zoom", async ({ page }
   await expect(zoomLevel(page)).toHaveText("100%");
 });
 
-// Checks that applying a review requires a reviewer and cancelling the
-// editor leaves the original value unchanged without saving.
-test("Cancel discards draft text and reviewer is required", async ({
+// Checks that cancelling the editor leaves the original value unchanged
+// without saving.
+test("Cancel discards draft text", async ({
   page,
   api,
 }) => {
   const original = await valueOf(address(page)).innerText();
   await page.getByRole("button", { name: "Edit Address", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Apply review" }),
-  ).toBeDisabled();
   await page
     .getByLabel("Reviewed value", { exact: true })
     .fill("Cancelled text");
@@ -490,21 +474,18 @@ test("Apply creates draft; Save persists and reload restores it", async ({
   page,
   api,
 }) => {
-  await page
-    .getByRole("combobox", { name: "Reviewer name", exact: true })
-    .selectOption("Test reviewer");
   await edit(page, "10 Test Street");
-  await expect(address(page)).toContainText("Unsaved by: Test reviewer");
+  await expect(address(page)).toContainText("Unsaved by: Ben");
   expect(api.saves).toBe(0);
   await page
     .getByRole("button", { name: "Save Page Transcript", exact: true })
     .click();
-  await expect(address(page)).toContainText("Reviewed by: Test reviewer");
+  await expect(address(page)).toContainText("Reviewed by: Ben");
   expect(api.reviews[demo.pages[0].id].address.value).toBe("10 Test Street");
   expect(api.revisions[demo.pages[0].id]).toBe(1);
   await page.reload();
   await expect(valueOf(address(page))).toHaveText("10 Test Street");
-  await expect(address(page)).toContainText("Reviewed by: Test reviewer");
+  await expect(address(page)).toContainText("Reviewed by: Ben");
 });
 
 // Checks that a rejected save displays the API error and retains the
@@ -514,9 +495,6 @@ test("Rejected save displays reason and retains unsaved correction", async ({
   api,
 }) => {
   api.failSave = true;
-  await page
-    .getByRole("combobox", { name: "Reviewer name", exact: true })
-    .selectOption("Test reviewer");
   await edit(page, "Keep this draft");
   await page
     .getByRole("button", { name: "Save Page Transcript", exact: true })
@@ -524,7 +502,7 @@ test("Rejected save displays reason and retains unsaved correction", async ({
   await expect(
     page.getByRole("status").filter({ hasText: "Page changed in another tab." }),
   ).toHaveText("Page changed in another tab.");
-  await expect(address(page)).toContainText("Unsaved by: Test reviewer");
+  await expect(address(page)).toContainText("Unsaved by: Ben");
   await expect(valueOf(address(page))).toHaveText("Keep this draft");
   expect(api.saves).toBe(0);
 });
@@ -535,9 +513,6 @@ test("Review all preserves correction and saves all fields", async ({
   page,
   api,
 }) => {
-  await page
-    .getByRole("combobox", { name: "Reviewer name", exact: true })
-    .selectOption("Test reviewer");
   await edit(page, "Preserve this correction");
   await page
     .getByRole("button", {
@@ -582,9 +557,6 @@ test("Review all keeps another reviewer's saved review", async ({
   });
   await expect(municipality).toContainText("Reviewed by: Other reviewer");
   await page
-    .getByRole("combobox", { name: "Reviewer name", exact: true })
-    .selectOption("Test reviewer");
-  await page
     .getByRole("button", {
       name: "Mark all fields as reviewed",
       exact: true,
@@ -610,16 +582,13 @@ test("Try again recovers from a failed survey request", async ({
   await expect(address(page)).toBeVisible();
 });
 
-// Checks that adding a reviewer makes their name the selected reviewer.
-test("Add reviewer makes the new reviewer selectable", async ({ page }) => {
-  await page.getByRole("button", { name: "Add reviewer", exact: true }).click();
-  await page
-    .getByRole("textbox", { name: "New reviewer name" })
-    .fill("New test reviewer");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+// Checks that the status line says who the page is saved as.
+test("The status line names the person working", async ({ page }) => {
   await expect(
-    page.getByRole("combobox", { name: "Reviewer name", exact: true }),
-  ).toHaveValue("New test reviewer");
+    page.getByText("Save page transcript saves your reviews, as Ben.", {
+      exact: true,
+    }),
+  ).toBeVisible();
 });
 
 // Tests pending reviews before page navigation.
@@ -636,10 +605,6 @@ test.describe("Unsaved navigation", () => {
     page,
     api,
   }) => {
-    await page
-      .getByLabel("Reviewer name", { exact: true })
-      .selectOption("Test reviewer");
-
     await edit(page, "Pending address");
     await page.getByLabel("Next page", { exact: true }).click();
 
@@ -668,10 +633,6 @@ test.describe("Unsaved navigation", () => {
     page,
     api,
   }) => {
-    await page
-      .getByLabel("Reviewer name", { exact: true })
-      .selectOption("Test reviewer");
-
     await edit(page, "Saved before leaving");
     await page.getByLabel("Next page", { exact: true }).click();
 
@@ -704,10 +665,6 @@ test.describe("Unsaved navigation", () => {
     page,
     api,
   }) => {
-    await page
-      .getByLabel("Reviewer name", { exact: true })
-      .selectOption("Test reviewer");
-
     // Save a correction first.
     await edit(page, "Saved address");
     await page
@@ -749,10 +706,6 @@ test.describe("Unsaved navigation", () => {
   }) => {
     api.failSave = true;
 
-    await page
-      .getByLabel("Reviewer name", { exact: true })
-      .selectOption("Test reviewer");
-
     await edit(page, "Keep this draft");
     await page.getByLabel("Next page", { exact: true }).click();
 
@@ -779,10 +732,6 @@ test.describe("Unsaved navigation", () => {
   // Checks that leaving the website with an unsaved review triggers the
   // browser's native beforeunload warning; the test accepts that warning.
   test("Leaving the website warns about unsaved reviews", async ({ page }) => {
-    await page
-      .getByLabel("Reviewer name", { exact: true })
-      .selectOption("Test reviewer");
-
     await edit(page, "Unsaved departure");
 
     // Register the listener before navigating away.
@@ -797,32 +746,4 @@ test.describe("Unsaved navigation", () => {
 
     expect(dialogType).toBe("beforeunload");
   });
-});
-
-test("adds a reviewer inside the field editor without losing the draft", async ({
-  page,
-}) => {
-  await page.getByRole("button", { name: "Edit Address", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Edit field", exact: true });
-  await dialog
-    .getByLabel("Reviewed value", { exact: true })
-    .fill("Draft address");
-  await dialog
-    .getByLabel("Reviewer *", { exact: true })
-    .selectOption("__add__");
-  await dialog.getByLabel("New reviewer name").fill("Editor reviewer");
-  await expect(
-    dialog.getByRole("button", { name: "Apply review" }),
-  ).toBeDisabled();
-  await dialog
-    .getByRole("button", { name: "Add reviewer", exact: true })
-    .click();
-  await expect(dialog.getByLabel("Reviewer *", { exact: true })).toHaveValue(
-    "Editor reviewer",
-  );
-  await expect(
-    dialog.getByLabel("Reviewed value", { exact: true }),
-  ).toHaveValue("Draft address");
-  await dialog.getByRole("button", { name: "Apply review" }).click();
-  await expect(dialog).not.toBeVisible();
 });
