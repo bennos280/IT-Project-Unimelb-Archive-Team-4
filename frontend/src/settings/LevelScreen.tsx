@@ -37,7 +37,7 @@ export default function LevelScreen() {
   const params = new URLSearchParams(location.search);
   const collectionId = Number(params.get("collection")) || 1;
   const asked = params.get("level");
-  const setup = `/?collection=${collectionId}&view=setup`;
+  const setup = `/?collection=${collectionId}&view=setup&section=levels`;
   const [collection, setCollection] = useState<Collection | null>(null);
   const [types, setTypes] = useState<PageType[] | null>(null);
   const [loadError, setLoadError] = useState("");

@@ -64,10 +64,11 @@ def fetch_pdf(pdf):
 
 
 #a page's scan as a small JPEG, width pixels wide: drawn from its item's PDF on this computer (page N of the item, the number
-#its id ends in, is the PDF's Nth page), else from its scan here; None if neither is here, so nothing is asked of the archive
-def page_thumbnail(source_pdf, import_path, page_id, width=240):
+#its id ends in, is the PDF's Nth page), else from its scan here; None if neither is here, so nothing is asked of the archive.
+#keep=False: drawn afresh and not kept, for a large one
+def page_thumbnail(source_pdf, import_path, page_id, width=240, keep=True):
     try:
-        return drawn_small(source_pdf, import_path, page_id, width)
+        return (drawn_small if keep else drawn_small.__wrapped__)(source_pdf, import_path, page_id, width)
     except FileNotFoundError:
         return None
 
@@ -82,7 +83,7 @@ def drawn_small(source_pdf, import_path, page_id, width):
             if page_no <= doc.page_count:
                 page = doc[page_no - 1]
                 zoom = width / page.rect.width
-                return page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("jpeg")
+                return page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("jpeg", jpg_quality=80)
     scan = ROOT / import_path
     if not scan.is_file() and page_no:
         scan = ROOT / settings()["OUTPUT"] / "scans" / Path(source_pdf).parent.name / f"{page_no:04d}.jpg"

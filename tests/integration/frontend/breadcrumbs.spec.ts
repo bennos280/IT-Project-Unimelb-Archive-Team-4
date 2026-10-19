@@ -12,7 +12,7 @@ const pages = ["main", "notes"].map((type, index) => ({
   flags: [],
 }));
 const COLLECTION = { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", recordName: "survey", grouped: true, archiveSeries: 499420,
-  archiveIdentifier: "UMA-SR-000000842", bundles: 1, pages: 2 };
+  archiveIdentifier: "UMA-SR-000000842", pageTypes: 3, templates: 3, pages: 2, unknownPages: 0, bundles: 1, running: 0 };
 const DIARIES = { ...COLLECTION, id: 2, name: "Strathfieldsaye Estate Diaries", archiveSeries: 524173, archiveIdentifier: "UMA-SR-000001769" };
 
 // noItemInfo leaves the item's name and archive title out of the survey, as an older server would. The item holds a second

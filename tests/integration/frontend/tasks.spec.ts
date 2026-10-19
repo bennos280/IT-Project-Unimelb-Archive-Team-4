@@ -50,7 +50,7 @@ async function mock(page: Page, jobs: Jobs = []) {
     const served = serveItems([{ bundle: "b", name: "216412", pages: [] }], request);
     if (served) return route.fulfill(served);
     if (path === "/api/collections") return route.fulfill({ json: [series(1, "Wilfred Prest Survey"), series(2, "Missing, Wounded and Prisoner Of War Cards")] });
-    if (path === "/api/collections/1") return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true, archiveSeries: 499420 } });
+    if (path === "/api/collections/1") return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true, archiveSeries: 499420, pageTypes: 3, templates: 3, pages: 2, unknownPages: 0, bundles: 1, running: 0 } });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
 }

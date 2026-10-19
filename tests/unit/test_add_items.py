@@ -275,3 +275,40 @@ def test_an_upload_cant_take_the_number_of_an_item_added_from_the_archive(client
     refused = client.post("/bundles/upload", params={"bundle": "1", "filename": "637675.pdf"}, content=b"%PDF")
     assert (refused.status_code, refused.json()["detail"]) == (
         409, "This PDF belongs to archive item 637675. Use that item number.")
+
+
+def test_an_items_pages_can_be_seen_before_it_is_read_its_pdf_downloaded_once_to_where_reading_it_looks(client, db, diaries, tmp_path, monkeypatch):
+    import pymupdf
+    monkeypatch.setattr(main, "settings", lambda: {"DATA": str(tmp_path)})
+    with pymupdf.open() as pdf:
+        for _ in range(3):
+            pdf.new_page()
+        diaries.files["1369539"] = pdf.tobytes()
+    db.add_all([models.ArchiveItem(node=n, collection_id=2, identifier=f"UMA-IT-{n}", title="Diary", pdf=f"{n}/{n}.pdf")
+                for n in (637675, 637676)])
+    db.commit()
+    assert client.get("/collections/2/items/637675/scans").json() == {"pages": 3}
+    assert client.get("/collections/2/items/637675/scans").json() == {"pages": 3}
+    assert len([r for r in diaries.requests if r.startswith("/assets/downloadwiz/")]) == 1
+    [listed, _] = client.get("/bundles?collection=2").json()  # still the one item, its PDF here for reading
+    assert listed["pdf"] == stored_path(tmp_path / "637675" / "637675.pdf") and not listed["loaded"]
+    page = client.get("/collections/2/items/637675/scans/2", params={"width": 300})
+    assert page.headers["content-type"] == "image/jpeg" and page.content[:2] == b"\xff\xd8"
+    assert [client.get(f"/collections/2/items/637675/scans/{n}").status_code for n in (0, 4)] == [404, 404]
+    assert client.get("/collections/1/items/637675/scans").status_code == 404  # not that series' item
+    refused = client.get("/collections/2/items/637676/scans")  # the archive has no PDF of it
+    assert refused.status_code == 502 and refused.json()["detail"].startswith("Couldn't get its scans from the archive")
+
+
+def test_an_item_of_the_archives_known_pdfs_is_seen_from_its_pdf_there(client, db, archive, tmp_path, monkeypatch):
+    import pymupdf
+    monkeypatch.setattr(main, "settings", lambda: {"DATA": str(tmp_path)})
+    monkeypatch.setattr(scans, "ARCHIVE_PDFS", ["216412/423444_x.pdf"])
+    with pymupdf.open() as pdf:
+        pdf.new_page()
+        archive.add("216412", {}, pdf=("423444", pdf.tobytes()))
+    db.add(models.ArchiveItem(node=216412, collection_id=1, identifier="UMA-ITE-1", title="Box Hill"))  # its PDF one of those
+    db.commit()
+    assert client.get("/collections/1/items/216412/scans").json() == {"pages": 1}
+    assert (tmp_path / "216412" / "423444_x.pdf").is_file()
+    assert client.get("/collections/1/items/216412/scans/1", params={"width": 5000}).status_code == 200

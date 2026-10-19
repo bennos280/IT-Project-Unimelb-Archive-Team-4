@@ -258,7 +258,11 @@ The Tasks link on every screen and the Tasks page, with the API mocked: the link
 
 ## `setup-checklist.spec.ts` — 1 test
 
-Set up series on a series' Items page, with the API mocked: a new series lists the steps of setting it up (add its page types, give each a template, read one item as a sample, and, optionally, say what a record is), each ticked from what the series has, with how many are done, what's missing (the page types with no template) and a link to where to do it; an item read with every page waiting as Unknown isn't a sample, and one being read shows; once set up it points to the sample to check, until another item is read.
+Set up series on a series' Items page, with the API mocked: a new series lists the steps of setting it up (add its page types, give each a template, read one item as a sample, and, optionally, say what a record is), each ticked from what the series has, with how many are done, what's missing (the page types with no template), a link to where to do it and Open setup; an item read with every page waiting as Unknown isn't a sample, and one being read shows; once set up it points to the sample to check, until another item is read.
+
+## `setup-guide.spec.ts` — 4 tests
+
+Setting a series up on a sample, in its Setup tab, with the API mocked: until it is set up, Setup opens on its first item as a sample, every page as a small scan down the side and the chosen one large (by its scan, the arrows, or the arrow keys, Home and End on the pages, one tab stop), beside the steps of setting it up, reading the sample done on its own page; the next or previous item as the sample, kept in the URL across a reload, one past the last being the last; a section of Setup chosen shows the usual tabs instead, Levels too, across a reload; an item whose scans the archive can't send says why, with Try again; and a series with no items says to add some first, its steps not pointing back to Setup.
 
 ## Import screen browser tests — 5 tests
 

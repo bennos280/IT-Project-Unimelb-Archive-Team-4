@@ -1140,6 +1140,42 @@ def get_item(collection_id: int, name: str, db: Session = Depends(get_db)):
     return {**row, "pages": next((b["pages"] for b in cached_progress(db) if b["id"] == row["bundle"]), []),
             "records": [{"id": record, "parent": parent} for record, parent in records]}
 
+_downloading = threading.Lock()  #ponytail: one item's PDF downloaded at a time; a second ask for it waits, then finds it here
+
+#where a series' archive item's PDF is, or goes once downloaded (as reading it puts it); 404 if the series doesn't list it
+def item_pdf(db, collection_id, name):
+    item = db.get(models.ArchiveItem, int(name)) if name.isascii() and name.isdigit() and len(name) < 10 else None
+    pdf = item and (item.pdf or next((p for p in scans.ARCHIVE_PDFS if p.startswith(f"{name}/")), None))
+    if not pdf or item.collection_id != collection_id:
+        raise HTTPException(status_code=404, detail="This series doesn't list that item.")
+    return ROOT / settings()["DATA"] / pdf
+
+#how many pages an item has, to look at before it is read (a series set up on a sample): its PDF is downloaded from the
+#archive first if it isn't here, into the place reading it would put it
+@app.get("/collections/{collection_id}/items/{name}/scans")
+def item_scans(collection_id: int, name: str, db: Session = Depends(get_db)):
+    pdf = item_pdf(db, collection_id, name)
+    if not pdf.is_file():
+        with _downloading:
+            if not pdf.is_file():
+                try:
+                    scans.fetch_pdf(pdf)
+                except scans.ARCHIVE_ERRORS as error:
+                    raise HTTPException(status_code=502, detail=f"Couldn't get its scans from the archive ({error}).")
+    import pymupdf
+    with pymupdf.open(pdf) as doc:
+        return {"pages": doc.page_count}
+
+#page n of an item's PDF as a JPEG, 240 pixels wide (kept drawn) or, asked for wider, 1200 (the browser keeps it); 404 until its
+#PDF is here (item_scans)
+@app.get("/collections/{collection_id}/items/{name}/scans/{n}")
+def item_scan(collection_id: int, name: str, n: int, width: int = 240, db: Session = Depends(get_db)):
+    large = width > 240
+    image = n > 0 and scans.page_thumbnail(str(item_pdf(db, collection_id, name)), "", f"{name}_{n}", 1200 if large else 240, keep=not large)
+    if not image:
+        raise HTTPException(status_code=404, detail="No scan of this page here.")
+    return Response(image, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
 #queues a pipeline run of one PDF; the worker picks it up
 @app.post("/jobs", status_code=202)
 def start_job(payload: StartJobRequest, db: Session = Depends(get_db)):

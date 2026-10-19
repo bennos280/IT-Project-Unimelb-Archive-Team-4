@@ -33,11 +33,12 @@ test("a new series' Items page lists the steps of setting it up, each ticked fro
   const state = await mock(page);
   await page.goto("/?collection=2");
   await expect(card(page)).toContainText("0 of 3 done");
+  await expect(card(page).getByRole("link", { name: "Open setup" })).toHaveAttribute("href", "/?collection=2&view=setup");
   await expect(steps(page).locator("p.font-medium")).toHaveText([
     "Add its page types: to do", "Give each page type a template: to do", "Read one item as a sample: to do", /^Say what a record is: to do\s*Optional$/]);
   await expect(steps(page).nth(0).getByRole("link", { name: "Add page types" })).toHaveAttribute("href", "/?collection=2&view=setup&section=page-types");
   await expect(steps(page).nth(2)).toContainText("Press Transcribe on one of its items below.");
-  await expect(steps(page).nth(3).getByRole("link", { name: "Set levels" })).toHaveAttribute("href", "/?collection=2&view=setup");
+  await expect(steps(page).nth(3).getByRole("link", { name: "Set levels" })).toHaveAttribute("href", "/?collection=2&view=setup&section=levels");
 
   // two page types, one with a template; an item read with all its pages waiting as Unknown isn't a sample yet
   Object.assign(state, { types: [UNKNOWN, LETTER, ENVELOPE], read: [{ id: "L1", name: "L1" }] });
@@ -55,6 +56,7 @@ test("a new series' Items page lists the steps of setting it up, each ticked fro
   Object.assign(state.series, { templates: 2, pages: 4, unknownPages: 1, running: 0 });
   await page.reload();
   await expect(card(page).getByRole("heading")).toHaveText("Series set up");
+  await expect(card(page).getByRole("link", { name: "Open setup" })).toHaveCount(0);
   await expect(card(page)).toContainText("Check the sample came out right, then read the other items.");
   await expect(steps(page).nth(2).getByRole("link", { name: "Check it" })).toHaveAttribute("href", "/?collection=2&bundle=L1");
   Object.assign(state.series, { bundles: 2 });

@@ -25,6 +25,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
   ];
   const collection = {
     id: 1, name: "Wilfred Prest Survey", levels: [{ name: "survey", parts, key: recordKey }] as Level[],
+    pageTypes: 3, templates: 3, pages: 2, unknownPages: 0, bundles: 1, running: 0,
     get recordName() { return this.levels.at(-1)?.name ?? "record"; },
     get grouped() { return Boolean(this.levels[0]?.parts.length); },
   };
@@ -314,7 +315,7 @@ test("a level opens on its shape, and its name, what one is made of in order (cu
   await page.getByLabel("How many Notes page").selectOption("At most one");
   await page.getByLabel("Number field").selectOption("");
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/?collection=1&view=setup");
+  await expect(page).toHaveURL("/?collection=1&view=setup&section=levels");
   expect(calls.putLevels.at(-1)).toEqual({ levels: [{ name: "Household card", parts: [MAIN_PART, { ...NOTES_PART, count: "at_most_one" }], key: "" }] });
   await expect(ladder(page).nth(1)).toHaveText(/^Household card\s*1\+ Main page · 0–1 Notes page\s*Edit$/);
 });
@@ -405,7 +406,7 @@ test("a level opened and saved unchanged keeps its parts, and parts chosen by ha
   await expect(page.getByLabel("Surveys start at a page, with pages matched by number")).toBeChecked();
   await expect(page.getByText("Includes one or more Main pages and exactly one Coded page.")).toBeVisible();
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(page).toHaveURL("/?collection=1&view=setup");
+  await expect(page).toHaveURL("/?collection=1&view=setup&section=levels");
   expect(calls.putLevels).toEqual([{ levels: [{ name: "survey", parts: [MAIN_PART, CODED_PART], key: "number_of_dwelling" }] }]);
 
   await page.goto("/?collection=1&view=setup&level=1");

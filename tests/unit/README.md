@@ -309,6 +309,8 @@ A series' items listed from the archive (a fake archive here) and added to its l
 |`test_a_page_takes_only_a_page_type_of_its_own_series`|Changing a page's type to another series' type is refused.|
 |`test_sorting_gives_only_the_series_own_page_types_and_sends_the_rest_to_review`|Sorting's label outside the series' page types becomes review, and is flagged.|
 |`test_an_upload_cant_take_the_number_of_an_item_added_from_the_archive`|An upload can't use the number of an item added from the archive, nor give another number a PDF named as that item's.|
+|`test_an_items_pages_can_be_seen_before_it_is_read_its_pdf_downloaded_once_to_where_reading_it_looks`|An item's count of pages and each page as a scan can be had before it is read, its PDF downloaded from the archive once into the place reading it looks, the item still listed once and unread; a page it hasn't, another series' item, and one the archive has no PDF of are refused (404, 404, 502).|
+|`test_an_item_of_the_archives_known_pdfs_is_seen_from_its_pdf_there`|An item whose PDF is one the app knows on the archive (the Prest survey's) is downloaded as that PDF and seen from it; a page asked for wider than the large size comes at that size.|
 
 ## `test_series_items.py`
 
