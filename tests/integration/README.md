@@ -3,7 +3,7 @@
 Multiple pieces of the pipeline wired together through their real entry points —
 `run.main`, `step_split`, `process_image`, the shipped identification model, the
 committed transcription results — instead of individual functions in isolation.
-Fixture data (`identify/`, `preprocess/`, `group/`, `archive/`, `validate/`) lives alongside the test files
+Fixture data (`identify/`, `preprocess/`, `group/`, `archive/`) lives alongside the test files
 in this folder, and `backend.pipeline.identify.identify` reads its labelled pages
 from here directly.
 
@@ -108,6 +108,7 @@ them is checked against the archive's own markup, not only the tests' stand-in.
 | `test_migrations_match_the_models`                                      | The migrations in `backend/db/migrations/` build the same tables and columns as `backend/db/models.py` (Alembic's check). Fails if `models.py` changes a table or column without a migration. It does not compare CHECK constraints or server defaults, and the unit tests build their db from `models.py`, not from the migrations. |
 | `test_a_table_change_keeps_the_edits_on_it_and_backs_the_db_up_first`   | A later migration that rebuilds `fields` (how SQLite changes a column) keeps the reviewers' edits on it, and the db is copied to `<name>-backup-<revision>.db` before it runs.                                                                                                                                                       |
 | `test_a_migration_that_breaks_a_link_is_undone`                         | A later migration that leaves rows pointing at nothing (deletes a bundle its pages belong to) stops with an error, and the db is left as it was before it.                                                                                                                                                                           |
+| `test_019_makes_the_prest_validation_its_coded_cards_rules_and_its_series_checks_and_drops_its_flags` | Migration 019 gives the coded card's newest template the codebook's rules (room counts 0-11, whether used as bedrooms may be 0, not the dwelling number) and the Prest survey its five checks, and drops US6's flags (not grouping's), but not rules or checks a series already has; undone, both go, with what they flagged. |
 | `test_018_keeps_a_series_checks_as_versions_flags_what_fails_them_and_checks_a_series_again` | Migration 018 adds the series' check versions, the `check` flag kind and the `check` job kind; undone, it drops them (and the check flags and jobs, which the old kinds can't hold). |
 | `test_017_keeps_a_templates_field_rules_and_flags_the_values_that_break_them` | Migration 017 adds a template version's rules and the `invalid` flag kind; undone, it drops both (and the invalid flags, which the old kinds can't hold). |
 | `test_version_1_of_the_prompt_and_templates_is_the_files_byte_for_byte` | Migration 001 stores `prompt.txt` and each template as version 1 byte for byte, with the files' hashes, so transcripts already made from the files are reused, not read (and paid for) again.                                                                                                                                        |
@@ -189,41 +190,6 @@ These tests use mocked API responses. The integration runner separately
 checks the real frontend adapter, backend and database.
 The highlight test checks visibility and zoom, not coordinate accuracy.
 
-## `test_validate.py`
-
-Survey consistency check (`validate_survey`) on the example main form and coded card, which agree: no model calls.
-
-| Test | What it checks |
-|---|---|
-| `test_example_survey_has_no_flags` | The example main form and coded card give no flags, and the result carries the survey id. |
-| `test_conflict_names_the_nested_field_and_changes_nothing` | A coded bedroom count of 4 against a main form saying 3 is flagged naming `Page 1: rooms.number_of_separate_bedrooms`, and the main form is left unchanged. |
-| `test_native_age_derivation` | Residents aged 8 and 7 agree with the coded age counts; lowering the coded under-14 count to 1 is a page 1–3 conflict naming `Page 1: residents[2].age`. |
-| `test_missing_native_location` | A coded bedroom count that isn't there is flagged as `Page 3: number_of_bedrooms`: `<missing>`. |
-| `test_blank_upstream_template_is_not_zero_known_residents` | The blank main form template with the blank coded template gives no flags (its empty resident columns are unknown, not zero residents); with the example coded card it does. |
-| `test_unrecognised_coded_card_is_not_silent_success` | A coded card reading without `number_of_dwelling` (empty, other fields only, wrapped in `fields`, or the old uppercase labels) raises a ValueError instead of passing. |
-| `test_number_does_not_fallback_without_definition` | A main form without `number_of_dwelling` is flagged with it `<missing>`; the form's `number` field isn't used instead. |
-| `test_unknown_fields_are_ignored` | An extra handwritten field on the main form raises no flags. |
-| `test_other_children_list_not_guessed_count` | An entry in the main form's `other_children` list adds a warning and no flags: it isn't counted. |
-| `test_missing_page_fails_before_output` | A survey without a coded card raises a ValueError. |
-| `test_package_import` | `backend.pipeline.validate` exports `validate_survey`, which finds no flags on the example. |
-
-## `test_validate_pipeline.py`
-
-Survey consistency check run over a pipeline manifest (`validate_manifest`) with stored transcriptions, plus dwelling-number, margin-code and resident edge cases: no model calls.
-
-| Test | What it checks |
-|---|---|
-| `test_group_manifest_uses_cached_json` | A grouped manifest is validated from the stored transcriptions as one survey with no flags, and the manifest's transcripts entry and the existing review file are left as they were. |
-| `test_no_transcript_changes_and_idempotent_review` | A coded card with a different dwelling number adds a validate entry to the review file, running twice gives the same review file, and the transcript file is not changed. |
-| `test_repeated_main_not_merged_silently` | A survey with two main forms is skipped rather than merged, giving a partial status, one skipped survey and none validated. |
-| `test_missing_coded_reported_not_validated` | A survey with no coded card is counted as skipped. |
-| `test_missing_transcript_reported` | A survey whose coded card transcript file is missing is counted as skipped. |
-| `test_unassigned_page_reported` | A main page not assigned to any survey gives a partial status. |
-| `test_letter_dwelling_numbers` | A main form dwelling number '024 a' matches a coded '24A', and a coded '24B' is flagged as a NUMBER OF DWELLING Page 1–3 conflict. |
-| `test_actual_coded_all_null_schema` | The blank main form and coded card templates together give no flags. |
-| `test_explicit_margin_codes_compare` | An industry-of-head code '0802' matches coded '802', and a coded '803' is flagged as an INDUSTRY OF HEAD CODE conflict. |
-| `test_nonpersonal_metadata_not_resident` | A resident row holding only a stray annotation, with no relationship, age or earning status, is not counted as a resident and gives no flags. |
-
 ## `progress.spec.ts` — 40 tests (US9: track progress)
 
 Located in `tests/integration/frontend/progress.spec.ts`. Run only these tests from the project folder:
@@ -267,9 +233,9 @@ Checks same-item moves, immediate type changes without queuing, persistence of t
 
 The top bar and a series' header, with the API mocked: home is the app's name alone, linking home, with Settings and Tasks; a series is named in the series menu (its Items and Setup, the other series, then All series) and its heading, with its archive link and its Items and Setup tabs; the menu opens another series on the same tab, or all of them, and its keys move through it without leaving; from an item the menu still leads to the series' Items and Setup; an item, and the review screen below it, add Items > item > record to the trail, Items returning to the series in-app (Back and Forward intact) or in a new tab with Ctrl or a middle click; an item is named by its archive title, or its bundle id from an older server; Import, Settings and Tasks are crumbs after the app's name; a series' actions sit by its title, Add items first, with nothing but links in the top bar; on a phone nothing scrolls sideways and the trail shows the level above and where you are; an old item link without a series still opens it.
 
-## `page-types.spec.ts` — 15 tests
+## `page-types.spec.ts` — 16 tests
 
-A series' Setup tab (once the Page types screen) with the API mocked: a series' page types by label with how they group and their template; label, grouping, template and record settings saved, with the checks' problems shown; adding a reviewer there; each of a template's fields given a rule (type, required, range, values, pattern and example) and a description, which writes itself into the template, saved with it; a rule changed alone saved as a new version; no fields to set while the template's JSON is broken; and the template's history, from which an older version is brought back as the newest; and the series' checks: built from its fields (fields added up against fields or a value, or if one is so another must be), read back in words, switched off, edited, removed and saved together as a version with a note, an older version brought back, and Check again started as a task, linked to it.
+A series' Setup tab (once the Page types screen) with the API mocked: a series' page types by label with how they group and their template; label, grouping, template and record settings saved, with the checks' problems shown; adding a reviewer there; each of a template's fields given a rule (type, required, range, values, pattern and example) and a description, which writes itself into the template, saved with it; a rule changed alone saved as a new version; no fields to set while the template's JSON is broken; and the template's history, from which an older version is brought back as the newest; and the series' checks: built from its fields (fields added up against fields or a value, or if one is so another must be), read back in words, switched off, edited, removed and saved together as a version with a note, an older version brought back, and Check again started as a task, linked to it; a check comparing as codes, or saying one field names another's code.
 
 ## `add-items.spec.ts` — 32 tests
 

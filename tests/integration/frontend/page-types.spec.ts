@@ -352,7 +352,7 @@ test("a check can be sums against a value, switched off, edited and removed, and
   const dialog = page.getByRole("dialog", { name: "Edit check" });
   await dialog.getByRole("button", { name: "Add a Compare field to sum" }).click();
   await dialog.getByLabel("Compare field 2", { exact: true }).selectOption("main.address");
-  await dialog.getByLabel("Should be").selectOption("<=");
+  await dialog.getByLabel("Comparison").selectOption("<=");
   await dialog.getByLabel("With", { exact: true }).selectOption("value");
   await dialog.getByLabel("Value").fill("11");
   await dialog.getByRole("button", { name: "Done" }).click();
@@ -379,4 +379,30 @@ test("Check again checks the series' pages as a task, linked to it", async ({ pa
   await checksSection(page).getByRole("button", { name: "Check again" }).click();
   await expect(checksSection(page).getByRole("link", { name: "see the task" })).toHaveAttribute("href", "/?view=tasks&task=55");
   expect(calls.checkAgain).toBe(1);
+});
+
+test("a check can compare as codes, or say a field names another's code", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?view=setup");
+  const section = checksSection(page);
+  await section.getByRole("button", { name: "Add check" }).click();
+  let dialog = page.getByRole("dialog", { name: "Add check" });
+  await dialog.getByLabel("Compare field 1").selectOption("main.number_of_dwelling");
+  await dialog.getByLabel("With field 1").selectOption("coded.number_of_dwelling");
+  await dialog.getByLabel("Compare as").selectOption("codes");
+  await expect(dialog.getByText("Main page › number_of_dwelling = Coded page › number_of_dwelling (as codes)")).toBeVisible();
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await section.getByRole("button", { name: "Add check" }).click();
+  dialog = page.getByRole("dialog", { name: "Add check" });
+  await dialog.getByLabel("Compare field 1").selectOption("main.address");
+  await dialog.getByLabel("Comparison").selectOption("names");
+  await expect(dialog.getByLabel("Compare as")).toHaveCount(0);
+  await dialog.getByLabel("With field 1").selectOption("coded.number_of_dwelling");
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await section.getByLabel("Saved as").selectOption("Ben");
+  await section.getByRole("button", { name: "Save checks" }).click();
+  await expect(section.getByRole("button", { name: "Save checks" })).toHaveCount(0);
+  expect(calls.saveChecks.at(-1)?.checks).toEqual([
+    { id: expect.any(String), kind: "compare", left: ["main.number_of_dwelling"], op: "=", right: ["coded.number_of_dwelling"], as: "codes" },
+    { id: expect.any(String), kind: "compare", left: ["main.address"], op: "names", right: ["coded.number_of_dwelling"] }]);
 });

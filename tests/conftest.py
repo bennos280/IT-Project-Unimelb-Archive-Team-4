@@ -1,6 +1,5 @@
 """Shared by every test: nothing on the internet is reached, only this computer itself. The archive lists no bundles and
-can't be reached, unless a test uses the `archive` fixture, a stand-in that serves the files the test gives it. Every
-consistency check is switched on (checks.json only decides which ones the app shows)."""
+can't be reached, unless a test uses the `archive` fixture, a stand-in that serves the files the test gives it."""
 import html
 import io
 import socket
@@ -14,14 +13,6 @@ import pytest
 
 from backend import scans
 from backend.db import database
-from backend.pipeline.validate import run_validation, validator
-
-
-@pytest.fixture(autouse=True)
-def every_check(monkeypatch):
-    monkeypatch.setattr(run_validation, "load_checks", lambda path=None: dict.fromkeys(validator.CHECKS, True))
-
-
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
     def unreachable(*args, **kwargs):

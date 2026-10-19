@@ -1,17 +1,18 @@
 // A series' checks across fields (backend/db/checks.py). A check names fields as "<page type>.<field path>": it compares them (several
-// on a side are added up) with fields or a value, or says that if one is so another must be. A value failing it is flagged for review.
-export type Op = "=" | "!=" | "<" | "<=" | ">" | ">=";
+// on a side are added up; as codes, only values all digits) with fields or a value, or says one field is the name another's code has in
+// its list, or that if one is so another must be. A value failing it is flagged for review.
+export type Op = "=" | "!=" | "<" | "<=" | ">" | ">=" | "names";
 export type State = "filled" | "empty" | "is";
 export type Check = {
   id: string; kind: "compare" | "if"; on?: boolean; message?: string;
-  left?: string[]; op?: Op; right?: string[]; value?: string;
+  left?: string[]; op?: Op; right?: string[]; value?: string; as?: "codes";
   if?: string; is?: State; isValue?: string; then?: string; must?: State; mustValue?: string;
 };
 export type CheckVersion = { id: number; number: number; checks: Check[]; reviewer: string | null; note: string | null; createdAt: string };
 // Each of the series' page types with the fields of its newest template, to choose from.
 export type FieldChoice = { type: string; label: string; fields: string[] };
 
-export const ops: Record<Op, string> = { "=": "=", "!=": "≠", "<": "<", "<=": "≤", ">": ">", ">=": "≥" };
+export const ops: Record<Op, string> = { "=": "=", "!=": "≠", "<": "<", "<=": "≤", ">": ">", ">=": "≥", names: "names" };
 export const states: Record<State, [string, string]> = { filled: ["is filled", "be filled"], empty: ["is empty", "be empty"], is: ["is", "be"] };
 
 export const newCheck = (): Check => ({ id: crypto.randomUUID().slice(0, 8), kind: "compare", left: [""], op: "=", right: [""] });
@@ -25,7 +26,8 @@ export function cleanCheck(check: Check): Check {
       must: check.must, ...(check.must === "is" ? { mustValue: check.mustValue?.trim() } : {}) };
   }
   return { ...base, left: (check.left ?? []).filter(Boolean), op: check.op,
-    ...(check.value !== undefined ? { value: check.value.trim() } : { right: (check.right ?? []).filter(Boolean) }) };
+    ...(check.value !== undefined && check.op !== "names" ? { value: check.value.trim() } : { right: (check.right ?? []).filter(Boolean) }),
+    ...(check.as === "codes" && check.op !== "names" ? { as: "codes" as const } : {}) };
 }
 
 // Why a check can't be added yet; "" if it can. A field no longer in its page type's template must be chosen again.
@@ -39,6 +41,9 @@ export function unfinished(check: Check, choices: FieldChoice[]) {
     return "";
   }
   if (!check.left?.length || check.left.some((f) => !f)) return "Choose the fields to compare.";
+  if (check.op === "names" && (check.left.length !== 1 || check.value !== undefined || check.right?.length !== 1)) {
+    return "Names compares one field with one coded field.";
+  }
   if (check.value !== undefined ? !check.value.trim() : !check.right?.length || check.right.some((f) => !f)) return "Choose what to compare them with.";
   return "";
 }
@@ -54,5 +59,5 @@ export function sentence(check: Check, choices: FieldChoice[]) {
       + ` must ${states[check.must ?? "filled"][1]}${check.must === "is" ? ` ${check.mustValue}` : ""}`;
   }
   const side = (fields: string[] = []) => fields.map(name).join(" + ");
-  return `${side(check.left)} ${ops[check.op ?? "="]} ${check.value !== undefined ? check.value : side(check.right)}`;
+  return `${side(check.left)} ${ops[check.op ?? "="]} ${check.value !== undefined ? check.value : side(check.right)}${check.as === "codes" ? " (as codes)" : ""}`;
 }

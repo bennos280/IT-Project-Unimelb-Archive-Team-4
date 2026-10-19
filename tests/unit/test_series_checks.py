@@ -41,6 +41,16 @@ DEATH = {"id": "death", "kind": "if", "if": "card.status", "is": "is", "isValue"
      {"card.reported": "12/3/17", "card.casualty": "12/03/1917"}, None),  # a two-digit year: can't be told
     ({"id": "s", "kind": "compare", "left": ["a.x", "a.y"], "op": "=", "right": ["a.z"]},
      {"a.x": "0.1", "a.y": "0.2", "a.z": "0.3"}, None),  # decimals add up
+    ({"id": "s", "kind": "compare", "left": ["a.x", "a.y"], "op": "=", "right": ["a.z"]},
+     {"a.x": "nil", "a.y": "2", "a.z": "2"}, None),  # nil is none
+    ({"id": "v", "kind": "compare", "left": ["a.tenure"], "op": "=", "value": "N/A"},
+     {"a.tenure": "Owner"}, "Tenure (Owner) should equal N/A"),  # a check's own value is never unsure
+    ({"id": "t", "kind": "compare", "left": ["a.x"], "op": "=", "right": ["b.x"]},
+     {"a.x": "Owner (part)", "b.x": "owner (part)"}, None),  # brackets around words aren't unsure
+    ({"id": "t", "kind": "compare", "left": ["a.area"], "op": "=", "right": ["b.area"]},
+     {"a.area": "1.5 acres", "b.area": "15 acres"}, "Area (1.5 acres) should equal Area (15 acres)"),  # a decimal point counts
+    ({"id": "t", "kind": "compare", "left": ["a.tick"], "op": "=", "right": ["b.tick"]},
+     {"a.tick": "✓", "b.tick": "✗"}, "Tick (✓) should equal Tick (✗)"),
     ({"id": "e", "kind": "if", "if": "card.discharged", "is": "filled", "then": "card.unit", "must": "empty"},
      {"card.discharged": "1919", "card.unit": "7th Bn"}, "Discharged is filled, so Unit should be empty"),
 ])
@@ -207,3 +217,56 @@ def test_a_page_changed_to_another_type_is_checked_against_that_types_rules(clie
     assert changed.status_code == 200
     series.expire_all()
     assert flags(series, "invalid") == []  # the Unknown type has no rules
+
+
+def _prest():
+    """Migration 019's Prest checks, and its coded card's rules from the codebook."""
+    import importlib.util
+    from pathlib import Path
+    path = Path(checks.__file__).parent / "migrations" / "versions" / "019_prest_checks.py"
+    spec = importlib.util.spec_from_file_location("prest_checks", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    codebook = json.loads((Path(checks.__file__).parent / "data_dict.json").read_text(encoding="utf-8"))["pages"]["3"]["fields"]
+    return {c["id"]: c for c in module.CHECKS}, module.rules(codebook, set(codebook))
+
+
+PREST_CHECKS, PREST_RULES = _prest()
+
+
+@pytest.mark.parametrize("check, left, right, reason", [  # values as transcribed on the main form and the coded card
+    ("dwelling_number", "24A", "24 a", None),
+    ("dwelling_number", "03", "3", None),
+    ("dwelling_number", "125A", "125", "Number of dwelling (125A) should equal Number of dwelling (125)"),
+    ("dwelling_number", "4.", "265", "Number of dwelling (4.) should equal Number of dwelling (265)"),
+    ("dwelling_number", "10/", "101", None),  # unsure as written
+    ("dwelling_number", "45(1)", "45", None),
+    ("industry_code", "0133", "133", None),
+    ("industry_code", "013.3", "0133", None),  # a code is its digits
+    ("industry_code", "17?", "173", None),
+    ("occupation_code", "4309m", "4309", None),
+    ("occupation_code", "173", "172", "Occupation of head code (173) should equal Occupation of head (172)"),
+    ("municipality", "Camberwell", "03", None),
+    ("municipality", "N. Fitzroy", "03", None),  # a suburb, not a council: can't be told
+    ("municipality", "Brighton", "03", "Municipality (Brighton) should name Municipality 03 (Camberwell)"),
+])
+def test_the_prest_surveys_checks_flag_what_its_validation_did(check, left, right, reason):
+    found = PREST_CHECKS[check]
+    values = {found["left"][0]: left, found["right"][0]: right}
+    lists = lambda ref: PREST_RULES.get(ref.partition(".")[2], {}).get("values")
+    assert checks.check_failure(found, values.get, lists) == reason
+
+
+def test_the_prest_surveys_children_living_and_dead_add_up_to_the_total():
+    found = PREST_CHECKS["children_living_plus_dead"]
+    fields = dict(zip(found["left"] + found["right"], ("2", "3", "5")))
+    assert checks.check_failure(found, fields.get) is None
+    assert checks.check_failure(found, {**fields, found["right"][0]: "6"}.get).startswith("Children of head or wife living + ")
+
+
+@pytest.mark.parametrize("found, problem", [
+    ({**ROOMS, "op": "names"}, "Check 1: names compares one field with one coded field"),
+    ({**ROOMS, "as": "letters"}, "Check 1: compares as values, or as codes"),
+])
+def test_names_and_codes_are_checked_when_saved(found, problem):
+    assert any(p.startswith(problem) for p in checks.check_problems([found], FIELDS))

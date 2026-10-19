@@ -42,7 +42,6 @@ def dump_into_db(manifest_path):
         key = con.exec_driver_sql("SELECT record_key FROM collections WHERE collection_id ="
                                   " (SELECT collection_id FROM bundles WHERE bundle_id = ?)", (bundle_id,)).scalar()
         insert_flags(run_folder / "review.json", con, key)
-        insert_check_flags(run_folder / "validation" / "output_flagged.json", con)
         checks.check_pages(con, [p for (p,) in con.exec_driver_sql("SELECT page_id FROM pages WHERE bundle_id = ?", (bundle_id,))])
 
 
@@ -126,22 +125,6 @@ def insert_flags(review_p, con, key):
             con.exec_driver_sql("""INSERT INTO flags(page_id, field_title, kind, reason)
                 VALUES(?, ?, 'inconsistency', ?)""", (page_id, field[0], "Grouping: " + entry["reason"].split(": ", 1)[-1]))
 
-#the consistency check's conflicts become flags on the fields they name (a resident's field isn't in fields: skipped);
-#"comparison incomplete" (one side blank or unreadable) isn't a conflict
-def insert_check_flags(check_p, con):
-    if not check_p.is_file():
-        return
-    for survey in json.loads(check_p.read_text(encoding="utf-8"))["surveys"]:
-        pages = {"Page 1": survey["page_files"]["main"], "Page 3": survey["page_files"]["coded"]}
-        for flag in survey["validation_flags"]:
-            if "incomplete" in flag["type"]:
-                continue
-            for path in flag["fields"]:
-                page, _, field_title = path.partition(": ")
-                if page in pages:
-                    con.exec_driver_sql("""INSERT INTO flags(page_id, field_title, kind, reason)
-                        SELECT page_id, field_title, 'inconsistency', ? FROM fields WHERE page_id = ? AND field_title = ?""",
-                        ("Consistency: " + flag["reason"], Path(pages[page]).stem, field_title))
 
 #the first version of kind with this text's hash; None if no version has it
 def version_id(con, kind, sha):

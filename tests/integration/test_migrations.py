@@ -1,5 +1,6 @@
 """The migrations build exactly the tables in backend/db/models.py, so the real db and the tests' db are the same; a later
 migration keeps the reviewers' edits, the db is backed up before it runs, and one that breaks a link is undone."""
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -234,6 +235,38 @@ def test_013_lists_each_of_prests_archive_items_with_its_identifier_and_title(ur
     assert not rows(db, "SELECT name FROM sqlite_master WHERE name = 'archive_items'")
 
 
+def test_019_makes_the_prest_validation_its_coded_cards_rules_and_its_series_checks_and_drops_its_flags(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "018")
+    with sqlite3.connect(db) as con:
+        con.execute("INSERT INTO bundles (bundle_id, source_pdf, collection_id) VALUES ('b019', 'b019.pdf', 1)")
+        con.execute("INSERT INTO pages (page_id, import_path, bundle_id, category) VALUES ('p019', 'p019.png', 'b019', 'coded')")
+        con.execute("INSERT INTO fields (page_id, field_title, text_raw) VALUES ('p019', 'garden', '7')")
+        con.executemany("INSERT INTO flags (page_id, field_title, kind, reason) VALUES ('p019', 'garden', 'inconsistency', ?)",
+                        [("Consistency: garden: 7 isn't one of the codebook's codes",), ("Grouping: 2 coded cards",)])
+    database.migrate(url)
+    (body, note), = rows(db, "SELECT body, note FROM check_versions WHERE collection_id = 1")
+    assert [c["id"] for c in json.loads(body)] == ["dwelling_number", "municipality", "industry_code", "occupation_code",
+                                                   "children_living_plus_dead"]
+    assert note == "The Prest survey's checks, from its validation (US6)"
+    (rules,), = rows(db, "SELECT rules FROM instruction_versions WHERE kind = 'coded' AND rules IS NOT NULL")
+    rules = json.loads(rules)
+    assert rules["number_of_bedrooms"] == {"type": "one_of", "values": ["0 = Over 11", "1-11 = Rooms"]}
+    assert "0 = None used as a bedroom" in rules["whether_used_as_bedrooms"]["values"] and "number_of_dwelling" not in rules
+    assert "03 = Camberwell" in rules["municipality"]["values"]
+    assert rows(db, "SELECT reason FROM flags WHERE page_id = 'p019'") == [("Grouping: 2 coded cards",)]  # US6's are gone
+    command.downgrade(config, "018")
+    assert rows(db, "SELECT COUNT(*) FROM check_versions") == [(0,)]
+    assert rows(db, "SELECT COUNT(*) FROM instruction_versions WHERE rules IS NOT NULL") == [(0,)]
+    with sqlite3.connect(db) as con:  # a series' own checks and rules set before 019 are kept
+        con.execute("INSERT INTO check_versions (collection_id, body) VALUES (1, '[]')")
+        con.execute("UPDATE instruction_versions SET rules = '{}' WHERE version_id = (SELECT MAX(version_id) FROM instruction_versions WHERE kind = 'coded')")
+    database.migrate(url)
+    assert rows(db, "SELECT body FROM check_versions") == [("[]",)]
+    assert rows(db, "SELECT rules FROM instruction_versions WHERE rules IS NOT NULL") == [("{}",)]
+
+
 def test_018_keeps_a_series_checks_as_versions_flags_what_fails_them_and_checks_a_series_again(url, tmp_path):
     db = tmp_path / "test.db"
     config = database.alembic_config(url)
@@ -265,7 +298,7 @@ def test_017_keeps_a_templates_field_rules_and_flags_the_values_that_break_them(
     assert rows(db, "SELECT COUNT(*) FROM flags WHERE page_id = 'p017'") == [(0,)]  # an invalid flag can't be kept without its kind
     assert "rules" not in {r[1] for r in rows(db, "PRAGMA table_info(instruction_versions)")}
     database.migrate(url)
-    assert rows(db, "SELECT COUNT(*) FROM instruction_versions WHERE rules IS NOT NULL") == [(0,)]
+    assert rows(db, "SELECT kind FROM instruction_versions WHERE rules IS NOT NULL") == [("coded",)]  # only 019's codebook
 
 
 def test_016_lets_a_job_add_a_series_items(url, tmp_path):

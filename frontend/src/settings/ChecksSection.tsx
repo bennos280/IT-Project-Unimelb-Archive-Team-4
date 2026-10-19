@@ -252,11 +252,21 @@ function CheckDialog({ check, choices, onClose, onDone }: {
                 <Side name="Compare" fields={draft.left ?? [""]} choices={choices} onChange={(left) => set({ left })} />
               </Field>
               <Field>
-                <FieldLabel htmlFor={`${id}-op`}>Should be</FieldLabel>
+                <FieldLabel htmlFor={`${id}-op`}>Comparison</FieldLabel>
                 <NativeSelect id={`${id}-op`} className="w-full" value={draft.op} onChange={(e) => set({ op: e.target.value as Op })}>
                   {Object.entries(ops).map(([op, sign]) => <option key={op} value={op}>{sign}</option>)}
                 </NativeSelect>
-                <FieldDescription>Numbers and dates compare as such; other values only as the same (=) or different (≠).</FieldDescription>
+                <FieldDescription>
+                  Numbers and dates compare as such; other values only as the same (=) or different (≠), ignoring case, spaces and
+                  punctuation. Names: the field is the name the other field's code has in its list (its rule's values, as code = name).
+                </FieldDescription>
+                {draft.op !== "names" && (
+                  <NativeSelect aria-label="Compare as" className="w-full" value={draft.as ?? "values"}
+                    onChange={(e) => set({ as: e.target.value === "codes" ? "codes" : undefined })}>
+                    <option value="values">As values</option>
+                    <option value="codes">As codes: digits only, leading zeros ignored; anything else can't be told</option>
+                  </NativeSelect>
+                )}
               </Field>
               <Field>
                 <FieldLabel htmlFor={`${id}-with`}>With</FieldLabel>
