@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, CircleCheck, Plus, ScanSearch, TriangleAlert, X } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 
@@ -12,6 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { backendRequest, itemTitle, recordNumber, recordWords } from "../progress/backend";
 import type { Collection, Level, PageType, Part } from "./PageTypesScreen";
 import { parseTemplate } from "./rules";
+import { partsOf, shapeOf, type Shape } from "./shapes";
 
 // How an item already read would group by some levels: the records grouping would make, parents first, each with the one it
 // sits in and its pages; the pages in none; each page's type; and what grouping would flag, each on a page and about a record
@@ -62,17 +63,32 @@ export default function LevelScreen() {
   );
 }
 
-// A level's name, what one is made of in order (each part a read page type, how many of it, and whether it may be filed
-// elsewhere and matched by number; the first starts one) and its number field, saved with the series' other levels or removed
-// from them; beside them, an item already read tried by them.
+// A level's name, what one is (a common shape of record, or, custom, what one is made of in order: each part a read page type,
+// how many of it, and whether it may be filed elsewhere and matched by number; the first starts one) and its number field, saved
+// with the series' other levels or removed from them (the whole item, as the series' only level, is none); beside them, an item
+// already read tried by them.
 function LevelForm({ collection, types, index, setup }: { collection: Collection; types: PageType[]; index: number; setup: string }) {
   const id = useId();
   const existing = collection.levels[index] as Level | undefined;
   const read = types.filter((t) => !t.unknown);
   const [name, setName] = useState(existing?.name ?? "");
-  const [parts, setParts] = useState<Part[]>(existing?.parts ?? []);
-  // The parts as changed, the first starting one and none of the others.
-  const change = (next: Part[]) => setParts(next.map((p, i) => ({ ...p, how: i === 0 ? "starts" : p.how === "starts" ? "follows" : p.how })));
+  // What one is: its shape, the page type starting one and the one matched by number (kept while another shape is chosen), and
+  // the parts set by hand (custom), which start as the shape chosen before.
+  const [initial] = useState<Shape>(() => (existing ? shapeOf(existing.parts) : { kind: "page" }));
+  const [kind, setKind] = useState<Shape["kind"]>(initial.kind);
+  const [startType, setStartType] = useState("start" in initial ? initial.start : read[0]?.name ?? "");
+  const [matchType, setMatchType] = useState("match" in initial ? initial.match : read.find((t) => t.name !== startType)?.name ?? "");
+  const [custom, setCustom] = useState<Part[]>(existing?.parts ?? []);
+  const shape: Shape = kind === "run" ? { kind, start: startType } : kind === "matched" ? { kind, start: startType, match: matchType }
+    : { kind } as Shape;
+  const parts = kind === "custom" ? custom : partsOf(shape, read.map((t) => t.name));
+  const choose = (next: Shape["kind"]) => { if (next === "custom") setCustom(parts); setKind(next); };
+  const chooseStart = (type: string) => {
+    setStartType(type);
+    if (type === matchType) setMatchType(read.find((t) => t.name !== type)?.name ?? "");
+  };
+  // The parts as changed by hand, the first starting one and none of the others.
+  const change = (next: Part[]) => setCustom(next.map((p, i) => ({ ...p, how: i === 0 ? "starts" : p.how === "starts" ? "follows" : p.how })));
   // A part moved up or down a place, keeping the focus on its button (or, at an end, on the other one).
   const move = (i: number, by: number) => {
     const next = [...parts];
@@ -103,9 +119,32 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
       .then((found) => { setItems(found); setItem(found[0]?.id ?? ""); }).catch(() => setLoadError("Could not load the series' items."));
   }, [collection.id]);
   const words = recordWords(name.trim().toLowerCase() || "record");
-  const level: Level = { name, key, parts };
-  // The series' levels as saving would leave them.
-  const next = existing ? collection.levels.map((l, i) => (i === index ? level : l)) : [...collection.levels, level];
+  const numbered = kind === "run" || kind === "matched" || kind === "custom"; // has page types to read a number from
+  const level: Level = { name, key: numbered ? key : "", parts };
+  // The series' levels as saving would leave them: as the only one, the whole item is none.
+  const only = index === 0 && collection.levels.length <= 1;
+  const next = kind === "item" ? collection.levels.filter((_, i) => i !== index)
+    : existing ? collection.levels.map((l, i) => (i === index ? level : l)) : [...collection.levels, level];
+  const typeSelect = (label: string, value: string, set: (type: string) => void, skip?: string) => (
+    <NativeSelect size="sm" aria-label={label} className="w-auto" value={value} onChange={(e) => set(e.target.value)}>
+      {read.filter((t) => t.name !== skip).map((t) => <option key={t.name} value={t.name}>{t.label}</option>)}
+    </NativeSelect>
+  );
+  // The shapes to choose from, each with its title and, chosen, what it asks.
+  const shapes: { kind: Shape["kind"]; title: string; body: ReactNode; off?: boolean }[] = [
+    ...(only ? [{ kind: "item" as const, title: `One ${words.one} per item`, body: `The whole item is one ${words.one}, like a diary volume.` }] : []),
+    { kind: "page", title: `One ${words.one} per page`, body: `Every page is its own ${words.one}, like a card index.` },
+    { kind: "run", title: `${start(words.many)} start at a page`, off: !read.length,
+      body: kind === "run" ? <>Each {typeSelect(`Page that starts ${words.a}`, startType, chooseStart)} starts a new {words.one}, and the pages after
+        it belong to it.</> : `A chosen kind of page starts each ${words.one}, and the pages after it belong to it.` },
+    { kind: "matched", title: `${start(words.many)} start at a page, with pages matched by number`, off: read.length < 2,
+      body: kind === "matched" ? <>
+        <span className="flex w-full flex-wrap items-center gap-1">Each {typeSelect(`Page that starts ${words.a}`, startType, chooseStart)} starts a new {words.one}.</span>
+        <span className="flex w-full flex-wrap items-center gap-1">Each {typeSelect("Page matched by number", matchType, setMatchType, startType)} joins
+          the {words.one} with the same number.</span>
+      </> : `As above, and one kind of page joins the ${words.one} with the same number, wherever it's filed.` },
+    { kind: "custom", title: "Custom", body: "Choose each part yourself." },
+  ];
   // The number field can be one every page type that starts one or is matched to it has (one with no template isn't read: it has none).
   const grouped = parts.filter((p) => p.how !== "follows" && fields[p.type]).map((p) => p.type);
   const choices = grouped.length ? fields[grouped[0]].filter((f) => grouped.every((t) => fields[t].includes(f))) : [];
@@ -152,18 +191,31 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
               onClick={() => save(collection.levels.filter((_, i) => i !== index))}>Remove level</Button>
           )}
           <Button variant="outline" asChild><a href={setup}>Cancel</a></Button>
-          <Button disabled={busy || !name.trim()} onClick={() => save(next)}>Save</Button>
+          <Button disabled={busy || (kind !== "item" && !name.trim())} onClick={() => save(next)}>Save</Button>
         </div>
       </div>
       {error && <Alert variant="destructive"><AlertDescription className="whitespace-pre-line">{error}</AlertDescription></Alert>}
       <div className="grid gap-8 lg:grid-cols-[minmax(0,34rem)_minmax(0,1fr)]">
         <div className="rounded-lg border bg-card p-5 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto">
           <FieldGroup className="gap-6">
-            <Field>
+            {kind !== "item" && <Field>
               <FieldLabel htmlFor={`${id}-name`}>Name</FieldLabel>
               <Input id={`${id}-name`} value={name} placeholder="e.g. survey" onChange={(e) => setName(e.target.value)} />
-            </Field>
-            <Field>
+            </Field>}
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-medium">What is one {words.one}?</legend>
+              {shapes.map((s) => (
+                <div key={s.kind} className={`flex gap-3 rounded-md border p-3 text-sm ${kind === s.kind ? "border-primary" : ""} ${s.off ? "opacity-50" : ""}`}>
+                  <input type="radio" id={`${id}-${s.kind}`} name={`${id}-shape`} className="mt-0.5 size-4 shrink-0 accent-primary"
+                    checked={kind === s.kind} disabled={s.off} onChange={() => choose(s.kind)} />
+                  <div className="min-w-0 space-y-1">
+                    <label htmlFor={`${id}-${s.kind}`} className="block font-medium">{s.title}</label>
+                    <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5 text-muted-foreground">{s.body}</div>
+                  </div>
+                </div>
+              ))}
+            </fieldset>
+            {kind === "custom" && <Field>
               <FieldTitle>{words.A} is made of, in order</FieldTitle>
               <ol aria-label="Parts" className="divide-y rounded-md border">
                 {parts.map((p, i) => (
@@ -214,14 +266,14 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
                   </DropdownMenu.Portal>
                 </DropdownMenu.Root>
               ) : !read.length && <p className="text-sm text-muted-foreground">Add a page type first.</p>}
-            </Field>
-            <Field>
+            </Field>}
+            {numbered && <Field>
               <FieldLabel htmlFor={`${id}-key`}>Number field</FieldLabel>
               <NativeSelect id={`${id}-key`} className="w-full" value={key} onChange={(e) => setKey(e.target.value)}>
                 <option value="">None: by page order only</option>
                 {choices.map((f) => <option key={f} value={f}>{start(f.replaceAll("_", " "))}</option>)}
               </NativeSelect>
-            </Field>
+            </Field>}
           </FieldGroup>
         </div>
         <section aria-labelledby={`${id}-try`} className="min-w-0 space-y-3">

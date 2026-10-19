@@ -16,6 +16,7 @@ import ChecksSection from "./ChecksSection";
 import FieldRules from "./FieldRules";
 import ReviewerField, { type Reviewer } from "./ReviewerField";
 import { cleanRules, parseTemplate, sameRules, type Rules } from "./rules";
+import { describe } from "./shapes";
 
 export type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; templateVersion: number | null };
 // One part of what a level's record is made of: a page type, how many of it one has, and how its pages are found (one starts
@@ -170,10 +171,6 @@ function Levels({ collection, types }: { collection: Collection; types: PageType
   const levels = collection.levels;
   const levelLink = (place: number | "new") => `/?collection=${collection.id}&view=setup&level=${place}`;
   const label = (name: string) => types.find((t) => t.name === name)?.label ?? name;
-  const short: Record<Part["count"], string> = { one: "1", one_or_more: "1+", any: "any", at_most_one: "0–1" };
-  const how = (level: Level) => level.parts.length
-    ? level.parts.map((p) => `${short[p.count]} ${label(p.type)}${p.how === "matched" ? " by number" : ""}`).join(" · ")
-    : "each page is one";
   return (
     <section className="space-y-3">
       <div>
@@ -185,7 +182,7 @@ function Levels({ collection, types }: { collection: Collection; types: PageType
       <ol aria-label="Levels" className="max-w-2xl space-y-1.5">
         <Rung depth={0} icon={<Box />} name="Item" how="From the archive" fixed />
         {levels.map((level, i) => (
-          <Rung key={level.name} depth={i + 1} icon={<Layers />} name={start(level.name)} how={how(level)}>
+          <Rung key={level.name} depth={i + 1} icon={<Layers />} name={start(level.name)} how={describe(level, label)}>
             <Button variant="outline" size="sm" asChild><a href={levelLink(i + 1)} aria-label={`Edit ${level.name}`}>Edit</a></Button>
           </Rung>
         ))}

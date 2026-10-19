@@ -195,7 +195,7 @@ test("a series' levels are a ladder from Item to Page, and its page types are li
   await page.goto("/?collection=1&view=setup");
   await expect(page.getByRole("heading", { name: "Wilfred Prest Survey", level: 1 })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Series" }).getByRole("link", { name: "Setup" })).toHaveAttribute("aria-current", "page");
-  await expect(ladder(page)).toHaveText([/^Item\s*From the archive$/, /^Survey\s*1\+ Main page · any Notes page · 1 Coded page by number\s*Edit$/,
+  await expect(ladder(page)).toHaveText([/^Item\s*From the archive$/, /^Survey\s*Starts at each Main page · Coded page matched by number\s*Edit$/,
     /^Page\s*From the scan$/]);
   await expect(page.getByRole("tablist", { name: "Setup" }).getByRole("tab")).toHaveText(["Levels", "Page types", "Checks"]);
   await expect(page.getByRole("tab", { name: "Levels" })).toHaveAttribute("aria-selected", "true");
@@ -276,12 +276,17 @@ test("with no reviewers yet, whoever adds a page type adds their name there, and
   await expect(edit.getByLabel("New reviewer name")).toHaveCount(0);
 });
 
-test("a level's name, what one is made of in order, and its number field are saved together, and a refusal is shown", async ({ page }) => {
+test("a level opens on its shape, and its name, what one is made of in order (custom) and its number field are saved together, and a refusal is shown", async ({ page }) => {
   const calls = await mockApi(page);
   await page.goto("/?collection=1&view=setup");
   await page.getByRole("link", { name: "Edit survey" }).click();
   await expect(page).toHaveURL("/?collection=1&view=setup&level=1");
   await expect(page.getByRole("heading", { name: "Level: Survey", level: 1 })).toBeVisible();
+  // its shape: a main form starts each survey, and its coded card is matched by number
+  await expect(page.getByLabel("Surveys start at a page, with pages matched by number")).toBeChecked();
+  await expect(page.getByLabel("Page that starts a survey")).toHaveValue("main");
+  await expect(page.getByLabel("Page matched by number")).toHaveValue("coded");
+  await page.getByLabel("Custom").check(); // its parts, to choose each one
   await expect(parts(page).locator("p:first-child")).toHaveText(["Main page", "Notes page", "Coded page"]);
   await expect(parts(page).first()).toContainText("Starts a survey");
   await expect(page.getByLabel("How many Main page")).toHaveValue("one_or_more");
@@ -319,6 +324,9 @@ test("a level added goes inside the bottom one, its first page type starting one
   await expect(page).toHaveURL("/?collection=1&view=setup&level=new");
   await expect(page.getByText("It goes inside each survey. Items read from now on group by it.")).toBeVisible();
   await page.getByLabel("Name").fill("card");
+  await expect(page.getByLabel("One card per page")).toBeChecked(); // a new level's shape; the whole item isn't one inside a survey
+  await expect(page.getByLabel("One card per item")).toHaveCount(0);
+  await page.getByLabel("Custom").check();
   await expect(page.getByText("With no page types, each page is a card of its own.")).toBeVisible();
   await addPart(page, "Coded page");
   await addPart(page, "Notes page");
@@ -328,7 +336,7 @@ test("a level added goes inside the bottom one, its first page type starting one
   await expect(page.getByRole("button", { name: "Move Notes page down" })).toBeFocused(); // at the top: on the button still there
   await expect(page.getByLabel("Coded page: match by number")).not.toBeChecked();
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(ladder(page)).toHaveText([/^Item/, /^Survey\s*1\+ Main page/, /^Card\s*1 Notes page · 1 Coded page\s*Edit$/, /^Page/]);
+  await expect(ladder(page)).toHaveText([/^Item/, /^Survey\s*Starts at each Main page/, /^Card\s*1 Notes page · 1 Coded page\s*Edit$/, /^Page/]);
   await expect(ladder(page).last()).toHaveCSS("margin-left", "72px"); // three steps in
   expect(calls.putLevels).toEqual([{ levels: [{ name: "survey", parts: [MAIN_PART, NOTES_PART, CODED_PART], key: "number_of_dwelling" },
     { name: "card", parts: [{ type: "notes", count: "one", how: "starts" }, { type: "coded", count: "one", how: "follows" }], key: "" }] }]);
@@ -346,9 +354,11 @@ test("a level can be removed, leaving each item one record, and added again", as
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled(); // no name yet
   await page.getByLabel("Name").fill("letter");
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(ladder(page).nth(1)).toHaveText(/^Letter\s*each page is one\s*Edit$/); // made of nothing
+  await expect(ladder(page).nth(1)).toHaveText(/^Letter\s*One per page\s*Edit$/); // made of nothing
   await page.getByRole("link", { name: "Edit letter" }).click();
-  await expect(page.getByLabel("Number field").locator("option")).toHaveText(["None: by page order only"]); // no page type to read one from
+  await expect(page.getByLabel("Number field")).toHaveCount(0); // one per page: no page type to read a number from
+  await page.getByLabel("Custom").check();
+  await expect(page.getByLabel("Number field").locator("option")).toHaveText(["None: by page order only"]); // none yet
   await addPart(page, "Main page");
   await addPart(page, "Notes page");
   await page.getByRole("button", { name: "Remove Main page" }).click(); // the next one starts a letter now
@@ -357,6 +367,33 @@ test("a level can be removed, leaving each item one record, and added again", as
   await expect(ladder(page).nth(1)).toHaveText(/^Letter\s*1 Notes page\s*Edit$/);
   expect(calls.putLevels).toEqual([{ levels: [] }, { levels: [{ name: "letter", parts: [], key: "" }] },
     { levels: [{ name: "letter", parts: [{ type: "notes", count: "one", how: "starts" }], key: "" }] }]);
+});
+
+test("a level's shape fills in what one is made of: a run of pages from one, each page, or, as the only level, the whole item", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?collection=1&view=setup&level=1");
+  await page.getByLabel("Page that starts a survey").selectOption("Coded page"); // the matched one can't start one too
+  await expect(page.getByLabel("Page matched by number")).toHaveValue("main");
+  await page.getByLabel("Surveys start at a page", { exact: true }).check();
+  await page.getByLabel("Page that starts a survey").selectOption("Notes page");
+  await page.getByLabel("Number field").selectOption("");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(ladder(page).nth(1)).toHaveText(/^Survey\s*Starts at each Notes page\s*Edit$/);
+  await page.getByRole("link", { name: "Edit survey" }).click();
+  await expect(page.getByLabel("Surveys start at a page", { exact: true })).toBeChecked();
+  await page.getByLabel("One survey per page").check();
+  await expect(page.getByLabel("Number field")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(ladder(page).nth(1)).toHaveText(/^Survey\s*One per page\s*Edit$/);
+  await page.getByRole("link", { name: "Edit survey" }).click();
+  await page.getByLabel("One survey per item").check(); // as the only level: none at all
+  await expect(page.getByLabel("Name")).toHaveCount(0);
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("No levels: each item is one record.")).toBeVisible();
+  expect(calls.putLevels).toEqual([
+    { levels: [{ name: "survey", key: "", parts: [{ type: "notes", count: "one_or_more", how: "starts" },
+      { type: "coded", count: "any", how: "follows" }, { type: "main", count: "any", how: "follows" }] }] },
+    { levels: [{ name: "survey", key: "", parts: [] }] }, { levels: [] }]);
 });
 
 test("the Unknown type has no template, and says where its pages wait", async ({ page }) => {
@@ -508,7 +545,7 @@ test("a level's settings are tried on an item already read before they're saved,
   await main.getByRole("button", { name: "Try it" }).click(); // tried again: every record shown
   await expect(records.locator("p:first-child")).toHaveText(["In no record · Pg 1", "Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5"]);
   await expect(problems).toHaveAttribute("aria-pressed", "false");
-  await main.getByLabel("How many Notes page").selectOption("At most one");
+  await main.getByLabel("Surveys start at a page", { exact: true }).check();
   await expect(preview.getByRole("status")).toHaveText("Changed since this try: press Try it again.");
   await expect(records).toHaveCount(3); // still there to compare, faded
   await main.getByLabel("Name").fill("survey #1");
