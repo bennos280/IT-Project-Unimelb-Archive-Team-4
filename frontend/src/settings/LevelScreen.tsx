@@ -25,6 +25,7 @@ type Preview = {
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 const start = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+const list = (words: string[]) => (words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0] ?? "");
 const menuItem = "flex cursor-default rounded-sm px-2 py-1.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground";
 // How many of a part a record has, in words.
 const counts: Record<Part["count"], string> = { one: "Exactly one", one_or_more: "One or more", any: "Any number", at_most_one: "At most one" };
@@ -79,16 +80,23 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
   const [startType, setStartType] = useState("start" in initial ? initial.start : read[0]?.name ?? "");
   const [matchType, setMatchType] = useState("match" in initial ? initial.match : read.find((t) => t.name !== startType)?.name ?? "");
   const [custom, setCustom] = useState<Part[]>(existing?.parts ?? []);
+  const [own, setOwn] = useState(initial.kind === "custom"); // the custom parts are the level's or were changed by hand: kept
   const shape: Shape = kind === "run" ? { kind, start: startType } : kind === "matched" ? { kind, start: startType, match: matchType }
     : { kind } as Shape;
-  const parts = kind === "custom" ? custom : partsOf(shape, read.map((t) => t.name));
-  const choose = (next: Shape["kind"]) => { if (next === "custom") setCustom(parts); setKind(next); };
+  // Its shape unchanged, a level keeps the parts it has; a shape chosen or changed makes them of the series' read page types.
+  const kept = existing !== undefined && kind === initial.kind && (!("start" in initial) || initial.start === startType) &&
+    (!("match" in initial) || initial.match === matchType);
+  const parts = kind === "custom" ? custom : kept ? existing.parts : partsOf(shape, read.map((t) => t.name));
+  const choose = (next: Shape["kind"]) => { if (next === "custom" && !own) setCustom(parts); setKind(next); };
   const chooseStart = (type: string) => {
     setStartType(type);
     if (type === matchType) setMatchType(read.find((t) => t.name !== type)?.name ?? "");
   };
   // The parts as changed by hand, the first starting one and none of the others.
-  const change = (next: Part[]) => setCustom(next.map((p, i) => ({ ...p, how: i === 0 ? "starts" : p.how === "starts" ? "follows" : p.how })));
+  const change = (next: Part[]) => {
+    setOwn(true);
+    setCustom(next.map((p, i) => ({ ...p, how: i === 0 ? "starts" : p.how === "starts" ? "follows" : p.how })));
+  };
   // A part moved up or down a place, keeping the focus on its button (or, at an end, on the other one).
   const move = (i: number, by: number) => {
     const next = [...parts];
@@ -125,30 +133,51 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
   const only = index === 0 && collection.levels.length <= 1;
   const next = kind === "item" ? collection.levels.filter((_, i) => i !== index)
     : existing ? collection.levels.map((l, i) => (i === index ? level : l)) : [...collection.levels, level];
+  // The number field can be one every page type that starts one or is matched to it has (one with no template isn't read: it has none).
+  const grouped = parts.filter((p) => p.how !== "follows" && fields[p.type]).map((p) => p.type);
+  const choices = grouped.length ? fields[grouped[0]].filter((f) => grouped.every((t) => fields[t].includes(f))) : [];
+  if (key && !choices.includes(key)) choices.unshift(key);
   const typeSelect = (label: string, value: string, set: (type: string) => void, skip?: string) => (
     <NativeSelect size="sm" aria-label={label} className="w-auto" value={value} onChange={(e) => set(e.target.value)}>
       {read.filter((t) => t.name !== skip).map((t) => <option key={t.name} value={t.name}>{t.label}</option>)}
     </NativeSelect>
   );
+  const numberSelect = (label: string, none: string) => (
+    <NativeSelect size="sm" aria-label={label} className="w-auto" value={key} onChange={(e) => setKey(e.target.value)}>
+      <option value="">{none}</option>
+      {choices.map((f) => <option key={f} value={f}>{start(f.replaceAll("_", " "))}</option>)}
+    </NativeSelect>
+  );
+  const line = "flex w-full flex-wrap items-center gap-1";
+  // A starting page showing the same number as the one before, or none, is another sheet of it.
+  const sheets = (byNumber: boolean) => (byNumber ? ", unless it's another sheet of the one before" : ", and the pages after it belong to it");
+  const sheetsTip = "Another sheet shows the same number as the one before, or none.";
+  // What the shape's parts include, how many of each.
+  const howMany: Record<Part["count"], string> = { one: "exactly one", one_or_more: "one or more", any: "any", at_most_one: "at most one" };
+  const includes = <span className="w-full text-xs">Includes {list(parts.map((p) =>
+    `${howMany[p.count]} ${label(p.type)}${p.count === "one" || p.count === "at_most_one" ? "" : "s"}`))}.</span>;
   // The shapes to choose from, each with its title and, chosen, what it asks.
   const shapes: { kind: Shape["kind"]; title: string; body: ReactNode; off?: boolean }[] = [
     ...(only ? [{ kind: "item" as const, title: `One ${words.one} per item`, body: `The whole item is one ${words.one}, like a diary volume.` }] : []),
     { kind: "page", title: `One ${words.one} per page`, body: `Every page is its own ${words.one}, like a card index.` },
     { kind: "run", title: `${start(words.many)} start at a page`, off: !read.length,
-      body: kind === "run" ? <>Each {typeSelect(`Page that starts ${words.a}`, startType, chooseStart)} starts a new {words.one}, and the pages after
-        it belong to it.</> : `A chosen kind of page starts each ${words.one}, and the pages after it belong to it.` },
+      body: kind === "run" ? <>
+        <span className={line} title={key ? sheetsTip : undefined}>Each {typeSelect(`Page that starts ${words.a}`, startType, chooseStart)} starts a
+          new {words.one}{sheets(!!key)}.</span>
+        <span className={line}>Numbered by {numberSelect("Numbered by", "None: page order only")}</span>
+        {includes}
+      </> : `A chosen kind of page starts each ${words.one}, and the pages after it belong to it.` },
     { kind: "matched", title: `${start(words.many)} start at a page, with pages matched by number`, off: read.length < 2,
       body: kind === "matched" ? <>
-        <span className="flex w-full flex-wrap items-center gap-1">Each {typeSelect(`Page that starts ${words.a}`, startType, chooseStart)} starts a new {words.one}.</span>
-        <span className="flex w-full flex-wrap items-center gap-1">Each {typeSelect("Page matched by number", matchType, setMatchType, startType)} joins
+        <span className={line} title={sheetsTip}>Each {typeSelect(`Page that starts ${words.a}`, startType, chooseStart)} starts a
+          new {words.one}{sheets(true)}.</span>
+        <span className={line}>Each {typeSelect("Page matched by number", matchType, setMatchType, startType)} joins
           the {words.one} with the same number.</span>
+        <span className={line}>Matched using {numberSelect("Matched using", "Choose a field")}</span>
+        {includes}
       </> : `As above, and one kind of page joins the ${words.one} with the same number, wherever it's filed.` },
     { kind: "custom", title: "Custom", body: "Choose each part yourself." },
   ];
-  // The number field can be one every page type that starts one or is matched to it has (one with no template isn't read: it has none).
-  const grouped = parts.filter((p) => p.how !== "follows" && fields[p.type]).map((p) => p.type);
-  const choices = grouped.length ? fields[grouped[0]].filter((f) => grouped.every((t) => fields[t].includes(f))) : [];
-  if (key && !choices.includes(key)) choices.unshift(key);
 
   // What a try was of: once the settings or the item change, its result is out of date and its error says nothing.
   const trying = JSON.stringify([next, item]);
@@ -180,7 +209,7 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
     <>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{existing ? `Level: ${start(existing.name)}` : "Add level"}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{existing ? `${start(existing.name)} structure` : "Add level"}</h1>
           <p className="text-sm text-muted-foreground">
             {!existing && collection.levels.length ? `It goes inside each ${collection.levels.at(-1)!.name}. ` : ""}Items read from now on group by it.
           </p>
@@ -267,7 +296,7 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
                 </DropdownMenu.Root>
               ) : !read.length && <p className="text-sm text-muted-foreground">Add a page type first.</p>}
             </Field>}
-            {numbered && <Field>
+            {kind === "custom" && <Field>
               <FieldLabel htmlFor={`${id}-key`}>Number field</FieldLabel>
               <NativeSelect id={`${id}-key`} className="w-full" value={key} onChange={(e) => setKey(e.target.value)}>
                 <option value="">None: by page order only</option>
@@ -356,16 +385,16 @@ function PreviewResult({ preview, levels, bundle, stale }: { preview: Preview; l
       <div className={`space-y-3 ${stale ? "opacity-50" : ""}`}>
         <div className="flex flex-wrap items-center gap-2">
           <span className={chip}>{plural(top, topWords.one, topWords.many)}</span>
-          {withProblems ? (
-            <button type="button" aria-pressed={onlyProblems} onClick={() => setOnlyProblems((only) => !only)}
-              title={onlyProblems ? "Show them all" : "Show only these"}
-              className={`${chip} border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 aria-pressed:border-amber-500 aria-pressed:bg-amber-200 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 dark:aria-pressed:bg-amber-900`}>
-              <TriangleAlert aria-hidden="true" className="size-3.5" />{withProblems} with problems
-            </button>
-          ) : (
+          {!withProblems && (
             <span className={`${chip} text-emerald-700 dark:text-emerald-400`}><CircleCheck aria-hidden="true" className="size-3.5" />No problems</span>
           )}
           <span className={chip}>{plural(preview.loose.length, "page", "pages")} in no {topWords.one}</span>
+          {withProblems > 0 && (
+            <Button variant="outline" size="sm" className="ml-auto" onClick={() => setOnlyProblems((only) => !only)}>
+              {!onlyProblems && <TriangleAlert aria-hidden="true" className="text-amber-600" />}
+              {onlyProblems ? `Show all ${topWords.many}` : `Show the ${plural(withProblems, topWords.one, topWords.many)} with problems`}
+            </Button>
+          )}
         </div>
         {rows.length ? (
           <ol aria-label="Records" className="space-y-3">

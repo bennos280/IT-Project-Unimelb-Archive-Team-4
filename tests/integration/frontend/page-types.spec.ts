@@ -16,7 +16,7 @@ const type = (name: string, label: string, over: Partial<PageType> = {}): PageTy
 });
 
 async function mockApi(page: Page, recordKey: string | null = "number_of_dwelling", reviewers = [{ id: 1, name: "Ben" }],
-  checkVersions: CheckVersion[] = []) {
+  checkVersions: CheckVersion[] = [], parts: Part[] = [MAIN_PART, NOTES_PART, CODED_PART]) {
   const types = [
     type("coded", "Coded page", { templateVersion: 8 }),
     type("main", "Main page", { templateVersion: 7 }),
@@ -24,7 +24,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
     type("other", "Unknown", { unknown: true }),
   ];
   const collection = {
-    id: 1, name: "Wilfred Prest Survey", levels: [{ name: "survey", parts: [MAIN_PART, NOTES_PART, CODED_PART], key: recordKey }] as Level[],
+    id: 1, name: "Wilfred Prest Survey", levels: [{ name: "survey", parts, key: recordKey }] as Level[],
     get recordName() { return this.levels.at(-1)?.name ?? "record"; },
     get grouped() { return Boolean(this.levels[0]?.parts.length); },
   };
@@ -281,11 +281,13 @@ test("a level opens on its shape, and its name, what one is made of in order (cu
   await page.goto("/?collection=1&view=setup");
   await page.getByRole("link", { name: "Edit survey" }).click();
   await expect(page).toHaveURL("/?collection=1&view=setup&level=1");
-  await expect(page.getByRole("heading", { name: "Level: Survey", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Survey structure", level: 1 })).toBeVisible();
   // its shape: a main form starts each survey, and its coded card is matched by number
   await expect(page.getByLabel("Surveys start at a page, with pages matched by number")).toBeChecked();
   await expect(page.getByLabel("Page that starts a survey")).toHaveValue("main");
   await expect(page.getByLabel("Page matched by number")).toHaveValue("coded");
+  await expect(page.getByLabel("Matched using")).toHaveValue("number_of_dwelling");
+  await expect(page.getByText("Includes one or more Main pages, any Notes pages and exactly one Coded page.")).toBeVisible();
   await page.getByLabel("Custom").check(); // its parts, to choose each one
   await expect(parts(page).locator("p:first-child")).toHaveText(["Main page", "Notes page", "Coded page"]);
   await expect(parts(page).first()).toContainText("Starts a survey");
@@ -376,7 +378,8 @@ test("a level's shape fills in what one is made of: a run of pages from one, eac
   await expect(page.getByLabel("Page matched by number")).toHaveValue("main");
   await page.getByLabel("Surveys start at a page", { exact: true }).check();
   await page.getByLabel("Page that starts a survey").selectOption("Notes page");
-  await page.getByLabel("Number field").selectOption("");
+  await expect(page.getByText("Includes one or more Notes pages, any Coded pages and any Main pages.")).toBeVisible();
+  await page.getByLabel("Numbered by").selectOption("");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(ladder(page).nth(1)).toHaveText(/^Survey\s*Starts at each Notes page\s*Edit$/);
   await page.getByRole("link", { name: "Edit survey" }).click();
@@ -394,6 +397,23 @@ test("a level's shape fills in what one is made of: a run of pages from one, eac
     { levels: [{ name: "survey", key: "", parts: [{ type: "notes", count: "one_or_more", how: "starts" },
       { type: "coded", count: "any", how: "follows" }, { type: "main", count: "any", how: "follows" }] }] },
     { levels: [{ name: "survey", key: "", parts: [] }] }, { levels: [] }]);
+});
+
+test("a level opened and saved unchanged keeps its parts, and parts chosen by hand stay while another shape is tried", async ({ page }) => {
+  const calls = await mockApi(page, "number_of_dwelling", undefined, undefined, [MAIN_PART, CODED_PART]); // no notes page in a survey
+  await page.goto("/?collection=1&view=setup&level=1");
+  await expect(page.getByLabel("Surveys start at a page, with pages matched by number")).toBeChecked();
+  await expect(page.getByText("Includes one or more Main pages and exactly one Coded page.")).toBeVisible();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/?collection=1&view=setup");
+  expect(calls.putLevels).toEqual([{ levels: [{ name: "survey", parts: [MAIN_PART, CODED_PART], key: "number_of_dwelling" }] }]);
+
+  await page.goto("/?collection=1&view=setup&level=1");
+  await page.getByLabel("Custom").check();
+  await page.getByLabel("How many Main page").selectOption("Exactly one");
+  await page.getByLabel("One survey per page").check();
+  await page.getByLabel("Custom").check();
+  await expect(page.getByLabel("How many Main page")).toHaveValue("one"); // as chosen by hand
 });
 
 test("the Unknown type has no template, and says where its pages wait", async ({ page }) => {
@@ -525,8 +545,7 @@ test("a level's settings are tried on an item already read before they're saved,
   const preview = main.getByLabel("Preview");
   await expect(preview.getByText("2 surveys", { exact: true })).toBeVisible();
   await expect(preview.getByText("1 page in no survey", { exact: true })).toBeVisible();
-  const problems = preview.getByRole("button", { name: "1 with problems" });
-  await expect(problems).toHaveAttribute("aria-pressed", "false");
+  const problems = preview.getByRole("button", { name: "Show the 1 survey with problems" });
   const records = preview.getByRole("list", { name: "Records" }).getByRole("listitem");
   await expect(records.locator("p:first-child")).toHaveText(["In no record · Pg 1", "Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5"]);
   await expect(records.nth(2)).toContainText("expected one Coded page, found 2");
@@ -538,13 +557,15 @@ test("a level's settings are tried on an item already read before they're saved,
   await expect(scans.last()).toContainText("No scan here");
   await expect(scans.last().locator("img")).toHaveCount(0);
   await problems.click();
-  await expect(problems).toHaveAttribute("aria-pressed", "true");
   await expect(records.locator("p:first-child")).toHaveText(["Survey 7 · Pg 4–5"]);
+  await preview.getByRole("button", { name: "Show all surveys" }).click();
+  await expect(records).toHaveCount(3);
+  await problems.click();
   expect(calls.tried).toEqual([{ levels: [{ name: "survey", parts: [MAIN_PART, NOTES_PART, CODED_PART], key: "number_of_dwelling" }], item: "b1" }]);
   expect(calls.putLevels).toEqual([]); // nothing saved
   await main.getByRole("button", { name: "Try it" }).click(); // tried again: every record shown
   await expect(records.locator("p:first-child")).toHaveText(["In no record · Pg 1", "Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5"]);
-  await expect(problems).toHaveAttribute("aria-pressed", "false");
+  await expect(problems).toBeVisible();
   await main.getByLabel("Surveys start at a page", { exact: true }).check();
   await expect(preview.getByRole("status")).toHaveText("Changed since this try: press Try it again.");
   await expect(records).toHaveCount(3); // still there to compare, faded
