@@ -6,7 +6,7 @@ const type = (name: string, label: string, over: Partial<PageType> = {}): PageTy
   name, label, builtIn: true, unknown: false, startsRecord: false, matchedByKey: false, templateVersion: null, ...over,
 });
 
-async function mockApi(page: Page, recordKey: string | null = "number_of_dwelling") {
+async function mockApi(page: Page, recordKey: string | null = "number_of_dwelling", reviewers = [{ id: 1, name: "Ben" }]) {
   const types = [
     type("coded", "Coded page", { matchedByKey: true, templateVersion: 8 }),
     type("main", "Main page", { startsRecord: true, templateVersion: 7 }),
@@ -22,14 +22,23 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
     coded: [{ id: 8, body: '{"number_of_dwelling": null}' }],
     notes: [{ id: 9, body: '{"text": null}' }],
   };
-  const calls = { patchType: [] as unknown[], patchCollection: [] as unknown[], addType: [] as unknown[], saveTemplate: [] as unknown[] };
+  const calls = {
+    patchType: [] as unknown[], patchCollection: [] as unknown[], addType: [] as unknown[], saveTemplate: [] as unknown[], addReviewer: [] as unknown[],
+  };
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const method = request.method();
     const named = path.match(/^\/api\/(page-types|instructions)\/(\w+)$/);
     if (path === "/api/page-types" && method === "GET") return route.fulfill({ json: types });
-    if (path === "/api/reviewers") return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
+    if (path === "/api/reviewers" && method === "POST") {
+      const body = request.postDataJSON();
+      calls.addReviewer.push(body);
+      const person = { id: reviewers.length + 1, name: body.name };
+      reviewers.push(person);
+      return route.fulfill({ json: person });
+    }
+    if (path === "/api/reviewers") return route.fulfill({ json: reviewers });
     if (path === "/api/collections/1" && method === "GET") return route.fulfill({ json: collection });
     if (path === "/api/collections/1" && method === "PATCH") {
       const body = request.postDataJSON();
@@ -130,6 +139,27 @@ test("a new page type is added by label, then opened to give it a template", asy
   await expect(edit.getByText("Until it has one, pages of this type aren't read.")).toBeVisible();
   await edit.getByRole("button", { name: "Cancel" }).click();
   await expect(row(page, "Follow-up visit")).toContainText("None yet");
+});
+
+test("with no reviewers yet, whoever adds a page type adds their name there, and it's listed for the template", async ({ page }) => {
+  const calls = await mockApi(page, undefined, []);
+  await page.goto("/?view=page-types");
+  await page.getByRole("button", { name: "Add page type" }).click();
+  const add = page.getByRole("dialog", { name: "Add page type" });
+  await add.getByLabel("Label").fill("Follow-up visit");
+  await expect(add.getByRole("button", { name: "Add", exact: true })).toBeDisabled(); // no reviewer yet
+  await add.getByLabel("New reviewer name").fill(" Lachlan ");
+  await add.getByRole("button", { name: "Add reviewer" }).click();
+  await expect(add.getByLabel("Saved as")).toHaveValue("1");
+  await expect(add.getByLabel("New reviewer name")).toHaveCount(0);
+  await add.getByRole("button", { name: "Add", exact: true }).click();
+  expect(calls.addReviewer).toEqual([{ name: "Lachlan" }]);
+  expect(calls.addType).toEqual([{ label: "Follow-up visit", reviewerId: 1, collectionId: 1 }]);
+
+  const edit = page.getByRole("dialog", { name: "Edit Follow-up visit" });
+  await edit.getByLabel("Template").fill('{"visit": null}');
+  await edit.getByLabel("Saved as").selectOption("Lachlan");
+  await expect(edit.getByLabel("New reviewer name")).toHaveCount(0);
 });
 
 test("the survey number field saves, and a refusal is shown", async ({ page }) => {

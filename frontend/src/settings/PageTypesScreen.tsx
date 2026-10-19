@@ -11,6 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { backendRequest, recordWords } from "../progress/backend";
+import { createReviewer } from "../review-screen/api";
 
 type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; startsRecord: boolean; matchedByKey: boolean; templateVersion: number | null };
 type Collection = { id: number; name: string; recordKey: string | null; recordName: string; grouped: boolean };
@@ -51,6 +52,7 @@ export default function PageTypesScreen() {
     }).catch((e) => setLoadError(message(e, "Could not load the page types.")));
   }, [collectionId]);
   useEffect(load, [load]);
+  const addReviewer = (person: Reviewer) => setReviewers((r) => [...r.filter((p) => p.id !== person.id), person]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -109,12 +111,12 @@ export default function PageTypesScreen() {
         )}
       </main>
       {adding && (
-        <AddDialog collectionId={collectionId} reviewers={reviewers} onClose={() => setAdding(false)}
+        <AddDialog collectionId={collectionId} reviewers={reviewers} onAddReviewer={addReviewer} onClose={() => setAdding(false)}
           onAdded={(created) => { setAdding(false); setEditing(created); load(); }} />
       )}
       {editing && collection && (
-        <EditDialog type={editing} collection={collection} reviewers={reviewers} onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); load(); }} />
+        <EditDialog type={editing} collection={collection} reviewers={reviewers} onAddReviewer={addReviewer}
+          onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
       )}
     </div>
   );
@@ -169,23 +171,56 @@ function Records({ collection, onSaved }: { collection: Collection; onSaved: () 
   );
 }
 
-// Who saves: a new page type and each template version record their reviewer.
-function ReviewerField({ reviewers, value, onChange }: { reviewers: Reviewer[]; value: string; onChange: (value: string) => void }) {
+// Who saves: a new page type and each template version record their reviewer; someone not listed adds their name here.
+function ReviewerField({ reviewers, value, onChange, onAddReviewer }: {
+  reviewers: Reviewer[]; value: string; onChange: (value: string) => void; onAddReviewer: (person: Reviewer) => void;
+}) {
   const id = useId();
+  const [adding, setAdding] = useState(!reviewers.length);
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function add() {
+    setBusy(true);
+    setError("");
+    try {
+      const person = await createReviewer(name);
+      onAddReviewer(person);
+      onChange(String(person.id));
+      setAdding(false);
+      setName("");
+    } catch (e) {
+      setError(message(e, "Could not add the reviewer."));
+    }
+    setBusy(false);
+  }
+
   return (
     <Field>
       <FieldLabel htmlFor={id}>Saved as</FieldLabel>
-      <NativeSelect id={id} className="w-full" value={value} onChange={(e) => onChange(e.target.value)}>
+      <NativeSelect id={id} className="w-full" value={adding ? "add" : value} onChange={(e) => {
+        setAdding(e.target.value === "add");
+        onChange(e.target.value === "add" ? "" : e.target.value);
+      }}>
         <option value="">Select reviewer</option>
         {reviewers.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+        <option value="add">+ Add reviewer…</option>
       </NativeSelect>
-      {!reviewers.length && <FieldDescription>Add yourself as a reviewer on a review screen first.</FieldDescription>}
+      {adding && (
+        <div className="flex gap-2">
+          <Input aria-label="New reviewer name" placeholder="Enter reviewer name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Button variant="outline" disabled={busy || !name.trim()} onClick={add}>Add reviewer</Button>
+        </div>
+      )}
+      {error && <FieldDescription className="text-destructive">{error}</FieldDescription>}
     </Field>
   );
 }
 
-function AddDialog({ collectionId, reviewers, onClose, onAdded }: {
-  collectionId: number; reviewers: Reviewer[]; onClose: () => void; onAdded: (created: PageType) => void;
+function AddDialog({ collectionId, reviewers, onAddReviewer, onClose, onAdded }: {
+  collectionId: number; reviewers: Reviewer[]; onAddReviewer: (person: Reviewer) => void; onClose: () => void;
+  onAdded: (created: PageType) => void;
 }) {
   const id = useId();
   const [label, setLabel] = useState("");
@@ -216,7 +251,7 @@ function AddDialog({ collectionId, reviewers, onClose, onAdded }: {
             <FieldLabel htmlFor={id}>Label</FieldLabel>
             <Input id={id} value={label} placeholder="e.g. Follow-up visit" onChange={(e) => setLabel(e.target.value)} />
           </Field>
-          <ReviewerField reviewers={reviewers} value={reviewerId} onChange={setReviewerId} />
+          <ReviewerField reviewers={reviewers} value={reviewerId} onChange={setReviewerId} onAddReviewer={onAddReviewer} />
         </FieldGroup>
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
         <DialogFooter>
@@ -243,8 +278,9 @@ function GroupingOption({ value, title, disabled, children }: { value: Grouping;
 }
 
 // A page type's label, how its pages group, and its template (each save of the template is a new version).
-function EditDialog({ type, collection, reviewers, onClose, onSaved }: {
-  type: PageType; collection: Collection; reviewers: Reviewer[]; onClose: () => void; onSaved: () => void;
+function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSaved }: {
+  type: PageType; collection: Collection; reviewers: Reviewer[]; onAddReviewer: (person: Reviewer) => void; onClose: () => void;
+  onSaved: () => void;
 }) {
   const id = useId();
   const [label, setLabel] = useState(type.label);
@@ -329,7 +365,7 @@ function EditDialog({ type, collection, reviewers, onClose, onSaved }: {
                   {!type.templateVersion && " Until it has one, pages of this type aren't read."}
                 </FieldDescription>
               </Field>
-              {templateChanged && <ReviewerField reviewers={reviewers} value={reviewerId} onChange={setReviewerId} />}
+              {templateChanged && <ReviewerField reviewers={reviewers} value={reviewerId} onChange={setReviewerId} onAddReviewer={onAddReviewer} />}
             </>
           )}
         </FieldGroup>
