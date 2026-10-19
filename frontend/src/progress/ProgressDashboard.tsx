@@ -1,7 +1,7 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { ArrowRight, ChevronRight, ExternalLink, LayoutList, Search, Settings, Upload } from "lucide-react";
+import { ArrowRight, ChevronRight, ExternalLink, LayoutList, ListPlus, Search, Settings, Upload } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,7 @@ import { ARCHIVE, backendRequest, itemTitle, providerNames, recordWords, type Av
 import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
 import type { ModelData } from "./ModelControls";
 import JobErrorDialog from "./JobErrorDialog";
+import AddItemsDialog from "./AddItemsDialog";
 // Attach processing metadata to database progress so unfinished bundles can appear too.
 type DashboardBundle = Bundle & { source?: AvailableBundle };
 const pageSize = 9;
@@ -58,13 +59,15 @@ export default function ProgressDashboard() {
   // The collection whose bundles these are (/?collection=<id>).
   const collectionId = Number(new URLSearchParams(location.search).get("collection")) || 1;
   // Until the series loads it has no name, its records are "records" and they group, so nothing flickers away.
-  const [series, setSeries] = useState({ name: "", recordName: "record", grouped: true });
+  // archiveSeries is the series' node on the archive: undefined until it loads, null when none is linked. archiveItems is how many items it had when linked.
+  const [series, setSeries] = useState<{ name: string; recordName: string; grouped: boolean; archiveSeries?: number | null; archiveItems: number | null }>({ name: "", recordName: "record", grouped: true, archiveItems: null });
   useEffect(() => {
-    backendRequest<{ name: string; recordName: string; grouped: boolean }>(`/collections/${collectionId}`)
-      .then(({ name, recordName, grouped }) => setSeries({ name, recordName, grouped }))
+    backendRequest<{ name: string; recordName: string; grouped: boolean; archiveSeries?: number | null; archiveItems?: number | null }>(`/collections/${collectionId}`)
+      .then(({ name, recordName, grouped, archiveSeries, archiveItems }) => setSeries({ name, recordName, grouped, archiveSeries: archiveSeries ?? null, archiveItems: archiveItems ?? null }))
       .catch(() => {});
   }, [collectionId]);
   const words = recordWords(series.recordName);
+  const canAdd = typeof series.archiveSeries === "number";
   // A status as shown: in the series' words, and without grouping where its pages don't group.
   const statusLabel = (s: string) =>
     s === "Not in a survey" ? `Not in ${words.a}` : s === "Transcribed — not grouped" && !series.grouped ? "Transcribed" : s;
@@ -78,6 +81,7 @@ export default function ProgressDashboard() {
     message: string;
   } | null>(null);
   const [jobError, setJobError] = useState("");
+  const [adding, setAdding] = useState(false);
   const [transcribing, setTranscribing] = useState<AvailableBundle | null>(
     null,
   );
@@ -279,6 +283,8 @@ export default function ProgressDashboard() {
     ) || [];
 
   const totalRows = bundle ? matchingPages.length : matchingBundles.length;
+  // A series with no items at all, as opposed to filters that match none.
+  const noItems = bundles?.length === 0 && !query.trim() && status === "All";
   const lastPage = Math.max(0, Math.ceil(totalRows / pageSize) - 1);
   const current = Math.min(pageNumber, lastPage);
   const start = current * pageSize;
@@ -368,6 +374,11 @@ export default function ProgressDashboard() {
               recordName={series.recordName}
               hasDrafts={false}
             />
+            {canAdd && (
+              <Button type="button" variant="outline" onClick={() => setAdding(true)}>
+                <ListPlus /> Add items
+              </Button>
+            )}
             {collectionId === 1 && ( // ponytail: imports go to collection 1 until the import screen picks a collection
               <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=import"; }}>
                 <Upload /> Import
@@ -754,16 +765,34 @@ export default function ProgressDashboard() {
                   {!totalRows && (
                     <TableRow>
                       <TableCell colSpan={bundle ? 6 : 5}>
-                        <div className="flex flex-wrap items-center justify-center gap-3 p-6 text-center whitespace-normal">
-                          No {bundle ? "pages" : "items"} match your filters.
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => show({ query: "", status: "All", pageNumber: 0 })}
-                          >
-                            Clear filters
-                          </Button>
-                        </div>
+                        {noItems ? (
+                          <div className="flex flex-col items-center gap-3 p-6 text-center whitespace-normal">
+                            <p className="font-medium">No items yet.</p>
+                            {series.archiveSeries !== undefined && (
+                              <p className="text-muted-foreground">
+                                {canAdd
+                                  ? "Add items from the archive to start. Set up the series' page types first, so its pages can be read."
+                                  : "This series isn't linked to the archive, so it has no items to add."}
+                              </p>
+                            )}
+                            {canAdd && (
+                              <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+                                <ListPlus /> Add items
+                              </Button>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center justify-center gap-3 p-6 text-center whitespace-normal">
+                            No {bundle ? "pages" : "items"} match your filters.
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => show({ query: "", status: "All", pageNumber: 0 })}
+                            >
+                              Clear filters
+                            </Button>
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   )}
@@ -802,6 +831,15 @@ export default function ProgressDashboard() {
           </>
         )}
       </main>
+      {adding && (
+        <AddItemsDialog
+          collectionId={collectionId}
+          seriesTitle={series.name || "this series"}
+          archiveItems={series.archiveItems}
+          onClose={() => setAdding(false)}
+          onAdded={() => setAttempt((n) => n + 1)}
+        />
+      )}
       {errorDetails && (
         <JobErrorDialog
           {...errorDetails}

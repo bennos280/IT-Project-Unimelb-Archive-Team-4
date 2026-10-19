@@ -65,6 +65,23 @@ def test_run_loads_into_its_surveys(tmp_path, monkeypatch):
         "washouse": "In separate laundry", "weekly_rent": None}
 
 
+def test_a_run_loads_into_the_series_its_manifest_names_reading_nothing_into_a_type_that_series_lacks(tmp_path, monkeypatch):
+    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+    database.migrate(url)
+    monkeypatch.setattr(database, "engine", database.make_engine(url))
+    with sqlite3.connect(tmp_path / "test.db") as con:
+        con.execute("INSERT INTO collections (collection_id, name) VALUES (2, 'Letters')")
+        con.execute("INSERT INTO page_types (name, label, collection_id, unknown) VALUES ('unknown_2', 'Unknown', 2, 1)")
+    manifest = run_folder(tmp_path) / "manifest.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest.write_text(json.dumps({**data, "collection": 2}), encoding="utf-8")
+    loader.dump_into_db(manifest)
+    db = sqlite3.connect(tmp_path / "test.db")
+    assert db.execute("SELECT bundle_id, collection_id FROM bundles").fetchall() == [("216412", 2)]
+    assert {category for (category,) in db.execute("SELECT category FROM pages")} == {"unknown_2"}
+    assert db.execute("SELECT DISTINCT field_title FROM fields").fetchall() == [("text",)]  # an empty one each, to type into
+
+
 def test_consistency_conflicts_become_flags_on_the_fields_they_name(tmp_path, monkeypatch):
     url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
     database.migrate(url)

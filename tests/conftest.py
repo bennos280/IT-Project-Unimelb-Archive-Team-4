@@ -1,10 +1,12 @@
 """Shared by every test: nothing on the internet is reached, only this computer itself. The archive lists no bundles and
 can't be reached, unless a test uses the `archive` fixture, a stand-in that serves the files the test gives it. Every
 consistency check is switched on (checks.json only decides which ones the app shows)."""
+import html
 import io
 import socket
 from email.message import Message
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlparse
 from urllib.request import HTTPCookieProcessor
 from urllib.response import addinfourl
 
@@ -50,13 +52,34 @@ class FakeArchive:
     sends a file only to one that keeps cookies and has opened a download page. A file id in cut_short breaks off halfway."""
 
     def __init__(self):
-        self.pages, self.files, self.requests, self.cut_short, self.views = {}, {}, [], set(), {}
+        self.pages, self.files, self.requests, self.cut_short, self.views, self.listings = {}, {}, [], set(), {}, {}
 
     def add_series(self, node, title, description, items):
         """A series' view page (/nodes/view/<node>), with the og: tags and the item count the real one has."""
         self.views[str(node)] = (f'<meta property="og:title" content="{title}" />'
                                  f'<meta property="og:description" content="{description}" />'
                                  f'<a href="/nodes/browse?bid={node}">Items in this series ({items})</a>')
+
+    def add_listing(self, series, items, pages=1, count=None):
+        """A series' items page (/nodes/browse?...&bid=<series>) as the real one marks them up: (node, title, identifier,
+        whether it has scans, and optionally its access status); the series' view page (add_series) links to it."""
+        self.listings[str(series)] = "".join(
+            f'<div class="list_item"><input type="checkbox" name="multiSelect[]" value="{node}" />'
+            f'<img src="{f"/assets/nodeimg/{node}/a.jpg" if scanned else "/theme/uma/img/placeholder.png"}" />'
+            f'<h4>{html.escape(title)}</h4>\n<span class="metadata"><span class="titlelabel">Identifier: </span>{identifier}</span>\n'
+            f'<span class="metadata"><span class="titlelabel">Access Status: </span>{access[0] if access else "Open for public access"}'
+            '</span>\n</div>'
+            for node, title, identifier, scanned, *access in items
+        ) + f'<script>var bntBlock = {{pageCount: "{pages}", count: "{len(items) if count is None else count}"}};</script>'
+
+    def add_item(self, node, title, identifier, series, originals):
+        """An item's view page (og: tags naming its series) and download page offering its original PDFs ((file id, name))."""
+        self.views[str(node)] = (f'<meta property="og:title" content="{html.escape(title)}" />'
+                                 f'<meta property="og:description" content="Identifier: {identifier} | Series: {series} | '
+                                 f'Access Status: Open for public access" />')
+        self.pages[str(node)] = "".join(f'<a href="https://archives.library.unimelb.edu.au/assets/downloadwiz/{file_id}" '
+                                        f'class="downsize"><img src="/img/file_pdf.png" /><br />{name}<span class="tinytim">'
+                                        f'<br />1 MB</span></a>' for file_id, name in originals)
 
     def add(self, bundle, pages, pdf=None):
         """A bundle's download page listing its pages ({page number: (file id, bytes)}) and its PDF ((file id, bytes))."""
@@ -77,6 +100,9 @@ class FakeArchive:
                 kind, _, key = path.rpartition("/")
                 if not any(name == "User-Agent" for name, _ in self.addheaders):
                     raise HTTPError(url, 403, "Forbidden", Message(), None)
+                if path.startswith("/nodes/browse?"):
+                    series = parse_qs(urlparse(path).query)["bid"][0]
+                    return response(archive.listings.get(series, "").encode(), "text/html")
                 if kind == "/nodes/view" and key in archive.views:
                     return response(archive.views[key].encode(), "text/html")
                 if kind == "/nodes/download" and key in archive.pages:

@@ -1,9 +1,9 @@
 """A finished pipeline run (output/<bundle>/manifest.json) into the database: uv run python -m backend.db.loader"""
 import json
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from backend.db import database
+from backend.db import database, models
 from backend.common import ROOT, settings
 from backend.pipeline.transcribe import areas
 
@@ -21,8 +21,8 @@ def dump_into_db(manifest_path):
 
     transcripts = data.get("transcripts") or {}
     with database.engine.begin() as con:
-        if not con.exec_driver_sql("INSERT OR IGNORE INTO bundles(bundle_id, source_pdf) VALUES(?, ?)",
-                                   (bundle_id, stored_path(data["input"]))).rowcount:
+        if not con.exec_driver_sql("INSERT OR IGNORE INTO bundles(bundle_id, source_pdf, collection_id) VALUES(?, ?, ?)",
+                                   (bundle_id, stored_path(data["input"]), data.get("collection", 1))).rowcount:
             print(f"{bundle_id} is already in the database.")
             return
         #the bundle's collection's page types; a page sorting couldn't place, or not read, is its Unknown type
@@ -33,8 +33,8 @@ def dump_into_db(manifest_path):
             if p.get("path") is None or p.get("label") in (None, "blank"):
                 continue
             #a manifest written on Windows uses \
-            page = run_folder / p["transcript"].replace("\\", "/") if p.get("transcript") else None
-            category = p["label"] if page and p["label"] in page_types else unknown
+            page = run_folder / p["transcript"].replace("\\", "/") if p.get("transcript") and p["label"] in page_types else None
+            category = p["label"] if page else unknown
             if category is None:
                 raise ValueError(f"Bundle {bundle_id}'s collection has no Unknown page type to store {p['file']} as.")
             insert_page(Path(p["file"]).stem, page, stored_path(p["path"]), category,
@@ -146,6 +146,15 @@ def insert_check_flags(check_p, con):
 def version_id(con, kind, sha):
     return sha and con.exec_driver_sql("SELECT MIN(version_id) FROM instruction_versions WHERE kind = ? AND sha256 = ?",
                                        (kind, sha)).scalar()
+
+#the series an item belongs to, by its number (its PDF's folder, or its folder of page images) in {archive item number:
+#series}; an item no series lists is the Wilfred Prest Survey's
+def series_of(owners, path):
+    path = PurePosixPath(str(path).replace("\\", "/"))
+    return owners.get(path.parent.name if path.suffix.lower() == ".pdf" else path.name, 1)
+
+def archive_owners(db):
+    return {str(node): series for node, series in db.query(models.ArchiveItem.node, models.ArchiveItem.collection_id)}
 
 #relative to the repo with /, so the db works on any checkout
 def stored_path(path):

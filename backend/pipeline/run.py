@@ -36,6 +36,8 @@ class Run:
     transcription_config: dict[str, str] | None = None
     sorting_model: Path | None = None                    # retrained page sorting's weights; None: the shipped model
     grouping: dict | None = None                         # how pages group into surveys (backend.db.grouping.rule); None: one each
+    collection: int = 1                                  # the series the item is loaded into
+    page_types: set[str] | None = None                   # the labels the series has; sorting's others are review. None: any
     progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
 
     def flag(self, page: dict, step: str, reason: str) -> None:
@@ -44,7 +46,7 @@ class Run:
     def save(self) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
         write(self.out / "review.json", self.review)
-        write(self.out / "manifest.json", {"input": str(self.input), "steps": self.log,
+        write(self.out / "manifest.json", {"input": str(self.input), "collection": self.collection, "steps": self.log,
                                            "pages": self.pages, "transcripts": self.transcripts})
 
 
@@ -146,13 +148,14 @@ def step_split(run: Run) -> None:
 
 def step_identify(run: Run) -> None:
     """Each page -> label main / notes / coded / blank (or a page type sorting was retrained on), or review when the
-    model isn't sure."""
+    model isn't sure or the label isn't one of the series' page types (run.page_types)."""
     from backend.pipeline.identify.identify import identify_pages
     images = find_images(run.images or run.input)
     run.pages = [{"file": p.name, "path": str(p)} for p in images]
     for page, r in zip(run.pages, identify_pages(images, run.sorting_model)):
-        page.update(label=r["label"], confidence=r["confidence"], distance=r["distance"])
-        if r["label"] == REVIEW:
+        label = r["label"] if run.page_types is None or r["label"] in run.page_types else REVIEW
+        page.update(label=label, confidence=r["confidence"], distance=r["distance"])
+        if label == REVIEW:
             run.flag(page, "identify", "unlike any known page type; check highest distance first")
 
 def transcription_config(chosen: dict | None = None) -> dict:

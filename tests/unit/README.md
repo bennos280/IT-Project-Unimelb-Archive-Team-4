@@ -169,6 +169,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |Test|What it checks|
 |---|---|
 |`test_each_page_records_the_prompt_and_template_versions_that_read_it`|A page whose manifest entry has the hashes of a stored prompt and template version is stored with those versions; a hash no version has, or a page that wasn't read, leaves them empty.|
+|`test_a_run_loads_into_the_series_its_manifest_names_reading_nothing_into_a_type_that_series_lacks`|A run whose manifest names series 2 loads its item into series 2, and a page labelled with a type series 2 doesn't have is stored as its Unknown type with no fields read into it.|
 |`test_consistency_conflicts_become_flags_on_the_fields_they_name`|A conflict in the run's consistency check (validation/output_flagged.json) becomes an `inconsistency` flag ("Consistency: ...") on each field it names that the page has, on the main form and the coded card; a resident's field, which isn't a page field, is skipped, and a "comparison incomplete" result makes no flag.|
 |`test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`|A page read as a page type the db has no record of is stored as `other`, not refused.|
 |`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field, and an older model label listing every model Claude Code used (`claude-haiku-4-5-20251001+claude-opus-5-5`) is stored as the one the run asked for in its manifest (`opus`).|
@@ -188,7 +189,7 @@ The test db is built from `backend/db/models.py` with foreign keys checked, as i
 |Test|What it checks|
 |---|---|
 |`test_bundles_list_each_pdf_whether_it_is_loaded_and_its_surveys`|`GET /bundles` lists every PDF under `DATA` by its bundle number, with whether it is loaded, its survey ids in scan order (by each survey's first page) and its latest job.|
-|`test_a_pdf_whose_folder_is_one_of_the_series_archive_items_has_its_identifier_and_title`|`GET /bundles` gives a PDF whose bundle number is one of its series' archive items that item's identifier and title, and gives others none, including a number that is an item of another series.|
+|`test_a_pdf_is_listed_under_the_series_whose_archive_item_it_is_with_its_identifier_and_title`|`GET /bundles` lists a PDF not loaded yet under the series whose archive item its number is (else the Wilfred Prest Survey), with that item's identifier and title.|
 |`test_started_job_waits_for_the_worker`|`POST /jobs` queues a waiting job (202), with its last update time in UTC, that `GET /bundles` and `GET /jobs/<id>` report (an unknown id is 404), and refuses a second one for the same PDF while it waits.|
 |`test_pdfs_inside_the_repo_are_named_relative_to_it`|With `DATA` inside the repo (the usual setup), PDFs and jobs use a forward-slash path relative to the repo, so the db works on any checkout.|
 |`test_jobs_only_for_unloaded_pdfs_in_data`|A PDF outside `DATA` is refused (404), and a bundle already loaded is refused (409) so its reviews can't be lost.|
@@ -219,6 +220,8 @@ The pipeline and loader are faked: no model calls. Job state is read through a s
 |`test_pdf_with_no_pages_fails_instead_of_loading_nothing`|A PDF with no pages fails with a reason instead of ending done with nothing loaded.|
 |`test_stopping_the_worker_marks_its_job_failed`|Ctrl+C during a job marks it failed, so it doesn't show as running forever.|
 |`test_job_cut_off_by_a_stopped_worker_can_be_run_again`|A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.|
+|`test_an_item_of_another_series_runs_with_that_series_page_types_and_rule`|A job for an item another series lists runs into that series, with its grouping rule, record name and page types only.|
+|`test_an_item_on_no_series_list_runs_as_the_prest_surveys_keeping_its_blank_pages_out`|An item no series lists runs as the Wilfred Prest Survey's, sorting into its types and dropping blank pages.|
 |`test_only_one_worker_runs_at_a_time`|A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.|
 
 ## `test_instructions.py`
@@ -250,6 +253,27 @@ Page types added from the review screen, and a page read again as another type.
 | `test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`   | An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).                                                                                                                                                  |
 | `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |
 | `test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`            | If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.                                                                                                                                                                                 |
+
+## `test_add_items.py`
+
+A series' items listed from the archive (a fake archive here) and added to its list, one by one or the whole list, then run into that series.
+
+|Test|What it checks|
+|---|---|
+|`test_a_series_items_are_listed_from_the_archive_saying_which_have_scans_and_which_are_listed_already`|A page of a series' list comes back with each item's title, identifier and number; an item with no scans or for the Reading Room only can't be downloaded; one a series lists is marked; the search and page are asked for oldest first.|
+|`test_listing_needs_a_series_linked_to_an_archive_that_answers`|A series with no archive series can't list items (400), and an archive that can't be reached says so (502).|
+|`test_chosen_items_are_added_once_the_archive_shows_them_in_this_series`|Chosen items are added once the archive's page shows each in this series; one of another series, one a series lists already, and a number the archive doesn't know are refused with the reason; no download page is read.|
+|`test_an_added_item_is_listed_and_run_under_its_series_only`|An added item is listed under its series, not the Prest survey's, can be run, and its job counts on its series only.|
+|`test_the_whole_list_is_added_at_once_but_for_items_it_cant_download_or_a_series_lists`|Adding the whole list (or a search's) reads every page of it and adds each downloadable item no series lists, with its title.|
+|`test_a_series_linked_without_its_identifier_checks_items_against_the_archives`|A series stored without its archive identifier checks items against the identifier the archive shows for it, and refuses to add when the archive shows none.|
+|`test_an_item_number_out_of_range_is_refused`|An item number below 1 or too big for the db is refused with the reason.|
+|`test_adding_a_list_from_an_archive_that_cant_be_reached_says_so`|Adding a whole list when the archive can't be reached says so (502).|
+|`test_a_run_saves_the_series_it_is_loaded_into`|A run's manifest names the series its item is loaded into.|
+|`test_a_list_of_over_a_thousand_items_is_left_for_a_search_to_narrow`|A list of over 1,000 items is refused after reading its first page, with the count and what to do.|
+|`test_an_added_items_pdf_is_its_newest_original_looked_up_when_it_is_downloaded`|An added item's PDF is its newest original, found on its download page when it is downloaded; an item with none says so.|
+|`test_a_page_takes_only_a_page_type_of_its_own_series`|Changing a page's type to another series' type is refused.|
+|`test_sorting_gives_only_the_series_own_page_types_and_sends_the_rest_to_review`|Sorting's label outside the series' page types becomes review, and is flagged.|
+|`test_an_upload_cant_take_the_number_of_an_item_added_from_the_archive`|An upload can't use the number of an item added from the archive, nor give another number a PDF named as that item's.|
 
 ## `test_record_name.py`
 

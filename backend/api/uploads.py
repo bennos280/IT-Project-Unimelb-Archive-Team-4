@@ -19,6 +19,11 @@ MAX_BYTES = 500 * 1024 * 1024
 log = logging.getLogger("uploads")
 
 
+def archive_sources(db):
+    """The archive's PDFs this app knows, as <item number>/<file id>_<name>.pdf: the Prest survey's and those added to a series."""
+    return [*scans.ARCHIVE_PDFS, *(pdf for (pdf,) in db.query(models.ArchiveItem.pdf).filter(models.ArchiveItem.pdf.is_not(None)))]
+
+
 def check_bundle_number(db, data, bundle, filename):
     """A bundle number cannot be reused for a different uploaded source; more page images may join an image bundle."""
     for existing in db.query(models.Bundle):
@@ -31,7 +36,7 @@ def check_bundle_number(db, data, bundle, filename):
         image = Path(filename).suffix.lower() in IMAGES
         if kinds and not (image and all(kind in IMAGES for kind in kinds)):
             raise HTTPException(409, f"Item number {bundle} already has uploaded files. Choose a different item number.")
-    for source in scans.ARCHIVE_PDFS:
+    for source in archive_sources(db):
         path = Path(source)
         # Allow downloading the exact registered source, not a new bundle with its number.
         if path.parent.name == bundle and path.name.casefold() != filename.casefold():
@@ -48,7 +53,7 @@ def check_pdf_identity(db, data, filename, bundle):
     for path in data.rglob("*"):
         if path.is_file() and path.suffix.lower() == ".pdf" and path.stem.casefold() == stem:
             raise HTTPException(409, f"This PDF already exists in item {path.parent.name}. It has not been uploaded.")
-    for source in scans.ARCHIVE_PDFS:
+    for source in archive_sources(db):
         path = Path(source)
         if path.stem.casefold() == stem and path.parent.name != bundle:
             raise HTTPException(409, f"This PDF belongs to archive item {path.parent.name}. Use that item number.")

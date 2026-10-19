@@ -125,6 +125,30 @@ def test_only_one_worker_runs_at_a_time(tmp_path, monkeypatch):
     worker.only_worker().release()  # free again once the first worker has stopped
 
 
+def test_an_item_of_another_series_runs_with_that_series_page_types_and_rule(db, tmp_path, monkeypatch):
+    db.add(models.Collection(collection_id=2, name="Letters", record_name="letter"))
+    db.flush()
+    db.add_all([models.PageType(name="unknown_2", label="Unknown", collection_id=2, unknown=True),
+                models.PageType(name="docket", label="Docket", collection_id=2, starts_record=True),
+                models.ArchiveItem(node=216441, collection_id=2, identifier="UMA-IT-1", title="A file")])
+    db.commit()
+    queue(db, tmp_path)  # tmp/216441/a.pdf: an item series 2 lists
+    runs = []
+    fake_pipeline(monkeypatch, lambda run: runs.append(run) or run.pages.append({"file": "a_00001.png"}))
+    worker.work_once(db)
+    [run] = runs
+    assert (run.collection, run.page_types, run.grouping["starts"], run.grouping["record"]) == (2, {"docket"}, {"docket"}, "letter")
+
+
+def test_an_item_on_no_series_list_runs_as_the_prest_surveys_keeping_its_blank_pages_out(db, tmp_path, monkeypatch):
+    queue(db, tmp_path)
+    runs = []
+    fake_pipeline(monkeypatch, lambda run: runs.append(run) or run.pages.append({"file": "a_00001.png"}))
+    worker.work_once(db)
+    [run] = runs
+    assert run.collection == 1 and {"main", "coded", "notes", "blank"} <= run.page_types and "other" not in run.page_types
+
+
 def test_a_job_reads_with_the_newest_prompt_and_templates(db, tmp_path, monkeypatch):
     db.add_all([models.InstructionVersion(kind="prompt", body="old", sha256="a"),
                 models.InstructionVersion(kind="main", body="{}", sha256="b"),

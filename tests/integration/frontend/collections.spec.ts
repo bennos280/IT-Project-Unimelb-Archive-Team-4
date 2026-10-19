@@ -17,14 +17,15 @@ const LETTERS = { ...SERIES, id: 71423, title: "Registrar's Correspondence", ide
 const ITEM = { ...SERIES, id: 216412, title: "Box Hill 00", identifier: "UMA-ITE-1973000200001", items: null,
   url: "https://archives.library.unimelb.edu.au/nodes/view/216412" };
 
-async function mockApi(page: Page, { archiveDown = false, slowNode = 0 } = {}) {
-  const created: unknown[] = [];
+type Fill = { status?: number; detail?: string; gate?: Promise<void> }; // how POST items/all answers
+async function mockApi(page: Page, { archiveDown = false, slowNode = 0, fill = {} as Fill } = {}) {
+  const calls = { created: [] as unknown[], filled: [] as unknown[] };
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === "/api/collections" && request.method() === "GET") return route.fulfill({ json: [PREST, SHIPS] });
     if (path === "/api/collections" && request.method() === "POST") {
-      created.push(request.postDataJSON());
+      calls.created.push(request.postDataJSON());
       return route.fulfill({ status: 201, json: { ...PREST, id: 2, name: request.postDataJSON().name, bundles: 0, pages: 0 } });
     }
     const series = path.match(/^\/api\/archive-series\/(\d+)$/);
@@ -34,12 +35,19 @@ async function mockApi(page: Page, { archiveDown = false, slowNode = 0 } = {}) {
       const found = [SERIES, ITEM, LETTERS].find((s) => s.id === Number(series[1]));
       return found ? route.fulfill({ json: found }) : route.fulfill({ status: 404, json: { detail: "The archive has no page with that number." } });
     }
+    if (path === "/api/collections/2/items/all" && request.method() === "POST") {
+      calls.filled.push(request.postDataJSON());
+      await fill.gate;
+      return fill.status
+        ? route.fulfill({ status: fill.status, json: { detail: fill.detail } })
+        : route.fulfill({ json: { added: 45, skipped: 0 } });
+    }
     if (path === "/api/collections/2") return route.fulfill({ json: { ...PREST, id: 2, name: "Social survey forms", recordKey: null, recordName: "record", grouped: false } });
     if (path === "/api/page-types") return route.fulfill({ json: [] });
     if (path === "/api/reviewers") return route.fulfill({ json: [] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
-  return created;
+  return calls;
 }
 
 const dialog = (page: Page) => page.getByRole("dialog", { name: "New series" });
@@ -80,7 +88,7 @@ test("clicking anywhere on a series' row opens it", async ({ page }) => {
 });
 
 test("a new series previews what it links to on the archive, takes its name from it, and opens its page types", async ({ page }) => {
-  const created = await mockApi(page);
+  const calls = await mockApi(page);
   await page.goto("/");
   await page.getByRole("button", { name: "New series" }).click();
   await dialog(page).getByLabel("Archive series").fill("https://archives.library.unimelb.edu.au/nodes/view/499420");
@@ -94,9 +102,71 @@ test("a new series previews what it links to on the archive, takes its name from
   await dialog(page).getByRole("button", { name: "Create series" }).click();
   await expect(page).toHaveURL("/?collection=2&view=page-types");
   await expect(page.getByText("No page type starts a record, so each page is a record of its own.", { exact: false })).toBeVisible();
-  expect(created).toEqual([{ name: "Social survey forms", archiveSeries: "https://archives.library.unimelb.edu.au/nodes/view/499420",
+  expect(calls.created).toEqual([{ name: "Social survey forms", archiveSeries: "https://archives.library.unimelb.edu.au/nodes/view/499420",
     archiveIdentifier: "UMA-SR-000000842", archiveTitle: "University of Melbourne Social Survey forms", archiveItems: 45 }]);
+  expect(calls.filled).toEqual([{ search: "" }]);
 });
+
+const addItems = (page: Page) => dialog(page).getByRole("checkbox", { name: "Add all its items" });
+async function startNewSeries(page: Page, address = "499420") {
+  await page.goto("/");
+  await page.getByRole("button", { name: "New series" }).click();
+  await dialog(page).getByLabel("Archive series").fill(address);
+  await expect(dialog(page).getByRole("region", { name: "Archive series" })).toBeVisible();
+}
+
+test("creating a series adds all its items before opening it, and says so while it works", async ({ page }) => {
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const calls = await mockApi(page, { fill: { gate } });
+  await startNewSeries(page);
+  await expect(addItems(page)).toBeChecked();
+  await expect(addItems(page)).toBeEnabled();
+  await dialog(page).getByRole("button", { name: "Create series" }).click();
+  await expect(dialog(page).getByText("Adding its items… this can take a minute.")).toBeVisible();
+  await expect(dialog(page).getByRole("button", { name: "Create series" })).toBeDisabled();
+  await expect.poll(() => calls.filled).toEqual([{ search: "" }]);
+  expect(calls.created).toHaveLength(1);
+  await expect(page).toHaveURL("/"); // still here: the items come first
+  release();
+  await expect(page).toHaveURL("/?collection=2&view=page-types");
+});
+
+test("unticking Add all its items creates the series alone", async ({ page }) => {
+  const calls = await mockApi(page);
+  await startNewSeries(page);
+  await addItems(page).uncheck();
+  await dialog(page).getByRole("button", { name: "Create series" }).click();
+  await expect(page).toHaveURL("/?collection=2&view=page-types");
+  expect(calls.created).toHaveLength(1);
+  expect(calls.filled).toEqual([]);
+});
+
+test("a series of over 1,000 items has Add all its items unticked and off, and creates it alone", async ({ page }) => {
+  const calls = await mockApi(page);
+  await startNewSeries(page, "71423");
+  await expect(addItems(page)).not.toBeChecked();
+  await expect(addItems(page)).toBeDisabled();
+  await expect(dialog(page).getByText("Too many to add at once (29,326). Add them from the series' page with a search.")).toBeVisible();
+  await dialog(page).getByRole("button", { name: "Create series" }).click();
+  await expect(page).toHaveURL("/?collection=2&view=page-types");
+  expect(calls.filled).toEqual([]);
+});
+
+for (const detail of ["Couldn't reach the archive (timed out).", "Couldn't reach the archive (timed out)"]) {
+  test(`if its items can't be added the dialog says so, and Continue opens the series (${detail.endsWith(".") ? "detail ends in a full stop" : "detail without one"})`, async ({ page }) => {
+    const calls = await mockApi(page, { fill: { status: 502, detail } });
+    await startNewSeries(page);
+    await dialog(page).getByRole("button", { name: "Create series" }).click();
+    await expect(dialog(page).getByRole("alert")).toHaveText(
+      "The series was created, but its items weren't added: Couldn't reach the archive (timed out). Add them from the series' page.");
+    await expect(page).toHaveURL("/");
+    await expect(dialog(page).getByRole("button", { name: "Create series" })).toHaveCount(0);
+    expect(calls.created).toHaveLength(1);
+    await dialog(page).getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page).toHaveURL("/?collection=2&view=page-types");
+  });
+}
 
 test("an item that isn't a series is pointed out, and a typed name is kept", async ({ page }) => {
   await mockApi(page);

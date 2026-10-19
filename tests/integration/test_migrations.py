@@ -234,6 +234,16 @@ def test_013_lists_each_of_prests_archive_items_with_its_identifier_and_title(ur
     assert not rows(db, "SELECT name FROM sqlite_master WHERE name = 'archive_items'")
 
 
+def test_015_gives_archive_items_a_pdf_the_prest_surveys_leave_empty(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "014")
+    database.migrate(url)
+    assert rows(db, "SELECT COUNT(*), COUNT(pdf) FROM archive_items") == [(45, 0)]
+    command.downgrade(config, "014")
+    assert "pdf" not in {r[1] for r in rows(db, "PRAGMA table_info(archive_items)")}
+
+
 def test_014_calls_prests_records_surveys_and_leaves_other_series_unnamed(url, tmp_path):
     db = tmp_path / "test.db"
     config = database.alembic_config(url)

@@ -14,16 +14,16 @@ class Collection(Base):
     archive_title = Column(String, nullable=True) #items, as the archive showed them when the series was linked
     archive_items = Column(Integer, nullable=True)
 
-#an item of a collection's archive series, as the archive lists it
-#ponytail: only the Wilfred Prest Survey's items are listed (migration 013); list a series' items from the archive when another can import
+#an item of a collection's archive series, as the archive lists it; an item no collection lists is the Wilfred Prest Survey's
 class ArchiveItem(Base):
     __tablename__ = "archive_items"
     node = Column(Integer, primary_key=True) #its page on the archive, /nodes/view/<node>, and its bundle number
     collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
     identifier = Column(String, nullable=False) #its catalogue identifier, UMA-ITE-...
     title = Column(String, nullable=False)
+    pdf = Column(String, nullable=True) #<node>/<node>.pdf, where its PDF goes once downloaded; None: in backend/archive_pdfs.txt
 
-#ponytail: a new bundle or page type joins collection 1 until there is a way to choose one
+#ponytail: an uploaded bundle joins collection 1 until the import screen picks a series
 class Bundle(Base):
     __tablename__ = "bundles"
     bundle_id = Column(String, primary_key=True)

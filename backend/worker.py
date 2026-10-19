@@ -13,6 +13,7 @@ from sqlalchemy import func
 from backend import scans
 from backend.db import app_settings, database, grouping, instructions, loader, models
 from backend.pipeline import run as pipeline
+from backend.pipeline.identify.classifier import LABELS
 from backend.common import ROOT, settings
 
 LOCK = Path(__file__).parent / "worker.lock"
@@ -81,9 +82,12 @@ def run_bundle(db, job, progress):
     active = db.query(models.SortingModel).filter(models.SortingModel.active).first()
     if active and not (ROOT / active.path).is_file():
         raise SystemExit(f"page sorting model {active.model_id}'s file {active.path} is missing: choose another model, or retrain")
+    #the item's series' own page types, and blank too for a series that has any of sorting's own types (the Prest survey)
+    series = loader.series_of(loader.archive_owners(db), job.pdf)
+    types = {t.name for t in db.query(models.PageType).filter_by(collection_id=series, unknown=False)}
     run = pipeline.Run(pdf, out, progress=progress, texts=instructions.texts(db), #the newest versions, as the job starts
-                       sorting_model=ROOT / active.path if active else None,
-                       grouping=grouping.rule(db, 1)) #ponytail: a new bundle joins collection 1 (models.Bundle)
+                       sorting_model=ROOT / active.path if active else None, grouping=grouping.rule(db, series),
+                       collection=series, page_types=types | ({"blank"} if types & set(LABELS) else set()))
     run.transcription_config = {field.upper(): value for field, value in transcription_choice(db, job).items()}
     pipeline.run_steps(run, pipeline.FULL)
     if not run.pages:

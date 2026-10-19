@@ -15,6 +15,8 @@ export async function backendRequest<T>(path: string, options: RequestInit = {})
 export const providerNames: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI" };
 // The archive's website; a series' page is /nodes/view/<its number>, and an item's /nodes/view/<its name>.
 export const ARCHIVE = "https://archives.library.unimelb.edu.au";
+// The most items "Add all" adds at once (the backend's limit too); a longer list needs a search.
+export const ADD_ALL_MAX = 1_000;
 export type ArchiveItem = { identifier: string; title: string };
 // What a series calls one record, several, and one with its article, mid-sentence and starting one.
 // ponytail: English's usual plurals and "an" before a vowel letter; irregular ones (person, hour) come out wrong.
