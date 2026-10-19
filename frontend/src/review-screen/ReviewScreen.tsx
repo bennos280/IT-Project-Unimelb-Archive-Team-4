@@ -177,7 +177,7 @@ export default function ReviewScreen({
             Loading pages and source images…
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:h-[calc(100dvh-5.6rem)] md:grid-cols-[46%_54%]">
+          <div className="grid grid-cols-1 md:h-[calc(100dvh-3.5rem)] md:grid-cols-[46%_54%]">
             <section className="flex h-[560px] min-w-0 flex-col overflow-hidden border-b px-4 pt-4 md:h-auto md:border-r md:border-b-0 md:px-6">
               <div
                 className="flex flex-wrap items-center gap-2"
