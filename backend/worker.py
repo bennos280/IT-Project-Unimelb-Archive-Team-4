@@ -3,6 +3,7 @@ OUTPUT/worker.log, with the full error of a failed job."""
 import logging
 import logging.handlers
 import sys
+import threading
 import time
 from collections import Counter
 from pathlib import Path
@@ -20,6 +21,8 @@ from backend.common import ROOT, settings
 LOCK = Path(__file__).parent / "worker.lock"
 log = logging.getLogger("worker")
 MIN_CONFIRMED = 10 #pages of a new page type reviewers must settle before page sorting can learn it
+HEARTBEAT = "worker.alive" #in OUTPUT: touched every BEAT seconds while a worker runs, so the API can tell (api.main.worker_running)
+BEAT = 10
 
 #exits if another worker is running (two would write the same output folder)
 def only_worker():
@@ -27,6 +30,16 @@ def only_worker():
         return FileLock(LOCK).acquire(timeout=0).lock
     except Timeout:
         sys.exit("another worker is already running")
+
+#a running worker's heartbeat, from its own thread so a long step doesn't stop it; a touch that fails (the file held open a moment)
+#waits for the next beat
+def beat(path):
+    while True:
+        try:
+            path.touch()
+        except OSError:
+            pass
+        time.sleep(BEAT)
 
 #a job still running at startup was cut off: mark it failed
 def recover(db):
@@ -55,8 +68,10 @@ def work_once(db):
     db.commit()
     log.info("job %s started: %s %s", job.job_id, job.kind, job.pdf or job.page_id or "")
 
-    #a step start reports 0 pages: keep the last count
+    #a step start reports 0 pages: keep the last count. Each new step is logged (the task's page lists its lines).
     def progress(step, done, total):
+        if step != job.step:
+            log.info("job %s step: %s", job.job_id, step)
         job.step = step
         if total:
             job.done_pages, job.total_pages = done, total
@@ -81,7 +96,7 @@ PAUSE = 1  #seconds between requests to the archive
 LISTED_MAX = 10_000  #the most the archive shows of one list
 
 #a series' items added to its list from the archive (all of them, or a search's), 24 at a time: each downloadable one no series
-#lists yet, saved as it goes. A list the archive can't show whole is gone through a unit (box) at a time.
+#lists yet, saved and logged as it goes. A list the archive can't show whole is gone through a unit (box) at a time.
 def add_items(db, job, progress):
     series = db.get(models.Collection, job.collection_id)
     search = job.search or ""
@@ -107,6 +122,7 @@ def add_items(db, job, progress):
     progress("adding", 0, 0)
     link = scans.listing_link(series.archive_series)
     first = read(link, 1)
+    units = []
     if first["total"] < LISTED_MAX:
         lists, total = [pages(link, first=first)], first["total"]
     else:
@@ -115,17 +131,21 @@ def add_items(db, job, progress):
         lists = (pages(scans.listing_link(unit, "Items in this unit")) for unit in units)
         total = first["total"] if search else series.archive_items or first["total"]
     listed = {node for (node,) in db.query(models.ArchiveItem.node)}
-    seen = 0
-    for listing_pages in lists:
+    seen = added = 0
+    for box, listing_pages in enumerate(lists, 1):
         for listing in listing_pages:
             new = [i for i in listing["items"] if i["scanned"] and i["node"] not in listed]
+            inserted = 0  #not those a series listed meanwhile
             if new:
-                db.execute(insert(models.ArchiveItem).on_conflict_do_nothing(), [
+                inserted = len(db.execute(insert(models.ArchiveItem).on_conflict_do_nothing().returning(models.ArchiveItem.node), [
                     {"node": i["node"], "collection_id": series.collection_id, "identifier": i["identifier"], "title": i["title"],
-                     "pdf": f"{i['node']}/{i['node']}.pdf"} for i in new])
+                     "pdf": f"{i['node']}/{i['node']}.pdf"} for i in new]).all())
                 listed.update(i["node"] for i in new)
-            seen += len(listing["items"])
+            seen, added = seen + len(listing["items"]), added + inserted
             progress("adding", seen, max(total, seen))
+            log.info("job %s: %s%s read, %s added", job.job_id, f"box {box:,} of {len(units):,}: " if units else "", f"{seen:,}", f"{added:,}")
+    log.info("job %s: %s read, %s added, %s skipped (listed already, Reading Room only or not scanned)", job.job_id, f"{seen:,}",
+             f"{added:,}", f"{seen - added:,}")
 
 def run_bundle(db, job, progress):
     pdf = ROOT / job.pdf
@@ -217,6 +237,7 @@ def main():
                                   logging.handlers.RotatingFileHandler(output / "worker.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8")])
     log.setLevel(logging.INFO)
     database.migrate()
+    threading.Thread(target=beat, args=(output / HEARTBEAT,), daemon=True).start()
     db = database.SessionLocal()
     recover(db)
     log.info("waiting for pipeline jobs (Ctrl+C to stop); log: %s", output / "worker.log")

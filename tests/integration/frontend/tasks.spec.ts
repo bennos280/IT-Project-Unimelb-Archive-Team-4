@@ -103,15 +103,15 @@ test("the Tasks link opens the Tasks page, a table of the active tasks first, th
   const adding = row(page, "Adding Missing, Wounded");
   await expect(adding.getByRole("cell").nth(1)).toHaveText("Missing, Wounded and Prisoner Of War Cards");
   await expect(adding).toContainText("Running");
-  await expect(adding).toContainText("12,400 of 60,772 items");
+  await expect(adding).toContainText("12,400 of 60,772 read");
   await expect(adding.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "12400");
   await expect(adding.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "60772");
-  await expect(adding.getByRole("link", { name: "Adding Missing, Wounded and Prisoner Of War Cards' items" })).toHaveAttribute("href", "/?collection=2");
+  await expect(adding.getByRole("link", { name: "Adding Missing, Wounded and Prisoner Of War Cards' items" })).toHaveAttribute("href", "/?view=tasks&task=31");
 
   const transcribing = row(page, "Transcribing Box Hill 00");
   await expect(transcribing.getByRole("cell").nth(1)).toHaveText("Wilfred Prest Survey");
   await expect(transcribing).toContainText("Transcribing pages · 40 of 227 pages");
-  await expect(transcribing.getByRole("link")).toHaveAttribute("href", "/?collection=1&bundle=216412");
+  await expect(transcribing.getByRole("link")).toHaveAttribute("href", "/?view=tasks&task=32");
 
   const queued = row(page, "Adding Shipping manifests");
   await expect(queued.getByRole("cell").nth(1)).toHaveText("Shipping manifests"); // the task names its series: GET /api/collections lists no such series
@@ -120,7 +120,7 @@ test("the Tasks link opens the Tasks page, a table of the active tasks first, th
 
   const reading = row(page, "Reading page 216412_00005 again");
   await expect(reading).toContainText("Starting…");
-  await expect(reading.getByRole("link")).toHaveCount(0); // it has no page of its own to open
+  await expect(reading.getByRole("link")).toHaveAttribute("href", "/?view=tasks&task=35"); // every task opens its own page
 
   const finished = row(page, "Transcribing Box Hill 01");
   await expect(finished).toContainText("Done");
@@ -131,6 +131,113 @@ test("the Tasks link opens the Tasks page, a table of the active tasks first, th
   await expect(failed).toContainText("Failed");
   await expect(failed.getByText("The archive timed out.")).toHaveClass(/text-destructive/);
   await expect(failed.getByRole("cell").nth(4)).not.toBeEmpty(); // when it was last updated
+});
+
+// A task as GET /api/jobs/<id>/log gives it: the task, when it started, its lines in the worker's log, oldest first, and the rest.
+type Extra = { added: number | null; skipped: number | null; seriesItems: number | null; workerRunning: boolean | null };
+const logged = (task: Task, startedAt: string | null, log: [string, string][], extra: Partial<Extra> = {}) => ({
+  ...task, startedAt, log: log.map(([time, text]) => ({ time, text })), added: null, skipped: null, seriesItems: null, workerRunning: true,
+  ...extra,
+});
+const stat = (page: Page, label: string) => page.locator('[data-slot="card"]').filter({ hasText: label });
+const summary = (page: Page) => page.getByTestId("task-summary");
+const progress = (page: Page) => page.getByTestId("task-progress");
+const logRows = (page: Page) => page.locator("section tbody tr");
+
+test("a task opens its own page: a line of its status, series and times, how far it has got, what it has added, and its log", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-19T03:20:00+00:00"));
+  await mock(page, EVERYTHING);
+  const started = "2026-10-19T03:00:00+00:00";
+  await page.route("**/api/jobs/31/log", (route) => route.fulfill({ json: logged(
+    { ...ADDING, updatedAt: "2026-10-19T03:20:00+00:00" }, started,
+    [[started, "started: items"], ["2026-10-19T03:00:01+00:00", "step: adding"], ["2026-10-19T03:19:58+00:00", "box 517 of 2,540: 12,400 read, 12,350 added"]],
+    { added: 12350, skipped: 50, seriesItems: 12351 },
+  ) }));
+  await page.goto("/?view=tasks");
+  await row(page, "Adding Missing, Wounded").click();
+  await expect(page).toHaveURL("/?view=tasks&task=31");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(ADDING.label);
+  await expect(page.locator('[data-slot="breadcrumb-item"]')).toHaveText(["Series", "Tasks", ADDING.label]);
+  const [since, updated, finish] = await page.evaluate(() => {
+    const left = (60772 - 12400) / (12400 / 1199); // seconds: 12,400 read since the adding step began, 1,199 seconds before the update
+    return [new Date("2026-10-19T03:00:00Z").toLocaleTimeString(), new Date("2026-10-19T03:20:00Z").toLocaleTimeString(),
+      new Date(Date.parse("2026-10-19T03:20:00Z") + left * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })];
+  }); // in the browser's words: today's times without their date
+  await expect(summary(page)).toHaveText(
+    `RunningMissing, Wounded and Prisoner Of War Cards · started ${since}, running for 20 min · updated ${updated}`);
+  await expect(progress(page)).toContainText("12,400 of 60,772 read");
+  await expect(progress(page)).toContainText("20%");
+  await expect(progress(page)).toContainText(`About 1 h 18 min left · done around ${finish} · 10 items a second`);
+  await expect(stat(page, "Added")).toContainText("12,350");
+  await expect(stat(page, "Skipped")).toContainText("50");
+  await expect(stat(page, "In the series now")).toContainText("12,351");
+  await expect(page.getByRole("link", { name: "Open the series" })).toHaveAttribute("href", "/?collection=2");
+  await expect(logRows(page)).toHaveText([/Box 517 of 2,540: 12,400 read, 12,350 added/, /Adding items/, /Started/]);
+  await expect(logRows(page).first()).toContainText(await page.evaluate(() => new Date("2026-10-19T03:19:58Z").toLocaleTimeString()));
+  await expect(page.getByRole("alert")).toHaveCount(0); // the worker is running
+});
+
+test("a finished task's page says how long it took to its last line, with no time left or speed, and only its progress card", async ({ page }) => {
+  await mock(page, []);
+  await page.route("**/api/jobs/28/log", (route) => route.fulfill({ json: logged(
+    { ...FINISHED, updatedAt: "2026-10-19T09:00:00+00:00" }, "2026-10-19T03:00:00+00:00", // updated later: a worker restart's stamp
+    [["2026-10-19T03:00:00+00:00", "started: bundle data/216413/x.pdf"], ["2026-10-19T03:01:00+00:00", "step: transcribe"],
+      ["2026-10-19T04:50:00+00:00", "done"]], { workerRunning: false }) }));
+  await page.goto("/?view=tasks&task=28");
+  await expect(summary(page)).toContainText("took 1 h 50 min");
+  await expect(progress(page)).toHaveText("227 of 227 pages100%");
+  await expect(page.locator('[data-slot="card"]')).toHaveCount(1); // nothing added
+  await expect(page.getByRole("alert")).toHaveCount(0); // it doesn't need the worker any more
+  await expect(page.getByRole("link", { name: "Open the item" })).toHaveAttribute("href", "/?collection=1&bundle=216413");
+  await expect(logRows(page)).toHaveText([/Done/, /Transcribing pages/, /Started/]);
+});
+
+test("the log says each step in words, and a failed task's error is shown", async ({ page }) => {
+  await mock(page, []);
+  await page.route("**/api/jobs/32/log", (route) => route.fulfill({ json: logged({ ...TRANSCRIBING, status: "failed", error: "The model refused." }, null, [
+    ["2026-10-19T03:00:00+00:00", "started: bundle data/216412/x.pdf"], ["2026-10-19T03:00:01+00:00", "step: split"],
+    ["2026-10-19T03:01:00+00:00", "step: validate"], ["2026-10-19T03:02:00+00:00", "failed during transcribe"],
+    ["2026-10-19T03:03:00+00:00", "failed during None"], ["2026-10-19T03:04:00+00:00", "stopped during split"],
+  ]) }));
+  await page.goto("/?view=tasks&task=32");
+  await expect(page.locator("section tbody tr td:nth-child(2)")).toHaveText([
+    "Stopped while preparing page images (downloads PDF if needed)", "Failed", "Failed while transcribing pages",
+    "Checking the transcriptions' fields", "Preparing page images (downloads PDF if needed)", "Started",
+  ]);
+  await expect(page.getByRole("alert")).toHaveText("The model refused.");
+});
+
+for (const [status, text] of [
+  ["waiting", "The worker isn't running, so this task won't start. Start it with uv run worker."],
+  ["running", "The worker isn't running, so this task has stopped. Start it with uv run worker, then run the task again."],
+] as const) {
+  test(`a ${status} task's page says when the worker isn't running, without a time left`, async ({ page }) => {
+    await mock(page, []);
+    const started = "2026-10-19T03:00:00+00:00";
+    await page.route("**/api/jobs/31/log", (route) => route.fulfill({ json: logged({ ...ADDING, status, updatedAt: "2026-10-19T03:20:00+00:00" },
+      status === "running" ? started : null, status === "running" ? [[started, "started: items"]] : [], { workerRunning: false }) }));
+    await page.goto("/?view=tasks&task=31");
+    await expect(page.getByRole("alert")).toHaveText(text);
+    await expect(summary(page)).not.toContainText("running for");
+    await expect(progress(page)).not.toContainText("left");
+  });
+}
+
+test("with no word from a worker yet, a waiting task's page doesn't warn, and says it hasn't started or logged anything", async ({ page }) => {
+  await mock(page, []);
+  await page.route("**/api/jobs/33/log", (route) => route.fulfill({ json: logged(QUEUED, null, [], { workerRunning: null }) }));
+  await page.goto("/?view=tasks&task=33");
+  await expect(summary(page)).toContainText("Shipping manifests · not started yet");
+  await expect(progress(page)).toHaveText("Waiting to start");
+  await expect(logRows(page)).toHaveText(["Nothing logged for this task."]);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a task that isn't there says so", async ({ page }) => {
+  await mock(page, []);
+  await page.route("**/api/jobs/99/log", (route) => route.fulfill({ status: 404, json: { detail: "There's no task 99." } }));
+  await page.goto("/?view=tasks&task=99");
+  await expect(page.getByText("Couldn't load the task: There's no task 99.")).toBeVisible();
 });
 
 test("with no tasks the Tasks page says so", async ({ page }) => {

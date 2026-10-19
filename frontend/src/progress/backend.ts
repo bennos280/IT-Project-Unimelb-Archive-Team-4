@@ -21,6 +21,8 @@ export const jobStages: Record<string, string> = {
   identify: "Identifying page types",
   preprocess: "Preparing images",
   transcribe: "Transcribing pages",
+  group: "Grouping pages",
+  validate: "Checking the transcriptions' fields",
   load: "Saving results to database",
 };
 export type ArchiveItem = { identifier: string; title: string };

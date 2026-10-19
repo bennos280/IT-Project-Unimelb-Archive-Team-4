@@ -264,9 +264,9 @@ Checks same-item moves, immediate type changes without queuing, persistence of t
 
 The Add items dialog on a series' dashboard, and its empty state, with the API mocked: a series with no items says so and offers Add items (or says it isn't linked to the archive); the dialog opens at once on "Add all N items" for the series' count, asking the archive nothing, and queues it as a background task, however many; "Choose items instead" lists the archive's items with those that can't be added disabled, searches only when asked, pages without losing focus, selects across pages and a page at a time up to 25, drops a choice the archive turns down, and shows the archive's errors with Try again.
 
-## `tasks.spec.ts` — 18 tests
+## `tasks.spec.ts` — 25 tests
 
-The Tasks link on every screen and the Tasks page, with the API mocked: the link's count of waiting and running tasks, kept up to date; the page's table of them first, then recent ones, each with its label (a link where there is one), series, status, progress in items or pages, when it last changed and, for a failed one, its error; an empty list; a failed refresh keeping the last list; and a series' dashboard saying while its items are being added.
+The Tasks link on every screen and the Tasks page, with the API mocked: the link's count of waiting and running tasks, kept up to date; the page's table of them first, then recent ones, each with its label (a link to its own page), series, status, progress in items read or pages, when it last changed and, for a failed one, its error; a task's own page with a line of its status, series and times, a card of how far it has got with its time left, finish time and speed, what it has added and skipped and its series' items, a link to its series or item, and its log newest first in words; a finished one with how long it took to its last line and no speed; a failed one's error; a warning when the worker isn't running, without a time left, and none when that's unknown; a waiting one not started; and one that isn't there; an empty list; a failed refresh keeping the last list; and a series' dashboard saying while its items are being added.
 
 ## Import screen browser tests — 5 tests
 

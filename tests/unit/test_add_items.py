@@ -1,6 +1,9 @@
 """A series' items are listed from the archive and added to its list (one by one once the archive confirms each is this
 series', or the whole list at once, trusting it), and run into that series with its own page types."""
 import json
+import logging
+import os
+from datetime import datetime, timezone
 
 import pytest
 
@@ -122,7 +125,7 @@ def test_adding_a_series_whole_list_is_queued_and_the_worker_adds_each_downloada
         (637679, "Diary 1887", "637679/637679.pdf"), (637680, "Diary 1888", "637680/637680.pdf")}
 
 
-def test_a_list_too_long_for_the_archive_to_show_is_added_a_box_at_a_time(client, db, archive, monkeypatch):
+def test_a_list_too_long_for_the_archive_to_show_is_added_a_box_at_a_time_and_logged(client, db, archive, monkeypatch, caplog):
     monkeypatch.setattr(worker, "PAUSE", 0)
     db.add(models.Collection(collection_id=3, name="Cards", archive_series=71317, archive_identifier="UMA-SRE-20160049",
                              archive_items=60772))
@@ -136,12 +139,25 @@ def test_a_list_too_long_for_the_archive_to_show_is_added_a_box_at_a_time(client
     archive.add_listing("unit:177812", [(428369, "Taylor, W R, A12524", "UMA-ITE-2", True, "Access restrictions apply"),
                                         (380835, "Davis, V", "UMA-ITE-3", True)])
     client.post("/collections/3/items/all", json={})
-    assert worker.work_once(db)
+    real = scans.archive_listing
+
+    def listing(link, page=1, search=""):  # someone adds Davis, V by hand while the task reads the second box
+        if "bid=177812" in link:
+            db.add(models.ArchiveItem(node=380835, collection_id=3, identifier="UMA-ITE-3", title="Davis, V"))
+            db.flush()
+        return real(link, page, search)
+    monkeypatch.setattr(scans, "archive_listing", listing)
+    with caplog.at_level(logging.INFO, logger="worker"):
+        assert worker.work_once(db)
     db.expire_all()
     assert {i.node for i in db.query(models.ArchiveItem).filter_by(collection_id=3)} == {368478, 380835}
     job = db.query(models.Job).one()
     assert (job.status, job.done_pages, job.total_pages) == ("done", 3, 60772)
     assert len([r for r in archive.requests if r.startswith("/nodes/browse?bid=71317&")]) == 1  # not its 417 pages
+    n = job.job_id
+    assert [r.getMessage() for r in caplog.records][1:] == [
+        f"job {n} step: adding", f"job {n}: box 1 of 2: 1 read, 1 added", f"job {n}: box 2 of 2: 3 read, 1 added",  # Davis, V was added by hand
+        f"job {n}: 3 read, 1 added, 2 skipped (listed already, Reading Room only or not scanned)", f"job {n} done"]
 
 
 def test_adding_a_list_from_an_archive_that_cant_be_reached_fails_the_task_with_the_reason(client, db, monkeypatch):
@@ -167,6 +183,46 @@ def test_tasks_say_what_each_job_is_how_far_it_has_got_and_where_to_see_it(clien
         ("Transcribing Box Hill 00", "failed", 0, 0, "pages", "/?collection=1&bundle=216412", "the archive broke off"),
         ("Training page sorting", "done", 0, 0, "pages", None, None)]
     assert [(t["collectionId"], t["series"]) for t in tasks] == [(2, "Diaries"), (1, "Wilfred Prest Survey"), (None, None)]
+
+
+def test_a_task_comes_with_its_log_oldest_first_when_it_started_what_it_has_added_and_whether_a_worker_runs(client, db, tmp_path,
+                                                                                                          monkeypatch):
+    monkeypatch.setattr(main, "settings", lambda: {"OUTPUT": str(tmp_path)})
+    db.add_all([models.Job(job_id=9, kind="items", collection_id=1, status="running", done_pages=1048, total_pages=60772),
+                models.Job(job_id=90, kind="train", status="done"), models.Job(job_id=91, kind="train"),
+                models.ArchiveItem(node=216412, collection_id=1, identifier="UMA-ITE-1", title="Box Hill 00"),
+                models.ArchiveItem(node=216413, collection_id=1, identifier="UMA-ITE-2", title="Box Hill 01")])
+    db.commit()
+    (tmp_path / "worker.log.2").write_text("2026-10-01 09:00:00,000 INFO job 9 started: bundle data/1/old.pdf \n"  # an older db's job 9
+                                          "2026-10-01 09:00:05,000 INFO job 91 started: items \n"  # and its 91
+                                          "2026-10-01 09:01:00,000 INFO job 9: 5 read, 5 added\n", encoding="utf-8")
+    (tmp_path / "worker.log.1").write_text("2026-10-19 15:00:50,116 INFO job 9 started: items \n"
+                                          "2026-10-19 15:00:51,000 INFO job 90 started: train \n", encoding="utf-8")  # rotated: older
+    (tmp_path / "worker.log").write_text("2026-10-19 15:00:52,000 INFO job 9 step: adding\n"
+                                        "Traceback (most recent call last):\n"
+                                        "2026-10-19 15:00:55,000 INFO job 9: box 1 of 2,540: 24 read, 23 added\n"
+                                        "2026-10-19 15:05:00,000 INFO job 9: box 44 of 2,540: 1,048 read, 1,040 added\n", encoding="utf-8")
+    task = client.get("/jobs/9/log").json()
+    assert (task["label"], task["series"], task["done"], task["total"]) == ("Adding items to Wilfred Prest Survey", "Wilfred Prest Survey",
+                                                                            1048, 60772)
+    started = datetime(2026, 10, 19, 15, 0, 50).astimezone(timezone.utc).isoformat()  # the worker logs local time
+    assert (task["startedAt"], task["log"][0]["time"]) == (started, started)
+    assert [e["text"] for e in task["log"]] == [
+        "started: items", "step: adding", "box 1 of 2,540: 24 read, 23 added", "box 44 of 2,540: 1,048 read, 1,040 added"]
+    assert (task["added"], task["skipped"], task["seriesItems"]) == (1040, 8, 2)  # from the latest count line; the series' 2 items
+    assert task["workerRunning"] is None  # no worker has run with a heartbeat
+    training = client.get("/jobs/90/log").json()
+    assert (training["log"][0]["text"], training["added"], training["skipped"], training["seriesItems"]) == ("started: train", None, None,
+                                                                                                             None)
+    waiting = client.get("/jobs/91/log").json()
+    assert (waiting["log"], waiting["startedAt"]) == ([], None)
+    assert client.get("/jobs/99/log").status_code == 404
+
+    beat = tmp_path / "worker.alive"
+    beat.touch()
+    assert client.get("/jobs/91/log").json()["workerRunning"] is True
+    os.utime(beat, (beat.stat().st_atime - 60, beat.stat().st_mtime - 60))  # a minute without a beat
+    assert client.get("/jobs/91/log").json()["workerRunning"] is False
 
 
 def test_a_run_saves_the_series_it_is_loaded_into(tmp_path):
