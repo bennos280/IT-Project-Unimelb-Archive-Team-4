@@ -95,7 +95,7 @@ export default function ImportScreen() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader crumbs={[{ label: "Series", href: "/" }, { label: "Import" }]} />
+      <AppHeader crumbs={[{ label: "Import" }]} />
       <main className="mx-auto max-w-6xl space-y-4 p-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Import items</h1>

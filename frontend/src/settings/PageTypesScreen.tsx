@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 
 import AppHeader from "@/components/AppHeader";
+import SeriesHeader from "@/components/SeriesHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,7 +17,10 @@ import ReviewerField, { type Reviewer } from "./ReviewerField";
 import { cleanRules, parseTemplate, sameRules, type Rules } from "./rules";
 
 type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; startsRecord: boolean; matchedByKey: boolean; templateVersion: number | null };
-type Collection = { id: number; name: string; recordKey: string | null; recordName: string; grouped: boolean };
+type Collection = {
+  id: number; name: string; recordKey: string | null; recordName: string; grouped: boolean; archiveIdentifier?: string | null;
+  archiveSeries?: number | null;
+};
 type Version = { id: number; body: string; rules: Rules; reviewer: string | null; note: string | null; createdAt: string };
 type Grouping = "starts" | "matched" | "follows";
 
@@ -30,7 +34,8 @@ const groupings = ({ recordName }: Collection): Record<Grouping, string> => ({
   follows: "Follows the page before it",
 });
 
-// The collection's page types: what each is called, the template its pages are read with, and how they group into records.
+// A series' Setup tab: what its records are, its page types (what each is called, the template its pages are read with, its
+// fields' rules, and how they group into records), and its checks across fields.
 export default function PageTypesScreen() {
   const collectionId = Number(new URLSearchParams(location.search).get("collection")) || 1;
   const [types, setTypes] = useState<PageType[] | null>(null);
@@ -57,13 +62,14 @@ export default function PageTypesScreen() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader crumbs={[{ label: "Series", href: "/" }, { label: collection?.name ?? "Series", href: `/?collection=${collectionId}` },
-        { label: "Page types" }]} />
-      <main className="mx-auto max-w-6xl space-y-8 p-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Page types</h1>
+      <AppHeader series={{ id: collectionId, name: collection?.name ?? "" }} />
+      <main className="space-y-8 p-6">
+        <div className="space-y-3">
+          <SeriesHeader series={{ id: collectionId, name: collection?.name ?? "", archiveIdentifier: collection?.archiveIdentifier,
+            archiveSeries: collection?.archiveSeries }} tab="setup" />
           <p className="text-sm text-muted-foreground">
-            The kinds of page in {collection?.name ?? "this series"}: what each is called, how it is read, and how pages group into {recordWords(collection?.recordName).many}.
+            How {collection?.name ?? "this series"}'s pages are read and checked: what one of its {recordWords(collection?.recordName).many} is, its
+            kinds of page with their templates and fields' rules, and checks across its fields.
           </p>
         </div>
         {loadError && (

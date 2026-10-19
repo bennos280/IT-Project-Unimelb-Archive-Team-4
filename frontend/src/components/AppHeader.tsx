@@ -1,4 +1,5 @@
-import { Fragment, type MouseEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type MouseEvent } from "react";
+import { Settings } from "lucide-react";
 
 import TasksButton from "@/components/TasksButton";
 import {
@@ -9,36 +10,63 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
+import { backendRequest } from "../progress/backend";
 
 type Crumb = { label: string; href?: string; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void };
+type Series = { id: number; name: string };
 
-// Shared top bar: the app name, a breadcrumb trail ending at the current screen, screen actions and the Tasks button.
-export default function AppHeader({ crumbs, actions }: { crumbs: Crumb[]; actions?: ReactNode }) {
+// The one top bar: the app's name (home); where you are, as the series (switched from a list) and the levels below it, of which a
+// phone shows only the last; and what's for the whole app, Settings and Tasks. A screen's own title and actions sit below it.
+export default function AppHeader({ series, crumbs = [] }: { series?: Series; crumbs?: Crumb[] }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b px-6 py-4">
-      <div className="min-w-0 space-y-1">
-        <a href="/" className="block rounded-sm text-2xl font-semibold tracking-tight">PrestCribe</a>
-        <Breadcrumb>
+    <header className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-2 sm:px-6">
+      <a href="/" className="rounded-sm text-lg font-semibold tracking-tight">PrestCribe</a>
+      {(series || crumbs.length > 0) && (
+        <Breadcrumb className="min-w-0">
           <BreadcrumbList>
-            {crumbs.map((crumb, i) => (
-              <Fragment key={i}>
-                {i > 0 && <BreadcrumbSeparator />}
-                <BreadcrumbItem>
-                  {i === crumbs.length - 1 ? (
-                    <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                  ) : (
-                    <BreadcrumbLink href={crumb.href} onClick={crumb.onClick}>{crumb.label}</BreadcrumbLink>
-                  )}
-                </BreadcrumbItem>
-              </Fragment>
-            ))}
+            <BreadcrumbSeparator />
+            {series && <BreadcrumbItem><SeriesSwitcher current={series} /></BreadcrumbItem>}
+            {crumbs.map((crumb, i) => {
+              const last = i === crumbs.length - 1;
+              return (
+                <Fragment key={i}>
+                  {(series || i > 0) && <BreadcrumbSeparator className={last ? undefined : "max-sm:hidden"} />}
+                  <BreadcrumbItem className={last ? undefined : "max-sm:hidden"}>
+                    {last ? <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                      : <BreadcrumbLink href={crumb.href} onClick={crumb.onClick}>{crumb.label}</BreadcrumbLink>}
+                  </BreadcrumbItem>
+                </Fragment>
+              );
+            })}
           </BreadcrumbList>
         </Breadcrumb>
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        {actions}
+      )}
+      <div className="ml-auto flex items-center gap-2">
+        <Button asChild variant="outline" size="icon" title="Settings">
+          <a href="/?view=settings" aria-label="Settings"><Settings /></a>
+        </Button>
         <TasksButton />
       </div>
     </header>
+  );
+}
+
+// The series you're in, and a quick way to another (on the same tab) or to all of them.
+function SeriesSwitcher({ current }: { current: Series }) {
+  const [all, setAll] = useState<Series[]>([]);
+  useEffect(() => {
+    backendRequest<Series[]>("/collections?brief=true").then(setAll).catch(() => {});
+  }, []);
+  const listed = all.some((s) => s.id === current.id) ? all : [current, ...all];
+  return (
+    <NativeSelect aria-label="Series" size="sm" className="max-w-64 font-medium" value={current.id} onChange={(e) => {
+      const tab = new URLSearchParams(location.search).get("view") === "setup" ? "&view=setup" : "";
+      window.location.href = e.target.value ? `/?collection=${e.target.value}${tab}` : "/";
+    }}>
+      {listed.map((s) => <option key={s.id} value={s.id}>{s.name || "Series"}</option>)}
+      <option value="">All series</option>
+    </NativeSelect>
   );
 }

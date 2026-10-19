@@ -53,7 +53,7 @@ export default function TasksScreen() {
   const listed = [...(tasks ?? []).filter(isActive), ...(tasks ?? []).filter((task) => !isActive(task))];
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader crumbs={[{ label: "Series", href: "/" }, { label: "Tasks" }]} />
+      <AppHeader crumbs={[{ label: "Tasks" }]} />
       <main className="space-y-4 p-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
@@ -161,7 +161,7 @@ export function TaskScreen({ id }: { id: string }) {
   if (!task) {
     return (
       <div className="min-h-screen bg-background text-foreground">
-        <AppHeader crumbs={[{ label: "Series", href: "/" }, { label: "Tasks", href: "/?view=tasks" }, { label: "Task" }]} />
+        <AppHeader crumbs={[{ label: "Tasks", href: "/?view=tasks" }, { label: "Task" }]} />
         <main className="p-6">
           <p role={error ? undefined : "status"} className="text-muted-foreground">{error ? `Couldn't load the task: ${error}` : "Loading the task…"}</p>
         </main>
@@ -185,7 +185,7 @@ export function TaskScreen({ id }: { id: string }) {
   ].filter(Boolean).join(" · ");
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader crumbs={[{ label: "Series", href: "/" }, { label: "Tasks", href: "/?view=tasks" }, { label: task.label }]} />
+      <AppHeader crumbs={[{ label: "Tasks", href: "/?view=tasks" }, { label: task.label }]} />
       <main className="space-y-4 p-6">
         {error && <p className="text-muted-foreground">Couldn't refresh the task: {error}</p>}
         <div className="space-y-2">

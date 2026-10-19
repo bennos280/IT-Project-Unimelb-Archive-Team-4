@@ -19,7 +19,7 @@ export default function App() {
   if (view === "import") return <ImportScreen/>;
   if (view === "settings") return <SettingsScreen/>;
   if (view === "tasks") return params.get("task") ? <TaskScreen id={params.get("task")!}/> : <TasksScreen/>;
-  if (view === "page-types") return <PageTypesScreen/>;
+  if (view === "setup" || view === "page-types") return <PageTypesScreen/>; // page-types: the old name of a series' Setup
   if (params.has("survey")) return <SurveyReview/>;
   return params.has("collection") || params.has("bundle") ? <ProgressDashboard/> : <CollectionsScreen/>; // an old /?bundle= link: collection 1
 }

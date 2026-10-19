@@ -68,10 +68,10 @@ test("the Tasks link counts the tasks waiting or running, and shows no count whe
   await mock(page, [FINISHED, FAILED]);
   await page.goto("/");
   await expect(tasksButton(page)).toHaveAccessibleName("Tasks");
-  await expect(tasksButton(page)).toHaveText("Tasks");
+  await expect(tasksButton(page)).toHaveText(""); // its icon alone
 });
 
-for (const url of ["/", "/?collection=1", "/?collection=1&bundle=216412", "/?collection=1&view=page-types", "/?view=settings", "/?view=import", "/?survey=216417_1", "/?view=tasks"]) {
+for (const url of ["/", "/?collection=1", "/?collection=1&bundle=216412", "/?collection=1&view=setup", "/?view=settings", "/?view=import", "/?survey=216417_1", "/?view=tasks"]) {
   test(`the Tasks link is in the header of ${url}`, async ({ page }) => {
     await mock(page, [ADDING]);
     await page.goto(url);
@@ -157,7 +157,7 @@ test("a task opens its own page: a line of its status, series and times, how far
   await row(page, "Adding Missing, Wounded").click();
   await expect(page).toHaveURL("/?view=tasks&task=31");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(ADDING.label);
-  await expect(page.locator('[data-slot="breadcrumb-item"]')).toHaveText(["Series", "Tasks", ADDING.label]);
+  await expect(page.locator('[data-slot="breadcrumb-item"]')).toHaveText(["Tasks", ADDING.label]);
   const [since, updated, finish] = await page.evaluate(() => {
     const left = (60772 - 12400) / (12400 / 1199); // seconds: 12,400 read since the adding step began, 1,199 seconds before the update
     return [new Date("2026-10-19T03:00:00Z").toLocaleTimeString(), new Date("2026-10-19T03:20:00Z").toLocaleTimeString(),

@@ -1,7 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { serveItems } from "./items-mock";
 
-// Every API call is intercepted: no requests reach the real backend or database.
+// The top bar on every screen: the app's name (home), the series switcher and the trail below it, and Settings and Tasks; and a
+// series' own header with its actions and its Items | Setup tabs. Every API call is intercepted: no requests reach the real backend.
 // The bundle's id (pdf-216417) differs from its name (216417), as for a PDF inside a numbered folder.
 const pages = ["main", "notes"].map((type, index) => ({
   id: `216417/p${index}`,
@@ -10,7 +11,9 @@ const pages = ["main", "notes"].map((type, index) => ({
   fields: [{ id: "address", label: "Address", group: "Address", value: "Sample value" }],
   flags: [],
 }));
-const COLLECTION = { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", recordName: "survey", grouped: true, archiveSeries: 499420, bundles: 1, pages: 2 };
+const COLLECTION = { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", recordName: "survey", grouped: true, archiveSeries: 499420,
+  archiveIdentifier: "UMA-SR-000000842", bundles: 1, pages: 2 };
+const DIARIES = { ...COLLECTION, id: 2, name: "Strathfieldsaye Estate Diaries", archiveSeries: 524173, archiveIdentifier: "UMA-SR-000001769" };
 
 // noItemInfo leaves the item's name and archive title out of the survey, as an older server would.
 async function mockApi(page: Page, { noItemInfo = false, archive = false } = {}) {
@@ -36,55 +39,73 @@ async function mockApi(page: Page, { noItemInfo = false, archive = false } = {})
     if (path === "/api/reviews/216417_1") return route.fulfill({ json: { reviews: {}, revisions: {} } });
     if (path === "/api/reviewers") return route.fulfill({ json: [] });
     if (path === "/api/collections/1") return route.fulfill({ json: COLLECTION });
-    if (path === "/api/collections") return route.fulfill({ json: [COLLECTION] });
+    if (path === "/api/collections/2") return route.fulfill({ json: DIARIES });
+    if (path === "/api/collections") return route.fulfill({ json: [COLLECTION, DIARIES] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
 }
 
 const trail = (page: Page) => page.getByRole("navigation", { name: "Breadcrumb" });
-// Separators are presentational, so only the crumbs are list items in the accessibility tree.
-const crumbs = (page: Page) => trail(page).locator('[data-slot="breadcrumb-item"]');
+// The crumbs after the series switcher; separators are presentational, so only crumbs are list items.
+const crumbs = (page: Page) => trail(page).locator('[data-slot="breadcrumb-item"]:not(:has(select))');
 const current = (page: Page) => trail(page).locator('[aria-current="page"]');
+const switcher = (page: Page) => page.getByRole("banner").getByRole("combobox", { name: "Series" });
+const itemsCrumb = (page: Page) => trail(page).getByRole("link", { name: "Items", exact: true });
 const bundleLink = (page: Page) => page.getByRole("link", { name: "216417", exact: true });
-const collections = (page: Page) => trail(page).getByRole("link", { name: "Series" });
-const collection = (page: Page) => trail(page).getByRole("link", { name: "Wilfred Prest Survey" });
 const appName = (page: Page) => page.getByRole("link", { name: "PrestCribe" });
+const tabs = (page: Page) => page.getByRole("navigation", { name: "Series" }).getByRole("link");
 
-test("home shows Series as the current crumb and the app's name links home", async ({ page }) => {
+test("home is the app's name alone, which links home, with Settings and Tasks", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-  await expect(crumbs(page)).toHaveText(["Series"]);
-  await expect(current(page)).toHaveText("Series");
+  await expect(trail(page)).toHaveCount(0);
   await expect(appName(page)).toHaveAttribute("href", "/");
+  await expect(page.getByRole("banner").getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/?view=settings");
+  await expect(page.getByRole("banner").getByRole("link", { name: "Tasks" })).toHaveAttribute("href", "/?view=tasks");
   await expect(page.locator("h1")).toHaveText("Series");
 });
 
-test("a series' items show Series > the series", async ({ page }) => {
+test("a series' items name it in the switcher and its heading, with its Items and Setup tabs", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?collection=1");
-  await expect(crumbs(page)).toHaveText(["Series", "Wilfred Prest Survey"]);
-  await expect(current(page)).toHaveText("Wilfred Prest Survey");
-  await expect(collections(page)).toHaveAttribute("href", "/");
-  await expect(page.locator("h1")).toHaveText("All items");
+  await expect(switcher(page)).toHaveValue("1");
+  await expect(switcher(page).locator("option")).toHaveText(["Wilfred Prest Survey", "Strathfieldsaye Estate Diaries", "All series"]);
+  await expect(crumbs(page)).toHaveCount(0);
+  await expect(page.locator("h1")).toHaveText("Wilfred Prest Survey");
+  await expect(page.getByRole("link", { name: "UMA-SR-000000842" })).toHaveAttribute("href", "https://archives.library.unimelb.edu.au/nodes/view/499420");
+  await expect(tabs(page)).toHaveText(["Items", "Setup"]);
+  await expect(tabs(page).first()).toHaveAttribute("aria-current", "page");
+  await expect(tabs(page).last()).toHaveAttribute("href", "/?collection=1&view=setup");
+  await expect(page.getByRole("heading", { name: "All items", level: 2 })).toBeVisible();
 });
 
-test("an item's pages show Series > series > Item, and the series crumb returns in-app with Back and Forward intact", async ({ page }) => {
+test("the switcher opens another series on the same tab, or all of them", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?collection=1&view=setup");
+  await switcher(page).selectOption("2");
+  await expect(page).toHaveURL("/?collection=2&view=setup");
+  await page.goto("/?collection=1");
+  await switcher(page).selectOption("All series");
+  await expect(page).toHaveURL("/");
+});
+
+test("an item's pages show Items > Item, and Items returns in-app with Back and Forward intact", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?collection=1");
   await bundleLink(page).click();
   await expect(page).toHaveURL("/?collection=1&bundle=216417");
-  await expect(crumbs(page)).toHaveText(["Series", "Wilfred Prest Survey", "Item 216417"]);
+  await expect(crumbs(page)).toHaveText(["Items", "Item 216417"]);
   await expect(current(page)).toHaveText("Item 216417");
   await expect(page.locator("h1")).toHaveText("Item 216417");
-  await expect(collection(page)).toHaveAttribute("href", "/?collection=1");
+  await expect(itemsCrumb(page)).toHaveAttribute("href", "/?collection=1");
   await expect(page.getByRole("button", { name: "Back to all bundles" })).toHaveCount(0);
 
   // The click is handled in the page: the document is not reloaded.
   await page.evaluate(() => { (window as unknown as { kept: boolean }).kept = true; });
-  await collection(page).click();
+  await itemsCrumb(page).click();
   await expect(page).toHaveURL(/\/\?collection=1$/);
   await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
-  await expect(current(page)).toHaveText("Wilfred Prest Survey");
+  await expect(crumbs(page)).toHaveCount(0);
   expect(await page.evaluate(() => (window as unknown as { kept?: boolean }).kept)).toBe(true);
 
   await page.goBack();
@@ -94,11 +115,11 @@ test("an item's pages show Series > series > Item, and the series crumb returns 
   await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
 });
 
-test("a Ctrl or middle click on the series crumb opens its items in a new tab and leaves this one on the item", async ({ page, context }) => {
+test("a Ctrl or middle click on Items opens the series' items in a new tab and leaves this one on the item", async ({ page, context }) => {
   await mockApi(page);
   await page.goto("/?collection=1&bundle=216417");
   for (const click of [{ modifiers: ["Control" as const] }, { button: "middle" as const }]) {
-    const [tab] = await Promise.all([context.waitForEvent("page"), collection(page).click(click)]);
+    const [tab] = await Promise.all([context.waitForEvent("page"), itemsCrumb(page).click(click)]);
     await expect(tab).toHaveURL(/\/\?collection=1$/);
     await expect(page).toHaveURL("/?collection=1&bundle=216417");
     await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
@@ -106,14 +127,14 @@ test("a Ctrl or middle click on the series crumb opens its items in a new tab an
   }
 });
 
-test("the review screen shows Series > series > Item > Survey, and the item crumb opens that item's pages", async ({ page }) => {
+test("the review screen shows the series, then Items > Item > Survey, and the item crumb opens that item's pages", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?survey=216417_1&page=216417%2Fp0");
-  await expect(crumbs(page)).toHaveText(["Series", "Wilfred Prest Survey", "Item 216417", "Survey 216417_1"]);
+  await expect(switcher(page)).toHaveValue("1");
+  await expect(crumbs(page)).toHaveText(["Items", "Item 216417", "Survey 216417_1"]);
   await expect(current(page)).toHaveText("Survey 216417_1");
   await expect(appName(page)).toHaveAttribute("href", "/");
-  await expect(collections(page)).toHaveAttribute("href", "/");
-  await expect(collection(page)).toHaveAttribute("href", "/?collection=1");
+  await expect(itemsCrumb(page)).toHaveAttribute("href", "/?collection=1");
   await expect(trail(page).getByRole("link", { name: "Item 216417" })).toHaveAttribute("href", "/?collection=1&bundle=216417");
   await expect(page.locator("h1")).toHaveCount(1);
 
@@ -126,7 +147,7 @@ test("the review screen shows Series > series > Item > Survey, and the item crum
 test("an item on the archive is named by its title in the review screen's crumbs and on its own page", async ({ page }) => {
   await mockApi(page, { archive: true });
   await page.goto("/?survey=216417_1&page=216417%2Fp0");
-  await expect(crumbs(page)).toHaveText(["Series", "Wilfred Prest Survey", "Brunswick 02 - Part 3", "Survey 216417_1"]);
+  await expect(crumbs(page)).toHaveText(["Items", "Brunswick 02 - Part 3", "Survey 216417_1"]);
   await trail(page).getByRole("link", { name: "Brunswick 02 - Part 3" }).click();
   await expect(page).toHaveURL("/?collection=1&bundle=216417");
   await expect(current(page)).toHaveText("Brunswick 02 - Part 3");
@@ -137,14 +158,14 @@ test("the review screen names its item from the survey and asks for no list of i
   const asked: string[] = [];
   page.on("request", (request) => asked.push(new URL(request.url()).pathname));
   await page.goto("/?survey=216417_1&page=216417%2Fp0");
-  await expect(crumbs(page)).toHaveText(["Series", "Wilfred Prest Survey", "Brunswick 02 - Part 3", "Survey 216417_1"]);
+  await expect(crumbs(page)).toHaveText(["Items", "Brunswick 02 - Part 3", "Survey 216417_1"]);
   expect(asked.filter((path) => /^\/api\/(bundles|progress|collections\/\d+\/items)/.test(path))).toEqual([]);
 });
 
-test("the review screen's series crumb opens the series' items", async ({ page }) => {
+test("the review screen's Items crumb opens the series' items", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?survey=216417_1");
-  await collection(page).click();
+  await itemsCrumb(page).click();
   await expect(page).toHaveURL(/\/\?collection=1$/);
   await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
 });
@@ -159,64 +180,54 @@ test("a survey without item info falls back to the bundle id in the crumb, and t
   await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
 });
 
-test("the import screen shows Series > Import and one h1", async ({ page }) => {
-  await mockApi(page);
-  await page.goto("/?view=import");
-  await expect(crumbs(page)).toHaveText(["Series", "Import"]);
-  await expect(current(page)).toHaveText("Import");
-  await expect(page.locator("h1")).toHaveText("Import items");
-  await expect(appName(page)).toHaveAttribute("href", "/");
-  await collections(page).click();
-  await expect(page.getByRole("heading", { name: "Series", level: 1 })).toBeVisible();
-});
+for (const [url, crumb, h1] of [["/?view=import", "Import", "Import items"], ["/?view=settings", "Settings", "Settings"], ["/?view=tasks", "Tasks", "Tasks"]]) {
+  test(`the ${crumb} screen is a crumb after the app's name, with one h1`, async ({ page }) => {
+    await mockApi(page);
+    await page.goto(url);
+    await expect(crumbs(page)).toHaveText([crumb]);
+    await expect(current(page)).toHaveText(crumb);
+    await expect(page.locator("h1")).toHaveText(h1);
+    await expect(switcher(page)).toHaveCount(0);
+    await appName(page).click();
+    await expect(page.getByRole("heading", { name: "Series", level: 1 })).toBeVisible();
+  });
+}
 
-test("the settings screen shows Series > Settings and one h1", async ({ page }) => {
-  await mockApi(page);
-  await page.goto("/?view=settings");
-  await expect(crumbs(page)).toHaveText(["Series", "Settings"]);
-  await expect(current(page)).toHaveText("Settings");
-  await expect(page.locator("h1")).toHaveText("Settings");
-  await appName(page).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Series", level: 1 })).toBeVisible();
-});
-
-test("Export, Import, Page types and Settings work from the series' header", async ({ page }) => {
+test("a series' actions sit by its title, Add items first; Settings and Tasks are in the top bar", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?collection=1");
-  const header = page.getByRole("banner");
-  await header.getByRole("button", { name: "Export", exact: true }).click();
+  const main = page.getByRole("main");
+  await expect(main.getByRole("button", { name: /^(Add items|Export|Import)$/ })).toHaveText(["Add items", "Export", "Import"]);
+  await expect(page.getByRole("banner").getByRole("button")).toHaveCount(0); // only links there: Settings, Tasks, home
+  await main.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByRole("dialog").getByRole("heading", { name: "Export" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await header.getByRole("button", { name: "Import", exact: true }).click();
+  await main.getByRole("button", { name: "Import", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Import items" })).toBeVisible();
   await page.goBack();
-  await header.getByRole("button", { name: "Page types", exact: true }).click();
-  await expect(page).toHaveURL("/?collection=1&view=page-types");
-  await page.goBack();
-  await header.getByRole("button", { name: "Settings", exact: true }).click();
+  await tabs(page).last().click();
+  await expect(page).toHaveURL("/?collection=1&view=setup");
+  await page.getByRole("banner").getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
 });
 
-test("on a phone no screen scrolls sideways and the header actions wrap under the breadcrumb", async ({ page }) => {
+test("on a phone no screen scrolls sideways, and the trail shows only where you are", async ({ page }) => {
   await mockApi(page);
   await page.setViewportSize({ width: 375, height: 800 });
   for (const url of ["/", "/?collection=1", "/?collection=1&bundle=216417", "/?survey=216417_1", "/?view=import", "/?view=settings"]) {
     await page.goto(url);
-    await expect(current(page)).toBeVisible();
+    await expect(page.locator("h1").first()).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), url).toBe(true);
   }
-  await page.goto("/?collection=1&bundle=216417");
-  await expect(current(page)).toHaveText("Item 216417");
-  const trailBox = (await trail(page).boundingBox())!;
-  const exportBox = (await page.getByRole("banner").getByRole("button", { name: "Export", exact: true }).boundingBox())!;
-  expect(exportBox.y).toBeGreaterThanOrEqual(trailBox.y + trailBox.height);
+  await page.goto("/?survey=216417_1");
+  await expect(current(page)).toBeVisible();
+  await expect(itemsCrumb(page)).toBeHidden();
+  await expect(switcher(page)).toBeVisible();
 });
-
 
 test("an old item link without a series still opens the item", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?bundle=216417");
   await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
-  await expect(crumbs(page)).toHaveText(["Series", "Wilfred Prest Survey", "Item 216417"]);
+  await expect(crumbs(page)).toHaveText(["Items", "Item 216417"]);
 });

@@ -1,8 +1,9 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { ArrowRight, ExternalLink, LayoutList, ListPlus, Search, Settings, Upload } from "lucide-react";
+import { ArrowRight, ExternalLink, ListPlus, Search, Upload } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
+import SeriesHeader from "@/components/SeriesHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,10 +67,10 @@ export default function ProgressDashboard() {
   const collectionId = Number(new URLSearchParams(location.search).get("collection")) || 1;
   // Until the series loads it has no name, its records are "records" and they group, so nothing flickers away.
   // archiveSeries is the series' node on the archive: undefined until it loads, null when none is linked. archiveItems is how many items it had when linked.
-  const [series, setSeries] = useState<{ name: string; recordName: string; grouped: boolean; archiveSeries?: number | null; archiveItems: number | null }>({ name: "", recordName: "record", grouped: true, archiveItems: null });
+  const [series, setSeries] = useState<{ name: string; recordName: string; grouped: boolean; archiveSeries?: number | null; archiveItems: number | null; archiveIdentifier?: string | null }>({ name: "", recordName: "record", grouped: true, archiveItems: null });
   useEffect(() => {
-    backendRequest<{ name: string; recordName: string; grouped: boolean; archiveSeries?: number | null; archiveItems?: number | null }>(`/collections/${collectionId}`)
-      .then(({ name, recordName, grouped, archiveSeries, archiveItems }) => setSeries({ name, recordName, grouped, archiveSeries: archiveSeries ?? null, archiveItems: archiveItems ?? null }))
+    backendRequest<{ name: string; recordName: string; grouped: boolean; archiveSeries?: number | null; archiveItems?: number | null; archiveIdentifier?: string | null }>(`/collections/${collectionId}`)
+      .then(({ name, recordName, grouped, archiveSeries, archiveItems, archiveIdentifier }) => setSeries({ name, recordName, grouped, archiveSeries: archiveSeries ?? null, archiveItems: archiveItems ?? null, archiveIdentifier }))
       .catch(() => {});
   }, [collectionId]);
   const words = recordWords(series.recordName);
@@ -302,71 +303,66 @@ export default function ProgressDashboard() {
   // Stretched link: its overlay makes the whole row clickable; controls inside a row sit above it.
   const above = "relative z-10";
   const rowAction = "h-auto min-h-7 w-full flex-wrap px-1 py-1 text-xs sm:px-2.5 sm:text-[0.8rem]";
+  // What can be done here: export, add items from the archive (a linked series), import scans (the Prest survey for now).
+  const actions = (
+    <div className="flex flex-wrap items-center gap-2">
+      {canAdd && (
+        <Button type="button" onClick={() => setAdding(true)}>
+          <ListPlus /> Add items
+        </Button>
+      )}
+      <ExportDialog
+        surveyId={item?.pages.find((page) => page.surveyId)?.surveyId ?? ""}
+        initialBundleId={item?.loaded ? item.bundle : undefined}
+        defaultScope="bundle"
+        collectionId={collectionId}
+        recordName={series.recordName}
+        hasDrafts={false}
+        variant={canAdd ? "outline" : "default"}
+      />
+      {collectionId === 1 && ( // ponytail: imports go to collection 1 until the import screen picks a collection
+        <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=import"; }}>
+          <Upload /> Import
+        </Button>
+      )}
+    </div>
+  );
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader
-        crumbs={[
-          { label: "Series", href: "/" },
-          item
-            ? { label: series.name || "Series", href: `/?collection=${collectionId}`, onClick: backToOverview }
-            : { label: series.name || "Series" },
-          ...(item ? [{ label: itemTitle(item.name, item.archive) }] : []),
-        ]}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <ExportDialog
-              surveyId={
-                item?.pages.find((page) => page.surveyId)?.surveyId ?? ""
-              }
-              initialBundleId={item?.loaded ? item.bundle : undefined}
-              defaultScope="bundle"
-              collectionId={collectionId}
-              recordName={series.recordName}
-              hasDrafts={false}
-            />
-            {canAdd && (
-              <Button type="button" variant="outline" onClick={() => setAdding(true)}>
-                <ListPlus /> Add items
-              </Button>
-            )}
-            {collectionId === 1 && ( // ponytail: imports go to collection 1 until the import screen picks a collection
-              <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=import"; }}>
-                <Upload /> Import
-              </Button>
-            )}
-            <Button type="button" variant="outline" onClick={() => { window.location.href = `/?collection=${collectionId}&view=page-types`; }}>
-              <LayoutList /> Page types
-            </Button>
-            <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=settings"; }}>
-              <Settings /> Settings
-            </Button>
-          </div>
-        }
-      />
+      <AppHeader series={{ id: collectionId, name: series.name }}
+        crumbs={item ? [{ label: "Items", href: `/?collection=${collectionId}`, onClick: backToOverview },
+          { label: itemTitle(item.name, item.archive) }] : []} />
       <main className="space-y-4 p-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {item
-              ? itemTitle(item.name, item.archive)
-              : bundleName
-                ? itemTitle(bundleName)
-                : "All items"}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {item?.archive && (
-              <>
-                <a href={`${ARCHIVE}/nodes/view/${item.name}`} target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 hover:underline">
-                  {item.archive.identifier} <ExternalLink aria-hidden="true" className="size-3.5" />
-                </a>
-                {` · ${item.name} · `}
-              </>
-            )}
-            {item
-              ? `${totals.ready} pages ready to review`
-              : overview && !bundleName ? `Track review progress across ${overview.all.toLocaleString()} items` : ""}
-          </p>
-        </div>
+        {item || bundleName ? (
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">{item ? itemTitle(item.name, item.archive) : itemTitle(bundleName!)}</h1>
+              <p className="text-sm text-muted-foreground">
+                {item?.archive && (
+                  <>
+                    <a href={`${ARCHIVE}/nodes/view/${item.name}`} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 hover:underline">
+                      {item.archive.identifier} <ExternalLink aria-hidden="true" className="size-3.5" />
+                    </a>
+                    {` · ${item.name} · `}
+                  </>
+                )}
+                {item ? `${totals.ready} pages ready to review` : ""}
+              </p>
+            </div>
+            {actions}
+          </div>
+        ) : (
+          <>
+            <SeriesHeader series={{ id: collectionId, ...series }} tab="items" actions={actions} />
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">All items</h2>
+              <p className="text-sm text-muted-foreground">
+                {overview ? `Track review progress across ${overview.all.toLocaleString()} items` : ""}
+              </p>
+            </div>
+          </>
+        )}
         {/* Display loading failures and allow retry; previously loaded data stays visible. */}
         {error && (
           <Alert variant="destructive">

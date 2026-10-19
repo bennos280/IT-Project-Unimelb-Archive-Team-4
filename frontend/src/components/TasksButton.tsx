@@ -9,10 +9,10 @@ export default function TasksButton() {
   const { tasks } = useTasks();
   const active = (tasks ?? []).filter(isActive).length;
   return (
-    <Button asChild variant="outline">
+    <Button asChild variant="outline" size={active ? "default" : "icon"} title="Tasks">
       <a href="/?view=tasks" aria-label={active ? `Tasks, ${active} active` : "Tasks"}>
-        <ListChecks /> Tasks
-        {active > 0 && <Badge aria-hidden="true" className="ml-1">{active}</Badge>}
+        <ListChecks />
+        {active > 0 && <Badge aria-hidden="true">{active}</Badge>}
       </a>
     </Button>
   );

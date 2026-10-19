@@ -564,9 +564,11 @@ def series_node(text):
 SERIES_HELP = "Paste the series' address from archives.library.unimelb.edu.au (.../nodes/view/<number>), or just its number."
 
 #every collection, with how many bundles and pages it has
+#every series with its counts; brief: each one's id and name only (the header's series switcher), without counting
 @app.get("/collections")
-def get_collections(db: Session = Depends(get_db)):
-    return [collection_json(c, db) for c in db.query(models.Collection).order_by(models.Collection.collection_id)]
+def get_collections(brief: bool = False, db: Session = Depends(get_db)):
+    found = db.query(models.Collection).order_by(models.Collection.collection_id)
+    return [{"id": c.collection_id, "name": c.name} for c in found] if brief else [collection_json(c, db) for c in found]
 
 #a new collection, linked to its series on the archive, starts with its Unknown page type
 @app.post("/collections", status_code=201)

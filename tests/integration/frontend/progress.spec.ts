@@ -172,7 +172,7 @@ test.describe("Progress navigation and layout", () => {
       }
       // Accept the browser's leave warning for deliberately discarded drafts.
       page.on("dialog", (dialog) => dialog.accept());
-      await page.getByRole("link", { name: "Wilfred Prest Survey" }).click();
+      await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Items", exact: true }).click();
       const complete = outcome === "saved";
       expect(saveRequests).toBe(outcome === "unsaved" ? 0 : 1);
       for (const refresh of [false, true]) {
@@ -259,7 +259,7 @@ test.describe("Progress navigation and layout", () => {
       notesRow.getByRole("link", { name: "Review Pg 2", exact: true }),
     ).toHaveAttribute("href", "/?survey=216417_1&page=216417%2Fp1");
 
-    await page.getByRole("link", { name: "Wilfred Prest Survey" }).click();
+    await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Items", exact: true }).click();
 
     await expect(
       page.getByRole("heading", { name: "All items" }),
@@ -954,7 +954,7 @@ test.describe("The server pages, searches and filters the overview", () => {
     await expect(page.getByRole("cell", { name: "partial-model", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Item 216424" })).toBeVisible();
     expect(new Set(asked)).toEqual(new Set([
-      "/api/collections/1", "/api/collections/1/items/216424", "/api/jobs/7/transcripts", "/api/jobs",
+      "/api/collections/1", "/api/collections", "/api/collections/1/items/216424", "/api/jobs/7/transcripts", "/api/jobs",
       "/api/transcription-models", "/api/connections",
     ]));
   });

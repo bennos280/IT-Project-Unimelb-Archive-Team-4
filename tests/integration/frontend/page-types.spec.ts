@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-// The Page types screen (/?view=page-types) on an intercepted API: nothing reaches the real backend.
+// A series' Setup tab (/?view=setup; /?view=page-types, its old name, still opens it) on an intercepted API: nothing reaches the real backend.
 type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; startsRecord: boolean; matchedByKey: boolean; templateVersion: number | null };
 type Version = { id: number; body: string; rules: object; reviewer: string | null; note: string | null; createdAt: string };
 type CheckVersion = { id: number; number: number; checks: object[]; reviewer: string | null; note: string | null; createdAt: string };
@@ -168,10 +168,10 @@ const row = (page: Page, label: string) => page.getByRole("row").filter({ has: p
 
 test("a series' page types are listed by label with how they group and their template", async ({ page }) => {
   await mockApi(page);
-  await page.goto("/?collection=1&view=page-types");
-  await expect(page.getByRole("heading", { name: "Page types", level: 1 })).toBeVisible();
-  await expect(page.locator('[data-slot="breadcrumb-item"]')).toHaveText(
-    ["Series", "Wilfred Prest Survey", "Page types"]);
+  await page.goto("/?collection=1&view=setup");
+  await expect(page.getByRole("heading", { name: "Wilfred Prest Survey", level: 1 })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Series" }).getByRole("link", { name: "Setup" })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Page types", level: 2 })).toBeVisible();
   await expect(row(page, "Main page")).toContainText("Starts a survey");
   await expect(row(page, "Coded page")).toContainText("Joins the survey with the same number");
   await expect(row(page, "Notes page")).toContainText("Follows the page before it");

@@ -75,6 +75,7 @@ export default function ExportDialog({
   defaultScope = "survey",
   collectionId,
   recordName,
+  variant = "default",
 }: {
   surveyId: string;
   hasDrafts: boolean;
@@ -82,6 +83,7 @@ export default function ExportDialog({
   defaultScope?: Scope;
   collectionId?: number; // the bundles listed are this collection's
   recordName?: string; // what the collection calls a record
+  variant?: "default" | "outline"; // its button: outline beside a screen's main action
 }) {
   const words = recordWords(recordName);
   // Stores the selected export scope.
@@ -237,6 +239,7 @@ export default function ExportDialog({
         {/* Opens the export dialog and resets previous messages. The trigger gets focus back on close. */}
         <DialogTrigger asChild>
           <Button
+            variant={variant}
             onClick={() => {
               setOpen(true);
               setReviewCheck(null);

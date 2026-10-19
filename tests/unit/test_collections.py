@@ -19,6 +19,8 @@ def test_a_new_collection_needs_a_name_and_its_archive_series_and_starts_with_an
     assert [(t["name"], t["label"], t["unknown"]) for t in client.get(f"/page-types?collection={created['id']}").json()] == [
         ("unknown", "Unknown", True)]
     assert [c["name"] for c in client.get("/collections").json()] == ["Wilfred Prest Survey", "Shipping manifests"]
+    assert client.get("/collections?brief=true").json() == [  # the header's series switcher: names only, nothing counted
+        {"id": 1, "name": "Wilfred Prest Survey"}, {"id": created["id"], "name": "Shipping manifests"}]
 
 
 def test_a_rename_leaves_the_other_settings_as_they_were(client):

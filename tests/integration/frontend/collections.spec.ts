@@ -73,7 +73,7 @@ test("a series not set up yet shows its next step, and one with no identifier it
   await mockApi(page);
   await page.goto("/");
   const row = page.getByRole("row").filter({ hasText: "Shipping manifests" });
-  await expect(row.getByRole("link", { name: "Next: add its page types" })).toHaveAttribute("href", "/?collection=3&view=page-types");
+  await expect(row.getByRole("link", { name: "Next: add its page types" })).toHaveAttribute("href", "/?collection=3&view=setup");
   await expect(row.getByRole("link", { name: "Series 7" })).toBeVisible();
   await expect(row).toContainText("0 processed");
   await expect(row).toContainText("Nothing");
@@ -101,7 +101,7 @@ test("a new series previews what it links to on the archive, takes its name from
   await expect(dialog(page).getByLabel("Name")).toHaveValue("University of Melbourne Social Survey forms");
   await dialog(page).getByLabel("Name").fill("Social survey forms");
   await dialog(page).getByRole("button", { name: "Create series" }).click();
-  await expect(page).toHaveURL("/?collection=2&view=page-types");
+  await expect(page).toHaveURL("/?collection=2&view=setup");
   await expect(page.getByText("No page type starts a record, so each page is a record of its own.", { exact: false })).toBeVisible();
   expect(calls.created).toEqual([{ name: "Social survey forms", archiveSeries: "https://archives.library.unimelb.edu.au/nodes/view/499420",
     archiveIdentifier: "UMA-SR-000000842", archiveTitle: "University of Melbourne Social Survey forms", archiveItems: 45 }]);
@@ -130,7 +130,7 @@ test("creating a series queues all its items before opening it", async ({ page }
   await expect(page).toHaveURL("/"); // still here until the items are queued
   await expect(dialog(page).getByText("this can take a minute", { exact: false })).toHaveCount(0);
   release();
-  await expect(page).toHaveURL("/?collection=2&view=page-types");
+  await expect(page).toHaveURL("/?collection=2&view=setup");
 });
 
 test("unticking Add all its items creates the series alone", async ({ page }) => {
@@ -138,7 +138,7 @@ test("unticking Add all its items creates the series alone", async ({ page }) =>
   await startNewSeries(page);
   await addItems(page).uncheck();
   await dialog(page).getByRole("button", { name: "Create series" }).click();
-  await expect(page).toHaveURL("/?collection=2&view=page-types");
+  await expect(page).toHaveURL("/?collection=2&view=setup");
   expect(calls.created).toHaveLength(1);
   expect(calls.filled).toEqual([]);
 });
@@ -150,7 +150,7 @@ test("a series of 29,326 items has Add all its items ticked and on, with no limi
   await expect(addItems(page)).toBeEnabled();
   await expect(dialog(page).getByText("Too many to add at once", { exact: false })).toHaveCount(0);
   await dialog(page).getByRole("button", { name: "Create series" }).click();
-  await expect(page).toHaveURL("/?collection=2&view=page-types");
+  await expect(page).toHaveURL("/?collection=2&view=setup");
   expect(calls.filled).toEqual([{ search: "" }]);
 });
 
@@ -165,7 +165,7 @@ for (const detail of ["Couldn't reach the archive (timed out).", "Couldn't reach
     await expect(dialog(page).getByRole("button", { name: "Create series" })).toHaveCount(0);
     expect(calls.created).toHaveLength(1);
     await dialog(page).getByRole("button", { name: "Continue", exact: true }).click();
-    await expect(page).toHaveURL("/?collection=2&view=page-types");
+    await expect(page).toHaveURL("/?collection=2&view=setup");
   });
 }
 
