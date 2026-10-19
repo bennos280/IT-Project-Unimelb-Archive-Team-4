@@ -11,10 +11,10 @@ import { backendRequest, jobStages } from "../progress/backend";
 import { isActive, refreshTasks, useTasks, type Task } from "../progress/tasks";
 
 const statusWords = { waiting: "Waiting", running: "Running", done: "Done", failed: "Failed" } as const;
-const opens = { items: "Open the series", bundle: "Open the item", page: "Open the page", train: "" } as const;
+const opens = { items: "Open the series", bundle: "Open the item", page: "Open the page", train: "", check: "Open the series" } as const;
 const when = (time: string | null) => (time ? new Date(time).toLocaleString() : "");
 // What the worker calls each step, in words.
-const stepWords: Record<string, string> = { ...jobStages, adding: "Adding items", train: "Training page sorting" };
+const stepWords: Record<string, string> = { ...jobStages, adding: "Adding items", train: "Training page sorting", check: "Checking pages" };
 const lower = (words: string) => words.charAt(0).toLowerCase() + words.slice(1); // "Transcribing PDF pages": "transcribing PDF pages"
 
 function StatusBadge({ task }: { task: Task }) {
@@ -139,7 +139,7 @@ function Stat({ label, value, note }: { label: string; value: string; note?: str
 // A time, without its date when that's the day the page loaded.
 const at = (time: string, now: number) =>
   new Date(time).toDateString() === new Date(now).toDateString() ? new Date(time).toLocaleTimeString() : new Date(time).toLocaleString();
-const counts = new Set(["adding", "transcribe"]); // the steps whose progress counts what the task is doing
+const counts = new Set(["adding", "transcribe", "check"]); // the steps whose progress counts what the task is doing
 
 // One task (/?view=tasks&task=<id>): its status, series and times on a line; how far it has got, with its time left and speed while
 // it counts; what it has added; and its lines in the worker's log, newest first. It refreshes every 5 seconds until it's finished.

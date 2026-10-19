@@ -234,15 +234,35 @@ def test_013_lists_each_of_prests_archive_items_with_its_identifier_and_title(ur
     assert not rows(db, "SELECT name FROM sqlite_master WHERE name = 'archive_items'")
 
 
+def test_018_keeps_a_series_checks_as_versions_flags_what_fails_them_and_checks_a_series_again(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    database.migrate(url)
+    with sqlite3.connect(db) as con:
+        con.execute("INSERT INTO check_versions (collection_id, body) VALUES (1, '[]')")
+        con.execute("INSERT INTO bundles (bundle_id, source_pdf, collection_id) VALUES ('b018', 'b018.pdf', 1)")
+        con.execute("INSERT INTO pages (page_id, import_path, bundle_id, category) VALUES ('p018', 'p018.png', 'b018', 'main')")
+        con.execute("INSERT INTO fields (page_id, field_title, text_raw) VALUES ('p018', 'age', '12')")
+        con.execute("INSERT INTO flags (page_id, field_title, kind, reason) VALUES ('p018', 'age', 'check', 'Age (12) should be at least 14')")
+        con.execute("INSERT INTO jobs (kind, collection_id) VALUES ('check', 1)")
+    command.downgrade(config, "017")
+    assert rows(db, "SELECT COUNT(*) FROM flags WHERE page_id = 'p018'") == [(0,)]  # a check flag or job can't be kept without its kind
+    assert rows(db, "SELECT COUNT(*) FROM jobs") == [(0,)]
+    assert "check_versions" not in {r[0] for r in rows(db, "SELECT name FROM sqlite_master WHERE type = 'table'")}
+
+
 def test_017_keeps_a_templates_field_rules_and_flags_the_values_that_break_them(url, tmp_path):
     db = tmp_path / "test.db"
     config = database.alembic_config(url)
     database.migrate(url)
     with sqlite3.connect(db) as con:
         con.execute("UPDATE instruction_versions SET rules = '{\"address\": {\"type\": \"text\"}}' WHERE kind = 'main'")
-        con.execute("INSERT INTO flags (page_id, field_title, kind, reason) VALUES ('p', 'age', 'invalid', 'Should be a number')")
+        con.execute("INSERT INTO bundles (bundle_id, source_pdf, collection_id) VALUES ('b017', 'b017.pdf', 1)")
+        con.execute("INSERT INTO pages (page_id, import_path, bundle_id, category) VALUES ('p017', 'p017.png', 'b017', 'main')")
+        con.execute("INSERT INTO fields (page_id, field_title, text_raw) VALUES ('p017', 'age', 'x')")
+        con.execute("INSERT INTO flags (page_id, field_title, kind, reason) VALUES ('p017', 'age', 'invalid', 'Should be a number')")
     command.downgrade(config, "016")
-    assert rows(db, "SELECT COUNT(*) FROM flags") == [(0,)]  # an invalid flag can't be kept without its kind
+    assert rows(db, "SELECT COUNT(*) FROM flags WHERE page_id = 'p017'") == [(0,)]  # an invalid flag can't be kept without its kind
     assert "rules" not in {r[1] for r in rows(db, "PRAGMA table_info(instruction_versions)")}
     database.migrate(url)
     assert rows(db, "SELECT COUNT(*) FROM instruction_versions WHERE rules IS NOT NULL") == [(0,)]

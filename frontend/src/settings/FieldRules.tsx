@@ -59,7 +59,8 @@ export default function FieldRules({ template, rules, onRules, onTemplate }: {
                       onChange={(e) => set(path, { example: e.target.value })} />
                   </div>
                 )}
-                {(rule.type === "text" || rule.type === "yes_no") && <span className="text-muted-foreground">Any</span>}
+                {rule.type === "text" && <span className="text-muted-foreground">Any</span>}
+                {rule.type === "yes_no" && <span className="text-muted-foreground">Yes or no, Y or N, ✓ or ✗</span>}
               </TableCell>
               <TableCell>
                 <Input aria-label={`${path} description`} placeholder="What it holds" value={description ?? ""}

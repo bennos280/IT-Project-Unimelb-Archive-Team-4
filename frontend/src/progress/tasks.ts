@@ -4,7 +4,7 @@ import { backendRequest } from "./backend";
 // One background job, as GET /jobs lists it: waiting and running ones, then the latest finished.
 export type Task = {
   id: number;
-  kind: "items" | "bundle" | "page" | "train";
+  kind: "items" | "bundle" | "page" | "train" | "check";
   label: string;
   status: "waiting" | "running" | "done" | "failed";
   step: string | null;

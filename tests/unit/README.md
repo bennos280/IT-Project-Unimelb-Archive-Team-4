@@ -245,12 +245,28 @@ A page type's field rules (`backend/db/checks.py`): saved with its template vers
 
 | Test | What it checks |
 | --- | --- |
-| `test_a_value_breaking_its_rule_says_why` | 27 cases: required but blank or `/` (crossed out); `[?]` left alone (flagged as unreadable already); a number with thousands separators, out of its range or not a number; dates as 12 March 1917, 12/3/17 and Sept. 1917, an impossible or unreadable date, a date outside its range (a two-digit year has no century, so no range; a month in range as far as it goes); yes or no; one of a list by its code or its meaning, and a range of codes (000-996); several of a list; a pattern, said with its example. |
-| `test_rules_that_dont_fit_the_template_or_make_no_sense_are_refused` | 14 cases: a rule on a field the template lacks, on a group, or in a list (residents); an unknown type or key; required not true or false; a range that isn't numbers or dates, or runs backwards, or on a type with no range; a list with no values; a pattern missing, invalid, or not matching its example. |
+| `test_a_value_breaking_its_rule_says_why` | 35 cases: required but blank or `/` (crossed out); `[?]` left alone (flagged as unreadable already); a number with thousands separators, out of its range or not a number; dates as 12 March 1917, 12/3/17 and Sept. 1917, an impossible or unreadable date, a date outside its range (a two-digit year has no century, so no range; a month in range as far as it goes); yes or no; one of a list by its code or its meaning, and a range of codes (000-996); several of a list, and an allowed value holding a comma; a pattern, said with its example; a number code as a number (1 is 01); an odd digit (①) without crashing; the card's own full stop, and a list's values with their own (Mrs.); a range saved as a number. |
+| `test_rules_that_dont_fit_the_template_or_make_no_sense_are_refused` | 17 cases: a rule on a field the template lacks, on a group, or in a list (residents); an unknown type or key; required not true or false; a range that isn't numbers or dates, or runs backwards, or on a type with no range; a list with no values; a pattern missing, invalid, not text, repeating a repeat (which can take forever), or not matching its example; a range that isn't a number or a date. |
 | `test_sensible_rules_pass` | Rules of each kind that fit the template pass. |
 | `test_a_templates_rules_are_saved_with_it_changed_alone_and_refused_when_they_dont_fit` | `POST /instructions/main` saves rules with the template, and rules changed alone are a new version; rules for a field the template lacks are refused (400); versions list their rules (version 1 none); the prompt takes none. |
 | `test_a_loaded_items_values_that_break_their_rules_are_flagged_and_a_new_check_replaces_the_last` | Loading an item checks its pages against their types' newest rules and flags what breaks them; checking again replaces those flags and leaves other kinds of flag alone. |
 | `test_a_page_read_again_is_checked_against_its_types_rules` | A page the worker reads again is checked against its type's newest rules. |
+
+## `test_series_checks.py`
+
+A series' checks across fields (`backend/db/checks.py`): saved as versions, and a record's values that fail one flagged for review (kind `check`).
+
+| Test | What it checks |
+| --- | --- |
+| `test_a_check_says_why_it_fails` | 20 cases: fields added up against a field (pass and fail, with its own message); a crossed-out, unreadable or missing value can't be told; a field against a value; dates, to the precision both have; words only as the same or different; if a field is a value then another must be filled (the card's full stop ignored), and if one is filled another must be empty; a date with its full stop the same as without; a two-digit year can't be told; decimals that add up. |
+| `test_checks_that_name_no_field_of_the_series_or_make_no_sense_are_refused` | 11 cases: no id, an unknown kind, a field the series' templates lack, an unknown comparison, nothing to compare, fields and a value both or neither (or a blank value), an if with no value to be, on not true or false, a field that isn't a name. |
+| `test_sensible_checks_pass_and_ids_are_their_own` | Sensible checks pass; two with one id, or checks not in a list, are refused. |
+| `test_a_records_values_failing_a_check_are_flagged_on_each_field_it_names_and_checked_again_as_reviewers_left_them` | Checking a page checks its whole record: a failing check flags each field it names; a check across page types needs one page of each; a switched-off check isn't run; checking again uses a reviewer's saved correction and leaves other kinds of flag alone. |
+| `test_a_series_checks_are_saved_as_versions_refused_when_they_dont_fit_and_an_old_one_can_come_back` | `/collections/{id}/checks` lists versions newest first, numbered; saves one with its reviewer and note; refuses checks naming a field the series lacks (400), no change (400) or an old base (409); an older version saved again is the newest; no checks at all is a version too; an unknown series is a 404. |
+| `test_checking_a_series_again_is_a_task_that_flags_its_pages_and_logs_how_many` | `POST /collections/{id}/check` queues a task (one at a time per series), listed as "Checking …"; the worker checks every page, counting them, and logs the version of the checks and how many fields it flagged. |
+| `test_a_page_waiting_to_be_read_again_isnt_checked_and_its_last_flags_go` | A page waiting to be read again isn't checked, its flags go, and its record's checks across page types wait for it. |
+| `test_a_page_moved_to_another_record_is_checked_there_and_the_record_it_left_again` | Moving a page re-checks its new record and the one it left. |
+| `test_a_page_changed_to_another_type_is_checked_against_that_types_rules` | Changing a page's type re-checks it: the old type's rule flags go. |
 
 ## `test_page_types.py`
 

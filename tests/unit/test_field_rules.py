@@ -40,6 +40,14 @@ STATUS = ["Missing", "Wounded", "POW = Prisoner of war"]
     ({"type": "several_of", "values": STATUS}, "Wounded; Killed", "“Killed” isn't one of: Missing, Wounded, POW"),
     ({"type": "pattern", "pattern": r"[A-Z]?\d+", "example": "A12524"}, "A-12", "Should look like A12524"),
     ({"type": "pattern", "pattern": r"[A-Z]?\d+"}, "A12524", None),
+    ({"type": "one_of", "values": ["01 = Rates unknown", "03-99 = Shillings"]}, "1", None),  # a number code is a number: 1 is 01
+    ({"type": "one_of", "values": ["000-996 = Amount"]}, "①", "Should be one of: 000-996"),  # an odd digit doesn't crash
+    ({"type": "several_of", "values": ["Missing, believed killed", "Wounded"]}, "Missing, believed killed", None),
+    ({"type": "yes_no"}, "Yes.", None),  # the card's own full stop
+    ({"type": "date"}, "12 March 1917.", None),
+    ({"type": "number", "min": 14}, "14", None),  # a range saved as a number
+    ({"type": "one_of", "values": ["Mr.", "Mrs."]}, "Mrs.", None),  # a value whose own full stop is in the list
+    ({"type": "one_of", "values": ["Mr.", "Mrs."]}, "Mrs", None),
 ])
 def test_a_value_breaking_its_rule_says_why(rule, value, problem):
     assert checks.value_problem(rule, value) == problem
@@ -64,6 +72,9 @@ TEMPLATE = {"name": "Surname, then given names", "status": None, "age": None, "d
     ({"status": {"type": "pattern"}}, "'status': give the pattern"),
     ({"status": {"type": "pattern", "pattern": "[A-"}}, "'status': its pattern isn't valid"),
     ({"status": {"type": "pattern", "pattern": r"\d+", "example": "A1"}}, "'status': its example A1 doesn't match its pattern"),
+    ({"status": {"type": "pattern", "pattern": 5}}, "'status': give the pattern (and its example) as text"),
+    ({"status": {"type": "pattern", "pattern": r"([A-Za-z]+\s?)+"}}, "'status': its pattern repeats a repeat"),
+    ({"age": {"type": "number", "min": [1]}}, "'age': its range is a number or a date"),
 ])
 def test_rules_that_dont_fit_the_template_or_make_no_sense_are_refused(rules, problem):
     assert any(found.startswith(problem) for found in checks.rule_problems(rules, TEMPLATE))

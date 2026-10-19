@@ -6,18 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { backendRequest, recordWords } from "../progress/backend";
-import { createReviewer } from "../review-screen/api";
+import ChecksSection from "./ChecksSection";
 import FieldRules from "./FieldRules";
-import { cleanRules, parseTemplate, type Rules } from "./rules";
+import ReviewerField, { type Reviewer } from "./ReviewerField";
+import { cleanRules, parseTemplate, sameRules, type Rules } from "./rules";
 
 type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; startsRecord: boolean; matchedByKey: boolean; templateVersion: number | null };
 type Collection = { id: number; name: string; recordKey: string | null; recordName: string; grouped: boolean };
-type Reviewer = { id: number; name: string };
 type Version = { id: number; body: string; rules: Rules; reviewer: string | null; note: string | null; createdAt: string };
 type Grouping = "starts" | "matched" | "follows";
 
@@ -111,6 +110,7 @@ export default function PageTypesScreen() {
             </Table>
           </section>
         )}
+        {types && <ChecksSection collectionId={collectionId} types={types} reviewers={reviewers} onAddReviewer={addReviewer} />}
       </main>
       {adding && (
         <AddDialog collectionId={collectionId} reviewers={reviewers} onAddReviewer={addReviewer} onClose={() => setAdding(false)}
@@ -170,53 +170,6 @@ function Records({ collection, onSaved }: { collection: Collection; onSaved: () 
       </div>
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     </section>
-  );
-}
-
-// Who saves: a new page type and each template version record their reviewer; someone not listed adds their name here.
-function ReviewerField({ reviewers, value, onChange, onAddReviewer }: {
-  reviewers: Reviewer[]; value: string; onChange: (value: string) => void; onAddReviewer: (person: Reviewer) => void;
-}) {
-  const id = useId();
-  const [adding, setAdding] = useState(!reviewers.length);
-  const [name, setName] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function add() {
-    setBusy(true);
-    setError("");
-    try {
-      const person = await createReviewer(name);
-      onAddReviewer(person);
-      onChange(String(person.id));
-      setAdding(false);
-      setName("");
-    } catch (e) {
-      setError(message(e, "Could not add the reviewer."));
-    }
-    setBusy(false);
-  }
-
-  return (
-    <Field>
-      <FieldLabel htmlFor={id}>Saved as</FieldLabel>
-      <NativeSelect id={id} className="w-full" value={adding ? "add" : value} onChange={(e) => {
-        setAdding(e.target.value === "add");
-        onChange(e.target.value === "add" ? "" : e.target.value);
-      }}>
-        <option value="">Select reviewer</option>
-        {reviewers.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-        <option value="add">+ Add reviewer…</option>
-      </NativeSelect>
-      {adding && (
-        <div className="flex gap-2">
-          <Input aria-label="New reviewer name" placeholder="Enter reviewer name" value={name} onChange={(e) => setName(e.target.value)} />
-          <Button variant="outline" disabled={busy || !name.trim()} onClick={add}>Add reviewer</Button>
-        </div>
-      )}
-      {error && <FieldDescription className="text-destructive">{error}</FieldDescription>}
-    </Field>
   );
 }
 
@@ -305,7 +258,7 @@ function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSav
 
   const parsed = parseTemplate(template);
   const cleaned = cleanRules(rules, parsed);
-  const rulesChanged = JSON.stringify(cleaned) !== JSON.stringify(cleanRules(newest?.rules ?? {}, parseTemplate(newest?.body ?? null)));
+  const rulesChanged = !sameRules(cleaned, cleanRules(newest?.rules ?? {}, parseTemplate(newest?.body ?? null)));
   const templateChanged = template !== null && (template !== (newest?.body ?? "") || rulesChanged);
   const settingsChanged = label.trim() !== type.label || grouping !== groupingOf(type);
 
@@ -398,13 +351,13 @@ function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSav
                     <TableBody>
                       {versions.map((v, n) => (
                         <TableRow key={v.id}>
-                          <TableCell className="font-medium">{versions.length - n}</TableCell>
+                          <TableCell className="font-medium">{v.id}</TableCell>
                           <TableCell className="text-muted-foreground">{v.createdAt ? new Date(v.createdAt).toLocaleString() : ""}</TableCell>
                           <TableCell>{v.reviewer ?? "From the files"}</TableCell>
                           <TableCell className="whitespace-normal">{v.note}</TableCell>
                           <TableCell>
                             {n === 0 ? <span className="text-muted-foreground">Current</span> : (
-                              <Button variant="outline" size="sm" aria-label={`Use version ${versions.length - n}`}
+                              <Button variant="outline" size="sm" aria-label={`Use version ${v.id}`}
                                 onClick={() => { setTemplate(v.body); setRules(v.rules); }}>Use this version</Button>
                             )}
                           </TableCell>

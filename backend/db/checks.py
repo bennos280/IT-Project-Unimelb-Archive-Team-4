@@ -1,5 +1,6 @@
 """Each page type's field rules: what a field should hold (its type, whether it's required, the values or range it may take,
-a pattern), saved with its template version; a page's values that break them are flagged for review (kind 'invalid')."""
+a pattern), saved with its template version; and each series' checks across fields. A page's values that break a rule are flagged
+for review (kind 'invalid'), and those that fail a check too (kind 'check')."""
 import calendar
 import json
 import re
@@ -43,12 +44,15 @@ def _before(a, b):  #a is before b, to the precision both have; a two-digit year
     return None not in (a[0], b[0]) and a[:k] < b[:k]
 
 
-def _in(value, entry):  #value is entry's code (or its meaning, after " = "), or in its range of codes ("000-996")
-    code, _, meaning = entry.partition(" = ")
-    if (low := re.fullmatch(r"(\d+)-(\d+)", code.strip())) and value.isdigit():
-        return int(low[1]) <= int(value) <= int(low[2])
-    plain = lambda text: " ".join(text.lower().split())
-    return plain(value) in (plain(code), plain(meaning)) if meaning else plain(value) == plain(code)
+def _in(value, entry):
+    """value is entry's code (a number code as a number: 1 is 01) or its meaning (after " = "), or in its range of codes (000-996)"""
+    code, _, meaning = (part.strip() for part in entry.partition(" = "))
+    if value.isdecimal() and (codes := re.fullmatch(r"(\d+)(?:-(\d+))?", code)):
+        return int(codes[1]) <= int(value) <= int(codes[2] or codes[1])
+    return _plain(value) in (_plain(code), _plain(meaning)) if meaning else _plain(value) == _plain(code)
+
+
+NESTED_REPEAT = re.compile(r"\([^()]*[+*][^()]*\)[+*{]")  #(a+)+ or (\d*)*: a repeat of a repeat can take forever to fail
 
 
 def value_problem(rule, raw):
@@ -59,6 +63,8 @@ def value_problem(rule, raw):
     if "[?]" in value:
         return None
     kind, low, high = rule.get("type", "text"), rule.get("min"), rule.get("max")
+    if kind in ("date", "yes_no"):
+        value = value.rstrip(".").strip()  #the card's own full stop: "Yes.", "12 March 1917." (a list's values are matched without it)
     if kind == "number":
         if (n := number(value)) is None:
             return "Should be a number"
@@ -73,7 +79,8 @@ def value_problem(rule, raw):
         return "Should be yes or no"
     elif kind in ("one_of", "several_of"):
         values = rule.get("values") or []
-        parts = [p.strip() for p in re.split(r"[,;]", value) if p.strip()] if kind == "several_of" else [value]
+        whole = any(_in(value, entry) for entry in values)  #an allowed value may hold a comma: "Missing, believed killed"
+        parts = [p.strip() for p in re.split(r"[,;]", value) if p.strip()] if kind == "several_of" and not whole else [value]
         if wrong := [p for p in parts if not any(_in(p, entry) for entry in values)]:
             shown = ", ".join(entry.partition(" = ")[0] for entry in values[:8]) + (", …" if len(values) > 8 else "")
             return (f"Should be one of: {shown}" if kind == "one_of" else f"“{wrong[0]}” isn't one of: {shown}")
@@ -111,6 +118,9 @@ def rule_problems(rules, template):
             found.append(f"{name}: a rule has a type ({', '.join(TYPES)}) and only {', '.join(sorted(KEYS - {'type'}))}")
             continue
         kind, low, high = rule.get("type", "text"), rule.get("min"), rule.get("max")
+        if any(not isinstance(v, (str, int, float, type(None))) or isinstance(v, bool) for v in (low, high)):
+            found.append(f"{name}: its range is a number or a date")
+            continue
         if "required" in rule and not isinstance(rule["required"], bool):
             found.append(f"{name}: required is true or false")
         if kind in ("number", "date"):
@@ -126,29 +136,181 @@ def rule_problems(rules, template):
             if not (isinstance(values, list) and values and all(isinstance(v, str) and v.strip() for v in values)):
                 found.append(f"{name}: list the values it may take")
         if kind == "pattern":
+            pattern, example = rule.get("pattern"), rule.get("example")
+            if not isinstance(pattern, str) or not pattern or not isinstance(example, (str, type(None))):
+                found.append(f"{name}: give the pattern (and its example) as text")
+                continue
+            if NESTED_REPEAT.search(pattern):
+                found.append(f"{name}: its pattern repeats a repeat, like (a+)+, which can take forever to check: drop the outer one")
+                continue
             try:
-                compiled = re.compile(rule.get("pattern") or "")
-                if not rule.get("pattern"):
-                    found.append(f"{name}: give the pattern")
-                elif rule.get("example") and not compiled.fullmatch(rule["example"]):
-                    found.append(f"{name}: its example {rule['example']} doesn't match its pattern")
+                if not re.compile(pattern).fullmatch(example or "") and example:
+                    found.append(f"{name}: its example {example} doesn't match its pattern")
             except re.error as error:
                 found.append(f"{name}: its pattern isn't valid ({error})")
     return found
 
 
+#--A SERIES' CHECKS--# rules across fields, of one page or of a record's pages, saved as versions (models.CheckVersion). A check names
+#fields as "<page type>.<field path>"; it compares them ({kind: compare, left: [fields], op, right: [fields] or value: text}: several
+#fields are added up) or says that if one is so another must be ({kind: if, if: field, is: filled|empty|is, isValue, then: field,
+#must: filled|empty|is, mustValue}); each has an id, may be switched off (on: false), and may say its own message.
+OPS = {"=": "equal", "!=": "differ from", "<": "be less than", "<=": "be at most", ">": "be more than", ">=": "be at least"}
+STATES = ("filled", "empty", "is")
+
+
+def refs(check):
+    """the fields a check names, each once, in order"""
+    named = [*check.get("left", []), *check.get("right", [])] if check.get("kind") == "compare" else [check.get("if"), check.get("then")]
+    return list(dict.fromkeys(named))
+
+
+def check_problems(checks, fields):
+    """Why a series' checks can't be saved; [] if they can. fields: each of its page types -> its template's fields"""
+    if not isinstance(checks, list):
+        return ["Checks must be a list"]
+    found, ids = [], set()
+    for n, check in enumerate(checks, 1):
+        try:
+            found += _check_problems(f"Check {n}", check, fields, ids)
+        except (TypeError, AttributeError, ValueError):
+            found.append(f"Check {n}: isn't written as a check (its fields are lists of names, its values text)")
+    return found
+
+
+def _check_problems(name, check, fields, ids):
+    if not isinstance(check, dict) or check.get("kind") not in ("compare", "if"):
+        return [f"{name}: compares fields, or says if one field is so another must be"]
+    found = []
+    if not isinstance(check.get("id"), str) or not check["id"] or check["id"] in ids:
+        found.append(f"{name}: needs an id of its own")
+    ids.add(check.get("id"))
+    if not isinstance(check.get("on", True), bool) or not isinstance(check.get("message", ""), str):
+        found.append(f"{name}: on is true or false, and its message is text")
+    found += [f"{name}: {ref} isn't a field of this series' page types" for ref in refs(check)
+              if not (isinstance(ref, str) and ref.partition(".")[2] in fields.get(ref.partition(".")[0], ()))]
+    if check["kind"] == "compare":
+        if check.get("op") not in OPS:
+            found.append(f"{name}: compares with one of {' '.join(OPS)}")
+        if not check.get("left") or not isinstance(check["left"], list):
+            found.append(f"{name}: needs a field to compare")
+        if bool(check.get("right")) == ("value" in check) or ("value" in check and not str(check["value"]).strip()):
+            found.append(f"{name}: compares with fields or with a value")
+    else:
+        for state, value in (("is", "isValue"), ("must", "mustValue")):
+            if check.get(state) not in STATES or (check[state] == "is" and not str(check.get(value, "")).strip()):
+                found.append(f"{name}: {state} is filled, empty, or a value")
+    return found
+
+
+def _blank(value):
+    return value is None or value.strip() in ("", "/")
+
+
+def _plain(text):  #"  Mrs. " -> "mrs": words compared without case, extra spaces or a last full stop
+    return " ".join(str(text).lower().split()).rstrip(".").strip()
+
+
+def _label(ref):  #"coded.rooms.total_rooms" -> "Total rooms", as the review screen calls it
+    return ref.rpartition(".")[2].replace("_", " ").capitalize()
+
+
+def check_failure(check, read):
+    """Why a check fails, for the reviewer; None if it passes, or can't be told (a value it needs is empty or unreadable, or the
+    values can't be compared that way). read: field -> its value"""
+    if check["kind"] == "if":
+        given, then = read(check["if"]), read(check["then"])
+        if "[?]" in (given or "") + (then or ""):
+            return None
+
+        def holds(value, state, wanted):
+            if state == "filled":
+                return not _blank(value)
+            if state == "empty":
+                return _blank(value)
+            return not _blank(value) and _plain(value) == _plain(wanted)
+        if not holds(given, check["is"], check.get("isValue")) or holds(then, check["must"], check.get("mustValue")):
+            return None
+        said = {"filled": "is filled", "empty": "is empty", "is": f"is {check.get('isValue')}"}[check["is"]]
+        should = {"filled": "be filled", "empty": "be empty", "is": f"be {check.get('mustValue')}"}[check["must"]]
+        return check.get("message") or f"{_label(check['if'])} {said}, so {_label(check['then'])} should {should}"
+    left, right = [read(r) for r in check["left"]], [read(r) for r in check.get("right") or []] or [str(check.get("value"))]
+    if any(_blank(v) or "[?]" in v for v in left + right):
+        return None
+    op, single = check["op"], len(left) == len(right) == 1
+    numbers = [[number(v) for v in side] for side in (left, right)]
+    dates = (date(left[0].strip().rstrip(".")), date(right[0].strip().rstrip("."))) if single else (None, None)  #"12 March 1917."
+    if all(n is not None for side in numbers for n in side):
+        a, b = round(sum(numbers[0]), 9), round(sum(numbers[1]), 9)  #0.1 + 0.2 is 0.3
+    elif None not in dates:  #two dates, to the precision both have; one with a two-digit year can't be told
+        if None in (dates[0][0], dates[1][0]):
+            return None
+        k = min(len(dates[0]), len(dates[1]))
+        a, b = dates[0][:k], dates[1][:k]
+    elif op in ("=", "!=") and single:
+        a, b = _plain(left[0]), _plain(right[0])
+    else:
+        return None
+    if {"=": a == b, "!=": a != b, "<": a < b, "<=": a <= b, ">": a > b, ">=": a >= b}[op]:
+        return None
+    show = lambda fields, values: f"{' + '.join(map(_label, fields))} ({' + '.join(values)})"
+    other = show(check["right"], right) if check.get("right") else right[0]
+    return check.get("message") or f"{show(check['left'], left)} should {OPS[op]} {other}"
+
+
 def check_pages(con, page_ids):
-    """Flags each page's fields that break its page type's newest rules (kind 'invalid'), replacing the flags of the last check."""
+    """Flags what breaks its page type's newest rules (kind invalid) and what fails its series' newest checks (kind check) on these
+    pages and the rest of their records, replacing the last check's flags there. A check across page types needs one page of each in
+    the record. Values are as reviewers last saved them; a page waiting to be read again isn't checked."""
     rules = {kind: json.loads(body) for kind, body in con.exec_driver_sql(
         "SELECT kind, rules FROM instruction_versions v WHERE rules IS NOT NULL"
         " AND version_id = (SELECT MAX(version_id) FROM instruction_versions WHERE kind = v.kind)")}
-    for page_id in page_ids:
-        con.exec_driver_sql("DELETE FROM flags WHERE page_id = ? AND kind = 'invalid'", (page_id,))
-        category = con.exec_driver_sql("SELECT category FROM pages WHERE page_id = ?", (page_id,)).scalar()
-        if not rules.get(category):
+    series_checks = {series: [c for c in json.loads(body) if c.get("on", True)] for series, body in con.exec_driver_sql(
+        "SELECT collection_id, body FROM check_versions v"
+        " WHERE version_id = (SELECT MAX(version_id) FROM check_versions WHERE collection_id = v.collection_id)")}
+    for start in range(0, len(page_ids), 400):
+        chunk = list(page_ids[start:start + 400])
+        marks = ", ".join("?" * len(chunk))
+        found = con.exec_driver_sql(
+            "SELECT p.page_id, p.category, p.survey_id, b.collection_id, p.needs_transcription FROM pages p JOIN bundles b"
+            f" ON b.bundle_id = p.bundle_id WHERE p.page_id IN ({marks})"
+            f" OR p.survey_id IN (SELECT survey_id FROM pages WHERE page_id IN ({marks}))", tuple(chunk) * 2).fetchall()
+        if not found:
             continue
-        values = dict(con.exec_driver_sql("SELECT field_title, text_raw FROM fields WHERE page_id = ?", (page_id,)).fetchall())
-        for path, rule in rules[category].items():
-            if path in values and (problem := value_problem(rule, values[path])):
-                con.exec_driver_sql("INSERT INTO flags(page_id, field_title, kind, reason) VALUES(?, ?, 'invalid', ?)",
-                                    (page_id, path, problem))
+        marks = ", ".join("?" * len(found))
+        con.exec_driver_sql(f"DELETE FROM flags WHERE kind IN ('invalid', 'check') AND page_id IN ({marks})", tuple(p[0] for p in found))
+        pages = {page: (category, survey or page, series) for page, category, survey, series, unread in found if not unread}
+        marks = ", ".join("?" * len(pages))
+        values = {page: {} for page in pages}
+        for page, field, raw in con.exec_driver_sql(f"SELECT page_id, field_title, text_raw FROM fields WHERE page_id IN ({marks})",
+                                                    tuple(pages)):
+            values[page][field] = raw
+        for page, field, edit in con.exec_driver_sql(  #each field's newest saved edit (ix_edits_page_field)
+                "SELECT e.page_id, e.field_title, e.edit_text FROM edits e JOIN (SELECT MAX(edit_id) AS newest FROM edits"
+                f" WHERE field_title IS NOT NULL AND page_id IN ({marks}) GROUP BY page_id, field_title) n ON e.edit_id = n.newest",
+                tuple(pages)):
+            if field in values[page]:
+                values[page][field] = edit
+        flags = set()
+        for page, (category, _, _) in pages.items():
+            for path, rule in (rules.get(category) or {}).items():
+                if path in values[page] and (problem := value_problem(rule, values[page][path])):
+                    flags.add((page, path, "invalid", problem))
+        records = {}
+        for page, (category, record, series) in pages.items():
+            records.setdefault((series, record), {}).setdefault(category, []).append(page)
+        for (series, _), by_type in records.items():
+            for check in series_checks.get(series, []):
+                named = refs(check)
+                types = {ref.partition(".")[0] for ref in named}
+                if len(types) == 1:
+                    groups = [{next(iter(types)): page} for page in by_type.get(next(iter(types)), [])]
+                else:
+                    groups = [{t: by_type[t][0] for t in types}] if all(len(by_type.get(t, [])) == 1 for t in types) else []
+                for group in groups:
+                    page_of = lambda ref: group[ref.partition(".")[0]]
+                    if reason := check_failure(check, lambda ref: values[page_of(ref)].get(ref.partition(".")[2])):
+                        flags |= {(page_of(ref), ref.partition(".")[2], "check", reason) for ref in named
+                                  if ref.partition(".")[2] in values[page_of(ref)]}
+        for flag in sorted(flags):
+            con.exec_driver_sql("INSERT INTO flags(page_id, field_title, kind, reason) VALUES(?, ?, ?, ?)", flag)

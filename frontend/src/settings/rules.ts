@@ -37,9 +37,9 @@ export function cleanRules(rules: Rules, template: Template | null): Rules {
     if (!fields.has(path)) continue;
     const kept: Rule = { type: rule.type };
     if (rule.required) kept.required = true;
-    if (rule.type === "number" || rule.type === "date") {
-      if (rule.min?.trim()) kept.min = rule.min.trim();
-      if (rule.max?.trim()) kept.max = rule.max.trim();
+    if (rule.type === "number" || rule.type === "date") {  // a range may have been saved as a number
+      if (String(rule.min ?? "").trim()) kept.min = String(rule.min).trim();
+      if (String(rule.max ?? "").trim()) kept.max = String(rule.max).trim();
     }
     if (rule.type === "one_of" || rule.type === "several_of") kept.values = (rule.values ?? []).map((v) => v.trim()).filter(Boolean);
     if (rule.type === "pattern") {
@@ -49,6 +49,13 @@ export function cleanRules(rules: Rules, template: Template | null): Rules {
     if (Object.keys(kept).length > 1 || kept.type !== "text") clean[path] = kept;
   }
   return clean;
+}
+
+// Whether two sets of rules say the same, whatever order their fields and settings come in.
+export function sameRules(a: Rules, b: Rules) {
+  const sorted = (rules: Rules) => JSON.stringify(Object.keys(rules).sort().map((path) =>
+    [path, Object.entries(rules[path]).sort(([x], [y]) => x.localeCompare(y))]));
+  return sorted(a) === sorted(b);
 }
 
 // The template with one field's description set (blank: none, null), as the template's textarea shows it.

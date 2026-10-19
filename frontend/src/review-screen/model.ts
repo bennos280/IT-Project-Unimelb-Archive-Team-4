@@ -13,6 +13,7 @@ export type Flag = {
     | "gibberish"
     | "uncertain"
     | "invalid"
+    | "check"
     | "between_page_mismatch"
     | "total_mismatch"
     | "count_exceeds_total";
@@ -115,6 +116,7 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
           "gibberish",
           "uncertain",
           "invalid",
+          "check",
           "between_page_mismatch",
           "total_mismatch",
           "count_exceeds_total",
