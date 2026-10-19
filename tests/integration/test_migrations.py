@@ -353,7 +353,7 @@ def test_021_makes_the_old_grouping_settings_a_level_for_a_series_whose_items_he
     command.downgrade(config, "020")
     with sqlite3.connect(db) as con:
         con.execute("INSERT INTO collections (collection_id, name, record_name) VALUES (2, 'Letters', 'letter')")
-    database.migrate(url)
+    command.upgrade(config, "021")  # 023 makes these settings parts
     assert rows(db, "SELECT collection_id, position, name, starts, matched, record_key FROM record_levels") == [
         (1, 1, "survey", '["main"]', '["coded"]', "number_of_dwelling")]
     assert not {"record_key", "record_name", "group_pages"} & {r[1] for r in rows(db, "PRAGMA table_info(collections)")}
@@ -382,3 +382,29 @@ def test_022_lets_a_record_sit_inside_another_and_goes_with_it(url, tmp_path):
     assert rows(db, "SELECT survey_id FROM surveys") == []
     command.downgrade(config, "021")
     assert "parent_id" not in {r[1] for r in rows(db, "PRAGMA table_info(surveys)")}
+
+
+def test_023_makes_a_levels_page_types_what_one_is_made_of_in_order_and_undoes_it(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "022")
+    with sqlite3.connect(db) as con:  # a series two page types started, and one no type started
+        con.executemany("INSERT INTO collections (collection_id, name) VALUES (?, ?)", [(2, "Letters"), (3, "Diaries")])
+        con.executemany("INSERT INTO page_types (name, label, collection_id, unknown) VALUES (?, ?, ?, ?)", [
+            ("letter", "Letter", 2, 0), ("cover", "Cover", 2, 0), ("enclosure", "Enclosure", 2, 0), ("unknown_l", "Unknown", 2, 1),
+            ("entry", "Entry", 3, 0)])
+        con.executemany("INSERT INTO record_levels (collection_id, position, name, starts, matched, record_key) VALUES (?, 1, ?, ?, ?, ?)",
+                        [(2, "letter", '["letter", "cover"]', "[]", None), (3, "diary", "[]", '["entry"]', "n")])
+    database.migrate(url)
+    assert [(c, json.loads(parts)) for c, parts in rows(db, "SELECT collection_id, parts FROM record_levels ORDER BY collection_id")] == [
+        (1, [{"type": "main", "count": "one_or_more", "how": "starts"}, {"type": "notes", "count": "any", "how": "follows"},
+             {"type": "coded", "count": "one", "how": "matched"}]),
+        (2, [{"type": "letter", "count": "one_or_more", "how": "starts"}, {"type": "cover", "count": "any", "how": "follows"},
+             {"type": "enclosure", "count": "any", "how": "follows"}]),  # only one type starts a record: the first
+        (3, [])]  # each page was a record: made of nothing, as before
+    assert rows(db, "SELECT record_key FROM record_levels ORDER BY collection_id") == [("number_of_dwelling",), (None,), (None,)]
+    assert not {"starts", "matched"} & {r[1] for r in rows(db, "PRAGMA table_info(record_levels)")}
+    command.downgrade(config, "022")
+    assert rows(db, "SELECT starts, matched FROM record_levels ORDER BY collection_id") == [
+        ('["main"]', '["coded"]'), ('["letter"]', "[]"), ("[]", "[]")]
+    assert "parts" not in {r[1] for r in rows(db, "PRAGMA table_info(record_levels)")}

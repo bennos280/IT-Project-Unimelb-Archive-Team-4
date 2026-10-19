@@ -130,7 +130,7 @@ def test_an_item_of_another_series_runs_with_that_series_page_types_and_rule(db,
     db.flush()
     db.add_all([models.PageType(name="unknown_2", label="Unknown", collection_id=2, unknown=True),
                 models.PageType(name="docket", label="Docket", collection_id=2),
-                models.RecordLevel(collection_id=2, position=1, name="letter", starts='["docket"]'),
+                models.RecordLevel(collection_id=2, position=1, name="letter", parts='[{"type": "docket", "count": "one", "how": "starts"}]'),
                 models.ArchiveItem(node=216441, collection_id=2, identifier="UMA-IT-1", title="A file")])
     db.commit()
     queue(db, tmp_path)  # tmp/216441/a.pdf: an item series 2 lists
@@ -139,7 +139,8 @@ def test_an_item_of_another_series_runs_with_that_series_page_types_and_rule(db,
     worker.work_once(db)
     [run] = runs
     assert (run.collection, run.page_types, run.grouping["levels"]) == (
-        2, {"docket"}, [{"name": "letter", "starts": ["docket"], "matched": [], "key": None}])
+        2, {"docket"}, [{"name": "letter", "parts": [{"type": "docket", "count": "one", "how": "starts"}], "key": None,
+                         "starts": ["docket"], "matched": []}])
 
 
 def test_an_item_on_no_series_list_runs_as_the_prest_surveys_keeping_its_blank_pages_out(db, tmp_path, monkeypatch):

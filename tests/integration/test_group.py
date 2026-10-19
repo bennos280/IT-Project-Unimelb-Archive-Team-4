@@ -21,7 +21,9 @@ PAGES = [  # label, number_of_dwelling as transcribed (None: not read or not on 
 ]
 
 
-PREST = {"levels": [{"name": "survey", "starts": ["main"], "matched": ["coded"], "key": "number_of_dwelling"}],  # as migration 021 sets collection 1
+PREST = {"levels": [{"name": "survey", "starts": ["main"], "matched": ["coded"], "key": "number_of_dwelling",  # as migration 023 sets collection 1
+                     "parts": [{"type": "main", "count": "one_or_more", "how": "starts"}, {"type": "notes", "count": "any", "how": "follows"},
+                               {"type": "coded", "count": "one", "how": "matched"}]}],
          "labels": {"main": "Main page", "coded": "Coded page", "notes": "Notes page", "other": "Unknown"}}
 
 

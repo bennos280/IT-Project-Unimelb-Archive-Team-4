@@ -1,5 +1,5 @@
-"""How a collection's pages group into records: its levels of record (models.RecordLevel), each with the page types that start
-or join one and the field holding its number, as the pipeline's group step and the template checks read them."""
+"""How a collection's pages group into records: its levels of record (models.RecordLevel), each with what one is made of and
+the field holding its number, as the pipeline's group step and the template checks read them."""
 import json
 
 from backend.db import models
@@ -10,9 +10,11 @@ def levels(db, collection_id):
     return db.query(models.RecordLevel).filter_by(collection_id=collection_id).order_by(models.RecordLevel.position).all()
 
 
-#a level as the Setup tab shows and saves it
+#a level as the Setup tab shows and saves it, with the page types that start one and those matched by number, as grouping reads them
 def level_json(level):
-    return {"name": level.name, "starts": json.loads(level.starts), "matched": json.loads(level.matched), "key": level.record_key}
+    parts = json.loads(level.parts)
+    return {"name": level.name, "parts": parts, "key": level.record_key,
+            "starts": [p["type"] for p in parts if p["how"] == "starts"], "matched": [p["type"] for p in parts if p["how"] == "matched"]}
 
 
 #what one record of a collection is called on screen: its level's name (a record's level is how deep it sits; no record: the
@@ -32,24 +34,25 @@ def a_record(name):
     return f"{'an' if name[:1] in 'aeiou' else 'a'} {name}"
 
 
-#the rule pipeline.Run.grouping takes: the collection's levels, top first (none: each item is one record), each with its name,
-#the page types that start one and those that join the one whose number they show, and the field holding that number (None:
-#page order only); and every type's label, for the review flags
+#the rule pipeline.Run.grouping takes: the collection's levels, top first (none: each item is one record), each as level_json
+#gives it; every type's label, for the review flags; and its Unknown types, whose pages aren't expected or unexpected in one
 def rule(db, collection_id):
-    return {"levels": [level_json(level) for level in levels(db, collection_id)],
-            "labels": {t.name: t.label for t in db.query(models.PageType).filter_by(collection_id=collection_id)}}
+    types = db.query(models.PageType).filter_by(collection_id=collection_id).all()
+    return {"levels": [level_json(level) for level in levels(db, collection_id)], "labels": {t.name: t.label for t in types},
+            "unknown": [t.name for t in types if t.unknown]}
 
 
 #whether a collection's pages group into records: a page type starts one of its top level, so a page can be in none or move
 def grouped(db, collection_id):
     found = levels(db, collection_id)
-    return bool(found and json.loads(found[0].starts))
+    return bool(found and level_json(found[0])["starts"])
 
 
 #page type -> the fields its templates must have, as grouping reads them (a type can group in more than one level)
 def required_fields(db):
     found = {}
     for level in db.query(models.RecordLevel):
-        for t in json.loads(level.starts) + json.loads(level.matched) if level.record_key else []:
+        found_by = level_json(level)
+        for t in found_by["starts"] + found_by["matched"] if level.record_key else []:
             found.setdefault(t, set()).add(level.record_key)
     return found

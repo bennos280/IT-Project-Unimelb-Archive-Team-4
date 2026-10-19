@@ -87,8 +87,8 @@ def test_an_item_that_is_one_record_gives_it_so_the_dashboard_opens_it_straight_
 
 
 def test_an_item_gives_its_records_and_a_record_the_ones_it_sits_inside_top_first(client, db, diaries):
-    db.add(models.RecordLevel(collection_id=2, position=1, name="volume", starts="[]"))
-    db.add(models.RecordLevel(collection_id=2, position=2, name="month", starts="[]"))
+    db.add(models.RecordLevel(collection_id=2, position=1, name="volume"))
+    db.add(models.RecordLevel(collection_id=2, position=2, name="month"))
     db.add(models.Survey(survey_id="9", bundle_id="9"))
     db.flush()
     db.get(models.Survey, "9_00001").parent_id = "9"

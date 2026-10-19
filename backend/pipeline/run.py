@@ -41,8 +41,10 @@ class Run:
     page_types: set[str] | None = None                   # the labels the series has; sorting's others are review. None: any
     progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
 
-    def flag(self, page: dict, step: str, reason: str, field: str | None = None) -> None:  # field: the one it is about
-        self.review.append({"file": page["file"], "step": step, "reason": reason, **({"field": field} if field else {})})
+    def flag(self, page: dict, step: str, reason: str, field: str | None = None, record: str | None = None) -> None:
+        """field, record: the field and the record it is about"""
+        self.review.append({"file": page["file"], "step": step, "reason": reason, **({"field": field} if field else {}),
+                            **({"record": record} if record else {})})
 
     def save(self) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
@@ -232,7 +234,23 @@ def step_transcribe(run: Run) -> None:
         raise failure
 
 
-def group_level(run: Run, pages: list[dict], level: dict, labels: dict, parent: str | None = None) -> list[tuple[str, list[dict]]]:
+#what a record (counts: page type -> how many of its pages) lacks or has too many of, by its level's parts, and the page types it
+#has that it isn't made of (labels: each type's name on screen; exempt: types it may have anyway); none without parts
+def expectations(parts, counts, labels, exempt, record):
+    found = []
+    for part in parts:
+        n, label = counts[part["type"]], labels.get(part["type"], part["type"])
+        if part["count"] == "one" and n != 1 or part["count"] == "one_or_more" and n < 1:
+            found.append(f"expected {'at least ' if part['count'] == 'one_or_more' else ''}one {label}, found {n or 'none'}")
+        elif part["count"] == "at_most_one" and n > 1:
+            found.append(f"expected at most one {label}, found {n}")
+    made_of = {part["type"] for part in parts}
+    return found + [f"{labels[t]} isn't part of {'an' if record[:1] in 'aeiou' else 'a'} {record}" for t in sorted(counts)
+                    if parts and t not in made_of and t in labels and t not in exempt]
+
+
+def group_level(run: Run, pages: list[dict], level: dict, labels: dict, parent: str | None = None,
+                exempt: frozenset = frozenset()) -> list[tuple[str, list[dict]]]:
     """One level's records among some pages (an item's at the top, else a record's of the level above), in scan order, each
     (its name, its pages). A page of a type that starts one starts one and the pages after it join it, except the types
     matched by number; one showing no new number, not straight after a matched page, is a second sheet of the same record. A
@@ -240,8 +258,11 @@ def group_level(run: Run, pages: list[dict], level: dict, labels: dict, parent: 
     page shows its number, else the only record anywhere with that number that no neighbouring matched page took, else the
     neighbour none took, else the side most matched pages joined. With no type that starts one, each page is one. A record at
     the top is named <item>-<number>, else by its first page; one inside another <parent>-<number>, else <parent>-n<its
-    place>. Problems are flagged, and so at the top are pages before the first start (which belong to none; further down,
-    to the record above, as a folder's cover is its own)."""
+    place>. Problems are flagged: a record with too few or too many of a part (level["parts"]: one, one_or_more, any or
+    at_most_one) or with a page type it isn't made of, but not the exempt ones (Unknown types, whose pages are flagged as
+    unread anyway, and the ones the levels below are made of); and at the top, pages before the first start (which belong to
+    none; further down, to the record above, as a folder's cover is its own). A record's problems are about it, on its first
+    page."""
     starts, by_key, key = set(level.get("starts", ())), set(level.get("matched", ())), level.get("key")
     record = level.get("name", "record")
     unnumbered = lambda first, place: Path(first["file"]).stem if parent is None else f"{parent}-n{place}"
@@ -286,7 +307,7 @@ def group_level(run: Run, pages: list[dict], level: dict, labels: dict, parent: 
         counts = Counter(p["label"] for p in s["pages"])
         number = max(sorted(s["main"] & s["card"] or s["card"] or s["main"]), key=len, default="")
         name = f"{parent or run.input.stem}-{number}"
-        problems = [f"expected one {labels.get(t, t)}, found {counts[t]}" for t in sorted(by_key) if counts[t] != 1]
+        problems = expectations(level.get("parts", []), counts, labels, exempt, record)
         if any(counts[t] for t in by_key) and number and not s["main"] & s["card"]:
             problems.append(f"its pages don't agree on '{words}'")
         if not key:
@@ -297,7 +318,7 @@ def group_level(run: Run, pages: list[dict], level: dict, labels: dict, parent: 
         taken.add(name)
         groups.append((name, sorted(s["pages"], key=lambda page: order[id(page)])))  # in scan order, for the level below
         if problems:
-            run.flag(s["pages"][0], "group", f"{record} {name}: " + "; ".join(problems), key)
+            run.flag(s["pages"][0], "group", f"{record} {name}: " + "; ".join(problems), key, name)
     inside = {id(page) for _, found in groups for page in found}
     loose = [p for p in pages if id(p) not in inside and p["label"] != "blank"]
     if loose and parent is None:
@@ -324,7 +345,8 @@ def step_group(run: Run) -> None:
         return
 
     def nest(pages, depth, parent):
-        for name, found in group_level(run, pages, levels[depth], labels, parent):
+        below = {part["type"] for level in levels[depth + 1:] for part in level.get("parts", [])}
+        for name, found in group_level(run, pages, levels[depth], labels, parent, frozenset(rule.get("unknown", ())) | below):
             run.records.append({"id": name, "parent": parent})
             if depth + 1 < len(levels):
                 nest(found, depth + 1, name)

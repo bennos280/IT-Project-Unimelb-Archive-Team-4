@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel
+from typing import Literal
 from functools import cache
 import json
 import os
@@ -176,6 +177,15 @@ def page_image(page_id: str, preprocessed: bool = False, db: Session = Depends(g
         scan = cleaned(scan, page_id)
     return FileResponse(scan)
 
+
+#a page's scan, small, for a preview: from its item's PDF or its scan on this computer (never the archive); 404 if neither is here
+@app.get("/pages/{page_id:path}/thumbnail")
+def page_thumbnail(page_id: str, db: Session = Depends(get_db)):
+    page = db.get(models.Page, page_id)
+    image = page and scans.page_thumbnail(db.get(models.Bundle, page.bundle_id).source_pdf, page.import_path, page_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="No scan of this page here.")
+    return Response(image, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 #returns list of {id, name}
 @app.get("/reviewers")
@@ -444,10 +454,16 @@ class CollectionSettings(BaseModel):
 
 #a level of record: what one is called, the page types that start one and those that join the one showing the same number,
 #and the field holding that number (None or "": page order only)
+#one part of what a level's record is made of: a page type, how many of it one has, and how its pages are found: one starts it,
+#the next follow the page before them, or are matched by number wherever they were filed
+class LevelPart(BaseModel):
+    type: str
+    count: Literal["one", "one_or_more", "any", "at_most_one"] = "one"
+    how: Literal["starts", "follows", "matched"] = "follows"
+
 class LevelSettings(BaseModel):
     name: str
-    starts: list[str] = []
-    matched: list[str] = []
+    parts: list[LevelPart] = []
     key: str | None = None
 
 class LevelsSettings(BaseModel):
@@ -641,23 +657,25 @@ def update_collection(collection_id: int, payload: CollectionSettings, db: Sessi
 
 LEVEL_NAME = re.compile(r"[a-z]+(['-][a-z]+)*( [a-z]+(['-][a-z]+)*)?")
 
-#why a level can't be saved, or None: its name (a word or two, lower case, after names), its page types (the collection's own,
-#read, and starting one or joining by number, not both), and its number field and a type that starts one, which joining by
-#number needs
+#why a level can't be saved, or None: its name (a word or two, lower case, after names), what one is made of (the collection's
+#own read page types, each once, the first and only the first starting one), and its number field, which matching pages by
+#number needs and which is read from its page types
 def level_problem(level, name, names, types):
-    roles = level.starts + level.matched
+    roles, a = [part.type for part in level.parts], grouping.a_record(name)
     key = (level.key or "").strip()
     return ("A level's name is a word or two, like survey or letter." if not (len(name) <= 40 and LEVEL_NAME.fullmatch(name)) else
             f"There is already a level called {name}." if name in names else
             "A level's page types must be this series' own." if any(t not in types for t in roles) else
-            f"Unknown pages aren't read, so they can't start or join {grouping.a_record(name)}." if any(types[t].unknown for t in roles) else
-            f"A page type starts {grouping.a_record(name)} or joins one by number, not both." if set(level.starts) & set(level.matched) else
+            f"Unknown pages aren't read, so {a} can't be made of them." if any(types[t].unknown for t in roles) else
+            f"Each page type is in {a} once." if len(set(roles)) < len(roles) else
+            f"The first page type starts {a}, and only it." if any((p.how == "starts") != (i == 0) for i, p in enumerate(level.parts)) else
             "A field name is lower-case letters, digits and _, starting with a letter." if key and not instructions.KEY.fullmatch(key) else
-            f"Pages join {grouping.a_record(name)} by its number field: set one first." if level.matched and not key else
-            f"Pages can only join {grouping.a_record(name)} a page type starts: choose one that starts it." if level.matched and not level.starts else None)
+            f"Pages are matched to {a} by its number field: set one first." if any(p.how == "matched" for p in level.parts) and not key else
+            f"{a.capitalize()}'s number is read from its page types: add one first, or choose no number field." if key and not level.parts else None)
 
 #a collection's levels of record as they would be stored, top first, unsaved; refused with the first problem (level_problem),
-#and a level's number field must be in the templates of the page types that start or join one
+#and a level's number field must be a field of its own (not a list or group) in the templates of the page types that start one
+#or are matched to it
 def checked_levels(db, collection_id, levels):
     if not db.get(models.Collection, collection_id):
         raise HTTPException(status_code=404, detail="No such series.")
@@ -667,12 +685,12 @@ def checked_levels(db, collection_id, levels):
         name, key = " ".join(level.name.lower().split()), (level.key or "").strip() or None
         if problem := level_problem(level, name, {row.name for row in rows}, types):
             raise HTTPException(status_code=400, detail=problem)
-        missing = sorted(types[t].label for t in set(level.starts + level.matched)
-                         if key and t in templates and key not in json.loads(templates[t].body))
+        missing = sorted(types[p.type].label for p in level.parts if p.how != "follows" and key and p.type in templates
+                         and not isinstance(json.loads(templates[p.type].body).get(key, []), str | None))
         if missing:
             raise HTTPException(status_code=400, detail=f"These page types' templates don't have '{key}': {', '.join(missing)}.")
         rows.append(models.RecordLevel(collection_id=collection_id, position=position, name=name, record_key=key,
-                                       starts=json.dumps(sorted(set(level.starts))), matched=json.dumps(sorted(set(level.matched)))))
+                                       parts=json.dumps([part.model_dump() for part in level.parts])))
     return rows
 
 #a collection's levels of record, top first, in place of the ones it had. Items read from now on group by them
@@ -686,7 +704,8 @@ def put_levels(collection_id: int, payload: LevelsSettings, db: Session = Depend
     return collection_json(db.get(models.Collection, collection_id), db)
 
 #how one of a collection's items already read would group by these levels, saving nothing: the records grouping would make,
-#parents first, each its id, the record it sits in and its pages; the pages in none; and the problems grouping would flag.
+#parents first, each its id, the record it sits in and its pages; the pages in none; each page's type; and the problems
+#grouping would flag, each on a page, with the record it's about (none: pages in no record) and what it is.
 #It reads the item's page types and its pages' number fields as reviewers last saved them, as the group step does a run's; a
 #page waiting to be read again as another type has none yet
 @app.post("/collections/{collection_id}/levels/preview")
@@ -705,15 +724,19 @@ def preview_levels(collection_id: int, payload: LevelsPreview, db: Session = Dep
     for edit in db.query(models.Edit).filter(models.Edit.page_id.in_(ids), models.Edit.field_title.in_(keys)).order_by(models.Edit.edit_id):
         values.setdefault(edit.page_id, {})[edit.field_title] = edit.edit_text
     categories = dict(db.query(models.Page.page_id, models.Page.category).filter_by(bundle_id=bundle.bundle_id))
+    types = db.query(models.PageType).filter_by(collection_id=collection_id).all()
+    labels = {t.name: t.label for t in types}
     run = Run(Path(f"{bundle.bundle_id}.pdf"), Path(bundle.bundle_id), grouping={
         "levels": [grouping.level_json(row) for row in rows],
-        "labels": {t.name: t.label for t in db.query(models.PageType).filter_by(collection_id=collection_id)}})
+        "labels": labels, "unknown": [t.name for t in types if t.unknown]})
     run.pages = [{"file": f"{page_id}.png", "label": categories[page_id], "values": {} if page_id in unread else values.get(page_id, {}),
                   "id": page_id} for page_id in ids]
     step_group(run)
+    problems = [{"page": entry["file"].removesuffix(".png"), "record": entry.get("record"),
+                 "reason": entry["reason"].split(": ", 1)[-1] if entry.get("record") else entry["reason"]} for entry in run.review]
     return {"records": [{**record, "pages": [p["id"] for p in run.pages if p["survey"] == record["id"]]} for record in run.records],
             "loose": [p["id"] for p in run.pages if p["survey"] is None],
-            "problems": [entry["reason"] for entry in run.review]}
+            "pageTypes": {page_id: labels.get(category, category) for page_id, category in categories.items()}, "problems": problems}
 
 #a series on the archive, to check before a collection links to it
 @app.get("/archive-series/{node}")

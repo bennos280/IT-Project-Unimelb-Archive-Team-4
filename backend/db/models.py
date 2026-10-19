@@ -12,9 +12,11 @@ class Collection(Base):
     archive_title = Column(String, nullable=True) #items, as the archive showed them when the series was linked
     archive_items = Column(Integer, nullable=True)
 
-#a level of record between a collection's items and their pages, the top one (position 1) first: what one is called, the page
-#types whose pages start one and those whose pages join the one showing the same number (JSON lists of page type names), and
-#the field holding that number (None: page order only); a collection with none has each item as one record
+#a level of record between a collection's items and their pages, the top one (position 1) first: what one is called, what one
+#is made of in order (JSON list of parts, each {type: a page type's name, count: one | one_or_more | any | at_most_one, how:
+#starts | follows | matched}: a page of a starting type starts one, the next follow the page before them, and a matched one
+#joins the one showing the same number wherever it was filed), and the field holding that number (None: page order only);
+#a collection with none has each item as one record (backend/db/grouping.py)
 class RecordLevel(Base):
     __tablename__ = "record_levels"
     __table_args__ = (UniqueConstraint("collection_id", "position", name="uq_record_levels_position"),
@@ -23,9 +25,8 @@ class RecordLevel(Base):
     collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
     position = Column(Integer, nullable=False)
     name = Column(String, nullable=False)
-    starts = Column(Text, nullable=False, server_default="[]")
-    matched = Column(Text, nullable=False, server_default="[]")
     record_key = Column(String, nullable=True)
+    parts = Column(Text, nullable=False, server_default="[]")
 
 #an item of a collection's archive series, as the archive lists it; an item no collection lists is the Wilfred Prest Survey's
 class ArchiveItem(Base):

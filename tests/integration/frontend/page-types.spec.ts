@@ -2,7 +2,13 @@ import { test, expect, type Page } from "@playwright/test";
 
 // A series' Setup tab (/?view=setup; /?view=page-types, its old name, still opens it) on an intercepted API: nothing reaches the real backend.
 type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; templateVersion: number | null };
-type Level = { name: string; starts: string[]; matched: string[]; key: string | null };
+type Part = { type: string; count: string; how: string };
+type Level = { name: string; parts: Part[]; key: string | null };
+// The Prest survey's level: a main form starts one, then any notes, and its one coded card is matched by number.
+const MAIN_PART = { type: "main", count: "one_or_more", how: "starts" };
+const NOTES_PART = { type: "notes", count: "any", how: "follows" };
+const CODED_PART = { type: "coded", count: "one", how: "matched" };
+const PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="; // a PNG, one pixel
 type Version = { id: number; body: string; rules: object; reviewer: string | null; note: string | null; createdAt: string };
 type CheckVersion = { id: number; number: number; checks: object[]; reviewer: string | null; note: string | null; createdAt: string };
 const type = (name: string, label: string, over: Partial<PageType> = {}): PageType => ({
@@ -18,9 +24,9 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
     type("other", "Unknown", { unknown: true }),
   ];
   const collection = {
-    id: 1, name: "Wilfred Prest Survey", levels: [{ name: "survey", starts: ["main"], matched: ["coded"], key: recordKey }] as Level[],
+    id: 1, name: "Wilfred Prest Survey", levels: [{ name: "survey", parts: [MAIN_PART, NOTES_PART, CODED_PART], key: recordKey }] as Level[],
     get recordName() { return this.levels.at(-1)?.name ?? "record"; },
-    get grouped() { return Boolean(this.levels[0]?.starts.length); },
+    get grouped() { return Boolean(this.levels[0]?.parts.length); },
   };
   const version = (id: number, body: string, extra: Partial<Version> = {}): Version =>
     ({ id, body, rules: {}, reviewer: null, note: null, createdAt: "2026-10-01T02:00:00+00:00", ...extra });
@@ -50,15 +56,18 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
     if (path === "/api/reviewers") return route.fulfill({ json: reviewers });
     if (path === "/api/collections/1" && method === "GET") return route.fulfill({ json: collection });
     if (path === "/api/export/bundles") return route.fulfill({ json: [{ id: "b1", name: "216412" }] });
+    if (path === "/api/pages/b1_00002/thumbnail") return route.fulfill({ contentType: "image/png", body: Buffer.from(PIXEL, "base64") }); // others aren't here
     if (path === "/api/collections/1/levels/preview" && method === "POST") {
       calls.tried.push(request.postDataJSON());
       return route.fulfill({ json: { records: [{ id: "b1-3", parent: null, pages: ["b1_00002", "b1_00003"] },
-        { id: "b1-7", parent: null, pages: ["b1_00004", "b1_00006"] }], loose: ["b1_00001"], problems: ["survey b1-7: expected one Coded page, found 2"] } });
+        { id: "b1-7", parent: null, pages: ["b1_00004", "b1_00006"] }], loose: ["b1_00001"],
+        pageTypes: { b1_00001: "Notes page", b1_00002: "Main page", b1_00003: "Coded page", b1_00004: "Main page", b1_00006: "Coded page" },
+        problems: [{ page: "b1_00004", record: "b1-7", reason: "expected one Coded page, found 2" }] } });
     }
     if (path === "/api/collections/1/levels" && method === "PUT") {
       const body = request.postDataJSON();
       calls.putLevels.push(body);
-      if (body.levels.some((l: Level) => l.key === "address")) return route.fulfill({ status: 400, json: { detail: "These page types' templates don't have 'address': Coded page." } });
+      if (body.levels.some((l: Level) => l.name.includes("#"))) return route.fulfill({ status: 400, json: { detail: "A level's name is a word or two, like survey or letter." } });
       collection.levels = body.levels.map((l: Level) => ({ ...l, name: l.name.trim().toLowerCase(), key: l.key?.trim() || null }));
       return route.fulfill({ json: collection });
     }
@@ -173,16 +182,16 @@ test("a template's history lists each version, and an older one can be brought b
 
 const row = (page: Page, label: string) => page.getByRole("row").filter({ has: page.getByRole("cell", { name: label, exact: true }) });
 
-// The levels' ladder and a level's dialog.
+// The levels' ladder, and what a level's record is made of on its page.
 const ladder = (page: Page) => page.getByRole("list", { name: "Levels" }).getByRole("listitem");
-const levelDialog = (page: Page, name: string) => page.getByRole("dialog", { name });
+const parts = (page: Page) => page.getByRole("list", { name: "Parts" }).getByRole("listitem");
 
 test("a series' levels are a ladder from Item to Page, and its page types are listed by label with their template", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?collection=1&view=setup");
   await expect(page.getByRole("heading", { name: "Wilfred Prest Survey", level: 1 })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Series" }).getByRole("link", { name: "Setup" })).toHaveAttribute("aria-current", "page");
-  await expect(ladder(page)).toHaveText([/^Item\s*From the archive$/, /^Survey\s*starts at Main page · Coded page joins by number_of_dwelling\s*Edit$/,
+  await expect(ladder(page)).toHaveText([/^Item\s*From the archive$/, /^Survey\s*1\+ Main page · any Notes page · 1 Coded page by number\s*Edit$/,
     /^Page\s*From the scan$/]);
   await expect(page.getByRole("tablist", { name: "Setup" }).getByRole("tab")).toHaveText(["Levels", "Page types", "Checks"]);
   await expect(page.getByRole("tab", { name: "Levels" })).toHaveAttribute("aria-selected", "true");
@@ -263,60 +272,84 @@ test("with no reviewers yet, whoever adds a page type adds their name there, and
   await expect(edit.getByLabel("New reviewer name")).toHaveCount(0);
 });
 
-test("a level's name, what each read page type does in it, and its number field are saved together, and a refusal is shown", async ({ page }) => {
+test("a level's name, what one is made of in order, and its number field are saved together, and a refusal is shown", async ({ page }) => {
   const calls = await mockApi(page);
   await page.goto("/?collection=1&view=setup");
-  await page.getByRole("button", { name: "Edit survey" }).click();
-  const dialog = levelDialog(page, "Edit level: survey");
-  await expect(dialog.getByRole("combobox", { name: /^What .* does$/ })).toHaveCount(3); // the Unknown type isn't read: not offered
-  await expect(dialog.getByLabel("What Main page does")).toHaveValue("starts");
-  await expect(dialog.getByLabel("What Coded page does")).toHaveValue("matched");
-  // the number field is one every page type that starts or joins one has: the coded card's template has only the number
-  await expect(dialog.getByLabel("Number field").locator("option")).toHaveText(["None: by page order only", "Number of dwelling"]);
-  await dialog.getByLabel("What Coded page does").selectOption("follows");
-  await expect(dialog.getByLabel("Number field").locator("option")).toHaveText(["None: by page order only", "Number of dwelling", "Address"]);
-  await dialog.getByLabel("Number field").selectOption("address");
-  await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(dialog.getByText("These page types' templates don't have 'address': Coded page.")).toBeVisible();
-  await dialog.getByLabel("Name").fill("Household card");
-  await expect(dialog.getByLabel("What Notes page does").locator("option")).toHaveText(
-    ["Follows the page before it", "Starts a household card", "Joins the household card with the same number"]);
-  await dialog.getByLabel("Number field").selectOption("");
-  await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(dialog).toHaveCount(0);
-  expect(calls.putLevels.at(-1)).toEqual({ levels: [{ name: "Household card", starts: ["main"], matched: [], key: "" }] });
-  await expect(ladder(page).nth(1)).toHaveText(/^Household card\s*starts at Main page\s*Edit$/);
+  await page.getByRole("link", { name: "Edit survey" }).click();
+  await expect(page).toHaveURL("/?collection=1&view=setup&level=1");
+  await expect(page.getByRole("heading", { name: "Level: Survey", level: 1 })).toBeVisible();
+  await expect(parts(page).locator("p:first-child")).toHaveText(["Main page", "Notes page", "Coded page"]);
+  await expect(parts(page).first()).toContainText("Starts a survey");
+  await expect(page.getByLabel("How many Main page")).toHaveValue("one_or_more");
+  await expect(page.getByLabel("How many Notes page")).toHaveValue("any");
+  await expect(page.getByLabel("Notes page may be filed elsewhere: match by number")).not.toBeChecked();
+  await expect(page.getByLabel("Coded page may be filed elsewhere: match by number")).toBeChecked();
+  await expect(page.getByLabel("Add a page type")).toHaveCount(0); // every read type is in it; the Unknown type isn't offered
+  // the number field is one every page type that starts one or is matched to it has: the coded card's template has only the number
+  await expect(page.getByLabel("Number field").locator("option")).toHaveText(["None: by page order only", "Number of dwelling"]);
+  await page.getByLabel("Coded page may be filed elsewhere: match by number").uncheck();
+  await expect(page.getByLabel("Number field").locator("option")).toHaveText(["None: by page order only", "Number of dwelling", "Address"]);
+  await page.getByLabel("Number field").selectOption("address");
+  await page.getByLabel("Name").fill("survey #1");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("A level's name is a word or two, like survey or letter.")).toBeVisible();
+  await page.getByLabel("Name").fill("Household card");
+  await expect(parts(page).first()).toContainText("Starts a household card");
+  await page.getByRole("button", { name: "Remove Coded page" }).click();
+  await expect(page.getByLabel("Add a page type").locator("option")).toHaveText(["+ Add a page type", "Coded page"]);
+  await page.getByLabel("How many Notes page").selectOption("At most one");
+  await page.getByLabel("Number field").selectOption("");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL("/?collection=1&view=setup");
+  expect(calls.putLevels.at(-1)).toEqual({ levels: [{ name: "Household card", parts: [MAIN_PART, { ...NOTES_PART, count: "at_most_one" }], key: "" }] });
+  await expect(ladder(page).nth(1)).toHaveText(/^Household card\s*1\+ Main page · 0–1 Notes page\s*Edit$/);
 });
 
-test("a level added goes inside the bottom one, and the ladder steps down to it", async ({ page }) => {
+test("a level added goes inside the bottom one, its first page type starting one, and the ladder steps down to it", async ({ page }) => {
   const calls = await mockApi(page);
   await page.goto("/?collection=1&view=setup");
-  await page.getByRole("button", { name: "Add level" }).click();
-  const dialog = levelDialog(page, "Add level");
-  await expect(dialog.getByText("It goes inside each survey. Items read from now on group by it.")).toBeVisible();
-  await dialog.getByLabel("Name").fill("card");
-  await dialog.getByLabel("What Coded page does").selectOption("starts");
-  await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(ladder(page)).toHaveText([/^Item/, /^Survey\s*starts at Main page · Coded page joins/, /^Card\s*starts at Coded page\s*Edit$/, /^Page/]);
+  await page.getByRole("link", { name: "Add level" }).click();
+  await expect(page).toHaveURL("/?collection=1&view=setup&level=new");
+  await expect(page.getByText("It goes inside each survey. Items read from now on group by it.")).toBeVisible();
+  await page.getByLabel("Name").fill("card");
+  await expect(page.getByText("With no page types, each page is a card of its own.")).toBeVisible();
+  await page.getByLabel("Add a page type").selectOption("Coded page");
+  await page.getByLabel("Add a page type").selectOption("Notes page");
+  await page.getByRole("button", { name: "Move Notes page up" }).click(); // now it starts one, and the coded card follows it
+  await expect(parts(page).locator("p:first-child")).toHaveText(["Notes page", "Coded page"]);
+  await expect(parts(page).first()).toContainText("Starts a card");
+  await expect(page.getByRole("button", { name: "Move Notes page down" })).toBeFocused(); // at the top: on the button still there
+  await expect(page.getByLabel("Coded page may be filed elsewhere: match by number")).not.toBeChecked();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(ladder(page)).toHaveText([/^Item/, /^Survey\s*1\+ Main page/, /^Card\s*1 Notes page · 1 Coded page\s*Edit$/, /^Page/]);
   await expect(ladder(page).last()).toHaveCSS("margin-left", "72px"); // three steps in
-  expect(calls.putLevels).toEqual([{ levels: [{ name: "survey", starts: ["main"], matched: ["coded"], key: "number_of_dwelling" },
-    { name: "card", starts: ["coded"], matched: [], key: "" }] }]);
+  expect(calls.putLevels).toEqual([{ levels: [{ name: "survey", parts: [MAIN_PART, NOTES_PART, CODED_PART], key: "number_of_dwelling" },
+    { name: "card", parts: [{ type: "notes", count: "one", how: "starts" }, { type: "coded", count: "one", how: "follows" }], key: "" }] }]);
 });
 
 test("a level can be removed, leaving each item one record, and added again", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?collection=1&view=setup");
-  await page.getByRole("button", { name: "Edit survey" }).click();
-  await levelDialog(page, "Edit level: survey").getByRole("button", { name: "Remove level" }).click();
+  await page.goto("/?collection=1&view=setup&level=1");
+  await page.getByRole("button", { name: "Remove level" }).click();
   await expect(ladder(page)).toHaveText([/^Item/, /^Page/]);
   await expect(page.getByText("No levels: each item is one record.")).toBeVisible();
-  await page.getByRole("button", { name: "Add level" }).click();
-  const dialog = levelDialog(page, "Add level");
-  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled(); // no name yet
-  await dialog.getByLabel("Name").fill("letter");
-  await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(ladder(page).nth(1)).toHaveText(/^Letter\s*each page is one\s*Edit$/); // no page type starts one
-  expect(calls.putLevels).toEqual([{ levels: [] }, { levels: [{ name: "letter", starts: [], matched: [], key: "" }] }]);
+  await page.goto("/?collection=1&view=setup&level=1");
+  await expect(page.getByText("This series has no such level.")).toBeVisible();
+  await page.goto("/?collection=1&view=setup&level=new");
+  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled(); // no name yet
+  await page.getByLabel("Name").fill("letter");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(ladder(page).nth(1)).toHaveText(/^Letter\s*each page is one\s*Edit$/); // made of nothing
+  await page.getByRole("link", { name: "Edit letter" }).click();
+  await expect(page.getByLabel("Number field").locator("option")).toHaveText(["None: by page order only"]); // no page type to read one from
+  await page.getByLabel("Add a page type").selectOption("Main page");
+  await page.getByLabel("Add a page type").selectOption("Notes page");
+  await page.getByRole("button", { name: "Remove Main page" }).click(); // the next one starts a letter now
+  await expect(parts(page).first()).toContainText("Starts a letter");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(ladder(page).nth(1)).toHaveText(/^Letter\s*1 Notes page\s*Edit$/);
+  expect(calls.putLevels).toEqual([{ levels: [] }, { levels: [{ name: "letter", parts: [], key: "" }] },
+    { levels: [{ name: "letter", parts: [{ type: "notes", count: "one", how: "starts" }], key: "" }] }]);
 });
 
 test("the Unknown type has no template, and says where its pages wait", async ({ page }) => {
@@ -440,25 +473,36 @@ test("a check can compare as codes, or say a field names another's code", async 
 
 test("a level's settings are tried on an item already read before they're saved, and a change hides the old try", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?collection=1&view=setup");
-  await page.getByRole("button", { name: "Edit survey" }).click();
-  const dialog = levelDialog(page, "Edit level: survey");
-  await expect(dialog.getByLabel("Item to try it on")).toHaveValue("b1");
-  await dialog.getByRole("button", { name: "Try it" }).click();
-  const preview = dialog.getByLabel("Preview");
+  await page.goto("/?collection=1&view=setup&level=1");
+  const main = page.getByRole("main");
+  await expect(main.getByLabel("Item to try it on")).toHaveValue("b1");
+  await main.getByRole("button", { name: "Try it" }).click();
+  const preview = main.getByLabel("Preview");
   await expect(preview).toContainText("2 surveys · 1 page in none · 1 problem");
-  await expect(preview.getByRole("list", { name: "Records" }).getByRole("listitem")).toHaveText(
-    ["Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5", "In none: Pg 1"]);
-  await expect(preview.getByRole("list", { name: "Problems" })).toHaveText("survey b1-7: expected one Coded page, found 2");
-  expect(calls.tried).toEqual([{ levels: [{ name: "survey", starts: ["main"], matched: ["coded"], key: "number_of_dwelling" }], item: "b1" }]);
+  const records = preview.getByRole("list", { name: "Records" }).getByRole("listitem");
+  await expect(records.locator("p:first-child")).toHaveText(["In no record · Pg 1", "Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5"]);
+  await expect(records.nth(2)).toContainText("expected one Coded page, found 2");
+  // each page as a small scan, named by its type and place, opening the whole scan; one not on this computer says so
+  const scans = records.nth(1).getByRole("link");
+  await expect(scans.first()).toHaveAccessibleName("Main page · Pg 2");
+  await expect(scans.first()).toHaveAttribute("href", "/api/pages/b1_00002/image");
+  await expect(scans.first().locator("img")).toHaveAttribute("src", "/api/pages/b1_00002/thumbnail");
+  await expect(scans.last()).toContainText("No scan here");
+  await expect(scans.last().locator("img")).toHaveCount(0);
+  await preview.getByLabel("Only ones with problems").check();
+  await expect(records.locator("p:first-child")).toHaveText(["Survey 7 · Pg 4–5"]);
+  expect(calls.tried).toEqual([{ levels: [{ name: "survey", parts: [MAIN_PART, NOTES_PART, CODED_PART], key: "number_of_dwelling" }], item: "b1" }]);
   expect(calls.putLevels).toEqual([]); // nothing saved
-  await dialog.getByLabel("What Notes page does").selectOption("starts");
-  await expect(dialog.getByLabel("Preview")).toHaveCount(0); // tried with other settings
-  await dialog.getByLabel("Name").fill("survey #1");
+  await main.getByRole("button", { name: "Try it" }).click(); // tried again: every record shown
+  await expect(records.locator("p:first-child")).toHaveText(["In no record · Pg 1", "Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5"]);
+  await expect(preview.getByLabel("Only ones with problems")).not.toBeChecked();
+  await main.getByLabel("How many Notes page").selectOption("At most one");
+  await expect(main.getByLabel("Preview")).toHaveCount(0); // tried with other settings
+  await main.getByLabel("Name").fill("survey #1");
   await page.route("**/api/collections/1/levels/preview", (route) =>
     route.fulfill({ status: 400, json: { detail: "A level's name is a word or two, like survey or letter." } }));
-  await dialog.getByRole("button", { name: "Try it" }).click();
-  await expect(dialog.getByText("A level's name is a word or two, like survey or letter.")).toBeVisible();
-  await dialog.getByLabel("Name").fill("survey");
-  await expect(dialog.getByText("A level's name is a word or two, like survey or letter.")).toHaveCount(0); // tried with another name
+  await main.getByRole("button", { name: "Try it" }).click();
+  await expect(main.getByText("A level's name is a word or two, like survey or letter.")).toBeVisible();
+  await main.getByLabel("Name").fill("survey");
+  await expect(main.getByText("A level's name is a word or two, like survey or letter.")).toHaveCount(0); // tried with another name
 });
