@@ -103,3 +103,31 @@ def test_005_adds_the_app_settings_table_and_keeps_the_rows_already_there(url, t
     with database.make_engine(url).begin() as db:
         db.exec_driver_sql("INSERT INTO app_settings(key, value) VALUES('transcription.model', 'opus')")
     assert rows(tmp_path / "test.db", "SELECT value, updated_at IS NOT NULL FROM app_settings") == [("opus", 1)]
+
+
+def test_006_adds_the_area_and_region_columns_and_saves_only_the_changed_instructions_as_new_versions(url, tmp_path):
+    """A db at 005 has the old prompt and main template as its newest versions: they get a newer version from today's files,
+    once. The coded and notes templates already match the files, so they get none; a fresh db (seeded from the files) gets none."""
+    from backend.pipeline.run import digest
+    from backend.pipeline.transcribe.transcribe import HERE
+    db = tmp_path / "test.db"
+    versions = "SELECT kind, note FROM instruction_versions ORDER BY version_id"
+    assert [kind for kind, _ in rows(db, versions)] == ["prompt", "coded", "main", "notes"]  # fresh: just version 1 of each
+    config = database.alembic_config(url)
+    command.downgrade(config, "005")
+    assert not {"area", "region"} & {r[1] for r in rows(db, "PRAGMA table_info(annotations)")}
+    with database.make_engine(url).begin() as con:
+        con.exec_driver_sql("UPDATE instruction_versions SET body = 'old ' || kind, sha256 = 'old' WHERE kind IN ('prompt', 'main')")
+        con.exec_driver_sql("INSERT INTO annotations(page_id, annotation_no, text_raw, location) VALUES('p', 0, '*', 'top-left')")
+    database.migrate(url)
+    assert [r[1:3] for r in rows(db, "PRAGMA table_info(annotations)")][-2:] == [("area", "VARCHAR"), ("region", "VARCHAR")]
+    assert rows(db, "SELECT text_raw, location, area, region FROM annotations") == [("*", "top-left", None, None)]
+    assert rows(db, "SELECT edit_text FROM edits") == [("6 Peel St.",)]
+    assert [kind for kind, _ in rows(db, versions)] == ["prompt", "coded", "main", "notes", "prompt", "main"]
+    for kind, body, sha in rows(db, "SELECT kind, body, sha256 FROM instruction_versions ORDER BY version_id DESC LIMIT 2"):
+        path = HERE / "prompt.txt" if kind == "prompt" else HERE / "templates" / f"{kind}.json"
+        assert body.encode("utf-8") == path.read_bytes() and sha == digest(path)
+    command.downgrade(config, "005")  # drops the columns and leaves the versions
+    assert not {"area", "region"} & {r[1] for r in rows(db, "PRAGMA table_info(annotations)")} and len(rows(db, versions)) == 6
+    database.migrate(url)
+    assert len(rows(db, versions)) == 6  # the newest versions already match the files

@@ -1,0 +1,29 @@
+{
+ "main": {
+  "top_left_corner": {"label": "Top-left corner", "x": 0, "y": 0, "width": 0.25, "height": 0.12},
+  "header": {"label": "Header", "x": 0.25, "y": 0, "width": 0.48, "height": 0.12},
+  "top_right_corner": {"label": "Top-right corner", "x": 0.73, "y": 0, "width": 0.27, "height": 0.12},
+  "address_block": {"label": "Address", "x": 0, "y": 0.12, "width": 0.25, "height": 0.18},
+  "dwelling_block": {"label": "Dwelling", "x": 0.25, "y": 0.12, "width": 0.51, "height": 0.18},
+  "tenure_block": {"label": "Tenure", "x": 0.76, "y": 0.12, "width": 0.24, "height": 0.18},
+  "right_margin": {"label": "Right margin", "x": 0.62, "y": 0.3, "width": 0.38, "height": 0.2},
+  "left_margin": {"label": "Left margin", "x": 0, "y": 0.29, "width": 0.17, "height": 0.71},
+  "residents_table": {"label": "Residents table", "x": 0.17, "y": 0.29, "width": 0.44, "height": 0.71},
+  "rooms_block": {"label": "Rooms", "x": 0.6, "y": 0.5, "width": 0.18, "height": 0.5},
+  "kitchen_block": {"label": "Kitchen", "x": 0.78, "y": 0.5, "width": 0.22, "height": 0.5},
+  "bottom_left": {"label": "Bottom-left", "x": 0, "y": 0.85, "width": 0.4, "height": 0.15},
+  "bottom_centre": {"label": "Bottom centre", "x": 0.4, "y": 0.85, "width": 0.2, "height": 0.15},
+  "bottom_right": {"label": "Bottom-right", "x": 0.6, "y": 0.85, "width": 0.4, "height": 0.15}
+ },
+ "coded": {
+  "top_left_corner": {"label": "Top-left corner", "x": 0, "y": 0, "width": 0.32, "height": 0.1},
+  "top_right_corner": {"label": "Top-right corner", "x": 0.62, "y": 0, "width": 0.38, "height": 0.1},
+  "left_column": {"label": "Left column", "x": 0, "y": 0.08, "width": 0.32, "height": 0.78},
+  "middle_column": {"label": "Middle column", "x": 0.32, "y": 0.03, "width": 0.3, "height": 0.93},
+  "right_column": {"label": "Right column", "x": 0.62, "y": 0.06, "width": 0.38, "height": 0.9},
+  "left_margin": {"label": "Left margin", "x": 0, "y": 0, "width": 0.04, "height": 1},
+  "bottom_left": {"label": "Bottom-left", "x": 0, "y": 0.8, "width": 0.4, "height": 0.2},
+  "bottom_centre": {"label": "Bottom centre", "x": 0.25, "y": 0.78, "width": 0.47, "height": 0.22},
+  "bottom_right": {"label": "Bottom-right", "x": 0.62, "y": 0.78, "width": 0.38, "height": 0.22}
+ }
+}

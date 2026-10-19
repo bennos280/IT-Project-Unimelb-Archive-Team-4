@@ -1,7 +1,8 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
-import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, ChevronRight, Search, Settings, Upload } from "lucide-react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { ArrowRight, ChevronRight, Search, Settings, Upload } from "lucide-react";
+import AppHeader from "@/components/AppHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -274,6 +275,12 @@ export default function ProgressDashboard() {
     const b = bundles?.find((x) => x.id === id);
     show({ bundle: b ? (b.name ?? b.id) : null, query: "", status: "All", pageNumber: 0 });
   }
+  // A plain click on the "All bundles" crumb returns in-app; modified clicks keep the link's default.
+  function backToOverview(e: MouseEvent) {
+    if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    openBundle(null);
+  }
   // Prevent duplicate submissions, then refresh the dashboard after the API accepts a job.
   async function startTranscription(
     source: AvailableBundle,
@@ -324,32 +331,15 @@ export default function ProgressDashboard() {
   const rowAction = "h-auto min-h-7 w-full flex-wrap px-1 py-1 text-xs sm:px-2.5 sm:text-[0.8rem]";
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="flex items-center justify-between gap-4 border-b px-6 py-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Wilfred Prest Survey</h1>
-          <p className="text-sm text-muted-foreground">Review Progress</p>
-        </div>
-        {bundle && (
-          <Button variant="outline" onClick={() => openBundle(null)}>
-            <ArrowLeft /> Back to all bundles
-          </Button>
-        )}
-      </header>
-      <main className="space-y-4 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight">
-              {bundle
-                ? `Bundle Number · ${bundle.name ?? bundle.id}`
-                : "All survey bundles"}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              {bundle
-                ? `${totals.ready} pages ready to review`
-                : `Track review progress across ${(bundles ?? []).length} bundles`}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
+      <AppHeader
+        crumbs={[
+          bundle
+            ? { label: "All bundles", href: "/", onClick: backToOverview }
+            : { label: "All bundles" },
+          ...(bundle ? [{ label: `Bundle ${bundle.name ?? bundle.id}` }] : []),
+        ]}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
             <ExportDialog
               surveyId={
                 bundle?.pages.find((page) => page.surveyId)?.surveyId ?? ""
@@ -369,6 +359,20 @@ export default function ProgressDashboard() {
               <Settings /> Settings
             </Button>
           </div>
+        }
+      />
+      <main className="space-y-4 p-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {bundle
+              ? `Bundle Number · ${bundle.name ?? bundle.id}`
+              : "All survey bundles"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {bundle
+              ? `${totals.ready} pages ready to review`
+              : `Track review progress across ${(bundles ?? []).length} bundles`}
+          </p>
         </div>
         {/* Display loading failures and allow retry; previously loaded data stays visible. */}
         {error && (

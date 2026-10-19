@@ -185,7 +185,7 @@ test.describe("Progress navigation and layout", () => {
       }
       // Accept the browser's leave warning for deliberately discarded drafts.
       page.on("dialog", (dialog) => dialog.accept());
-      await page.getByRole("link", { name: "Back to all bundles" }).click();
+      await page.getByRole("link", { name: "All bundles" }).click();
       const complete = outcome === "saved";
       expect(saveRequests).toBe(outcome === "unsaved" ? 0 : 1);
       for (const refresh of [false, true]) {
@@ -272,7 +272,7 @@ test.describe("Progress navigation and layout", () => {
       notesRow.getByRole("link", { name: "Review Pg 2", exact: true }),
     ).toHaveAttribute("href", "/?survey=216417_1&page=216417%2Fp1");
 
-    await page.getByRole("button", { name: "Back to all bundles" }).click();
+    await page.getByRole("link", { name: "All bundles" }).click();
 
     await expect(
       page.getByRole("heading", { name: "All survey bundles" }),
@@ -693,8 +693,13 @@ test.describe("Progress and transcription states", () => {
     ]);
     expect(calls).toBe(1);
     release();
-    await page.clock.runFor(5000);
-    await expect.poll(() => calls).toBe(2);
+    // Polling resumes once the slow refresh finishes; it ends asynchronously, so keep ticking until a poll goes out.
+    await expect
+      .poll(async () => {
+        await page.clock.runFor(5000);
+        return calls;
+      })
+      .toBeGreaterThanOrEqual(2);
   });
 });
 

@@ -2,7 +2,7 @@ import ExportDialog from "../export/ExportDialog";
 import PageActions from "./PageActions";
 // Main review screen: field table on the left, scan viewer on the right.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -14,10 +14,12 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import ImageViewer from "./ImageViewer";
+import { request } from "./api";
 import type { useReviewSession } from "./useReviewSession";
 import { getPageName, isTextPage } from "./model";
 import type { Flag } from "./model";
 import { flagCategories, flagLabels } from "./flags";
+import AppHeader from "@/components/AppHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -132,17 +134,31 @@ export default function ReviewScreen({
   });
   const groups = [...new Set(visible.map((field) => field.group))];
   const textPage = !!page && isTextPage(page.type);
+  // The dashboard names a bundle by its /bundles name; the id is accepted too when that is unavailable.
+  const bundleId = survey?.bundleId;
+  const [bundleNames, setBundleNames] = useState<{ bundle: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!bundleId) return;
+    let active = true;
+    request<{ bundle: string; name: string }[]>("/bundles")
+      .then((list) => active && Array.isArray(list) && setBundleNames(list))
+      .catch(() => {});
+    return () => { active = false; };
+  }, [bundleId]);
+  const bundleLabel = bundleNames.find((b) => b.bundle === bundleId)?.name || bundleId || "";
   return (
     <>
-      <header className="flex items-center justify-between gap-4 border-b px-6 py-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Wilfred Prest Survey
-          </h1>
-          <p className="text-sm text-muted-foreground">Review Survey Card</p>
-        </div>
-      </header>
+      <AppHeader
+        crumbs={[
+          { label: "All bundles", href: "/" },
+          ...(survey?.bundleId
+            ? [{ label: `Bundle ${bundleLabel}`, href: `/?bundle=${encodeURIComponent(bundleLabel)}` }]
+            : []),
+          { label: `Survey ${session.surveyId}`.trim() },
+        ]}
+      />
       <main>
+        <h1 className="sr-only">Review survey card</h1>
         {!session.surveyId ? (
           <div className="p-8 text-center text-muted-foreground" role="status">
             Select a survey to review.
@@ -169,7 +185,7 @@ export default function ReviewScreen({
             Loading survey and source images…
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:h-[calc(100dvh-8.5rem)] md:grid-cols-[46%_54%]">
+          <div className="grid grid-cols-1 md:h-[calc(100dvh-5.6rem)] md:grid-cols-[46%_54%]">
             <section className="flex h-[560px] min-w-0 flex-col overflow-hidden border-b px-4 pt-4 md:h-auto md:border-r md:border-b-0 md:px-6">
               <div
                 className="flex flex-wrap items-center gap-2"
@@ -404,9 +420,11 @@ export default function ReviewScreen({
                                               ? pageReviews[field.id].value
                                               : field.value) || "–"}
                                           </span>
-                                          {field.location && (
+                                          {(field.areaLabel || field.location) && (
                                             <p className="mt-0.5 text-xs text-muted-foreground">
-                                              {field.location}
+                                              {[field.areaLabel, field.location]
+                                                .filter(Boolean)
+                                                .join(" · ")}
                                             </p>
                                           )}
                                         </div>
