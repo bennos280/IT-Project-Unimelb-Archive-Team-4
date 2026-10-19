@@ -312,3 +312,24 @@ def test_an_item_of_the_archives_known_pdfs_is_seen_from_its_pdf_there(client, d
     assert client.get("/collections/1/items/216412/scans").json() == {"pages": 1}
     assert (tmp_path / "216412" / "423444_x.pdf").is_file()
     assert client.get("/collections/1/items/216412/scans/1", params={"width": 5000}).status_code == 200
+
+
+def test_an_items_pages_are_said_to_be_its_series_page_types_before_it_is_read(client, db):
+    db.add_all([models.Collection(collection_id=2, name="Cards"), models.Collection(collection_id=3, name="Diaries")])
+    db.flush()
+    db.add_all([models.ArchiveItem(node=367669, collection_id=2, identifier="UMA-ITE-1", title="Blas", pdf="367669/367669.pdf"),
+                models.PageType(name="card", label="Casualty card", collection_id=2),
+                models.PageType(name="unknown_2", label="Unknown", collection_id=2, unknown=True),
+                models.PageType(name="diary", label="Diary page", collection_id=3)])
+    db.commit()
+    labels = "/collections/2/items/367669/labels"
+    assert client.get(labels).json() == {}
+    assert client.put(f"{labels}/2", json={"pageType": "card"}).json() == {"2": "card"}
+    assert client.put(f"{labels}/1", json={"pageType": "card"}).json() == {"1": "card", "2": "card"}
+    assert client.put(f"{labels}/2", json={"pageType": None}).json() == {"1": "card"}  # unsaid
+    for kind in ("diary", "unknown_2", "nothing"):  # another series', the Unknown one, none
+        refused = client.put(f"{labels}/1", json={"pageType": kind})
+        assert (refused.status_code, refused.json()["detail"]) == (400, f"No page type called {kind} in this series.")
+    assert client.put(f"{labels}/0", json={"pageType": "card"}).status_code == 400
+    assert client.get("/collections/3/items/367669/labels").status_code == 404  # not that series' item
+    assert client.get(labels).json() == {"1": "card"}

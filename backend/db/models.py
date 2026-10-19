@@ -37,6 +37,13 @@ class ArchiveItem(Base):
     title = Column(String, nullable=False)
     pdf = Column(String, nullable=True) #<node>/<node>.pdf, where its PDF goes once downloaded; None: in backend/archive_pdfs.txt
 
+#which of its series' page types a page of an item not yet read is, as said while setting the series up on it (a sample)
+class SampleLabel(Base):
+    __tablename__ = "sample_labels"
+    node = Column(Integer, ForeignKey("archive_items.node"), primary_key=True)
+    page = Column(Integer, primary_key=True) #its page in its PDF, from 1
+    page_type = Column(String, ForeignKey("page_types.name"), nullable=False)
+
 #ponytail: an uploaded bundle joins collection 1 until the import screen picks a series
 class Bundle(Base):
     __tablename__ = "bundles"

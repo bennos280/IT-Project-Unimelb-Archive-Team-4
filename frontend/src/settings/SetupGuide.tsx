@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import SetupChecklist from "../progress/SetupChecklist";
 import { backendRequest, itemTitle, type ArchiveItem } from "../progress/backend";
+import type { PageType } from "./PageTypesScreen";
+import type { Reviewer } from "./ReviewerField";
+import SamplePanel, { type Labels } from "./SamplePanel";
 
 type Listed = { items: { name: string; archive: ArchiveItem | null }[]; page: number; total: number };
 const MOVES: Record<string, number> = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1, Home: -Infinity, End: Infinity };
@@ -13,7 +16,8 @@ const MOVES: Record<string, number> = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
 // A series' Setup tab until it is set up: one of its items as a sample, every page of it on screen (its PDF fetched from the
-// archive first, if it isn't here), beside the steps of setting the series up. The sample is the first item listed, or the one
+// archive first, if it isn't here), each with the page type it was said to be, beside what the page shown is and that kind's
+// fields (SamplePanel) and the steps of setting the series up. The sample is the first item listed, or the one
 // chosen with the arrows (?sample=, counting from 1; past the last, the last). Its pages are one tab stop, moved through by the
 // arrow keys, Home and End.
 export default function SetupGuide({ collectionId }: { collectionId: number }) {
@@ -23,9 +27,16 @@ export default function SetupGuide({ collectionId }: { collectionId: number }) {
   const [shown, setShown] = useState({ of: "", page: 1 }); // the page looked at, of which item
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [types, setTypes] = useState<PageType[]>([]);
+  const [labels, setLabels] = useState<{ of: string; pages: Labels } | null>(null);
+  const [reviewers, setReviewers] = useState<Reviewer[] | null>(null); // null: loading
+  const [reviewerId, setReviewerId] = useState("");
+  const [changes, setChanges] = useState(0); // a page type or template saved: loaded again
   const item = listed?.items[0];
   const name = item?.name;
   const pages = scans && scans.of === name ? scans.pages : null;
+  const said = labels && labels.of === name ? labels.pages : {};
+  const typeOf = (n: number) => types.find((t) => t.name === said[String(n)])?.label;
   const page = shown.of === name ? shown.page : 1;
   const setPage = (n: number) => setShown({ of: name!, page: n });
   const strip = useRef<HTMLOListElement>(null);
@@ -45,6 +56,22 @@ export default function SetupGuide({ collectionId }: { collectionId: number }) {
       .catch((e) => { if (current) setError(message(e, "Could not get its scans.")); });
     return () => { current = false; };
   }, [collectionId, name, attempt]);
+
+  useEffect(() => {
+    let current = true;
+    backendRequest<PageType[]>(`/page-types?collection=${collectionId}`).then((found) => { if (current) setTypes(found); }).catch(() => {});
+    return () => { current = false; };
+  }, [collectionId, changes]);
+  useEffect(() => {
+    backendRequest<Reviewer[]>("/reviewers").then(setReviewers).catch(() => setReviewers([]));
+  }, []);
+  useEffect(() => {
+    if (!name) return;
+    let current = true;
+    backendRequest<Labels>(`/collections/${collectionId}/items/${name}/labels`)
+      .then((found) => { if (current) setLabels({ of: name, pages: found }); }).catch(() => {});
+    return () => { current = false; };
+  }, [collectionId, name]);
 
   function again() {
     setError("");
@@ -113,12 +140,14 @@ export default function SetupGuide({ collectionId }: { collectionId: number }) {
             <ol ref={strip} aria-label="Pages" className="flex gap-2 overflow-x-auto pb-1 sm:max-h-[80vh] sm:flex-col sm:overflow-x-visible sm:overflow-y-auto sm:pb-0 sm:pr-1">
               {numbers.map((n) => (
                 <li key={n} className="shrink-0">
-                  <button type="button" aria-label={`Page ${n}`} aria-current={n === page ? "true" : undefined} tabIndex={n === page ? 0 : -1}
+                  <button type="button" aria-label={`Page ${n}${typeOf(n) ? `, ${typeOf(n)}` : ""}`} title={typeOf(n)} aria-current={n === page ? "true" : undefined} tabIndex={n === page ? 0 : -1}
                     onClick={() => setPage(n)} onKeyDown={move}
                     className={`block w-20 overflow-hidden rounded-md border bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
                       n === page ? "ring-2 ring-primary" : "hover:border-foreground/40"}`}>
                     <img src={scan(n, 240)} alt="" loading="lazy" className="h-28 w-20 object-cover object-top" />
-                    <span className="block border-t bg-background py-0.5 text-center text-xs text-muted-foreground">{n}</span>
+                    <span className="block truncate border-t bg-background px-1 py-0.5 text-center text-xs text-muted-foreground">
+                      {n}{typeOf(n) ? ` · ${typeOf(n)}` : ""}
+                    </span>
                   </button>
                 </li>
               ))}
@@ -139,7 +168,15 @@ export default function SetupGuide({ collectionId }: { collectionId: number }) {
           </div>
         )}
       </section>
-      <SetupChecklist collectionId={collectionId} inSetup sample={name} />
+      <div className="space-y-4">
+        {name && pages !== null && reviewers && (
+          <SamplePanel key={name} collectionId={collectionId} item={name} page={page} types={types} labels={said}
+            reviewers={reviewers} reviewerId={reviewerId} onReviewer={setReviewerId}
+            onAddReviewer={(person) => setReviewers((r) => [...(r ?? []).filter((p) => p.id !== person.id), person])}
+            onLabels={(found) => setLabels({ of: name, pages: found })} onChanged={() => setChanges((n) => n + 1)} />
+        )}
+        <SetupChecklist collectionId={collectionId} inSetup sample={name} version={changes} />
+      </div>
     </div>
   );
 }
