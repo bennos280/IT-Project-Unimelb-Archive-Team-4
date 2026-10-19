@@ -278,8 +278,13 @@ test("a record inside others follows them in the trail, each opening its records
   await mockApi(page);
   await page.route("**/api/survey/216417_1", (route) => route.fulfill({ json: {
     id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", recordName: "letter", grouped: true, pages,
-    item: { name: "216417", archive: null }, parentId: "216417", ancestors: [{ id: "216417", name: "folder" }] } }));
+    item: { name: "216417", archive: null }, parentId: "216417", ancestors: [{ id: "216417", name: "folder", parent: null }] } }));
   await page.goto("/?survey=216417_1");
   await expect(crumbs(page)).toHaveText(["Items", "Item 216417", "Folder 216417", "Letter 1"]);
   await expect(trail(page).getByRole("link", { name: "Folder 216417" })).toHaveAttribute("href", "/?collection=1&bundle=216417&record=216417");
+  await page.route("**/api/survey/216417_1", (route) => route.fulfill({ json: {  // the folder holds just this letter: no crumb
+    id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", recordName: "letter", grouped: true, pages,
+    item: { name: "216417", archive: null }, parentId: "216417", ancestors: [] } }));
+  await page.reload();
+  await expect(crumbs(page)).toHaveText(["Items", "Item 216417", "Letter 1"]); // numbered within its folder, not the item
 });

@@ -97,5 +97,5 @@ def test_an_item_gives_its_records_and_a_record_the_ones_it_sits_inside_top_firs
     assert client.get("/survey/9_00001").json()["ancestors"] == []  # 9 holds just 9_00001 and no pages: the item opens past it
     db.get(models.Page, "9_00002").survey_id = "9"
     db.commit()
-    assert client.get("/survey/9_00001").json()["ancestors"] == [{"id": "9", "name": "volume"}]
+    assert client.get("/survey/9_00001").json()["ancestors"] == [{"id": "9", "name": "volume", "parent": None}]
     assert client.get("/survey/9_00001").json()["recordName"] == "month"

@@ -149,9 +149,9 @@ export default function ReviewScreen({
         crumbs={survey?.wholeItem ? [...items, { label: itemTitle(bundleLabel, survey.item?.archive) }] : [
           ...items,
           ...(survey?.bundleId ? [{ label: itemTitle(bundleLabel, survey.item?.archive), href: itemLink }] : []),
-          ...outer.map((a, i) => ({ label: `${recordWords(a.name).One} ${recordNumber(a.id, outer[i - 1]?.id ?? survey?.bundleId)}`,
+          ...outer.map((a) => ({ label: `${recordWords(a.name).One} ${recordNumber(a.id, a.parent ?? survey?.bundleId)}`,
             href: `${itemLink}&record=${encodeURIComponent(a.id)}` })),
-          { label: survey ? `${words.One} ${recordNumber(session.surveyId, outer.at(-1)?.id ?? survey.bundleId)}` : session.surveyId || words.One },
+          { label: survey ? `${words.One} ${recordNumber(session.surveyId, survey.parentId ?? survey.bundleId)}` : session.surveyId || words.One },
         ]}
       />
       <main>

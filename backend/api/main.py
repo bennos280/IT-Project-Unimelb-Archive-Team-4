@@ -151,15 +151,16 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
             "wholeItem": db.query(models.Page).filter_by(bundle_id=bundle.bundle_id).count() == len(pages_list),
             "parentId": survey.parent_id, "ancestors": ancestors(db, collection.collection_id, survey.parent_id), "pages":pages_list}
 
-#a record and the records it sits inside, top first, each its id and its level's name, but not one holding just one record
-#and no pages of its own (the item's page opens past it); [] for none
+#a record and the records it sits inside, top first, each its id, its level's name and the record it sits in, but not one
+#holding just one record and no pages of its own (the item's page opens past it); [] for none
 def ancestors(db, collection_id, survey_id):
     found = []
     while survey_id is not None:
         held = (db.query(models.Survey).filter_by(parent_id=survey_id).count(), db.query(models.Page).filter_by(survey_id=survey_id).count())
+        parent = db.get(models.Survey, survey_id).parent_id
         if held != (1, 0):
-            found.insert(0, {"id": survey_id, "name": grouping.record_name(db, collection_id, survey_id)})
-        survey_id = db.get(models.Survey, survey_id).parent_id
+            found.insert(0, {"id": survey_id, "name": grouping.record_name(db, collection_id, survey_id), "parent": parent})
+        survey_id = parent
     return found
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
