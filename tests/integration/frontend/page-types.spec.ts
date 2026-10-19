@@ -17,8 +17,8 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
     type("other", "Unknown", { unknown: true }),
   ];
   const collection = {
-    id: 1, name: "Wilfred Prest Survey", recordKey, recordName: "survey",
-    get grouped() { return types.some((t) => t.startsRecord); },
+    id: 1, name: "Wilfred Prest Survey", recordKey, recordName: "survey", groupPages: true,
+    get grouped() { return this.groupPages && types.some((t) => t.startsRecord); },
   };
   const version = (id: number, body: string, extra: Partial<Version> = {}): Version =>
     ({ id, body, rules: {}, reviewer: null, note: null, createdAt: "2026-10-01T02:00:00+00:00", ...extra });
@@ -51,8 +51,9 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
       const body = request.postDataJSON();
       calls.patchCollection.push(body);
       if (body.recordKey === "address") return route.fulfill({ status: 400, json: { detail: "These page types' templates don't have 'address': Coded page." } });
-      collection.recordKey = body.recordKey || null;
-      collection.recordName = body.recordName.trim().toLowerCase() || "record";
+      collection.groupPages = body.groupPages;
+      if ("recordKey" in body) collection.recordKey = body.recordKey || null;
+      if ("recordName" in body) collection.recordName = body.recordName.trim().toLowerCase() || "record";
       return route.fulfill({ json: collection });
     }
     if (path === "/api/page-types" && method === "POST") {
@@ -258,7 +259,8 @@ test("the survey number field saves, and a refusal is shown", async ({ page }) =
   await field.fill("");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(field).toHaveValue("");
-  expect(calls.patchCollection).toEqual([{ recordName: "survey", recordKey: "address" }, { recordName: "survey", recordKey: "" }]);
+  expect(calls.patchCollection).toEqual([{ groupPages: true, recordName: "survey", recordKey: "address" },
+    { groupPages: true, recordName: "survey", recordKey: "" }]);
 });
 
 test("the record name words the page types, and is saved with the number field", async ({ page }) => {
@@ -268,7 +270,34 @@ test("the record name words the page types, and is saved with the number field",
   await page.getByRole("button", { name: "Save" }).click();
   await expect(row(page, "Main page")).toContainText("Starts a household card");
   await expect(page.getByLabel("Household card number field")).toHaveValue("number_of_dwelling");
-  expect(calls.patchCollection).toEqual([{ recordName: "Household card", recordKey: "number_of_dwelling" }]);
+  expect(calls.patchCollection).toEqual([{ groupPages: true, recordName: "Household card", recordKey: "number_of_dwelling" }]);
+});
+
+test("each item can be one record, with no grouping to set, or hold several again", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?collection=1&view=setup");
+  const one = page.getByRole("radio", { name: /Each item is one record/ });
+  const several = page.getByRole("radio", { name: /Each item holds several records/ });
+  await expect(several).toBeChecked();
+  await one.click();
+  await expect(page.getByLabel("Survey number field")).toHaveCount(0);
+  await expect(page.getByLabel("Record name")).toHaveValue("survey");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("columnheader", { name: "Grouping" })).toHaveCount(0);
+  await expect(one).toBeChecked();
+  await row(page, "Notes page").getByRole("button", { name: "Edit Notes page" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Notes page" });
+  await expect(dialog.getByRole("radiogroup", { name: "Grouping" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await row(page, "Unknown").getByRole("button", { name: "Edit Unknown" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit Unknown" }).getByText("They have no template.", { exact: false })).toBeVisible();
+  await page.getByRole("dialog", { name: "Edit Unknown" }).getByRole("button", { name: "Cancel" }).click();
+  await several.click();
+  await expect(page.getByLabel("Survey number field")).toHaveValue("number_of_dwelling");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(row(page, "Main page")).toContainText("Starts a survey");
+  expect(calls.patchCollection).toEqual([{ groupPages: false, recordName: "survey" },
+    { groupPages: true, recordName: "survey", recordKey: "number_of_dwelling" }]);
 });
 
 test("with no page type starting a record, each page is a record of its own", async ({ page }) => {
@@ -279,7 +308,6 @@ test("with no page type starting a record, each page is a record of its own", as
   await dialog.getByRole("radio", { name: /Follows the page before it/ }).click();
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(row(page, "Notes page")).toContainText("A survey of its own");
-  await expect(page.getByText("No page type starts a survey, so each page is a survey of its own.", { exact: false })).toBeVisible();
 });
 
 test("joining by number needs a survey number field, and the Unknown type has no grouping or template", async ({ page }) => {

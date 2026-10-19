@@ -115,7 +115,8 @@ def page_flags(db, p, fields_list):
                "reason": "The model couldn't read part of this ([?]): compare it with the scan."}
               for f in fields_list if "[?]" in (f["value"] or "")]
     if db.get(models.PageType, p.category).unknown and any(f["id"] == "text" for f in fields_list):
-        grouped = p.survey_id and db.query(models.Page).filter_by(survey_id=p.survey_id).count() > 1
+        several = db.get(models.Collection, db.get(models.Bundle, p.bundle_id).collection_id).group_pages
+        grouped = several and p.survey_id and db.query(models.Page).filter_by(survey_id=p.survey_id).count() > 1
         flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain",
                       "reason": OTHER_PAGE + (OTHER_PAGE_GROUPED.format(page_record_name(db, p)) if grouped else OTHER_PAGE_ALONE)})
     return flags
@@ -431,6 +432,7 @@ class CollectionSettings(BaseModel):
     archiveItems: int | None = None
     recordKey: str | None = None #None or "": surveys by page order only
     recordName: str | None = None #what one record is called on screen; None or "": record
+    groupPages: bool | None = None #its items hold several records; False: each item is one record
 
 class NewCollection(BaseModel):
     name: str
@@ -494,7 +496,8 @@ def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
     return page_type_json(db.get(models.PageType, name), {})
 
 #changes a page type's label or how it groups. A type starts a survey or joins one by number, not both; an Unknown type, never
-#read, does neither; and grouping needs the collection's number field in the template of a type that does
+#read, does neither; and while the collection's items hold several records, grouping needs its number field in the template of
+#a type that does
 @app.patch("/page-types/{name}")
 def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends(get_db)):
     write_lock(db)
@@ -511,7 +514,7 @@ def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends
                f"A page type starts {record} or joins one by number, not both." if starts and matched else
                f"Unknown pages aren't read, so they can't start or join {record}." if t.unknown and (starts or matched) else
                f"Add the {grouping.record_name(collection)} number field '{key}' to its template first."
-               if key and (starts or matched) and template and key not in json.loads(template.body) else None)
+               if collection.group_pages and key and (starts or matched) and template and key not in json.loads(template.body) else None)
     if problem:
         raise HTTPException(status_code=400, detail=problem)
     t.label, t.starts_record, t.matched_by_key = label, starts, matched
@@ -533,7 +536,8 @@ def bundle_jobs(db, collection_id):
 
 #a collection, and with db how far along it is: bundles loaded (processed), being processed or failed; pages, those in a survey
 #(reviewable) and reviewed; what needs a person (pages of its Unknown type, open flags); how far it is set up (page types
-#other than Unknown, and how many of them have a template); and whether its pages group into records (a type starts one)
+#other than Unknown, and how many of them have a template); and whether its pages group into records (its items hold several
+#and a type starts one)
 def collection_json(c, db=None):
     found = {}
     if db is not None:
@@ -548,9 +552,9 @@ def collection_json(c, db=None):
                  "unknownPages": db.query(models.Page).filter(models.Page.category.in_(unknown)).count(),
                  "flagged": sum(p["flagCount"] for p in pages),
                  "pageTypes": len(types) - len(unknown), "templates": sum(t.name in templates for t in types if not t.unknown),
-                 "grouped": any(t.starts_record for t in types)}
+                 "grouped": c.group_pages and any(t.starts_record for t in types)}
     return {"id": c.collection_id, "name": c.name, "recordKey": c.record_key, "recordName": grouping.record_name(c),
-            "archiveSeries": c.archive_series,
+            "groupPages": c.group_pages, "archiveSeries": c.archive_series,
             "archiveIdentifier": c.archive_identifier, "archiveTitle": c.archive_title, "archiveItems": c.archive_items, **found}
 
 def series_text(text):
@@ -598,8 +602,9 @@ def get_collection(collection_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No such series.")
     return collection_json(c, db)
 
-#renames a collection, relinks its series, names its records (a word or two, lower case), or sets the field holding a survey's
-#number, which the templates of the types that start or join a survey must have; a field left out of the request stays as it is
+#renames a collection, relinks its series, names its records (a word or two, lower case), says whether its items hold several,
+#or sets the field holding a survey's number, which the templates of the types that start or join a survey must have while its
+#items hold several; a field left out of the request stays as it is
 @app.patch("/collections/{collection_id}")
 def update_collection(collection_id: int, payload: CollectionSettings, db: Session = Depends(get_db)):
     write_lock(db)
@@ -617,16 +622,17 @@ def update_collection(collection_id: int, payload: CollectionSettings, db: Sessi
         c.archive_series = series_node(payload.archiveSeries)
         c.archive_identifier, c.archive_title = series_text(payload.archiveIdentifier), series_text(payload.archiveTitle)
         c.archive_items = payload.archiveItems
-    if "recordKey" in given:
-        key = (payload.recordKey or "").strip() or None
-        if key and not instructions.KEY.fullmatch(key):
-            raise HTTPException(status_code=400, detail="A field name is lower-case letters, digits and _, starting with a letter.")
+    key = ((payload.recordKey or "").strip() or None) if "recordKey" in given else c.record_key
+    if key and not instructions.KEY.fullmatch(key):
+        raise HTTPException(status_code=400, detail="A field name is lower-case letters, digits and _, starting with a letter.")
+    several = c.group_pages if payload.groupPages is None else payload.groupPages
+    if several and key and ("recordKey" in given or payload.groupPages):
         templates = instructions.newest(db)
         missing = sorted(t.label for t in db.query(models.PageType).filter_by(collection_id=collection_id)
-                         if key and (t.starts_record or t.matched_by_key) and t.name in templates and key not in json.loads(templates[t.name].body))
+                         if (t.starts_record or t.matched_by_key) and t.name in templates and key not in json.loads(templates[t.name].body))
         if missing:
             raise HTTPException(status_code=400, detail=f"These page types' templates don't have '{key}': {', '.join(missing)}.")
-        c.record_key = key
+    c.record_key, c.group_pages = key, several
     if "recordName" in given:
         word = " ".join((payload.recordName or "").lower().split())
         if word and not (len(word) <= 40 and re.fullmatch(r"[a-z]+(['-][a-z]+)*( [a-z]+(['-][a-z]+)*)?", word)):

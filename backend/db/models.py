@@ -9,6 +9,8 @@ class Collection(Base):
     name = Column(String, nullable=False, unique=True)
     record_key = Column(String, nullable=True) #the field holding a survey's number, which ties its pages together; None: page order only
     record_name = Column(String, nullable=True) #what one record is called on screen, like survey or letter; None: record
+    #its items hold several records, grouped by its page types (backend/db/grouping.py); False: each item is one record
+    group_pages = Column(Boolean, nullable=False, default=False, server_default=false())
     archive_series = Column(Integer, nullable=True) #its series on archives.library.unimelb.edu.au: /nodes/view/<archive_series>
     archive_identifier = Column(String, nullable=True) #the series' catalogue identifier (UMA-SR-...), title and number of
     archive_title = Column(String, nullable=True) #items, as the archive showed them when the series was linked

@@ -333,3 +333,15 @@ def test_014_calls_prests_records_surveys_and_leaves_other_series_unnamed(url, t
     assert rows(db, "SELECT collection_id, record_name FROM collections") == [(1, "survey"), (2, None)]
     command.downgrade(config, "013")
     assert "record_name" not in {r[1] for r in rows(db, "PRAGMA table_info(collections)")}
+
+
+def test_020_has_the_items_of_a_series_with_a_page_type_that_starts_a_record_hold_several(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "019")
+    with sqlite3.connect(db) as con:
+        con.execute("INSERT INTO collections (collection_id, name) VALUES (2, 'Letters')")
+    database.migrate(url)
+    assert rows(db, "SELECT collection_id, group_pages FROM collections") == [(1, 1), (2, 0)]
+    command.downgrade(config, "019")
+    assert "group_pages" not in {r[1] for r in rows(db, "PRAGMA table_info(collections)")}

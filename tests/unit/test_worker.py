@@ -126,7 +126,7 @@ def test_only_one_worker_runs_at_a_time(tmp_path, monkeypatch):
 
 
 def test_an_item_of_another_series_runs_with_that_series_page_types_and_rule(db, tmp_path, monkeypatch):
-    db.add(models.Collection(collection_id=2, name="Letters", record_name="letter"))
+    db.add(models.Collection(collection_id=2, name="Letters", record_name="letter", group_pages=True))
     db.flush()
     db.add_all([models.PageType(name="unknown_2", label="Unknown", collection_id=2, unknown=True),
                 models.PageType(name="docket", label="Docket", collection_id=2, starts_record=True),

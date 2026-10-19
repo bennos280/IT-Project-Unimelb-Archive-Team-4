@@ -56,3 +56,19 @@ def test_the_survey_number_field_must_be_in_the_templates_that_group_by_it(clien
     assert client.patch("/collections/1", json={"recordKey": "Bad key"}).status_code == 400
     assert client.patch("/collections/1", json={"recordKey": ""}).json()["recordKey"] is None  # page order only
     assert client.get("/collections/9").status_code == 404
+
+
+def test_items_can_hold_several_records_again_only_with_the_number_field_in_the_templates_that_group_by_it(client, db):
+    setup(db)
+    assert client.patch("/collections/1", json={"groupPages": False}).json()["groupPages"] is False
+    assert grouping.required_fields(db) == {}
+    # while each item is one record, how a type groups is unused, so its template needn't have the number
+    assert client.patch("/page-types/notes", json={"label": "Interviewer notes", "startsRecord": True}).status_code == 200
+    assert client.patch("/collections/1", json={"recordKey": "address"}).json()["recordKey"] == "address"
+    refused = client.patch("/collections/1", json={"groupPages": True})
+    assert (refused.status_code, refused.json()["detail"]) == (
+        400, "These page types' templates don't have 'address': Coded page, Interviewer notes.")
+    assert client.get("/collections/1").json()["groupPages"] is False
+    client.patch("/page-types/notes", json={"startsRecord": False})
+    assert client.patch("/collections/1", json={"groupPages": True, "recordKey": "number_of_dwelling"}).json()["groupPages"] is True
+    assert grouping.required_fields(db) == {"main": "number_of_dwelling", "coded": "number_of_dwelling"}

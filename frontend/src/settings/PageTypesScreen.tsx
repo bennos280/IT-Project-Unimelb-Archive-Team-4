@@ -18,8 +18,8 @@ import { cleanRules, parseTemplate, sameRules, type Rules } from "./rules";
 
 type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; startsRecord: boolean; matchedByKey: boolean; templateVersion: number | null };
 type Collection = {
-  id: number; name: string; recordKey: string | null; recordName: string; grouped: boolean; archiveIdentifier?: string | null;
-  archiveSeries?: number | null;
+  id: number; name: string; recordKey: string | null; recordName: string; groupPages: boolean; grouped: boolean;
+  archiveIdentifier?: string | null; archiveSeries?: number | null;
 };
 type Version = { id: number; body: string; rules: Rules; reviewer: string | null; note: string | null; createdAt: string };
 type Grouping = "starts" | "matched" | "follows";
@@ -79,7 +79,7 @@ export default function PageTypesScreen() {
             </AlertDescription>
           </Alert>
         )}
-        {collection && <Records key={`${collection.recordName} ${collection.recordKey}`} collection={collection} onSaved={load} />}
+        {collection && <Records key={`${collection.groupPages} ${collection.recordName} ${collection.recordKey}`} collection={collection} onSaved={load} />}
         {types && (
           <section className="space-y-3">
             <div className="flex flex-wrap items-end justify-between gap-3">
@@ -93,7 +93,7 @@ export default function PageTypesScreen() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Page type</TableHead>
-                  <TableHead>Grouping</TableHead>
+                  {collection?.groupPages && <TableHead>Grouping</TableHead>}
                   <TableHead>Template</TableHead>
                   <TableHead className="w-0"><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
@@ -102,10 +102,12 @@ export default function PageTypesScreen() {
                 {types.map((t) => (
                   <TableRow key={t.name}>
                     <TableCell className="font-medium">{t.label}</TableCell>
-                    <TableCell>
-                      {t.unknown ? "Pages sorting couldn't place wait here"
-                        : collection && (collection.grouped ? groupings(collection)[groupingOf(t)] : `${recordWords(collection.recordName).A} of its own`)}
-                    </TableCell>
+                    {collection?.groupPages && (
+                      <TableCell>
+                        {t.unknown ? "Pages sorting couldn't place wait here"
+                          : collection.grouped ? groupings(collection)[groupingOf(t)] : `${recordWords(collection.recordName).A} of its own`}
+                      </TableCell>
+                    )}
                     <TableCell>{t.unknown ? "Not read" : t.templateVersion ? "Saved" : "None yet"}</TableCell>
                     <TableCell>
                       <Button variant="outline" size="sm" aria-label={`Edit ${t.label}`} onClick={() => setEditing(t)}>Edit</Button>
@@ -130,22 +132,26 @@ export default function PageTypesScreen() {
   );
 }
 
-// What one record is called, and the field holding each record's number; empty: pages group by their order only.
+// Whether each item is one record or holds several, what one is called, and with several the field holding each one's number
+// (empty: pages group by their order only).
 function Records({ collection, onSaved }: { collection: Collection; onSaved: () => void }) {
   const id = useId();
+  const [several, setSeveral] = useState(collection.groupPages);
   const [name, setName] = useState(collection.recordName);
   const [key, setKey] = useState(collection.recordKey ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const words = recordWords(collection.recordName);
   const stored = name.toLowerCase().split(/\s+/).filter(Boolean).join(" ") || "record"; // as the backend stores it
-  const unchanged = stored === collection.recordName && key.trim() === (collection.recordKey ?? "");
+  const unchanged = several === collection.groupPages && stored === collection.recordName
+    && (!several || key.trim() === (collection.recordKey ?? ""));
 
   async function save() {
     setBusy(true);
     setError("");
     try {
-      await backendRequest<Collection>(`/collections/${collection.id}`, json("PATCH", { recordName: name, recordKey: key }));
+      await backendRequest<Collection>(`/collections/${collection.id}`,
+        json("PATCH", { groupPages: several, recordName: name, ...(several && { recordKey: key }) }));
       onSaved();
     } catch (e) {
       setError(message(e, "Could not save the records' settings."));
@@ -157,23 +163,36 @@ function Records({ collection, onSaved }: { collection: Collection; onSaved: () 
     <section className="space-y-3">
       <div>
         <h2 className="text-xl font-semibold tracking-tight">Records</h2>
-        <p className="text-sm text-muted-foreground">
-          {collection.grouped
-            ? `The pages of one ${words.one} are reviewed together. A page that joins by number is filed with the ${words.one} showing the same number; leave the number field empty to group pages by their order only.`
-            : `No page type starts ${words.a}, so each page is ${words.a} of its own. Edit a page type to make it start one.`}
-        </p>
+        <p className="text-sm text-muted-foreground">A record's pages are reviewed together. Changes apply to items read from now on.</p>
       </div>
-      <div className="flex max-w-2xl flex-wrap items-end gap-2">
-        <Field className="min-w-48 flex-1">
-          <FieldLabel htmlFor={`${id}-name`}>Record name</FieldLabel>
-          <Input id={`${id}-name`} value={name} placeholder="record" onChange={(e) => setName(e.target.value)} />
-        </Field>
-        <Field className="min-w-48 flex-1">
-          <FieldLabel htmlFor={`${id}-key`}>{words.One} number field</FieldLabel>
-          <Input id={`${id}-key`} value={key} placeholder="e.g. number_of_dwelling" onChange={(e) => setKey(e.target.value)} />
-        </Field>
-        <Button disabled={busy || unchanged} onClick={save}>Save</Button>
+      <RadioGroup aria-label="Records" className="max-w-2xl" value={several ? "several" : "one"}
+        onValueChange={(value) => setSeveral(value === "several")}>
+        <Choice id={`${id}-one`} value="one" title="Each item is one record">All of an item's pages are reviewed together, like a card or a letter.</Choice>
+        <Choice id={`${id}-several`} value="several" title="Each item holds several records">
+          Its page types say which pages start a record, like the surveys in a box of forms; with none, each page is a record.
+        </Choice>
+      </RadioGroup>
+      <div className="max-w-2xl space-y-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <Field className="min-w-48 flex-1">
+            <FieldLabel htmlFor={`${id}-name`}>Record name</FieldLabel>
+            <Input id={`${id}-name`} value={name} placeholder="record" onChange={(e) => setName(e.target.value)} />
+          </Field>
+          {several && (
+            <Field className="min-w-48 flex-1">
+              <FieldLabel htmlFor={`${id}-key`}>{words.One} number field</FieldLabel>
+              <Input id={`${id}-key`} value={key} placeholder="e.g. number_of_dwelling" onChange={(e) => setKey(e.target.value)} />
+            </Field>
+          )}
+        </div>
+        {several && (
+          <p className="text-sm text-muted-foreground">
+            A page that joins by number is filed with the {words.one} showing the same number; leave the number field empty to group
+            pages by their order only.
+          </p>
+        )}
       </div>
+      <Button disabled={busy || unchanged} onClick={save}>Save</Button>
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     </section>
   );
@@ -224,11 +243,12 @@ function AddDialog({ collectionId, reviewers, onAddReviewer, onClose, onAdded }:
   );
 }
 
-function GroupingOption({ value, title, disabled, children }: { value: Grouping; title: string; disabled?: boolean; children: ReactNode }) {
+// One choice of a radio group, as a card with its title and what it means.
+function Choice({ id, value, title, disabled, children }: { id: string; value: string; title: string; disabled?: boolean; children: ReactNode }) {
   return (
-    <FieldLabel htmlFor={`grouping-${value}`}>
+    <FieldLabel htmlFor={id}>
       <Field orientation="horizontal" data-disabled={disabled || undefined}>
-        <RadioGroupItem value={value} id={`grouping-${value}`} disabled={disabled} />
+        <RadioGroupItem value={value} id={id} disabled={disabled} />
         <FieldContent>
           <FieldTitle>{title}</FieldTitle>
           <FieldDescription>{children}</FieldDescription>
@@ -305,24 +325,27 @@ function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSav
           </Field>
           {type.unknown ? (
             <p className="text-sm text-muted-foreground">
-              Pages sorting couldn't place wait here, unread, until a reviewer picks their type. They have no template and don't start or join {recordWords(collection.recordName).a}.
+              Pages sorting couldn't place wait here, unread, until a reviewer picks their type. They have no template
+              {collection.groupPages ? ` and don't start or join ${recordWords(collection.recordName).a}.` : "."}
             </p>
           ) : (
             <>
-              <Field>
-                <FieldTitle>Grouping</FieldTitle>
-                <RadioGroup aria-label="Grouping" value={grouping} onValueChange={(value) => setGrouping(value as Grouping)}>
-                  <GroupingOption value="starts" title={groupings(collection).starts}>A page of this type begins a new {collection.recordName}; the pages after it join it.</GroupingOption>
-                  <GroupingOption value="matched" title={groupings(collection).matched} disabled={!collection.recordKey}>
-                    {collection.recordKey
-                      ? `Filed with the ${collection.recordName} showing the same ${collection.recordKey}, wherever it is in the item.`
-                      : `Set ${recordWords(collection.recordName).a} number field first.`}
-                  </GroupingOption>
-                  <GroupingOption value="follows" title={groupings(collection).follows}>
-                    {collection.grouped ? `Joins the ${collection.recordName} of the page before it.` : `Each page of this type is ${recordWords(collection.recordName).a} of its own.`}
-                  </GroupingOption>
-                </RadioGroup>
-              </Field>
+              {collection.groupPages && (
+                <Field>
+                  <FieldTitle>Grouping</FieldTitle>
+                  <RadioGroup aria-label="Grouping" value={grouping} onValueChange={(value) => setGrouping(value as Grouping)}>
+                    <Choice id={`${id}-starts`} value="starts" title={groupings(collection).starts}>A page of this type begins a new {collection.recordName}; the pages after it join it.</Choice>
+                    <Choice id={`${id}-matched`} value="matched" title={groupings(collection).matched} disabled={!collection.recordKey}>
+                      {collection.recordKey
+                        ? `Filed with the ${collection.recordName} showing the same ${collection.recordKey}, wherever it is in the item.`
+                        : `Set ${recordWords(collection.recordName).a} number field first.`}
+                    </Choice>
+                    <Choice id={`${id}-follows`} value="follows" title={groupings(collection).follows}>
+                      {collection.grouped ? `Joins the ${collection.recordName} of the page before it.` : `Each page of this type is ${recordWords(collection.recordName).a} of its own.`}
+                    </Choice>
+                  </RadioGroup>
+                </Field>
+              )}
               <Field>
                 <FieldLabel htmlFor={`${id}-template`}>Template</FieldLabel>
                 <Textarea id={`${id}-template`} rows={12} className="font-mono text-xs" value={template ?? ""} disabled={template === null}

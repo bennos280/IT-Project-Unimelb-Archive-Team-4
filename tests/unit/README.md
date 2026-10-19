@@ -322,13 +322,15 @@ A series' dashboard asks for a page of its items at a time, searched, filtered a
 
 ## `test_record_name.py`
 
-Each series names its records (the Wilfred Prest Survey's are surveys), and where no page type starts a record each page is one.
+Each series names its records (the Wilfred Prest Survey's are surveys), its items are each one record or hold several, and where
+they hold several and no page type starts a record each page is one.
 
 |Test|What it checks|
 |---|---|
 |`test_a_series_names_its_records_in_lower_case_and_an_empty_name_is_record`|`PATCH /collections` stores the record name in lower case with single spaces and keeps it when left out; an empty one reads as "record"; anything but a word or two of letters (40 at most) is refused with the reason.|
-|`test_a_series_is_grouped_while_one_of_its_page_types_starts_a_record`|A new series isn't `grouped`; once one of its page types starts a record it is, on the series and on its records.|
+|`test_a_series_is_grouped_while_its_items_hold_several_records_and_one_of_its_page_types_starts_one`|A new series' items are each one record, so it isn't `grouped` even once one of its page types starts a record; once its items hold several it is, on the series and on its records, and stays so when left out of a change.|
 |`test_an_ungrouped_series_names_its_record_its_own_way`|A record of an ungrouped "letter" series says so, puts its free text under "Letter details", tells a reviewer to check an Unknown page without calling it part of a bigger record, and words page type refusals with "letter".|
+|`test_an_unknown_page_of_an_item_that_is_one_record_isnt_said_to_follow_its_first_page`|In a series whose items are each one record, an Unknown page sharing the item's record with others is just to be checked, not said to follow the record's first page.|
 |`test_an_unknown_page_grouped_with_others_is_flagged_as_part_of_their_survey`|An Unknown page in a Prest survey with other pages is flagged as in that survey because it follows the survey's first page, with its free text under "Survey details".|
 
 ## `test_sorting_models.py`

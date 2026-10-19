@@ -78,6 +78,14 @@ def test_with_no_page_type_that_starts_a_survey_each_page_is_one(tmp_path):
     assert [p["survey"] for p in run.pages] == ["b_00001", None, "b_00003"]
 
 
+def test_where_each_item_is_one_record_its_pages_are_one_whatever_their_types(tmp_path):
+    rule = {**PREST, "one_per_item": True}
+    run = grouped(tmp_path, "b", [("b_00001.png", "notes", {}), ("b_00002.png", "blank", None), ("b_00003.png", "main", {"number_of_dwelling": "3"}),
+                                  ("b_00004.png", "coded", {"number_of_dwelling": "4"})], rule)
+    assert [p["survey"] for p in run.pages] == ["b", None, "b", "b"]
+    assert run.review == []
+
+
 def test_real_bundles_group_like_ash(tmp_path):
     right = total = 0
     silent = []

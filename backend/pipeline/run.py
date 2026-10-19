@@ -237,10 +237,14 @@ def step_group(run: Run) -> None:
     page, is a second sheet of the same survey. A letter after the number is part of it (24A is not 24B). A matched page
     joins the survey before or after it whose start page shows its number, else the only survey anywhere with that number
     that no neighbouring matched page took, else the neighbour none took, else the side most matched pages joined. With no
-    type that starts a survey, each page is one."""
+    type that starts a survey, each page is one; in a collection whose items are each one record, the item's pages are."""
     rule = run.grouping or {}
     starts, by_key, key, labels = rule.get("starts", set()), rule.get("matched", set()), rule.get("key"), rule.get("labels", {})
     record = rule.get("record", "record")
+    if rule.get("one_per_item"):
+        for page in run.pages:
+            page["survey"] = None if page["label"] == "blank" else run.input.stem
+        return
     if not starts:
         for page in run.pages:
             page["survey"] = None if page["label"] == "blank" else Path(page["file"]).stem

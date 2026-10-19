@@ -1,6 +1,6 @@
 """Each series names its records (the Wilfred Prest Survey's are surveys), and in a series where no page type starts a
 record each page is a record of its own."""
-from backend.db import models
+from backend.db import grouping, models
 
 
 def add(db, *rows):
@@ -33,15 +33,18 @@ def test_a_series_names_its_records_in_lower_case_and_an_empty_name_is_record(cl
     assert client.patch("/collections/1", json={"recordName": "o'clock card"}).status_code == 200
 
 
-def test_a_series_is_grouped_while_one_of_its_page_types_starts_a_record(client, db):
+def test_a_series_is_grouped_while_its_items_hold_several_records_and_one_of_its_page_types_starts_one(client, db):
     series, _ = letters(client, db)
-    assert client.get("/collections/1").json()["grouped"] is True
-    assert client.get(f"/collections/{series}").json()["grouped"] is False
+    assert [client.get(f"/collections/{c}").json()[k] for c in (1, series) for k in ("groupPages", "grouped")] == [True, True, False, False]
     add(db, models.Reviewer(reviewer_id=1, name="Ben"))
     first = client.post("/page-types", json={"label": "First page", "reviewerId": 1, "collectionId": series}).json()["name"]
     assert client.patch(f"/page-types/{first}", json={"startsRecord": True}).status_code == 200
-    assert client.get(f"/collections/{series}").json()["grouped"] is True
+    assert client.get(f"/collections/{series}").json()["grouped"] is False  # each item is still one record
+    assert grouping.rule(db, series)["one_per_item"] and not grouping.rule(db, series)["starts"]
+    assert client.patch(f"/collections/{series}", json={"groupPages": True}).json()["grouped"] is True
     assert client.get("/survey/L1_00001").json()["grouped"] is True
+    assert grouping.rule(db, series)["starts"] == {first}
+    assert client.patch(f"/collections/{series}", json={"name": "Letters"}).json()["groupPages"] is True  # left out: kept
 
 
 def test_an_ungrouped_series_names_its_record_its_own_way(client, db):
@@ -71,3 +74,12 @@ def test_an_unknown_page_grouped_with_others_is_flagged_as_part_of_their_survey(
     assert [f["reason"] for f in page["flags"] if f["id"] == "other-page"] == [
         "The computer couldn't tell what this page is, so it wasn't read. It is in this survey because it comes after the "
         "survey's first page in the scan: check it belongs here, and type anything worth keeping."]
+
+
+def test_an_unknown_page_of_an_item_that_is_one_record_isnt_said_to_follow_its_first_page(client, db):
+    series, unknown = letters(client, db)
+    add(db, models.Page(page_id="L1_00002", survey_id="L1_00001", bundle_id="L1", category=unknown, import_path="y.png"),
+        models.Field(page_id="L1_00002", field_title="text", text_raw="Yours faithfully"))
+    pages = client.get("/survey/L1_00001").json()["pages"]
+    assert [f["reason"] for p in pages for f in p["flags"] if f["id"] == "other-page"] == [
+        "The computer couldn't tell what this page is, so it wasn't read. Check what it is, and type anything worth keeping."] * 2
