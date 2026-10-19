@@ -365,3 +365,20 @@ def test_021_makes_the_old_grouping_settings_a_level_for_a_series_whose_items_he
     assert rows(db, "SELECT name, starts_record, matched_by_key FROM page_types ORDER BY name") == [
         ("coded", 0, 1), ("main", 1, 0), ("notes", 0, 0), ("other", 0, 0)]
     assert not rows(db, "SELECT name FROM sqlite_master WHERE name = 'record_levels'")
+
+
+def test_022_lets_a_record_sit_inside_another_and_goes_with_it(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    with sqlite3.connect(db) as con:
+        con.execute("INSERT INTO surveys (survey_id, bundle_id) VALUES ('s', 'b')")
+    command.downgrade(config, "021")
+    database.migrate(url)
+    assert rows(db, "SELECT survey_id, parent_id FROM surveys") == [("s", None)]
+    with sqlite3.connect(db) as con:
+        con.execute("PRAGMA foreign_keys = ON")
+        con.execute("INSERT INTO surveys (survey_id, bundle_id, parent_id) VALUES ('s-1', 'b', 's')")
+        con.execute("DELETE FROM surveys WHERE survey_id = 's'")
+    assert rows(db, "SELECT survey_id FROM surveys") == []
+    command.downgrade(config, "021")
+    assert "parent_id" not in {r[1] for r in rows(db, "PRAGMA table_info(surveys)")}

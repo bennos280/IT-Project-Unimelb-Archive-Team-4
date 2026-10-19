@@ -35,19 +35,20 @@ class Run:
     texts: dict[str, str] | None = None                  # the prompt and templates to read with (a job: the db's); None: the files
     transcription_config: dict[str, str] | None = None
     sorting_model: Path | None = None                    # retrained page sorting's weights; None: the shipped model
-    grouping: dict | None = None                         # how pages group into surveys (backend.db.grouping.rule); None: one each
+    grouping: dict | None = None                         # how pages group into records (backend.db.grouping.rule); None: one each
+    records: list[dict] = field(default_factory=list)    # every record grouping made, parents first: its id and its parent's
     collection: int = 1                                  # the series the item is loaded into
     page_types: set[str] | None = None                   # the labels the series has; sorting's others are review. None: any
     progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
 
-    def flag(self, page: dict, step: str, reason: str) -> None:
-        self.review.append({"file": page["file"], "step": step, "reason": reason})
+    def flag(self, page: dict, step: str, reason: str, field: str | None = None) -> None:  # field: the one it is about
+        self.review.append({"file": page["file"], "step": step, "reason": reason, **({"field": field} if field else {})})
 
     def save(self) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
         write(self.out / "review.json", self.review)
         write(self.out / "manifest.json", {"input": str(self.input), "collection": self.collection, "steps": self.log,
-                                           "pages": self.pages, "transcripts": self.transcripts})
+                                           "pages": self.pages, "records": self.records, "transcripts": self.transcripts})
 
 
 def write(path: Path, data) -> None:
@@ -231,27 +232,24 @@ def step_transcribe(run: Run) -> None:
         raise failure
 
 
-def step_group(run: Run) -> None:
-    """Pages -> surveys, by the collection's rule (run.grouping). A page of a type that starts a survey starts one and the
-    pages after it join it, except the types matched by number; one showing no new number, not straight after a matched
-    page, is a second sheet of the same survey. A letter after the number is part of it (24A is not 24B). A matched page
-    joins the survey before or after it whose start page shows its number, else the only survey anywhere with that number
-    that no neighbouring matched page took, else the neighbour none took, else the side most matched pages joined. With no
-    type that starts a survey, each page is one; in a collection whose items are each one record, the item's pages are."""
-    rule = run.grouping or {}
-    starts, by_key, key, labels = rule.get("starts", set()), rule.get("matched", set()), rule.get("key"), rule.get("labels", {})
-    record = rule.get("record", "record")
-    if rule.get("one_per_item"):
-        for page in run.pages:
-            page["survey"] = None if page["label"] == "blank" else run.input.stem
-        return
+def group_level(run: Run, pages: list[dict], level: dict, labels: dict, parent: str | None = None) -> list[tuple[str, list[dict]]]:
+    """One level's records among some pages (an item's at the top, else a record's of the level above), in scan order, each
+    (its name, its pages). A page of a type that starts one starts one and the pages after it join it, except the types
+    matched by number; one showing no new number, not straight after a matched page, is a second sheet of the same record. A
+    letter after the number is part of it (24A is not 24B). A matched page joins the record before or after it whose start
+    page shows its number, else the only record anywhere with that number that no neighbouring matched page took, else the
+    neighbour none took, else the side most matched pages joined. With no type that starts one, each page is one. A record at
+    the top is named <item>-<number>, else by its first page; one inside another <parent>-<number>, else <parent>-n<its
+    place>. Problems are flagged, and so at the top are pages before the first start (which belong to none; further down,
+    to the record above, as a folder's cover is its own)."""
+    starts, by_key, key = set(level.get("starts", ())), set(level.get("matched", ())), level.get("key")
+    record = level.get("name", "record")
+    unnumbered = lambda first, place: Path(first["file"]).stem if parent is None else f"{parent}-n{place}"
     if not starts:
-        for page in run.pages:
-            page["survey"] = None if page["label"] == "blank" else Path(page["file"]).stem
-        return
+        return [(unnumbered(page, n), [page]) for n, page in enumerate((p for p in pages if p["label"] != "blank"), start=1)]
     surveys, cards, last = [], [], None
-    for i, page in enumerate(run.pages):
-        page["survey"], found = None, set()
+    for i, page in enumerate(pages):
+        found = set()
         if key and page.get("transcript"):
             answer = json.loads((run.out / page["transcript"]).read_text(encoding="utf-8"))
             text = str(answer.get(key) or "")
@@ -266,7 +264,7 @@ def step_group(run: Run) -> None:
                 surveys[-1]["main"] |= found
         if page["label"] != "blank":
             last = page["label"]
-    beside = {}  # matched page index -> (index of the first survey after it, index of the one neighbour matching it or None)
+    beside = {}  # matched page index -> (index of the first record after it, index of the one neighbour matching it or None)
     for i, _, found in cards:
         k = sum(s["start"] < i for s in surveys)
         match = [j for j in (k - 1, k) if 0 <= j < len(surveys) and found & surveys[j]["main"]]
@@ -283,29 +281,57 @@ def step_group(run: Run) -> None:
         if j is not None:
             surveys[j]["pages"].append(page)
             surveys[j]["card"] |= found
-    words, taken = (key or "").replace("_", " "), set()
-    for s in surveys:
+    words, taken, groups, order = (key or "").replace("_", " "), set(), [], {id(page): i for i, page in enumerate(pages)}
+    for place, s in enumerate(surveys, start=1):
         counts = Counter(p["label"] for p in s["pages"])
         number = max(sorted(s["main"] & s["card"] or s["card"] or s["main"]), key=len, default="")
-        name = f"{run.input.stem}-{number}"
+        name = f"{parent or run.input.stem}-{number}"
         problems = [f"expected one {labels.get(t, t)}, found {counts[t]}" for t in sorted(by_key) if counts[t] != 1]
         if any(counts[t] for t in by_key) and number and not s["main"] & s["card"]:
             problems.append(f"its pages don't agree on '{words}'")
         if not key:
-            name = Path(s["pages"][0]["file"]).stem
+            name = unnumbered(s["pages"][0], place)
         elif not number or name in taken:
             problems.append(f"'{words}' {number} is also used by an earlier {record} in this bundle" if number else f"no '{words}'")
-            name = Path(s["pages"][0]["file"]).stem
+            name = unnumbered(s["pages"][0], place)
         taken.add(name)
-        for p in s["pages"]:
-            p["survey"] = name
+        groups.append((name, sorted(s["pages"], key=lambda page: order[id(page)])))  # in scan order, for the level below
         if problems:
-            run.flag(s["pages"][0], "group", f"{record} {name}: " + "; ".join(problems))
-    loose = [p for p in run.pages if p["survey"] is None and p["label"] != "blank"]
-    if loose:
+            run.flag(s["pages"][0], "group", f"{record} {name}: " + "; ".join(problems), key)
+    inside = {id(page) for _, found in groups for page in found}
+    loose = [p for p in pages if id(p) not in inside and p["label"] != "blank"]
+    if loose and parent is None:
         first = " or ".join(sorted(labels.get(t, t) for t in starts))
         run.flag(loose[0], "group", f"{len(loose)} page(s) before the first {first} belong to no {record}")
+    return groups
 
+
+def step_group(run: Run) -> None:
+    """Pages -> records, by the collection's levels (run.grouping), top first: each level's records (group_level) are made
+    among the pages of a record of the level above, and a page is in the bottom record it falls in; one before the first
+    start of a level below stays in the record above, and one before the first at the top is in none. With no levels the
+    item's pages are one record; with no rule at all, each page is one."""
+    rule = run.grouping if run.grouping is not None else {"levels": [{}]}
+    levels, labels = rule.get("levels", []), rule.get("labels", {})
+    run.records = []
+    for page in run.pages:
+        page["survey"] = None
+    if not levels:
+        if any(page["label"] != "blank" for page in run.pages):
+            run.records.append({"id": run.input.stem, "parent": None})
+        for page in run.pages:
+            page["survey"] = None if page["label"] == "blank" else run.input.stem
+        return
+
+    def nest(pages, depth, parent):
+        for name, found in group_level(run, pages, levels[depth], labels, parent):
+            run.records.append({"id": name, "parent": parent})
+            if depth + 1 < len(levels):
+                nest(found, depth + 1, name)
+            for page in found:
+                if page["survey"] is None:
+                    page["survey"] = name
+    nest(run.pages, 0, None)
 
 STEPS = {"split": step_split, "identify": step_identify, "transcribe": step_transcribe, "group": step_group}
 FULL = list(STEPS)  # a full run: what a job does, and what a run needs before it is loaded

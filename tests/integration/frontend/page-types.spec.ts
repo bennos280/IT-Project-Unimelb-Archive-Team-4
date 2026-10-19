@@ -178,7 +178,6 @@ test("a series' levels are a ladder from Item to Page, and its page types are li
   await expect(page.getByRole("navigation", { name: "Series" }).getByRole("link", { name: "Setup" })).toHaveAttribute("aria-current", "page");
   await expect(ladder(page)).toHaveText([/^Item\s*From the archive$/, /^Survey\s*starts at Main page · Coded page joins by number_of_dwelling\s*Edit$/,
     /^Page\s*From the scan$/]);
-  await expect(page.getByRole("button", { name: "Add level" })).toHaveCount(0); // one level for now
   await expect(page.getByRole("tablist", { name: "Setup" }).getByRole("tab")).toHaveText(["Levels", "Page types", "Checks"]);
   await expect(page.getByRole("tab", { name: "Levels" })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: "Page types" }).click();
@@ -278,6 +277,21 @@ test("a level's name, what each read page type does in it, and its number field 
   await expect(dialog).toHaveCount(0);
   expect(calls.putLevels.at(-1)).toEqual({ levels: [{ name: "Household card", starts: ["main"], matched: [], key: "" }] });
   await expect(ladder(page).nth(1)).toHaveText(/^Household card\s*starts at Main page\s*Edit$/);
+});
+
+test("a level added goes inside the bottom one, and the ladder steps down to it", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?collection=1&view=setup");
+  await page.getByRole("button", { name: "Add level" }).click();
+  const dialog = levelDialog(page, "Add level");
+  await expect(dialog.getByText("It goes inside each survey. Items read from now on group by it.")).toBeVisible();
+  await dialog.getByLabel("Name").fill("card");
+  await dialog.getByLabel("What Coded page does").selectOption("starts");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(ladder(page)).toHaveText([/^Item/, /^Survey\s*starts at Main page · Coded page joins/, /^Card\s*starts at Coded page\s*Edit$/, /^Page/]);
+  await expect(ladder(page).last()).toHaveCSS("margin-left", "72px"); // three steps in
+  expect(calls.putLevels).toEqual([{ levels: [{ name: "survey", starts: ["main"], matched: ["coded"], key: "number_of_dwelling" },
+    { name: "card", starts: ["coded"], matched: [], key: "" }] }]);
 });
 
 test("a level can be removed, leaving each item one record, and added again", async ({ page }) => {

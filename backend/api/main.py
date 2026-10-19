@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel
@@ -68,9 +68,9 @@ OTHER_PAGE_GROUPED = ("It is in this {0} because it comes after the {0}'s first 
                       "type anything worth keeping.")
 OTHER_PAGE_ALONE = "Check what it is, and type anything worth keeping."
 
-#what one record of a page's collection is called on screen
+#what the record a page is in is called on screen (its level's name)
 def page_record_name(db, p):
-    return grouping.record_name(db, db.get(models.Bundle, p.bundle_id).collection_id)
+    return grouping.record_name(db, db.get(models.Bundle, p.bundle_id).collection_id, p.survey_id)
 
 #a page's fields as the review screen shows them: id, label, group, value; free text is under "<record> details"
 def page_fields(db, p):
@@ -115,13 +115,13 @@ def page_flags(db, p, fields_list):
                "reason": "The model couldn't read part of this ([?]): compare it with the scan."}
               for f in fields_list if "[?]" in (f["value"] or "")]
     if db.get(models.PageType, p.category).unknown and any(f["id"] == "text" for f in fields_list):
-        started = grouping.rule(db, db.get(models.Bundle, p.bundle_id).collection_id)["starts"]  #a page type starts its records
-        grouped = started and p.survey_id and db.query(models.Page).filter_by(survey_id=p.survey_id).count() > 1
+        grouped = grouping.grouped(db, db.get(models.Bundle, p.bundle_id).collection_id) and p.survey_id and db.query(models.Page).filter_by(survey_id=p.survey_id).count() > 1
         flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain",
                       "reason": OTHER_PAGE + (OTHER_PAGE_GROUPED.format(page_record_name(db, p)) if grouped else OTHER_PAGE_ALONE)})
     return flags
 
-#a survey's pages in scan order, with fields, flags and scan URL, and whether it is its whole item (all the item's pages)
+#a survey's pages in scan order, with fields, flags and scan URL, whether it is its whole item (all the item's pages), and the
+#record it sits in (None: at the top)
 @app.get("/survey/{survey_id}")
 def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     survey = db.get(models.Survey, survey_id)
@@ -147,8 +147,9 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     item = db.get(models.ArchiveItem, int(name)) if name.isascii() and name.isdigit() and len(name) < 19 else None
     return {"id":survey_id, "bundleId":survey.bundle_id, "collectionId":collection.collection_id, "title":collection.name,
             "item": {"name": name, "archive": {"identifier": item.identifier, "title": item.title} if item else None},
-            "recordName": grouping.record_name(db, collection.collection_id), "grouped": bool(grouping.rule(db, collection.collection_id)["starts"]),
-            "wholeItem": db.query(models.Page).filter_by(bundle_id=bundle.bundle_id).count() == len(pages_list), "pages":pages_list}
+            "recordName": grouping.record_name(db, collection.collection_id, survey_id), "grouped": grouping.grouped(db, collection.collection_id),
+            "wholeItem": db.query(models.Page).filter_by(bundle_id=bundle.bundle_id).count() == len(pages_list),
+            "parentId": survey.parent_id, "pages":pages_list}
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
 #and black and white (the scan itself if that fails)
@@ -546,7 +547,7 @@ def collection_json(c, db=None):
                  "unknownPages": db.query(models.Page).filter(models.Page.category.in_(unknown)).count(),
                  "flagged": sum(p["flagCount"] for p in pages),
                  "pageTypes": len(types) - len(unknown), "templates": sum(t.name in templates for t in types if not t.unknown),
-                 "grouped": bool(grouping.rule(db, c.collection_id)["starts"])}
+                 "grouped": grouping.grouped(db, c.collection_id)}
     levels = grouping.levels(object_session(c), c.collection_id)
     return {"id": c.collection_id, "name": c.name, "levels": [grouping.level_json(level) for level in levels],
             "recordName": levels[-1].name if levels else "record", "archiveSeries": c.archive_series,
@@ -648,8 +649,6 @@ def put_levels(collection_id: int, payload: LevelsSettings, db: Session = Depend
     c = db.get(models.Collection, collection_id)
     if not c:
         raise HTTPException(status_code=404, detail="No such series.")
-    if len(payload.levels) > 1:  #ponytail: grouping reads one level until it nests
-        raise HTTPException(status_code=400, detail="A series has one level for now.")
     types = {t.name: t for t in db.query(models.PageType).filter_by(collection_id=collection_id)}
     templates, rows = instructions.newest(db), []
     for position, level in enumerate(payload.levels, start=1):
@@ -1224,6 +1223,7 @@ def export_survey(survey_id: str, request: Request, db: Session):
         })
     return {"surveys": [{
         "surveyId": survey_id,
+        "parentId": survey["parentId"],
         "status": "Reviewed" if pages and all(
             page["status"] == "Reviewed" for page in pages
         ) else "ToBeReviewed",
@@ -1252,7 +1252,10 @@ def download_export(request: Request, survey_id: str | None = None, bundle_id: s
     if not db.get(models.Bundle, bundle_id):
         raise HTTPException(status_code=404, detail="Item not found.")
     surveys = []
-    for (sid,) in db.query(models.Survey.survey_id).filter_by(bundle_id=bundle_id).order_by(models.Survey.survey_id):
+    #a record holding only records, no pages of its own, has nothing to export; theirs name it as their parent
+    parents = db.query(models.Survey.parent_id).filter(models.Survey.parent_id.is_not(None))
+    for (sid,) in (db.query(models.Survey.survey_id).filter_by(bundle_id=bundle_id).order_by(models.Survey.survey_id)
+                   .filter(or_(models.Survey.survey_id.in_(db.query(models.Page.survey_id)), models.Survey.survey_id.not_in(parents)))):
         surveys.extend(export_survey(sid, request, db)["surveys"])
     # Unassigned pages have no saved survey reviews, but remain in the download.
     unassigned = []

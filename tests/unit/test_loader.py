@@ -65,6 +65,26 @@ def test_run_loads_into_its_surveys(tmp_path, monkeypatch):
         "washouse": "In separate laundry", "weekly_rent": None}
 
 
+
+def test_a_run_loads_its_records_inside_one_another_parents_first(tmp_path, monkeypatch):
+    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+    database.migrate(url)
+    monkeypatch.setattr(database, "engine", database.make_engine(url))
+    out = run_folder(tmp_path)
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    manifest["records"] = [{"id": "216412-3", "parent": None}, {"id": "216412-3-n1", "parent": "216412-3"}]
+    manifest["pages"][1]["survey"] = "216412-3-n1"  # the coded card in a record inside the survey
+    (out / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (out / "review.json").write_text(json.dumps([{"file": "216412_00002.png", "step": "group", "reason": "card 216412-3-n1: no 'washouse'",
+                                                  "field": "washouse"}]), encoding="utf-8")
+    loader.dump_into_db(out / "manifest.json")
+    db = sqlite3.connect(tmp_path / "test.db")
+    assert db.execute("SELECT survey_id, parent_id FROM surveys ORDER BY survey_id").fetchall() == [
+        ("216412-3", None), ("216412-3-n1", "216412-3")]
+    assert db.execute("SELECT page_id, survey_id FROM pages WHERE page_id IN ('216412_00001', '216412_00002') ORDER BY page_id").fetchall() == [
+        ("216412_00001", "216412-3"), ("216412_00002", "216412-3-n1")]
+    assert db.execute("SELECT page_id, field_title FROM flags").fetchall() == [("216412_00002", "washouse")]  # the field it's about
+
 def test_a_run_loads_into_the_series_its_manifest_names_reading_nothing_into_a_type_that_series_lacks(tmp_path, monkeypatch):
     url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
     database.migrate(url)

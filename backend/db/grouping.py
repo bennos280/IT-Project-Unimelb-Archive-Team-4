@@ -15,10 +15,16 @@ def level_json(level):
     return {"name": level.name, "starts": json.loads(level.starts), "matched": json.loads(level.matched), "key": level.record_key}
 
 
-#what one record of a collection is called on screen: its bottom level's name, else (each item one record) record
-def record_name(db, collection_id):
+#what one record of a collection is called on screen: its level's name (a record's level is how deep it sits; no record: the
+#bottom level's, the one a reviewer checks), else (no levels: each item one record) record
+def record_name(db, collection_id, survey_id=None):
     found = levels(db, collection_id)
-    return found[-1].name if found else "record"
+    depth = len(found) - 1
+    if survey_id is not None:
+        depth, parent = 0, db.get(models.Survey, survey_id).parent_id
+        while parent is not None:
+            depth, parent = depth + 1, db.get(models.Survey, parent).parent_id
+    return found[min(depth, len(found) - 1)].name if found else "record"
 
 
 #a record name with its article; ponytail: "an" before a vowel letter, so "an hour" and "a unit" come out wrong
@@ -26,18 +32,24 @@ def a_record(name):
     return f"{'an' if name[:1] in 'aeiou' else 'a'} {name}"
 
 
-#the rule pipeline.Run.grouping takes: whether each item is one record (no levels), else the top level's page types that start
-#a survey and those that join the survey whose number they show, the field holding that number (None: page order only), every
-#type's label and what a record is called, for the review flags
+#the rule pipeline.Run.grouping takes: the collection's levels, top first (none: each item is one record), each with its name,
+#the page types that start one and those that join the one whose number they show, and the field holding that number (None:
+#page order only); and every type's label, for the review flags
 def rule(db, collection_id):
+    return {"levels": [level_json(level) for level in levels(db, collection_id)],
+            "labels": {t.name: t.label for t in db.query(models.PageType).filter_by(collection_id=collection_id)}}
+
+
+#whether a collection's pages group into records: a page type starts one of its top level, so a page can be in none or move
+def grouped(db, collection_id):
     found = levels(db, collection_id)
-    top = level_json(found[0]) if found else {"name": "record", "starts": [], "matched": [], "key": None}
-    return {"one_per_item": not found, "starts": set(top["starts"]), "matched": set(top["matched"]), "key": top["key"],
-            "labels": {t.name: t.label for t in db.query(models.PageType).filter_by(collection_id=collection_id)},
-            "record": top["name"]}
+    return bool(found and json.loads(found[0].starts))
 
 
-#page type -> the field its templates must have, as grouping reads it
+#page type -> the fields its templates must have, as grouping reads them (a type can group in more than one level)
 def required_fields(db):
-    return {t: level.record_key for level in db.query(models.RecordLevel) if level.record_key
-            for t in json.loads(level.starts) + json.loads(level.matched)}
+    found = {}
+    for level in db.query(models.RecordLevel):
+        for t in json.loads(level.starts) + json.loads(level.matched) if level.record_key else []:
+            found.setdefault(t, set()).add(level.record_key)
+    return found

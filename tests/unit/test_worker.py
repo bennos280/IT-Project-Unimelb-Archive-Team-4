@@ -138,7 +138,8 @@ def test_an_item_of_another_series_runs_with_that_series_page_types_and_rule(db,
     fake_pipeline(monkeypatch, lambda run: runs.append(run) or run.pages.append({"file": "a_00001.png"}))
     worker.work_once(db)
     [run] = runs
-    assert (run.collection, run.page_types, run.grouping["starts"], run.grouping["record"]) == (2, {"docket"}, {"docket"}, "letter")
+    assert (run.collection, run.page_types, run.grouping["levels"]) == (
+        2, {"docket"}, [{"name": "letter", "starts": ["docket"], "matched": [], "key": None}])
 
 
 def test_an_item_on_no_series_list_runs_as_the_prest_surveys_keeping_its_blank_pages_out(db, tmp_path, monkeypatch):

@@ -158,7 +158,7 @@ function Rung({ depth, icon, name, how, fixed, children }: {
 }
 
 // The series' levels of record between an item and its pages, top first, as a ladder from Item to Page; with none, each item
-// is one record. ponytail: one level until grouping nests, so Add level shows only with none.
+// is one record. A level added goes inside the bottom one.
 function Levels({ collection, types, onSaved }: { collection: Collection; types: PageType[]; onSaved: () => Promise<void> }) {
   const [editing, setEditing] = useState<number | null>(null); // the level's index; levels.length: a new one
   const levels = collection.levels;
@@ -185,7 +185,7 @@ function Levels({ collection, types, onSaved }: { collection: Collection; types:
         <Rung depth={levels.length + 1} icon={<File />} name="Page" how="From the scan" fixed />
       </ol>
       {!levels.length && <p className="text-sm text-muted-foreground">No levels: each item is one record.</p>}
-      {!levels.length && <Button variant="outline" onClick={() => setEditing(0)}><Plus /> Add level</Button>}
+      <Button variant="outline" onClick={() => setEditing(levels.length)}><Plus /> Add level</Button>
       {editing !== null && (
         <LevelDialog collection={collection} types={types} index={editing} onClose={() => setEditing(null)}
           onSaved={async () => { await onSaved(); setEditing(null); }} />
@@ -229,7 +229,9 @@ function LevelDialog({ collection, types, index, onClose, onSaved }: {
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{existing ? `Edit level: ${existing.name}` : "Add level"}</DialogTitle>
-          <DialogDescription>Items read from now on group by it.</DialogDescription>
+          <DialogDescription>
+            {!existing && collection.levels.length ? `It goes inside each ${collection.levels.at(-1)!.name}. ` : ""}Items read from now on group by it.
+          </DialogDescription>
         </DialogHeader>
         <FieldGroup className="gap-4">
           <Field>

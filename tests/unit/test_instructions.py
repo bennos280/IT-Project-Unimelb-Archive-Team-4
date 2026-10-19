@@ -9,7 +9,7 @@ from backend.pipeline.transcribe.transcribe import read_texts
 from tests.unit.test_backend_api import add_in_order
 
 TEXTS = read_texts()  # today's prompt.txt and templates
-PREST = {"main": "number_of_dwelling", "coded": "number_of_dwelling"}  # the field Prest's grouping reads, as migration 010 sets it
+PREST = {"main": {"number_of_dwelling"}, "coded": {"number_of_dwelling"}}  # the field Prest's grouping reads, as migration 021 sets it
 
 
 def main_with(**changes):

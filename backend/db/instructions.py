@@ -29,7 +29,7 @@ def texts(db):
     return {kind: v.body for kind, v in newest(db).items()} or None
 
 
-#why body can't be saved as kind's newest version; [] if it can. required: page type -> the field grouping reads (grouping.required_fields)
+#why body can't be saved as kind's newest version; [] if it can. required: page type -> the fields grouping reads (grouping.required_fields)
 def problems(kind, body, current, required=None):
     from backend.pipeline.transcribe.transcribe import claude_args, full_prompt
     texts = {**current, kind: body}
@@ -57,8 +57,7 @@ def problems(kind, body, current, required=None):
 def template_problems(kind, template, required=None):
     found = [] if template else ["needs at least one field"]
     found += [f"'{key}' is filled in by the pipeline" for key in META if key in template]
-    if required and required not in template:
-        found.append(f"needs '{required}'")
+    found += [f"needs '{key}'" for key in sorted(required or ()) if key not in template]
     for key, value in template.items():
         if key in SHAPES:
             if value != SHAPES[key]:
