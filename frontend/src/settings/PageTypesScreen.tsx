@@ -10,10 +10,10 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { backendRequest } from "../progress/backend";
+import { backendRequest, recordWords } from "../progress/backend";
 
 type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; startsRecord: boolean; matchedByKey: boolean; templateVersion: number | null };
-type Collection = { id: number; name: string; recordKey: string | null };
+type Collection = { id: number; name: string; recordKey: string | null; recordName: string; grouped: boolean };
 type Reviewer = { id: number; name: string };
 type Version = { id: number; body: string };
 type Grouping = "starts" | "matched" | "follows";
@@ -21,13 +21,14 @@ type Grouping = "starts" | "matched" | "follows";
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 const groupingOf = (t: PageType): Grouping => (t.startsRecord ? "starts" : t.matchedByKey ? "matched" : "follows");
-const GROUPINGS: Record<Grouping, string> = {
-  starts: "Starts a survey",
-  matched: "Joins the survey with the same number",
+// How a type groups, in the series' words.
+const groupings = ({ recordName }: Collection): Record<Grouping, string> => ({
+  starts: `Starts ${recordWords(recordName).a}`,
+  matched: `Joins the ${recordName} with the same number`,
   follows: "Follows the page before it",
-};
+});
 
-// The collection's page types: what each is called, the template its pages are read with, and how they group into surveys.
+// The collection's page types: what each is called, the template its pages are read with, and how they group into records.
 export default function PageTypesScreen() {
   const collectionId = Number(new URLSearchParams(location.search).get("collection")) || 1;
   const [types, setTypes] = useState<PageType[] | null>(null);
@@ -59,7 +60,7 @@ export default function PageTypesScreen() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Page types</h1>
           <p className="text-sm text-muted-foreground">
-            The kinds of page in {collection?.name ?? "this series"}: what each is called, how it is read, and how pages group into surveys.
+            The kinds of page in {collection?.name ?? "this series"}: what each is called, how it is read, and how pages group into {recordWords(collection?.recordName).many}.
           </p>
         </div>
         {loadError && (
@@ -69,7 +70,7 @@ export default function PageTypesScreen() {
             </AlertDescription>
           </Alert>
         )}
-        {collection && <SurveyNumber key={collection.recordKey ?? ""} collection={collection} onSaved={load} />}
+        {collection && <Records key={`${collection.recordName} ${collection.recordKey}`} collection={collection} onSaved={load} />}
         {types && (
           <section className="space-y-3">
             <div className="flex flex-wrap items-end justify-between gap-3">
@@ -92,7 +93,10 @@ export default function PageTypesScreen() {
                 {types.map((t) => (
                   <TableRow key={t.name}>
                     <TableCell className="font-medium">{t.label}</TableCell>
-                    <TableCell>{t.unknown ? "Pages sorting couldn't place wait here" : GROUPINGS[groupingOf(t)]}</TableCell>
+                    <TableCell>
+                      {t.unknown ? "Pages sorting couldn't place wait here"
+                        : collection && (collection.grouped ? groupings(collection)[groupingOf(t)] : `${recordWords(collection.recordName).A} of its own`)}
+                    </TableCell>
                     <TableCell>{t.unknown ? "Not read" : t.templateVersion ? "Saved" : "None yet"}</TableCell>
                     <TableCell>
                       <Button variant="outline" size="sm" aria-label={`Edit ${t.label}`} onClick={() => setEditing(t)}>Edit</Button>
@@ -116,21 +120,25 @@ export default function PageTypesScreen() {
   );
 }
 
-// The field holding each survey's number; empty: pages group by their order only.
-function SurveyNumber({ collection, onSaved }: { collection: Collection; onSaved: () => void }) {
+// What one record is called, and the field holding each record's number; empty: pages group by their order only.
+function Records({ collection, onSaved }: { collection: Collection; onSaved: () => void }) {
   const id = useId();
+  const [name, setName] = useState(collection.recordName);
   const [key, setKey] = useState(collection.recordKey ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const words = recordWords(collection.recordName);
+  const stored = name.toLowerCase().split(/\s+/).filter(Boolean).join(" ") || "record"; // as the backend stores it
+  const unchanged = stored === collection.recordName && key.trim() === (collection.recordKey ?? "");
 
   async function save() {
     setBusy(true);
     setError("");
     try {
-      await backendRequest<Collection>(`/collections/${collection.id}`, json("PATCH", { recordKey: key }));
+      await backendRequest<Collection>(`/collections/${collection.id}`, json("PATCH", { recordName: name, recordKey: key }));
       onSaved();
     } catch (e) {
-      setError(message(e, "Could not save the survey number field."));
+      setError(message(e, "Could not save the records' settings."));
     }
     setBusy(false);
   }
@@ -138,18 +146,23 @@ function SurveyNumber({ collection, onSaved }: { collection: Collection; onSaved
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">Survey number</h2>
+        <h2 className="text-xl font-semibold tracking-tight">Records</h2>
         <p className="text-sm text-muted-foreground">
-          The field holding each survey's number. A page that joins by number is filed with the survey showing the same number.
-          Leave it empty to group pages by their order only.
+          {collection.grouped
+            ? `The pages of one ${words.one} are reviewed together. A page that joins by number is filed with the ${words.one} showing the same number; leave the number field empty to group pages by their order only.`
+            : `No page type starts ${words.a}, so each page is ${words.a} of its own. Edit a page type to make it start one.`}
         </p>
       </div>
-      <div className="flex max-w-md items-end gap-2">
-        <Field className="flex-1">
-          <FieldLabel htmlFor={id}>Survey number field</FieldLabel>
-          <Input id={id} value={key} placeholder="e.g. number_of_dwelling" onChange={(e) => setKey(e.target.value)} />
+      <div className="flex max-w-2xl flex-wrap items-end gap-2">
+        <Field className="min-w-48 flex-1">
+          <FieldLabel htmlFor={`${id}-name`}>Record name</FieldLabel>
+          <Input id={`${id}-name`} value={name} placeholder="record" onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Button disabled={busy || key.trim() === (collection.recordKey ?? "")} onClick={save}>Save</Button>
+        <Field className="min-w-48 flex-1">
+          <FieldLabel htmlFor={`${id}-key`}>{words.One} number field</FieldLabel>
+          <Input id={`${id}-key`} value={key} placeholder="e.g. number_of_dwelling" onChange={(e) => setKey(e.target.value)} />
+        </Field>
+        <Button disabled={busy || unchanged} onClick={save}>Save</Button>
       </div>
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     </section>
@@ -289,20 +302,22 @@ function EditDialog({ type, collection, reviewers, onClose, onSaved }: {
           </Field>
           {type.unknown ? (
             <p className="text-sm text-muted-foreground">
-              Pages sorting couldn't place wait here, unread, until a reviewer picks their type. They have no template and don't start or join a survey.
+              Pages sorting couldn't place wait here, unread, until a reviewer picks their type. They have no template and don't start or join {recordWords(collection.recordName).a}.
             </p>
           ) : (
             <>
               <Field>
                 <FieldTitle>Grouping</FieldTitle>
                 <RadioGroup aria-label="Grouping" value={grouping} onValueChange={(value) => setGrouping(value as Grouping)}>
-                  <GroupingOption value="starts" title={GROUPINGS.starts}>A page of this type begins a new survey; the pages after it join it.</GroupingOption>
-                  <GroupingOption value="matched" title={GROUPINGS.matched} disabled={!collection.recordKey}>
+                  <GroupingOption value="starts" title={groupings(collection).starts}>A page of this type begins a new {collection.recordName}; the pages after it join it.</GroupingOption>
+                  <GroupingOption value="matched" title={groupings(collection).matched} disabled={!collection.recordKey}>
                     {collection.recordKey
-                      ? `Filed with the survey showing the same ${collection.recordKey}, wherever it is in the item.`
-                      : "Set a survey number field first."}
+                      ? `Filed with the ${collection.recordName} showing the same ${collection.recordKey}, wherever it is in the item.`
+                      : `Set ${recordWords(collection.recordName).a} number field first.`}
                   </GroupingOption>
-                  <GroupingOption value="follows" title={GROUPINGS.follows}>Joins the survey of the page before it.</GroupingOption>
+                  <GroupingOption value="follows" title={groupings(collection).follows}>
+                    {collection.grouped ? `Joins the ${collection.recordName} of the page before it.` : `Each page of this type is ${recordWords(collection.recordName).a} of its own.`}
+                  </GroupingOption>
                 </RadioGroup>
               </Field>
               <Field>

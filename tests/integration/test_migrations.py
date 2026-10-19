@@ -232,3 +232,15 @@ def test_013_lists_each_of_prests_archive_items_with_its_identifier_and_title(ur
     assert items[0] == (216412, 1, "UMA-ITE-1973000200001", "Box Hill 00")
     command.downgrade(config, "012")
     assert not rows(db, "SELECT name FROM sqlite_master WHERE name = 'archive_items'")
+
+
+def test_014_calls_prests_records_surveys_and_leaves_other_series_unnamed(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "013")
+    with sqlite3.connect(db) as con:
+        con.execute("INSERT INTO collections (collection_id, name) VALUES (2, 'Letters')")
+    database.migrate(url)
+    assert rows(db, "SELECT collection_id, record_name FROM collections") == [(1, "survey"), (2, None)]
+    command.downgrade(config, "013")
+    assert "record_name" not in {r[1] for r in rows(db, "PRAGMA table_info(collections)")}

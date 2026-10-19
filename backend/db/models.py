@@ -8,6 +8,7 @@ class Collection(Base):
     collection_id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
     record_key = Column(String, nullable=True) #the field holding a survey's number, which ties its pages together; None: page order only
+    record_name = Column(String, nullable=True) #what one record is called on screen, like survey or letter; None: record
     archive_series = Column(Integer, nullable=True) #its series on archives.library.unimelb.edu.au: /nodes/view/<archive_series>
     archive_identifier = Column(String, nullable=True) #the series' catalogue identifier (UMA-SR-...), title and number of
     archive_title = Column(String, nullable=True) #items, as the archive showed them when the series was linked

@@ -145,7 +145,7 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 ## `test_backend_api.py`
 |Test|What it checks|
 |---|---|
-|`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
+|`test_get_survey_not_found`|Returns HTTP 404 ("No such record.") if the requested survey id is not in the database.|
 |`test_get_survey_success`|A seeded survey comes back with its page in it, the page's field and a resident's field (`residents.20.relationship`) with their values, the page's `imageUrl` (`/pages/<page id>/image`) and no flags.|
 |`test_get_reviewers_empty`|Returns an empty list without crashing if there are no reviewers in the database.|
 |`test_create_reviewer_success`|Saves a reviewer and returns its id and name.|
@@ -250,6 +250,17 @@ Page types added from the review screen, and a page read again as another type.
 | `test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`   | An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).                                                                                                                                                  |
 | `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |
 | `test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`            | If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.                                                                                                                                                                                 |
+
+## `test_record_name.py`
+
+Each series names its records (the Wilfred Prest Survey's are surveys), and where no page type starts a record each page is one.
+
+|Test|What it checks|
+|---|---|
+|`test_a_series_names_its_records_in_lower_case_and_an_empty_name_is_record`|`PATCH /collections` stores the record name in lower case with single spaces and keeps it when left out; an empty one reads as "record"; anything but a word or two of letters (40 at most) is refused with the reason.|
+|`test_a_series_is_grouped_while_one_of_its_page_types_starts_a_record`|A new series isn't `grouped`; once one of its page types starts a record it is, on the series and on its records.|
+|`test_an_ungrouped_series_names_its_record_its_own_way`|A record of an ungrouped "letter" series says so, puts its free text under "Letter details", tells a reviewer to check an Unknown page without calling it part of a bigger record, and words page type refusals with "letter".|
+|`test_an_unknown_page_grouped_with_others_is_flagged_as_part_of_their_survey`|An Unknown page in a Prest survey with other pages is flagged as in that survey because it follows the survey's first page, with its free text under "Survey details".|
 
 ## `test_sorting_models.py`
 

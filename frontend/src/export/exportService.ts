@@ -6,7 +6,7 @@ export async function loadSurveyExport(
   surveyId: string,
 ): Promise<SurveyExport> {
   const id = surveyId.trim();
-  if (!id) throw new Error("Enter a survey ID.");
+  if (!id) throw new Error("Enter a record ID.");
   return request<SurveyExport>(`/export?survey_id=${encodeURIComponent(id)}`);
 }
 

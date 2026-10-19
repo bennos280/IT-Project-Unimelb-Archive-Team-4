@@ -9,7 +9,7 @@ const pages = ["main", "notes"].map((type, index) => ({
   fields: [{ id: "address", label: "Address", group: "Address", value: "Sample value" }],
   flags: [],
 }));
-const COLLECTION = { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", archiveSeries: 499420, bundles: 1, pages: 2 };
+const COLLECTION = { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", recordName: "survey", grouped: true, archiveSeries: 499420, bundles: 1, pages: 2 };
 
 // failFirstBundles fails only the first /bundles request, which the review screen makes before the dashboard does.
 async function mockApi(page: Page, { failFirstBundles = false, archive = false } = {}) {
@@ -36,7 +36,7 @@ async function mockApi(page: Page, { failFirstBundles = false, archive = false }
         : route.fulfill({ json: [{ pdf: "216417/pdf-216417.pdf", bundle: "pdf-216417", name: "216417", loaded: true, surveys: ["216417_1"], job: null,
             archive: archive ? { identifier: "UMA-ITE-1973000200006", title: "Brunswick 02 - Part 3" } : null }] });
     if (path === "/api/survey/216417_1")
-      return route.fulfill({ json: { id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", pages } });
+      return route.fulfill({ json: { id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", recordName: "survey", grouped: true, pages } });
     if (path === "/api/reviews/216417_1") return route.fulfill({ json: { reviews: {}, revisions: {} } });
     if (path === "/api/reviewers") return route.fulfill({ json: [] });
     if (path === "/api/collections/1") return route.fulfill({ json: COLLECTION });

@@ -237,6 +237,7 @@ def step_group(run: Run) -> None:
     type that starts a survey, each page is one."""
     rule = run.grouping or {}
     starts, by_key, key, labels = rule.get("starts", set()), rule.get("matched", set()), rule.get("key"), rule.get("labels", {})
+    record = rule.get("record", "record")
     if not starts:
         for page in run.pages:
             page["survey"] = None if page["label"] == "blank" else Path(page["file"]).stem
@@ -286,17 +287,17 @@ def step_group(run: Run) -> None:
         if not key:
             name = Path(s["pages"][0]["file"]).stem
         elif not number or name in taken:
-            problems.append(f"'{words}' {number} is also used by an earlier survey in this bundle" if number else f"no '{words}'")
+            problems.append(f"'{words}' {number} is also used by an earlier {record} in this bundle" if number else f"no '{words}'")
             name = Path(s["pages"][0]["file"]).stem
         taken.add(name)
         for p in s["pages"]:
             p["survey"] = name
         if problems:
-            run.flag(s["pages"][0], "group", f"survey {name}: " + "; ".join(problems))
+            run.flag(s["pages"][0], "group", f"{record} {name}: " + "; ".join(problems))
     loose = [p for p in run.pages if p["survey"] is None and p["label"] != "blank"]
     if loose:
         first = " or ".join(sorted(labels.get(t, t) for t in starts))
-        run.flag(loose[0], "group", f"{len(loose)} page(s) before the first {first} belong to no survey")
+        run.flag(loose[0], "group", f"{len(loose)} page(s) before the first {first} belong to no {record}")
 
 
 def step_validate(run: Run) -> None:

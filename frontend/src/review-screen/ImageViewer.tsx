@@ -140,7 +140,7 @@ export default function ImageViewer({
           className="min-h-[180px] flex-1 cursor-grab touch-none overflow-auto rounded-md border bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/50 active:cursor-grabbing [&:fullscreen]:p-5"
           ref={viewport}
           tabIndex={0}
-          aria-label="Survey scan. Use arrow keys to pan and plus or minus to zoom."
+          aria-label="Page scan. Use arrow keys to pan and plus or minus to zoom."
           onKeyDown={(e) => {
             // Handle keyboard zoom while the viewport has focus.
             if (e.key === "+" || e.key === "=") change(25);
@@ -183,7 +183,7 @@ export default function ImageViewer({
                 ref={image}
                 className="block h-auto w-full max-w-none select-none"
                 src={page.imageUrl}
-                alt={`Original ${getPageName(page)} for survey ${page.id}`}
+                alt={`Original scan of ${getPageName(page)} ${page.id}`}
                 draggable={false}
                 onLoad={() => setLoaded(true)}
                 onError={() => setError(true)}

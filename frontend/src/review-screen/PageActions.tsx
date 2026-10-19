@@ -14,6 +14,7 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
+import { recordWords } from '../progress/backend';
 
 type Job = { id: number; status: string; pageType?: string; step?: string | null; error: string | null };
 type Context = { bundleId: string; surveyId: string; category: string; pageTypes?: { name: string; label: string }[]; needsTranscription?: boolean; revision: number; hasReviews: boolean; job: Job | null; surveys: { id: string; pages: { id: string; type: string }[] }[] };
@@ -30,6 +31,7 @@ const NO_CHOICE: ModelChoice = {model:'',provider:'',effort:''}; // nothing pref
 // Acts on the selected page, using backend checks rather than changing local sample data.
 export default function PageActions({ session, toolbar }: { session: ReturnType<typeof useReviewSession>; toolbar: HTMLDivElement | null }) {
   const { page, reviewer, reviewers, reviews, saving, setAttempt } = session;
+  const words = recordWords(session.survey?.recordName);
   const pageId = page?.id;
   const uid = useId();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -138,7 +140,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
   }
   if (!page) return null;
   const destination = context?.surveys.find(s=>s.id===target);
-  const title = showModels ? 'Transcription models' : mode==='move'?'Move to another survey':mode==='type'?'Change page type':'Transcribe page';
+  const title = showModels ? 'Transcription models' : mode==='move'?`Move to another ${words.one}`:mode==='type'?'Change page type':'Transcribe page';
   return <div className="space-y-3 text-sm">
     {toolbar && createPortal(<div data-testid="page-toolbar" className="flex flex-wrap items-center gap-2">
       <Button type="button" variant="outline" size="sm" disabled={busy||saving||running} onClick={()=>void open('transcribe')}>Transcribe</Button>
@@ -146,7 +148,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
         <CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm">{menuOpen ? <ChevronDown /> : <ChevronRight />}Page actions</Button></CollapsibleTrigger>
         <CollapsibleContent className="absolute right-0 z-20 mt-1 flex min-w-56 flex-col gap-1 rounded-lg bg-popover p-2 text-popover-foreground shadow-md ring-1 ring-foreground/10">
           <Button variant="ghost" size="sm" className="justify-start" disabled={busy||saving||running} onClick={()=>void open('type')}>Change page type</Button>
-          <Button variant="ghost" size="sm" className="justify-start" disabled={busy||saving||running} onClick={()=>void open('move')}>Move to another survey</Button>
+          {session.survey?.grouped&&<Button variant="ghost" size="sm" className="justify-start" disabled={busy||saving||running} onClick={()=>void open('move')}>Move to another {words.one}</Button>}
         </CollapsibleContent>
       </Collapsible>}
       <PageHistory pageId={page.id} />
@@ -169,7 +171,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
       <DialogContent showCloseButton={false} onInteractOutside={e=>e.preventDefault()} className={`max-h-[90vh] overflow-y-auto ${showModels ? 'sm:max-w-[1000px]' : 'sm:max-w-[540px]'}`}>
         <DialogHeader>
           <DialogTitle className="text-lg">{title}</DialogTitle>
-          <DialogDescription>Page {page.id}{context && ` · Item ${context.bundleId} · Survey ${context.surveyId}`}</DialogDescription>
+          <DialogDescription>Page {page.id}{context && ` · Item ${context.bundleId} · ${words.One} ${context.surveyId}`}</DialogDescription>
         </DialogHeader>
         {loading && <p role="status" className="flex items-center gap-2 text-muted-foreground"><Spinner role={undefined} aria-hidden="true" />Loading…</p>}
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
@@ -177,11 +179,11 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
         {showModels && modelData ? <ModelTable data={modelData} /> : <>
         {context && (mode==='move'?<FieldGroup className="gap-4">
           <Field>
-            <FieldLabel htmlFor={`${uid}-target`}>Destination survey</FieldLabel>
-            <NativeSelect id={`${uid}-target`} className="w-full" value={target} onChange={e=>setTarget(e.target.value)}><option value="">Select a survey</option>{context.surveys.filter(s=>s.id!==context.surveyId).map(s=><option key={s.id} value={s.id}>{s.id}</option>)}</NativeSelect>
+            <FieldLabel htmlFor={`${uid}-target`}>Destination {words.one}</FieldLabel>
+            <NativeSelect id={`${uid}-target`} className="w-full" value={target} onChange={e=>setTarget(e.target.value)}><option value="">Select {words.a}</option>{context.surveys.filter(s=>s.id!==context.surveyId).map(s=><option key={s.id} value={s.id}>{s.id}</option>)}</NativeSelect>
           </Field>
-          <FieldDescription>Only surveys in the same item are available. The image, extracted data and saved reviews stay with this page.</FieldDescription>
-          {context.surveys.length<2&&<FieldDescription>No other surveys exist in this item.</FieldDescription>}
+          <FieldDescription>Only {words.many} in the same item are available. The image, extracted data and saved reviews stay with this page.</FieldDescription>
+          {context.surveys.length<2&&<FieldDescription>No other {words.many} exist in this item.</FieldDescription>}
           {destination&&<Card size="sm">
             <CardHeader><CardTitle>Destination pages</CardTitle></CardHeader>
             <CardContent className="space-y-1">{destination.pages.map(p=><p key={p.id}>{p.id} · {typeLabel(p.type)}</p>)}{destination.pages.some(p=>p.type===context.category)&&<p className="font-medium">Another page of this type already exists. Multiple pages of the same type are allowed; check the destination.</p>}</CardContent>

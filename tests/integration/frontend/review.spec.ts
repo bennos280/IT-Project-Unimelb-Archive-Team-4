@@ -24,6 +24,7 @@ type State = {
 const demo: Survey = {
   id: "test-survey",
   title: "Test survey",
+  recordName: "survey", grouped: true,
   pages: [
     {
       id: "test-bundle/p0",
@@ -170,7 +171,7 @@ const pageHeading = (page: Page) => page.locator("[data-page-id]");
 const scanImage = (page: Page) => page.getByRole("img", { name: /^Original / });
 
 // The scrollable scan viewport.
-const viewport = (page: Page) => page.getByLabel(/^Survey scan\./);
+const viewport = (page: Page) => page.getByLabel(/^Page scan\./);
 
 // The zoom percentage between the zoom buttons.
 const zoomLevel = (page: Page) =>

@@ -61,18 +61,25 @@ def printed_labels(category):
     fields = pages.get({"main": "1", "coded": "3"}.get(category), {}).get("fields", {})
     return {title: field["label_text"] for title, field in fields.items() if "label_text" in field}
 
-#shown on a page of unknown type (stored as other)
-OTHER_PAGE = ("The computer couldn't tell what this page is, so it wasn't read. It is in this survey because it comes "
-              "after the survey's main form in the scan: check it belongs here, and type anything worth keeping.")
+#shown on a page of unknown type; one grouped with other pages is in their record because it follows its first page
+OTHER_PAGE = "The computer couldn't tell what this page is, so it wasn't read. "
+OTHER_PAGE_GROUPED = ("It is in this {0} because it comes after the {0}'s first page in the scan: check it belongs here, and "
+                      "type anything worth keeping.")
+OTHER_PAGE_ALONE = "Check what it is, and type anything worth keeping."
 
-#a page's fields as the review screen shows them: id, label, group, value
+#what one record of a page's collection is called on screen
+def page_record_name(db, p):
+    return grouping.record_name(db.get(models.Collection, db.get(models.Bundle, p.bundle_id).collection_id))
+
+#a page's fields as the review screen shows them: id, label, group, value; free text is under "<record> details"
 def page_fields(db, p):
     fields_list = []
     for f in db.query(models.Field).filter(models.Field.page_id == p.page_id):
         #nested fields go under their parent, others by sections.py
         parent, _, leaf = f.field_title.rpartition(".")
         group = (parent.replace('_', ' ').capitalize() if parent
-                 else (groupings_coded if p.category == "coded" else groupings_main).get(leaf, "Miscellaneous"))
+                 else (groupings_coded if p.category == "coded" else groupings_main).get(leaf)
+                 or (f"{page_record_name(db, p)} details".capitalize() if leaf == "text" else "Miscellaneous"))
         fields_list.append({"id": f.field_title, "label": leaf.replace('_', ' ').capitalize(),
                             "labelText": printed_labels(p.category).get(f.field_title), "group": group, "value": f.text_raw,
                             "decoded": f.decoded_value})
@@ -107,7 +114,9 @@ def page_flags(db, p, fields_list):
                "reason": "The model couldn't read part of this ([?]): compare it with the scan."}
               for f in fields_list if "[?]" in (f["value"] or "")]
     if db.get(models.PageType, p.category).unknown and any(f["id"] == "text" for f in fields_list):
-        flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain", "reason": OTHER_PAGE})
+        grouped = p.survey_id and db.query(models.Page).filter_by(survey_id=p.survey_id).count() > 1
+        flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain",
+                      "reason": OTHER_PAGE + (OTHER_PAGE_GROUPED.format(page_record_name(db, p)) if grouped else OTHER_PAGE_ALONE)})
     return flags
 
 #a survey's pages in scan order, with fields, flags and scan URL
@@ -115,7 +124,7 @@ def page_flags(db, p, fields_list):
 def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     survey = db.get(models.Survey, survey_id)
     if not survey:
-        raise HTTPException(status_code=404, detail="Survey not found")
+        raise HTTPException(status_code=404, detail="No such record.")
 
     pages_list = []
     for p in db.query(models.Page).filter(models.Page.survey_id == survey_id).order_by(models.Page.page_id):
@@ -130,7 +139,9 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
             "flags": page_flags(db, p, fields_list),
         })
     collection = db.get(models.Collection, db.get(models.Bundle, survey.bundle_id).collection_id)
-    return {"id":survey_id, "bundleId":survey.bundle_id, "collectionId":collection.collection_id, "title":collection.name, "pages":pages_list}
+    return {"id":survey_id, "bundleId":survey.bundle_id, "collectionId":collection.collection_id, "title":collection.name,
+            "recordName": grouping.record_name(collection), "grouped": bool(grouping.rule(db, collection.collection_id)["starts"]),
+            "pages":pages_list}
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
 #and black and white (the scan itself if that fails)
@@ -223,7 +234,7 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
         raise HTTPException(status_code=400, detail="Save one page at a time.")
     [(page_id, reviews)] = payload.reviews.items()
     if not db.query(models.Page).filter(models.Page.page_id == page_id, models.Page.survey_id == survey_id).first():
-        raise HTTPException(status_code=404, detail=f"Page {page_id} is not in this survey.")
+        raise HTTPException(status_code=404, detail=f"Page {page_id} is not in this record.")
     if page_id not in payload.revisions:
         raise HTTPException(status_code=400, detail="Page not in revisions.")
     revision = payload.revisions[page_id]
@@ -343,6 +354,7 @@ class CollectionSettings(BaseModel):
     archiveTitle: str | None = None
     archiveItems: int | None = None
     recordKey: str | None = None #None or "": surveys by page order only
+    recordName: str | None = None #what one record is called on screen; None or "": record
 
 class NewCollection(BaseModel):
     name: str
@@ -417,11 +429,12 @@ def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends
     starts = t.starts_record if payload.startsRecord is None else payload.startsRecord
     matched = t.matched_by_key if payload.matchedByKey is None else payload.matchedByKey
     template = instructions.newest(db).get(name)
-    key = db.get(models.Collection, t.collection_id).record_key
+    collection = db.get(models.Collection, t.collection_id)
+    key, record = collection.record_key, grouping.a_record(grouping.record_name(collection))
     problem = ("A page type's label can't be empty." if not label else
-               "A page type starts a survey or joins one by number, not both." if starts and matched else
-               "Unknown pages aren't read, so they can't start or join a survey." if t.unknown and (starts or matched) else
-               f"Add the survey number field '{key}' to its template first."
+               f"A page type starts {record} or joins one by number, not both." if starts and matched else
+               f"Unknown pages aren't read, so they can't start or join {record}." if t.unknown and (starts or matched) else
+               f"Add the {grouping.record_name(collection)} number field '{key}' to its template first."
                if key and (starts or matched) and template and key not in json.loads(template.body) else None)
     if problem:
         raise HTTPException(status_code=400, detail=problem)
@@ -441,8 +454,8 @@ def bundle_jobs(db):
             "failed": sum(job.status == "failed" and PurePosixPath(job.pdf.replace("\\", "/")).stem not in loaded for job in latest.values())}
 
 #a collection, and with db how far along it is: bundles loaded (processed), being processed or failed; pages, those in a survey
-#(reviewable) and reviewed; what needs a person (pages of its Unknown type, open flags); and how far it is set up (page types
-#other than Unknown, and how many of them have a template)
+#(reviewable) and reviewed; what needs a person (pages of its Unknown type, open flags); how far it is set up (page types
+#other than Unknown, and how many of them have a template); and whether its pages group into records (a type starts one)
 def collection_json(c, db=None):
     found = {}
     if db is not None:
@@ -456,8 +469,10 @@ def collection_json(c, db=None):
                  "reviewable": len(reviewable), "reviewed": sum(p["status"] == "Reviewed" for p in reviewable),
                  "unknownPages": db.query(models.Page).filter(models.Page.category.in_(unknown)).count(),
                  "flagged": sum(p["flagCount"] for p in pages),
-                 "pageTypes": len(types) - len(unknown), "templates": sum(t.name in templates for t in types if not t.unknown)}
-    return {"id": c.collection_id, "name": c.name, "recordKey": c.record_key, "archiveSeries": c.archive_series,
+                 "pageTypes": len(types) - len(unknown), "templates": sum(t.name in templates for t in types if not t.unknown),
+                 "grouped": any(t.starts_record for t in types)}
+    return {"id": c.collection_id, "name": c.name, "recordKey": c.record_key, "recordName": grouping.record_name(c),
+            "archiveSeries": c.archive_series,
             "archiveIdentifier": c.archive_identifier, "archiveTitle": c.archive_title, "archiveItems": c.archive_items, **found}
 
 def series_text(text):
@@ -503,8 +518,8 @@ def get_collection(collection_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No such series.")
     return collection_json(c, db)
 
-#renames a collection, relinks its series, or sets the field holding a survey's number, which the templates of the types that
-#start or join a survey must have; a field left out of the request stays as it is
+#renames a collection, relinks its series, names its records (a word or two, lower case), or sets the field holding a survey's
+#number, which the templates of the types that start or join a survey must have; a field left out of the request stays as it is
 @app.patch("/collections/{collection_id}")
 def update_collection(collection_id: int, payload: CollectionSettings, db: Session = Depends(get_db)):
     write_lock(db)
@@ -532,6 +547,11 @@ def update_collection(collection_id: int, payload: CollectionSettings, db: Sessi
         if missing:
             raise HTTPException(status_code=400, detail=f"These page types' templates don't have '{key}': {', '.join(missing)}.")
         c.record_key = key
+    if "recordName" in given:
+        word = " ".join((payload.recordName or "").lower().split())
+        if word and not (len(word) <= 40 and re.fullmatch(r"[a-z]+(['-][a-z]+)*( [a-z]+(['-][a-z]+)*)?", word)):
+            raise HTTPException(status_code=400, detail="A record name is a word or two, like survey or letter.")
+        c.record_name = word or None
     name = c.name
     try:
         db.commit()
@@ -934,13 +954,13 @@ def move_page(page_id: str, payload: MovePageRequest, db: Session = Depends(get_
     page = db.get(models.Page, page_id)
     target = db.get(models.Survey, payload.surveyId)
     if page is None or target is None:
-        raise HTTPException(404, "Page or destination survey not found.")
+        raise HTTPException(404, "Page or destination record not found.")
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(400, "Select a valid reviewer.")
     if target.bundle_id != page.bundle_id:
         raise HTTPException(400, "Pages can only move within the same item.")
     if target.survey_id == page.survey_id:
-        raise HTTPException(400, "Choose a different survey.")
+        raise HTTPException(400, f"Choose a different {page_record_name(db, page)}.")
     if page.survey_id != payload.sourceSurveyId or (page.revision_no or 0) != payload.revision:
         raise HTTPException(409, "This page changed. Refresh before moving it.")
     if db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.status.in_(("waiting", "running"))).first():
@@ -1037,7 +1057,7 @@ def get_page_history(page_id: str, db: Session = Depends(get_db)):
               "Page type changed" if version.action == "change_type" else "Page retranscribed",
               f"Previous page type: {previous.get('category', 'Unknown')}. Previous revision: {previous.get('revision_no', 'Unknown')}.", content)
     for move in db.query(models.PageMove).filter_by(page_id=page_id):
-        event("move", move.move_id, move.time, move.reviewer_id, "Moved to another survey",
+        event("move", move.move_id, move.time, move.reviewer_id, f"Moved to another {page_record_name(db, page)}",
               f"{move.from_survey or 'Unassigned'} → {move.to_survey}" + (f". Reason: {move.reason}" if move.reason else ""))
     previous_values = {}
     for edit in db.query(models.Edit).filter_by(page_id=page_id).order_by(models.Edit.edit_id):

@@ -100,7 +100,7 @@ export default function ImportScreen() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Import items</h1>
           <p className="text-sm text-muted-foreground">
-            Upload your survey files and enter an item number for each file.
+            Upload scans (PDFs or page images) and enter an item number for each file.
             A PDF is a whole item. For page images, give every page of an item
             the same item number; pages are read in file name order.
           </p>

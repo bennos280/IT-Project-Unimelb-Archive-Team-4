@@ -21,7 +21,7 @@ PAGES = [  # label, number_of_dwelling as transcribed (None: not read or not on 
 ]
 
 
-PREST = {"starts": {"main"}, "matched": {"coded"}, "key": "number_of_dwelling",  # as migration 010 sets collection 1
+PREST = {"starts": {"main"}, "matched": {"coded"}, "key": "number_of_dwelling", "record": "survey",  # as migration 010 sets collection 1
          "labels": {"main": "Main page", "coded": "Coded page", "notes": "Notes page", "other": "Unknown"}}
 
 
@@ -53,7 +53,7 @@ def test_cards_join_the_main_form_with_their_number(tmp_path):
 def test_the_rule_not_the_page_type_names_decides(tmp_path):
     """Prest's pages with every type renamed and the number in another field group exactly as Prest's do."""
     names = {"main": "form", "coded": "card", "notes": "letter", "blank": "blank"}
-    rule = {"starts": {"form"}, "matched": {"card"}, "key": "house_no", "labels": {"form": "Form", "card": "Card"}}
+    rule = {"starts": {"form"}, "matched": {"card"}, "key": "house_no", "labels": {"form": "Form", "card": "Card"}, "record": "return"}
     pages = [(f"216412_{i:05d}.png", label, None if label == "blank" else {"number_of_dwelling": n})
              for i, (label, n) in enumerate(PAGES, start=1)]
     prest = grouped(tmp_path / "prest", "216412", pages)
@@ -61,7 +61,7 @@ def test_the_rule_not_the_page_type_names_decides(tmp_path):
                                                         for file, label, t in pages], rule)
     assert [p["survey"] for p in renamed.pages] == [p["survey"] for p in prest.pages]
     assert [r["file"] for r in renamed.review] == [r["file"] for r in prest.review]
-    assert renamed.review[-1]["reason"] == "1 page(s) before the first Form belong to no survey"
+    assert renamed.review[-1]["reason"] == "1 page(s) before the first Form belong to no return"
 
 
 def test_without_a_number_field_pages_follow_the_page_that_starts_their_survey(tmp_path):

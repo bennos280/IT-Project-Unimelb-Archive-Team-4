@@ -25,7 +25,7 @@ import {
   type ProgressPage,
   type PageStatus,
 } from "./progressData";
-import { ARCHIVE, backendRequest, itemTitle, providerNames, type AvailableBundle } from "./backend";
+import { ARCHIVE, backendRequest, itemTitle, providerNames, recordWords, type AvailableBundle } from "./backend";
 import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
 import type { ModelData } from "./ModelControls";
 import JobErrorDialog from "./JobErrorDialog";
@@ -50,7 +50,6 @@ const jobStages: Record<string, string> = {
   identify: "Identifying page types",
   preprocess: "Preparing images",
   transcribe: "Transcribing pages",
-  group: "Grouping surveys",
   load: "Saving results to database",
 };
 
@@ -58,10 +57,17 @@ const jobStages: Record<string, string> = {
 export default function ProgressDashboard() {
   // The collection whose bundles these are (/?collection=<id>).
   const collectionId = Number(new URLSearchParams(location.search).get("collection")) || 1;
-  const [collectionName, setCollectionName] = useState("");
+  // Until the series loads it has no name, its records are "records" and they group, so nothing flickers away.
+  const [series, setSeries] = useState({ name: "", recordName: "record", grouped: true });
   useEffect(() => {
-    backendRequest<{ name: string }>(`/collections/${collectionId}`).then((c) => setCollectionName(c.name)).catch(() => {});
+    backendRequest<{ name: string; recordName: string; grouped: boolean }>(`/collections/${collectionId}`)
+      .then(({ name, recordName, grouped }) => setSeries({ name, recordName, grouped }))
+      .catch(() => {});
   }, [collectionId]);
+  const words = recordWords(series.recordName);
+  // A status as shown: in the series' words, and without grouping where its pages don't group.
+  const statusLabel = (s: string) =>
+    s === "Not in a survey" ? `Not in ${words.a}` : s === "Transcribed — not grouped" && !series.grouped ? "Transcribed" : s;
   // Null means data has not loaded yet; an empty array means no bundles were returned.
   const [bundles, setBundles] = useState<DashboardBundle[] | null>(null);
   const [error, setError] = useState("");
@@ -342,8 +348,8 @@ export default function ProgressDashboard() {
         crumbs={[
           { label: "Series", href: "/" },
           bundle
-            ? { label: collectionName || "Series", href: `/?collection=${collectionId}`, onClick: backToOverview }
-            : { label: collectionName || "Series" },
+            ? { label: series.name || "Series", href: `/?collection=${collectionId}`, onClick: backToOverview }
+            : { label: series.name || "Series" },
           ...(bundle ? [{ label: itemTitle(bundle.name ?? bundle.id, bundle.source?.archive) }] : []),
         ]}
         actions={
@@ -359,6 +365,7 @@ export default function ProgressDashboard() {
               }
               defaultScope="bundle"
               collectionId={collectionId}
+              recordName={series.recordName}
               hasDrafts={false}
             />
             {collectionId === 1 && ( // ponytail: imports go to collection 1 until the import screen picks a collection
@@ -421,7 +428,7 @@ export default function ProgressDashboard() {
             <AlertDescription className="text-foreground">
               {bundleNotStarted
                 ? "This item has not been processed yet. Press Transcribe to get started."
-                : "This item has not finished processing. Pages shown may not be transcribed, grouped into survey or identified yet. Please complete transcription."}
+                : `This item has not finished processing. Pages shown may not be transcribed${series.grouped ? `, grouped into ${words.many}` : ""} or identified yet. Please complete transcription.`}
             </AlertDescription>
           </Alert>
         )}
@@ -492,10 +499,10 @@ export default function ProgressDashboard() {
                   "Awaiting transcription",
                   "Ready to review",
                   "Reviewed",
-                  "Not in a survey",
+                  ...(series.grouped ? ["Not in a survey"] : []),
                 ].map((s) => (
                   <option key={s} value={s}>
-                    Status: {s}
+                    Status: {statusLabel(s)}
                   </option>
                 ))}
               </NativeSelect>
@@ -584,7 +591,7 @@ export default function ProgressDashboard() {
                               className="h-auto whitespace-normal"
                               variant={p.status === "Reviewed" ? "default" : p.status === "Ready to review" ? "secondary" : "outline"}
                             >
-                              {p.status}
+                              {statusLabel(p.status)}
                             </Badge>
                           </TableCell>
                           <TableCell className={cell}>{p.model || "—"}</TableCell>
@@ -594,7 +601,7 @@ export default function ProgressDashboard() {
                             ) : p.surveyId ? (
                               <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground" />
                             ) : (
-                              <span className="block text-right text-muted-foreground" title="This page has no survey assignment">
+                              <span className="block text-right text-muted-foreground" title={`This page has no ${words.one} assignment`}>
                                 —
                               </span>
                             )}
@@ -641,7 +648,7 @@ export default function ProgressDashboard() {
 
                                   {c.unassigned > 0 && (
                                     <span className="text-muted-foreground">
-                                      {c.unassigned} {c.unassigned === 1 ? "page" : "pages"} not in a survey
+                                      {c.unassigned} {c.unassigned === 1 ? "page" : "pages"} not in {words.a}
                                     </span>
                                   )}
 
@@ -670,9 +677,9 @@ export default function ProgressDashboard() {
                                         <div className="text-muted-foreground">
                                           {b.source.job.status === "waiting"
                                             ? "Waiting for the worker to start this job"
-                                            : (jobStages[
-                                                b.source.job.step ?? ""
-                                              ] ??
+                                            : ((b.source.job.step === "group"
+                                                ? series.grouped ? `Grouping pages into ${words.many}` : `Making each page ${words.a}`
+                                                : jobStages[b.source.job.step ?? ""]) ??
                                               b.source.job.step ??
                                               "Starting processing")}
                                         </div>

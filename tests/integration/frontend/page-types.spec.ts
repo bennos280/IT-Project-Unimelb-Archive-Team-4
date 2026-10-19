@@ -13,7 +13,10 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
     type("notes", "Notes page", { templateVersion: 9 }),
     type("other", "Unknown", { unknown: true }),
   ];
-  const collection = { id: 1, name: "Wilfred Prest Survey", recordKey };
+  const collection = {
+    id: 1, name: "Wilfred Prest Survey", recordKey, recordName: "survey",
+    get grouped() { return types.some((t) => t.startsRecord); },
+  };
   const versions: Record<string, { id: number; body: string }[]> = {
     main: [{ id: 7, body: '{"number_of_dwelling": null, "address": null}' }],
     coded: [{ id: 8, body: '{"number_of_dwelling": null}' }],
@@ -33,6 +36,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
       calls.patchCollection.push(body);
       if (body.recordKey === "address") return route.fulfill({ status: 400, json: { detail: "These page types' templates don't have 'address': Coded page." } });
       collection.recordKey = body.recordKey || null;
+      collection.recordName = body.recordName.trim().toLowerCase() || "record";
       return route.fulfill({ json: collection });
     }
     if (path === "/api/page-types" && method === "POST") {
@@ -138,7 +142,28 @@ test("the survey number field saves, and a refusal is shown", async ({ page }) =
   await field.fill("");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(field).toHaveValue("");
-  expect(calls.patchCollection).toEqual([{ recordKey: "address" }, { recordKey: "" }]);
+  expect(calls.patchCollection).toEqual([{ recordName: "survey", recordKey: "address" }, { recordName: "survey", recordKey: "" }]);
+});
+
+test("the record name words the page types, and is saved with the number field", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?view=page-types");
+  await page.getByLabel("Record name").fill("Household card");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(row(page, "Main page")).toContainText("Starts a household card");
+  await expect(page.getByLabel("Household card number field")).toHaveValue("number_of_dwelling");
+  expect(calls.patchCollection).toEqual([{ recordName: "Household card", recordKey: "number_of_dwelling" }]);
+});
+
+test("with no page type starting a record, each page is a record of its own", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?view=page-types");
+  await row(page, "Main page").getByRole("button", { name: "Edit Main page" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Main page" });
+  await dialog.getByRole("radio", { name: /Follows the page before it/ }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(row(page, "Notes page")).toContainText("A survey of its own");
+  await expect(page.getByText("No page type starts a survey, so each page is a survey of its own.", { exact: false })).toBeVisible();
 });
 
 test("joining by number needs a survey number field, and the Unknown type has no grouping or template", async ({ page }) => {

@@ -15,7 +15,7 @@ import {
 import { cn } from "cn";
 import ImageViewer from "./ImageViewer";
 import { request } from "./api";
-import { itemTitle, type AvailableBundle } from "../progress/backend";
+import { itemTitle, recordWords, type AvailableBundle } from "../progress/backend";
 import type { useReviewSession } from "./useReviewSession";
 import { getPageName, isTextPage } from "./model";
 import type { Flag } from "./model";
@@ -149,6 +149,7 @@ export default function ReviewScreen({
   }, [bundleId, collectionId]);
   const listed = bundleNames.find((b) => b.bundle === bundleId);
   const bundleLabel = listed?.name || bundleId || "";
+  const words = recordWords(survey?.recordName);
   return (
     <>
       <AppHeader
@@ -158,14 +159,14 @@ export default function ReviewScreen({
           ...(survey?.bundleId
             ? [{ label: itemTitle(bundleLabel, listed?.archive), href: `/?collection=${survey.collectionId ?? 1}&bundle=${encodeURIComponent(bundleLabel)}` }]
             : []),
-          { label: `Survey ${session.surveyId}`.trim() },
+          { label: survey ? `${words.One} ${session.surveyId}` : session.surveyId || words.One },
         ]}
       />
       <main>
-        <h1 className="sr-only">Review survey card</h1>
+        <h1 className="sr-only">Review {words.one}</h1>
         {!session.surveyId ? (
           <div className="p-8 text-center text-muted-foreground" role="status">
-            Select a survey to review.
+            Select {words.a} to review.
           </div>
         ) : error ? (
           <Alert variant="destructive" className="m-6 w-auto">
@@ -186,7 +187,7 @@ export default function ReviewScreen({
             role="status"
           >
             <Spinner aria-hidden="true" />
-            Loading survey and source images…
+            Loading pages and source images…
           </div>
         ) : (
           <div className="grid grid-cols-1 md:h-[calc(100dvh-5.6rem)] md:grid-cols-[46%_54%]">
@@ -526,7 +527,7 @@ export default function ReviewScreen({
                   </h2>
                   <nav
                     className="flex items-center gap-3 text-sm"
-                    aria-label="Survey pages"
+                    aria-label={`${words.One} pages`}
                   >
                     <Button
                       variant="outline"
@@ -557,6 +558,7 @@ export default function ReviewScreen({
                     surveyId={survey.id}
                     initialBundleId={survey.bundleId}
                     collectionId={survey.collectionId}
+                    recordName={survey.recordName}
                     hasDrafts={Object.values(session.reviews).some((fields) =>
                       Object.values(fields).some((review) => !review.savedAt),
                     )}

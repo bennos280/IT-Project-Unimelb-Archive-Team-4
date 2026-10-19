@@ -3,12 +3,23 @@ the pipeline's group step and the template checks read it."""
 from backend.db import models
 
 
+#what one record of a collection is called on screen
+def record_name(collection):
+    return collection.record_name or "record"
+
+
+#a record name with its article; ponytail: "an" before a vowel letter, so "an hour" and "a unit" come out wrong
+def a_record(name):
+    return f"{'an' if name[:1] in 'aeiou' else 'a'} {name}"
+
+
 #the rule pipeline.Run.grouping takes: the page types that start a survey, those that join the survey whose number they show,
-#the field holding that number (None: page order only), and every type's label for the review flags
+#the field holding that number (None: page order only), every type's label and what a record is called, for the review flags
 def rule(db, collection_id):
     types = db.query(models.PageType).filter_by(collection_id=collection_id).all()
+    collection = db.get(models.Collection, collection_id)
     return {"starts": {t.name for t in types if t.starts_record}, "matched": {t.name for t in types if t.matched_by_key},
-            "key": db.get(models.Collection, collection_id).record_key, "labels": {t.name: t.label for t in types}}
+            "key": collection.record_key, "labels": {t.name: t.label for t in types}, "record": record_name(collection)}
 
 
 #page type -> the field its templates must have, as grouping reads it

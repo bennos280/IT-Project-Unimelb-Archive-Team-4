@@ -16,6 +16,14 @@ export const providerNames: Record<string, string> = { claude: "Claude Code", co
 // The archive's website; a series' page is /nodes/view/<its number>, and an item's /nodes/view/<its name>.
 export const ARCHIVE = "https://archives.library.unimelb.edu.au";
 export type ArchiveItem = { identifier: string; title: string };
+// What a series calls one record, several, and one with its article, mid-sentence and starting one.
+// ponytail: English's usual plurals and "an" before a vowel letter; irregular ones (person, hour) come out wrong.
+export function recordWords(one = "record") {
+  const many = /[^aeiou]y$/.test(one) ? `${one.slice(0, -1)}ies` : /(s|x|ch|sh)$/.test(one) ? `${one}es` : `${one}s`;
+  const a = `${/^[aeiou]/.test(one) ? "an" : "a"} ${one}`;
+  const start = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+  return { one, many, a, One: start(one), A: start(a) };
+}
 // An item's name on screen: its title on the archive, else its number.
 export const itemTitle = (name: string, archive?: ArchiveItem | null) => archive?.title ?? `Item ${name}`;
 // Bundle metadata returned by /bundles, including its current processing job.

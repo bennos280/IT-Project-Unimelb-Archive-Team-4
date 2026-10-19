@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 const demo = {
   id: "export-test",
   title: "Export test",
+  recordName: "survey", grouped: true,
   pages: [
     {
       id: "page0",
@@ -295,6 +296,8 @@ for (const selectedBundle of [false, true]) {
     await page.route("**/api/**", (route) => {
       const url = new URL(route.request().url());
       if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
+      if (url.pathname === "/api/collections/1")
+        return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true } });
       if (url.pathname === "/api/progress")
         return route.fulfill({
           json: [{ id: "pending", name: "123", pages: [] }],

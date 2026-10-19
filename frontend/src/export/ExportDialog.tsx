@@ -28,6 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { recordWords } from "../progress/backend";
 
 import {
   loadSurveyExport,
@@ -73,13 +74,16 @@ export default function ExportDialog({
   initialBundleId = "",
   defaultScope = "survey",
   collectionId,
+  recordName,
 }: {
   surveyId: string;
   hasDrafts: boolean;
   initialBundleId?: string;
   defaultScope?: Scope;
   collectionId?: number; // the bundles listed are this collection's
+  recordName?: string; // what the collection calls a record
 }) {
+  const words = recordWords(recordName);
   // Stores the selected export scope.
   const [scope, setScope] = useState<Scope>(defaultScope);
 
@@ -189,7 +193,7 @@ export default function ExportDialog({
       const pages = payload.surveys.flatMap((record) => record.pages);
       const unassigned = payload.unassignedPages ?? [];
 
-      const filename = `${scope === "survey" ? "survey" : "bundle"}-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}-export.json`;
+      const filename = `${scope === "survey" ? words.one.replace(/\W+/g, "-") : "bundle"}-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}-export.json`;
       const url = URL.createObjectURL(
         new Blob([JSON.stringify(payload, null, 2)], {
           type: "application/json",
@@ -219,7 +223,7 @@ export default function ExportDialog({
       setFailure(
         error instanceof Error
           ? error.message
-          : "Could not read saved survey data. Try again.",
+          : `Could not read saved ${words.one} data. Try again.`,
       );
     } finally {
       setBusy(false);
@@ -291,13 +295,13 @@ export default function ExportDialog({
               >
                 {initialBundleId && (
                   <ScopeOption value="current" title="Current item">
-                    Export all surveys and unassigned pages in item{" "}
+                    Export all {words.many} and unassigned pages in item{" "}
                     {initialBundleId}.
                   </ScopeOption>
                 )}
 
                 <ScopeOption value="bundle" title="Export item JSON">
-                  JSON file containing all surveys in one item.
+                  JSON file containing all {words.many} in one item.
                 </ScopeOption>
 
                 {/* Choose a loaded bundle from the database. */}
@@ -327,15 +331,15 @@ export default function ExportDialog({
                   </Field>
                 )}
 
-                <ScopeOption value="survey" title="Survey ID JSON">
-                  JSON file containing one survey and its source page labels.
+                <ScopeOption value="survey" title={`${words.One} ID JSON`}>
+                  JSON file containing one {words.one} and its source page labels.
                 </ScopeOption>
 
                 {/* Survey ID input used for the currently supported export mode. */}
                 {scope === "survey" && (
                   <Field className="pl-9">
                     <FieldLabel htmlFor="export-survey-id">
-                      Survey ID *
+                      {words.One} ID *
                     </FieldLabel>
                     <Input
                       id="export-survey-id"
@@ -346,7 +350,7 @@ export default function ExportDialog({
                         setResult(null);
                         setFailure("");
                       }}
-                      placeholder="Enter survey ID"
+                      placeholder={`Enter ${words.one} ID`}
                     />
                   </Field>
                 )}
@@ -376,7 +380,7 @@ export default function ExportDialog({
             {failure && (
               <Alert variant="destructive" className="wrap-anywhere">
                 <AlertTitle>
-                  Survey {requestedId || "(no ID)"} could not be exported.
+                  {words.One} {requestedId || "(no ID)"} could not be exported.
                 </AlertTitle>
                 <AlertDescription>
                   <p>{failure}</p>
@@ -393,7 +397,7 @@ export default function ExportDialog({
                 <AlertDescription>
                   <p>{result.filename}</p>
                   <p>
-                    {result.surveys} surveys · {result.pages} pages ·{" "}
+                    {result.surveys} {result.surveys === 1 ? words.one : words.many} · {result.pages} pages ·{" "}
                     {result.pending} pages awaiting review included.
                   </p>
                 </AlertDescription>

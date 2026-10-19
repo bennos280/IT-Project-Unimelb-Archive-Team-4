@@ -33,7 +33,7 @@ async function mockApi(page: Page, { archiveDown = false, slowNode = 0 } = {}) {
       const found = [SERIES, ITEM].find((s) => s.id === Number(series[1]));
       return found ? route.fulfill({ json: found }) : route.fulfill({ status: 404, json: { detail: "The archive has no page with that number." } });
     }
-    if (path === "/api/collections/2") return route.fulfill({ json: { ...PREST, id: 2, name: "Social survey forms", recordKey: null } });
+    if (path === "/api/collections/2") return route.fulfill({ json: { ...PREST, id: 2, name: "Social survey forms", recordKey: null, recordName: "record", grouped: false } });
     if (path === "/api/page-types") return route.fulfill({ json: [] });
     if (path === "/api/reviewers") return route.fulfill({ json: [] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
@@ -92,6 +92,7 @@ test("a new series previews what it links to on the archive, takes its name from
   await dialog(page).getByLabel("Name").fill("Social survey forms");
   await dialog(page).getByRole("button", { name: "Create series" }).click();
   await expect(page).toHaveURL("/?collection=2&view=page-types");
+  await expect(page.getByText("No page type starts a record, so each page is a record of its own.", { exact: false })).toBeVisible();
   expect(created).toEqual([{ name: "Social survey forms", archiveSeries: "https://archives.library.unimelb.edu.au/nodes/view/499420",
     archiveIdentifier: "UMA-SR-000000842", archiveTitle: "[UMA-SR-000000842] University of Melbourne Social Survey forms", archiveItems: 45 }]);
 });

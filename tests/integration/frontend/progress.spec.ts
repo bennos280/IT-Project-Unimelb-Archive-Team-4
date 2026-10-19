@@ -15,6 +15,7 @@ test.describe("Progress navigation and layout", () => {
   const survey = {
     id: "216417_1",
     title: "Wilfred Prest Survey",
+    recordName: "survey", grouped: true,
     collectionId: 1,
     pages: ["main", "notes", "coded"].map((type, index) => ({
       id: `216417/p${index}`,
@@ -52,7 +53,7 @@ test.describe("Progress navigation and layout", () => {
       const path = new URL(route.request().url()).pathname;
 
       if (path === "/api/collections/1")
-        return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", archiveSeries: 499420 } });
+        return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", recordName: "survey", grouped: true, archiveSeries: 499420 } });
       if (path === "/api/progress")
         return route.fulfill({
           json: [
@@ -476,6 +477,15 @@ test.describe("Progress and transcription states", () => {
     await expect(page.getByRole("progressbar", { name: "Collingwood 07 review progress" })).toBeVisible();
   });
 
+  test("a series whose pages don't group offers no grouping status", async ({ page }) => {
+    await mock(page, { loaded: true });
+    await page.route("**/api/collections/1", (route) =>
+      route.fulfill({ json: { id: 1, name: "Letters", recordName: "letter", grouped: false } }));
+    await page.reload();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Letters");
+    await expect(page.getByLabel("Status").locator("option", { hasText: "Not in a" })).toHaveCount(0);
+  });
+
   test("untouched item prompts Transcribe and shows no reviewable pages", async ({
     page,
   }) => {
@@ -786,6 +796,9 @@ test.describe("Pages without a survey", () => {
       const path = new URL(route.request().url()).pathname;
       if (path === "/api/progress") {
         return route.fulfill({ json: [{ id: "test-bundle", pages }] });
+      }
+      if (path === "/api/collections/1") {
+        return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true } });
       }
       if (path === "/api/bundles") {
         return route.fulfill({ json: [] });

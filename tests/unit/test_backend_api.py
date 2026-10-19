@@ -14,7 +14,7 @@ def add_in_order(db, *rows):
 def test_get_survey_not_found(client):
     response = client.get("/survey/nonexistent_survey")
     assert response.status_code == 404
-    assert response.json() == {"detail": "Survey not found"}
+    assert response.json() == {"detail": "No such record."}
 
 # CHANGED - lookup with dict key TO groupings_coded.get(f.field_title, "Miscellaneous")
 def test_get_survey_success(client, db):
