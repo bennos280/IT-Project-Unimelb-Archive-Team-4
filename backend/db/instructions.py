@@ -74,7 +74,7 @@ def template_problems(kind, template, required=None):
     return found
 
 
-#a field is null, or an object of fields; names are lower case
+#a field is null, its description (text the model reads), or an object of fields; names are lower case
 def field_problems(parent, fields):
     found = []
     for key, value in fields.items():
@@ -83,6 +83,6 @@ def field_problems(parent, fields):
             found.append(f"'{name}': names are lower-case letters, digits and _, starting with a letter")
         if isinstance(value, dict):
             found += field_problems(name, value)
-        elif value is not None:
-            found.append(f"'{name}' must be null (or an object of fields)")
+        elif value is not None and not isinstance(value, str):
+            found.append(f"'{name}' must be null, its description, or an object of fields")
     return found

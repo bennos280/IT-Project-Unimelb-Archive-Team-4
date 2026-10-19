@@ -108,6 +108,7 @@ them is checked against the archive's own markup, not only the tests' stand-in.
 | `test_migrations_match_the_models`                                      | The migrations in `backend/db/migrations/` build the same tables and columns as `backend/db/models.py` (Alembic's check). Fails if `models.py` changes a table or column without a migration. It does not compare CHECK constraints or server defaults, and the unit tests build their db from `models.py`, not from the migrations. |
 | `test_a_table_change_keeps_the_edits_on_it_and_backs_the_db_up_first`   | A later migration that rebuilds `fields` (how SQLite changes a column) keeps the reviewers' edits on it, and the db is copied to `<name>-backup-<revision>.db` before it runs.                                                                                                                                                       |
 | `test_a_migration_that_breaks_a_link_is_undone`                         | A later migration that leaves rows pointing at nothing (deletes a bundle its pages belong to) stops with an error, and the db is left as it was before it.                                                                                                                                                                           |
+| `test_017_keeps_a_templates_field_rules_and_flags_the_values_that_break_them` | Migration 017 adds a template version's rules and the `invalid` flag kind; undone, it drops both (and the invalid flags, which the old kinds can't hold). |
 | `test_version_1_of_the_prompt_and_templates_is_the_files_byte_for_byte` | Migration 001 stores `prompt.txt` and each template as version 1 byte for byte, with the files' hashes, so transcripts already made from the files are reused, not read (and paid for) again.                                                                                                                                        |
 
 ## `check_review_integration.mjs` / `check_review_integration.py` — 15 test
@@ -135,7 +136,7 @@ afterwards.V
 These checks run separately from pytest. They test adapter/API/database
 integration; browser behaviour and image loading are covered separately.
 
-## `review.spec.ts` — 18 tests
+## `review.spec.ts` — 19 tests
 
 Tests the review screen in a real browser using Playwright.
 Each test uses a sample survey, mock images and an isolated mock API.
@@ -146,6 +147,7 @@ No running backend or database is needed.
 | `test("Next/Previous show matching page data and image", async ({ page }) => ...)`                   | Navigation shows matching fields and images, with buttons disabled at the first and last pages. |
 | `test("Search and Clear filters return expected rows", async ({ page }) => ...)`                     | Search finds fields, shows an empty state and clears correctly.                                 |
 | `test("Flag filter and disclosure show the reason", async ({ page }) => ...)`                        | Flagged fields can be filtered and their explanations expanded.                                 |
+| `test("A field breaking its rule is flagged with why, and filtered to", async ({ page }) => ...)` | A value breaking its field's rule shows as that kind of flag with its reason, and the filter can show only those. |
 | `test("Zoom and Fit to Page change the image scale", async ({ page }) => ...)`                       | Zoom changes the scale and Fit to Page fits the image inside the viewer.                        |
 | `test("Clicking Address highlights its scan area", async ({ page }) => ...)`                         | Selecting Address displays its named highlight and zooms in.                                    |
 | `test("Cancel discards draft text and reviewer is required", async ({ page, api }) => ...)`          | A reviewer is required, and cancelling leaves the original value unchanged.                     |
@@ -259,6 +261,10 @@ Related backend coverage lives in `tests/unit/test_progress.py` (3 tests): model
 ## `page-actions.spec.ts` — 5 tests
 
 Checks same-item moves, immediate type changes without queuing, persistence of the transcription prompt after refresh, and separate transcription with or without a preceding type change. Also checks editable model selection and the model table, and that in a series whose pages don't group a page can't be moved to another record and the screen uses the series' own word for one.
+
+## `page-types.spec.ts` — 12 tests
+
+The Page types screen with the API mocked: a series' page types by label with how they group and their template; label, grouping, template and record settings saved, with the checks' problems shown; adding a reviewer there; each of a template's fields given a rule (type, required, range, values, pattern and example) and a description, which writes itself into the template, saved with it; a rule changed alone saved as a new version; no fields to set while the template's JSON is broken; and the template's history, from which an older version is brought back as the newest.
 
 ## `add-items.spec.ts` — 32 tests
 

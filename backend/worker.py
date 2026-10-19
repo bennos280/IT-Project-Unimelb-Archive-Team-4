@@ -13,7 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.dialects.sqlite import insert
 
 from backend import scans
-from backend.db import app_settings, database, grouping, instructions, loader, models
+from backend.db import app_settings, checks, database, grouping, instructions, loader, models
 from backend.pipeline import run as pipeline
 from backend.pipeline.identify.classifier import LABELS
 from backend.common import ROOT, settings
@@ -194,6 +194,7 @@ def read_page_again(db, job, progress):
                         " prompt_version_id = ?, template_version_id = ? WHERE page_id = ?",
                         (job.page_type, *(answer.get(key) for key in loader.META), newest[instructions.PROMPT].version_id,
                          newest[job.page_type].version_id, page.page_id))
+    checks.check_pages(con, [page.page_id])
 
 #refits page sorting on the pages reviewers settled; kept and used only if it passes the check
 def train_sorting(db, job, progress):

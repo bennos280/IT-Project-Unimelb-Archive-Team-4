@@ -234,6 +234,20 @@ def test_013_lists_each_of_prests_archive_items_with_its_identifier_and_title(ur
     assert not rows(db, "SELECT name FROM sqlite_master WHERE name = 'archive_items'")
 
 
+def test_017_keeps_a_templates_field_rules_and_flags_the_values_that_break_them(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    database.migrate(url)
+    with sqlite3.connect(db) as con:
+        con.execute("UPDATE instruction_versions SET rules = '{\"address\": {\"type\": \"text\"}}' WHERE kind = 'main'")
+        con.execute("INSERT INTO flags (page_id, field_title, kind, reason) VALUES ('p', 'age', 'invalid', 'Should be a number')")
+    command.downgrade(config, "016")
+    assert rows(db, "SELECT COUNT(*) FROM flags") == [(0,)]  # an invalid flag can't be kept without its kind
+    assert "rules" not in {r[1] for r in rows(db, "PRAGMA table_info(instruction_versions)")}
+    database.migrate(url)
+    assert rows(db, "SELECT COUNT(*) FROM instruction_versions WHERE rules IS NOT NULL") == [(0,)]
+
+
 def test_016_lets_a_job_add_a_series_items(url, tmp_path):
     db = tmp_path / "test.db"
     config = database.alembic_config(url)

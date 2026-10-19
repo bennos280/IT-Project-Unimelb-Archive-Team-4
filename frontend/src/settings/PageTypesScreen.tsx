@@ -12,11 +12,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { backendRequest, recordWords } from "../progress/backend";
 import { createReviewer } from "../review-screen/api";
+import FieldRules from "./FieldRules";
+import { cleanRules, parseTemplate, type Rules } from "./rules";
 
 type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; startsRecord: boolean; matchedByKey: boolean; templateVersion: number | null };
 type Collection = { id: number; name: string; recordKey: string | null; recordName: string; grouped: boolean };
 type Reviewer = { id: number; name: string };
-type Version = { id: number; body: string };
+type Version = { id: number; body: string; rules: Rules; reviewer: string | null; note: string | null; createdAt: string };
 type Grouping = "starts" | "matched" | "follows";
 
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -277,7 +279,8 @@ function GroupingOption({ value, title, disabled, children }: { value: Grouping;
   );
 }
 
-// A page type's label, how its pages group, and its template (each save of the template is a new version).
+// A page type's label, how its pages group, its template and its fields' rules (each save of those is a new version; an
+// older one can be brought back).
 function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSaved }: {
   type: PageType; collection: Collection; reviewers: Reviewer[]; onAddReviewer: (person: Reviewer) => void; onClose: () => void;
   onSaved: () => void;
@@ -285,20 +288,25 @@ function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSav
   const id = useId();
   const [label, setLabel] = useState(type.label);
   const [grouping, setGrouping] = useState<Grouping>(groupingOf(type));
-  const [newest, setNewest] = useState<Version | null>(null);
+  const [versions, setVersions] = useState<Version[]>([]); // newest first
   const [template, setTemplate] = useState<string | null>(type.templateVersion ? null : ""); // null: loading
+  const [rules, setRules] = useState<Rules>({});
   const [reviewerId, setReviewerId] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const newest = versions[0] ?? null;
 
   useEffect(() => {
     if (!type.templateVersion) return;
     backendRequest<Version[]>(`/instructions/${type.name}`)
-      .then((versions) => { setNewest(versions[0]); setTemplate(versions[0].body); })
+      .then((loaded) => { setVersions(loaded); setTemplate(loaded[0].body); setRules(loaded[0].rules); })
       .catch((e) => setError(message(e, "Could not load the template.")));
   }, [type]);
 
-  const templateChanged = template !== null && template !== (newest?.body ?? "");
+  const parsed = parseTemplate(template);
+  const cleaned = cleanRules(rules, parsed);
+  const rulesChanged = JSON.stringify(cleaned) !== JSON.stringify(cleanRules(newest?.rules ?? {}, parseTemplate(newest?.body ?? null)));
+  const templateChanged = template !== null && (template !== (newest?.body ?? "") || rulesChanged);
   const settingsChanged = label.trim() !== type.label || grouping !== groupingOf(type);
 
   async function save() {
@@ -307,7 +315,7 @@ function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSav
     const settings = () => backendRequest(`/page-types/${type.name}`,
       json("PATCH", { label, startsRecord: grouping === "starts", matchedByKey: grouping === "matched" }));
     const saveTemplate = () => backendRequest(`/instructions/${type.name}`,
-      json("POST", { body: template, basedOn: newest?.id ?? null, reviewerId: Number(reviewerId) }));
+      json("POST", { body: template, rules: cleaned, basedOn: newest?.id ?? null, reviewerId: Number(reviewerId) }));
     try {
       // A type that groups by number needs the number field in its template before its setting; one that stops, after.
       if (grouping === "follows") {
@@ -326,7 +334,7 @@ function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSav
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[640px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Edit {type.label}</DialogTitle>
           <DialogDescription>Changes apply to pages read from now on.</DialogDescription>
@@ -361,10 +369,52 @@ function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSav
                 <Textarea id={`${id}-template`} rows={12} className="font-mono text-xs" value={template ?? ""} disabled={template === null}
                   placeholder={'{"field_name": null}'} onChange={(e) => setTemplate(e.target.value)} />
                 <FieldDescription>
-                  The fields to read off each page, as JSON: every field is null, or an object of fields.
+                  The fields to read off each page, as JSON: every field is null (or its description), or an object of fields.
                   {!type.templateVersion && " Until it has one, pages of this type aren't read."}
                 </FieldDescription>
               </Field>
+              <Field>
+                <FieldTitle>Fields</FieldTitle>
+                <FieldDescription>
+                  What each field should hold. A transcription that breaks a field's rule is flagged for review; the description
+                  helps the model read it.
+                </FieldDescription>
+                {parsed ? <FieldRules template={parsed} rules={rules} onRules={setRules} onTemplate={setTemplate} />
+                  : <p className="text-sm text-muted-foreground">{template ? "Fix the template's JSON to set its fields' rules." : "Add fields to the template first."}</p>}
+              </Field>
+              {versions.length > 1 && (
+                <Field>
+                  <FieldTitle>History</FieldTitle>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Version</TableHead>
+                        <TableHead>Saved</TableHead>
+                        <TableHead>By</TableHead>
+                        <TableHead>Note</TableHead>
+                        <TableHead className="w-0"><span className="sr-only">Use</span></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {versions.map((v, n) => (
+                        <TableRow key={v.id}>
+                          <TableCell className="font-medium">{versions.length - n}</TableCell>
+                          <TableCell className="text-muted-foreground">{v.createdAt ? new Date(v.createdAt).toLocaleString() : ""}</TableCell>
+                          <TableCell>{v.reviewer ?? "From the files"}</TableCell>
+                          <TableCell className="whitespace-normal">{v.note}</TableCell>
+                          <TableCell>
+                            {n === 0 ? <span className="text-muted-foreground">Current</span> : (
+                              <Button variant="outline" size="sm" aria-label={`Use version ${versions.length - n}`}
+                                onClick={() => { setTemplate(v.body); setRules(v.rules); }}>Use this version</Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <FieldDescription>Using an older version fills it in above; saving makes it the newest.</FieldDescription>
+                </Field>
+              )}
               {templateChanged && <ReviewerField reviewers={reviewers} value={reviewerId} onChange={setReviewerId} onAddReviewer={onAddReviewer} />}
             </>
           )}

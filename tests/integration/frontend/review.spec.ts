@@ -51,6 +51,12 @@ const demo: Survey = {
           kind: "uncertain",
           reason: "The handwriting needs checking.",
         },
+        {
+          id: "address-invalid",
+          fieldId: "address",
+          kind: "invalid",
+          reason: "Should look like 12 Smith St",
+        },
       ],
     },
     {
@@ -262,6 +268,17 @@ test("Flag filter and disclosure show the reason", async ({ page }) => {
   await expect(row.getByText(demo.pages[0].flags[0].reason)).toHaveText(
     demo.pages[0].flags[0].reason,
   );
+});
+
+// A value that breaks its field's rule is flagged as that, and can be filtered to.
+test("A field breaking its rule is flagged with why, and filtered to", async ({ page }) => {
+  await page
+    .getByRole("combobox", { name: "Filter fields" })
+    .selectOption("invalid");
+  await expect(fieldRows(page)).toHaveCount(1);
+  const row = address(page);
+  await row.getByRole("button", { name: "Breaks its field's rules" }).click();
+  await expect(row.getByText("Should look like 12 Smith St")).toBeVisible();
 });
 
 // Checks the zoom buttons change the displayed percentage and Fit to Page

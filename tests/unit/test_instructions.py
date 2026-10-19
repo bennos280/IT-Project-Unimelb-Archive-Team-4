@@ -35,7 +35,7 @@ BROKEN = [
     ("main", main_with(other_children={"died": []}), "main: 'other_children' must be"),
     ("main", main_with(**{"kitchen.shared": None}), "main: 'kitchen.shared': names are lower-case"),
     ("main", main_with(bath={"Location": None}), "main: 'bath.Location': names are lower-case"),
-    ("main", main_with(address="5 Peel St."), "main: 'address' must be null"),
+    ("main", main_with(address=5), "main: 'address' must be null, its description, or an object of fields"),
     ("main", main_with(rooms=[None]), "main: 'rooms' must be null"),
     ("main", main_with(extra={f"field_{n}": None for n in range(3000)}), "main: the prompt and template come to"),
 ]

@@ -13,13 +13,22 @@ TIMEOUT = 1800  # seconds one page may take before we give up on it
 
 
 def schema_for(shape):
-    """Template -> JSON schema: same keys, every value a string or null, nothing extra."""
+    """Template -> JSON schema: same keys, every value a string or null, nothing extra; a field given as text is described by it."""
     if isinstance(shape, dict):
         return {"type": "object", "required": list(shape), "additionalProperties": False,
                 "properties": {k: schema_for(v) for k, v in shape.items()}}
     if isinstance(shape, list):
         return {"type": "array", "items": schema_for(shape[0]) if shape else {"type": ["string", "null"]}}
-    return {"type": ["string", "null"]}
+    return {"type": ["string", "null"], **({"description": shape} if isinstance(shape, str) else {})}
+
+
+def described(shape):
+    """whether any of a template's fields is given as its description"""
+    if isinstance(shape, dict):
+        return any(described(v) for v in shape.values())
+    if isinstance(shape, list):
+        return any(described(v) for v in shape)
+    return isinstance(shape, str)
 
 
 def run_cli(command, label, **kwargs):
@@ -79,9 +88,11 @@ def read_texts():
             **{path.stem: path.read_bytes().decode("utf-8") for path in sorted((HERE / "templates").glob("*.json"))}}
 
 
-#what the model is told: the prompt, then the page type's blank template
+#what the model is told: the prompt, then the page type's blank template (and what a field given as text means)
 def full_prompt(prompt, template):
-    return f"{prompt.replace('\r\n', '\n').strip()}\n\n{json.dumps(template, indent=2)}"
+    note = ("\n\nWhere a field above is text instead of null, the text describes the field: answer with what the page shows,"
+            " not the description." if described(template) else "")
+    return f"{prompt.replace('\r\n', '\n').strip()}\n\n{json.dumps(template, indent=2)}{note}"
 
 
 def transcribe(image, kind, provider=None, model=None, effort=None, texts=None):

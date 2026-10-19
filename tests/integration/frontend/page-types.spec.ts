@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 // The Page types screen (/?view=page-types) on an intercepted API: nothing reaches the real backend.
 type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; startsRecord: boolean; matchedByKey: boolean; templateVersion: number | null };
+type Version = { id: number; body: string; rules: object; reviewer: string | null; note: string | null; createdAt: string };
 const type = (name: string, label: string, over: Partial<PageType> = {}): PageType => ({
   name, label, builtIn: true, unknown: false, startsRecord: false, matchedByKey: false, templateVersion: null, ...over,
 });
@@ -17,10 +18,13 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
     id: 1, name: "Wilfred Prest Survey", recordKey, recordName: "survey",
     get grouped() { return types.some((t) => t.startsRecord); },
   };
-  const versions: Record<string, { id: number; body: string }[]> = {
-    main: [{ id: 7, body: '{"number_of_dwelling": null, "address": null}' }],
-    coded: [{ id: 8, body: '{"number_of_dwelling": null}' }],
-    notes: [{ id: 9, body: '{"text": null}' }],
+  const version = (id: number, body: string, extra: Partial<Version> = {}): Version =>
+    ({ id, body, rules: {}, reviewer: null, note: null, createdAt: "2026-10-01T02:00:00+00:00", ...extra });
+  const versions: Record<string, Version[]> = {  // newest first
+    main: [version(7, '{"number_of_dwelling": null, "address": null}', { reviewer: "Ben", note: "address added" }),
+      version(3, '{"number_of_dwelling": null}')],
+    coded: [version(8, '{"number_of_dwelling": null}', { rules: { number_of_dwelling: { type: "text", required: true } } })],
+    notes: [version(9, '{"text": null}')],
   };
   const calls = {
     patchType: [] as unknown[], patchCollection: [] as unknown[], addType: [] as unknown[], saveTemplate: [] as unknown[], addReviewer: [] as unknown[],
@@ -69,7 +73,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
       calls.saveTemplate.push({ kind: named[2], ...body });
       if (!body.body.includes("number_of_dwelling"))
         return route.fulfill({ status: 400, json: { detail: [`${named[2]}: needs 'number_of_dwelling'`, `${named[2]}: 'x' must be null`] } });
-      versions[named[2]] = [{ id: 20, body: body.body }, ...(versions[named[2]] ?? [])];
+      versions[named[2]] = [version(20, body.body, { rules: body.rules }), ...(versions[named[2]] ?? [])];
       types.find((t) => t.name === named[2])!.templateVersion = 20;
       return route.fulfill({ status: 201, json: { id: 20 } });
     }
@@ -77,6 +81,72 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
   });
   return calls;
 }
+
+test("each of a template's fields gets a rule and a description, saved with it", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?view=page-types");
+  await row(page, "Main page").getByRole("button", { name: "Edit Main page" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Main page" });
+  await expect(dialog.getByRole("table").first().locator("tbody tr td:first-child")).toHaveText(["number_of_dwelling", "address"]);
+  await dialog.getByLabel("number_of_dwelling type").selectOption("number");
+  await dialog.getByLabel("number_of_dwelling from").fill("1");
+  await dialog.getByLabel("number_of_dwelling to").fill("999");
+  await dialog.getByLabel("number_of_dwelling required").check();
+  await dialog.getByLabel("address description").fill("Street and number");
+  await expect(dialog.getByLabel("Template")).toHaveValue('{\n  "number_of_dwelling": null,\n  "address": "Street and number"\n}');
+  await dialog.getByLabel("address type").selectOption("one_of");
+  await dialog.getByLabel("address values").fill("1 Peel St\n2 = Two Peel St\n");
+  await dialog.getByLabel("Saved as").selectOption("Ben");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(calls.saveTemplate.at(-1)).toEqual({
+    kind: "main", body: '{\n  "number_of_dwelling": null,\n  "address": "Street and number"\n}', basedOn: 7, reviewerId: 1,
+    rules: { number_of_dwelling: { type: "number", required: true, min: "1", max: "999" },
+      address: { type: "one_of", values: ["1 Peel St", "2 = Two Peel St"] } },
+  });
+});
+
+test("a rule changed on its own is a new version, a pattern takes an example, and broken JSON has no fields to set", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?view=page-types");
+  await row(page, "Coded page").getByRole("button", { name: "Edit Coded page" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Coded page" });
+  await expect(dialog.getByLabel("number_of_dwelling required")).toBeChecked(); // the newest version's rule
+  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled(); // nothing changed yet
+  await dialog.getByLabel("number_of_dwelling type").selectOption("pattern");
+  await dialog.getByLabel("number_of_dwelling pattern").fill("\\d+[A-Z]?");
+  await dialog.getByLabel("number_of_dwelling example").fill("24A");
+  await dialog.getByLabel("Saved as").selectOption("Ben");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(calls.saveTemplate.at(-1)).toEqual({ kind: "coded", body: '{"number_of_dwelling": null}', basedOn: 8, reviewerId: 1,
+    rules: { number_of_dwelling: { type: "pattern", required: true, pattern: "\\d+[A-Z]?", example: "24A" } } });
+
+  await row(page, "Notes page").getByRole("button", { name: "Edit Notes page" }).click();
+  const notes = page.getByRole("dialog", { name: "Edit Notes page" });
+  await notes.getByLabel("Template").fill('{"text": ');
+  await expect(notes.getByText("Fix the template's JSON to set its fields' rules.")).toBeVisible();
+  await expect(notes.getByLabel("text type")).toHaveCount(0);
+});
+
+test("a template's history lists each version, and an older one can be brought back as the newest", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?view=page-types");
+  await row(page, "Main page").getByRole("button", { name: "Edit Main page" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit Main page" });
+  const history = dialog.getByRole("table").last().locator("tbody tr");
+  await expect(history).toHaveCount(2);
+  await expect(history.first()).toContainText("Ben");
+  await expect(history.first()).toContainText("address added");
+  await expect(history.first()).toContainText("Current");
+  await expect(history.last()).toContainText("From the files");
+  await dialog.getByRole("button", { name: "Use version 1" }).click();
+  await expect(dialog.getByLabel("Template")).toHaveValue('{"number_of_dwelling": null}');
+  await dialog.getByLabel("Saved as").selectOption("Ben");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(calls.saveTemplate.at(-1)).toEqual({ kind: "main", body: '{"number_of_dwelling": null}', rules: {}, basedOn: 7, reviewerId: 1 });
+});
 
 const row = (page: Page, label: string) => page.getByRole("row").filter({ has: page.getByRole("cell", { name: label, exact: true }) });
 
@@ -123,7 +193,7 @@ test("a template is saved as a new version by the chosen reviewer, and the check
   await template.fill('{"number_of_dwelling": null, "street": null}');
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog).toHaveCount(0);
-  expect(calls.saveTemplate.at(-1)).toEqual({ kind: "main", body: '{"number_of_dwelling": null, "street": null}', basedOn: 7, reviewerId: 1 });
+  expect(calls.saveTemplate.at(-1)).toEqual({ kind: "main", body: '{"number_of_dwelling": null, "street": null}', rules: {}, basedOn: 7, reviewerId: 1 });
 });
 
 test("a new page type is added by label, then opened to give it a template", async ({ page }) => {

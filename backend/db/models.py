@@ -83,7 +83,7 @@ class Flag(Base):
     __tablename__ = "flags"
     __table_args__ = (
         ForeignKeyConstraint(["page_id", "field_title"], ["fields.page_id", "fields.field_title"], ondelete="CASCADE"),
-        CheckConstraint("kind IN ('inconsistency', 'gibberish', 'uncertain')", name="kind"),
+        CheckConstraint("kind IN ('inconsistency', 'gibberish', 'uncertain', 'invalid')", name="kind"),
     )
     flag_id = Column(Integer, primary_key=True, autoincrement=True)
     page_id = Column(String, nullable=False)
@@ -117,6 +117,7 @@ class InstructionVersion(Base):
     version_id = Column(Integer, primary_key=True, autoincrement=True)
     kind = Column(String, nullable=False)
     body = Column(Text, nullable=False)
+    rules = Column(Text, nullable=True) #a template's fields' rules as JSON (backend/db/checks.py); None: none
     sha256 = Column(String, nullable=False) #of the body as UTF-8, as the pipeline's reuse check hashes it
     reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #None: version 1, from the files
     note = Column(Text, nullable=True)
