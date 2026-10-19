@@ -26,7 +26,7 @@ async function mockUploads(page: Page, reply: (upload: Upload) => { status: numb
   return uploads;
 }
 
-test("files need a bundle number, and unsupported, empty or repeated files are not added", async ({ page }) => {
+test("files need an item number, and unsupported, empty or repeated files are not added", async ({ page }) => {
   // Files on disk, so choosing one again is the same file (same name, size and modified time).
   const [onDisk, text, empty] = [["one.pdf", 64], ["notes.txt", 64], ["empty.pdf", 0]].map(([name, size]) => {
     const path = test.info().outputPath(name as string);
@@ -39,7 +39,7 @@ test("files need a bundle number, and unsupported, empty or repeated files are n
   await picker(page).setInputFiles([onDisk, text, empty]);
   await expect(page.getByRole("alert")).toContainText("Not added: notes.txt, empty.pdf");
   await expect(page.locator("tbody tr")).toHaveCount(1);
-  const bundle = page.getByLabel("Bundle number for one.pdf");
+  const bundle = page.getByLabel("Item number for one.pdf");
   await expect(bundle).toHaveAttribute("aria-invalid", "true");
   await bundle.fill("12a");
   await expect(importButton(page)).toBeDisabled();
@@ -52,29 +52,29 @@ test("files need a bundle number, and unsupported, empty or repeated files are n
   await expect(page.getByText("No files selected.")).toBeVisible();
 });
 
-test("each file is sent with its own bundle number and a refusal shows the server's reason", async ({ page }) => {
+test("each file is sent with its own item number and a refusal shows the server's reason", async ({ page }) => {
   const uploads = await mockUploads(page, ({ filename }) =>
-    filename === "taken.pdf" ? { status: 409, detail: "This PDF already exists in bundle 216412. It has not been uploaded." } : { status: 201 });
+    filename === "taken.pdf" ? { status: 409, detail: "This PDF already exists in item 216412. It has not been uploaded." } : { status: 201 });
   await page.goto("/?view=import");
   await picker(page).setInputFiles([file("taken.pdf"), file("new.pdf")]);
-  await page.getByLabel("Bundle number for taken.pdf").fill("216501");
-  await page.getByLabel("Bundle number for new.pdf").fill(" 216502 ");
+  await page.getByLabel("Item number for taken.pdf").fill("216501");
+  await page.getByLabel("Item number for new.pdf").fill(" 216502 ");
   await importButton(page).click();
   await expect(page.getByRole("status")).toHaveText("1 of 2 files uploaded. Transcription has not started.");
   expect(uploads).toEqual([{ bundle: "216501", filename: "taken.pdf" }, { bundle: "216502", filename: "new.pdf" }]);
-  await expect(page.getByRole("alert")).toHaveText("taken.pdf: This PDF already exists in bundle 216412. It has not been uploaded.");
+  await expect(page.getByRole("alert")).toHaveText("taken.pdf: This PDF already exists in item 216412. It has not been uploaded.");
   await expect(row(page, "taken.pdf")).not.toContainText("Uploaded");
-  await expect(page.getByLabel("Bundle number for taken.pdf")).toBeEnabled();
+  await expect(page.getByLabel("Item number for taken.pdf")).toBeEnabled();
   await expect(row(page, "new.pdf")).toContainText("Uploaded");
-  await expect(page.getByLabel("Bundle number for new.pdf")).toBeDisabled();
+  await expect(page.getByLabel("Item number for new.pdf")).toBeDisabled();
 });
 
-test("page images of one bundle share its bundle number", async ({ page }) => {
+test("page images of one item share its item number", async ({ page }) => {
   const uploads = await mockUploads(page, () => ({ status: 201 }));
   await page.goto("/?view=import");
   await picker(page).setInputFiles([file("page1.png"), file("page2.png")]);
-  await page.getByLabel("Bundle number for page1.png").fill("216503");
-  await page.getByLabel("Bundle number for page2.png").fill("216503");
+  await page.getByLabel("Item number for page1.png").fill("216503");
+  await page.getByLabel("Item number for page2.png").fill("216503");
   await importButton(page).click();
   await expect(page.getByRole("status")).toHaveText("2 of 2 files uploaded. Transcription has not started.");
   expect(uploads.map((upload) => upload.bundle)).toEqual(["216503", "216503"]);
@@ -85,12 +85,12 @@ test("controls are locked while an upload is under way", async ({ page }) => {
   await mockUploads(page, () => ({ status: 201 }), 1000);
   await page.goto("/?view=import");
   await picker(page).setInputFiles([file("slow.pdf")]);
-  await page.getByLabel("Bundle number for slow.pdf").fill("216504");
+  await page.getByLabel("Item number for slow.pdf").fill("216504");
   await importButton(page).click();
   await expect(page.getByRole("status")).toHaveText("Uploading 1 of 1: slow.pdf");
   await expect(page.getByRole("button", { name: "Choose files" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Remove slow.pdf" })).toBeDisabled();
-  await expect(page.getByLabel("Bundle number for slow.pdf")).toBeDisabled();
+  await expect(page.getByLabel("Item number for slow.pdf")).toBeDisabled();
   await expect(page.getByRole("status")).toHaveText("1 of 1 files uploaded. Transcription has not started.");
 });
 

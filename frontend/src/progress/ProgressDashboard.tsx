@@ -339,11 +339,11 @@ export default function ProgressDashboard() {
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader
         crumbs={[
-          { label: "Collections", href: "/" },
+          { label: "Series", href: "/" },
           bundle
-            ? { label: collectionName || "Collection", href: `/?collection=${collectionId}`, onClick: backToOverview }
-            : { label: collectionName || "Collection" },
-          ...(bundle ? [{ label: `Bundle ${bundle.name ?? bundle.id}` }] : []),
+            ? { label: collectionName || "Series", href: `/?collection=${collectionId}`, onClick: backToOverview }
+            : { label: collectionName || "Series" },
+          ...(bundle ? [{ label: `Item ${bundle.name ?? bundle.id}` }] : []),
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -378,13 +378,13 @@ export default function ProgressDashboard() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             {bundle
-              ? `Bundle Number · ${bundle.name ?? bundle.id}`
-              : "All survey bundles"}
+              ? `Item ${bundle.name ?? bundle.id}`
+              : "All items"}
           </h1>
           <p className="text-sm text-muted-foreground">
             {bundle
               ? `${totals.ready} pages ready to review`
-              : `Track review progress across ${(bundles ?? []).length} bundles`}
+              : `Track review progress across ${(bundles ?? []).length} items`}
           </p>
         </div>
         {/* Display loading failures and allow retry; previously loaded data stays visible. */}
@@ -410,8 +410,8 @@ export default function ProgressDashboard() {
           <Alert role="status">
             <AlertDescription className="text-foreground">
               {bundleNotStarted
-                ? "This bundle has not been processed yet. Press Transcribe to get started."
-                : "This bundle has not finished processing. Pages shown may not be transcribed, grouped into survey or identified yet. Please complete transcription."}
+                ? "This item has not been processed yet. Press Transcribe to get started."
+                : "This item has not finished processing. Pages shown may not be transcribed, grouped into survey or identified yet. Please complete transcription."}
             </AlertDescription>
           </Alert>
         )}
@@ -455,9 +455,9 @@ export default function ProgressDashboard() {
                 <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className="pl-8"
-                  aria-label={bundle ? "Search pages" : "Search bundles"}
+                  aria-label={bundle ? "Search pages" : "Search items"}
                   placeholder={
-                    bundle ? "Search page number…" : "Search bundle number…"
+                    bundle ? "Search page number…" : "Search item number…"
                   }
                   value={query}
                   onChange={(e) => show({ query: e.target.value, pageNumber: 0 }, true)}
@@ -527,7 +527,7 @@ export default function ProgressDashboard() {
                           ["Actions", "w-[16%]", "sr-only"],
                         ]
                       : [
-                          ["Bundle number", "w-[13%]"],
+                          ["Item number", "w-[13%]"],
                           ["Total pages", "w-[20%]", num],
                           ["Ready to review", "w-[20%]", `${num} sm:pr-6`],
                           ["Review progress", "w-[29%]"],
@@ -632,7 +632,7 @@ export default function ProgressDashboard() {
                                   {c.reviewable > 0 && (
                                     <Progress
                                       className="h-2"
-                                      aria-label={`Bundle ${b.id} review progress`}
+                                      aria-label={`Item ${b.id} review progress`}
                                       value={(c.reviewed / c.reviewable) * 100}
                                       max={c.reviewable}
                                       aria-valuenow={c.reviewed}
@@ -732,7 +732,7 @@ export default function ProgressDashboard() {
                     <TableRow>
                       <TableCell colSpan={bundle ? 6 : 5}>
                         <div className="flex flex-wrap items-center justify-center gap-3 p-6 text-center whitespace-normal">
-                          No {bundle ? "pages" : "bundles"} match your filters.
+                          No {bundle ? "pages" : "items"} match your filters.
                           <Button
                             variant="outline"
                             size="sm"
@@ -752,7 +752,7 @@ export default function ProgressDashboard() {
               <span>
                 Showing {totalRows ? start + 1 : 0}–
                 {Math.min(start + pageSize, totalRows)} of {totalRows}{" "}
-                {bundle ? "pages" : "bundles"}
+                {bundle ? "pages" : "items"}
               </span>
               <div className="flex items-center gap-2">
                 <Button

@@ -169,7 +169,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
       <DialogContent showCloseButton={false} onInteractOutside={e=>e.preventDefault()} className={`max-h-[90vh] overflow-y-auto ${showModels ? 'sm:max-w-[1000px]' : 'sm:max-w-[540px]'}`}>
         <DialogHeader>
           <DialogTitle className="text-lg">{title}</DialogTitle>
-          <DialogDescription>Page {page.id}{context && ` · Bundle ${context.bundleId} · Survey ${context.surveyId}`}</DialogDescription>
+          <DialogDescription>Page {page.id}{context && ` · Item ${context.bundleId} · Survey ${context.surveyId}`}</DialogDescription>
         </DialogHeader>
         {loading && <p role="status" className="flex items-center gap-2 text-muted-foreground"><Spinner role={undefined} aria-hidden="true" />Loading…</p>}
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
@@ -180,8 +180,8 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
             <FieldLabel htmlFor={`${uid}-target`}>Destination survey</FieldLabel>
             <NativeSelect id={`${uid}-target`} className="w-full" value={target} onChange={e=>setTarget(e.target.value)}><option value="">Select a survey</option>{context.surveys.filter(s=>s.id!==context.surveyId).map(s=><option key={s.id} value={s.id}>{s.id}</option>)}</NativeSelect>
           </Field>
-          <FieldDescription>Only surveys in the same bundle are available. The image, extracted data and saved reviews stay with this page.</FieldDescription>
-          {context.surveys.length<2&&<FieldDescription>No other surveys exist in this bundle.</FieldDescription>}
+          <FieldDescription>Only surveys in the same item are available. The image, extracted data and saved reviews stay with this page.</FieldDescription>
+          {context.surveys.length<2&&<FieldDescription>No other surveys exist in this item.</FieldDescription>}
           {destination&&<Card size="sm">
             <CardHeader><CardTitle>Destination pages</CardTitle></CardHeader>
             <CardContent className="space-y-1">{destination.pages.map(p=><p key={p.id}>{p.id} · {typeLabel(p.type)}</p>)}{destination.pages.some(p=>p.type===context.category)&&<p className="font-medium">Another page of this type already exists. Multiple pages of the same type are allowed; check the destination.</p>}</CardContent>

@@ -125,5 +125,5 @@ def test_a_page_can_be_changed_to_any_type_of_its_collection_which_are_listed_by
         {"name": "other", "label": "Unknown"}, {"name": "followup", "label": "Follow-up visit"}]
     payload = {'revision': 0, 'reviewerId': 1}
     refused = client.put('/page-classification/b/p4', json={**payload, 'pageType': 'manifest'})  # another collection's type
-    assert (refused.status_code, refused.json()['detail']) == (400, "No page type called manifest in this page's collection.")
+    assert (refused.status_code, refused.json()['detail']) == (400, "No page type called manifest in this page's series.")
     assert client.put('/page-classification/b/p4', json={**payload, 'pageType': 'followup'}).json()['pageType'] == 'followup'

@@ -290,21 +290,21 @@ export default function ExportDialog({
                 disabled={busy}
               >
                 {initialBundleId && (
-                  <ScopeOption value="current" title="Current bundle">
-                    Export all surveys and unassigned pages in bundle{" "}
+                  <ScopeOption value="current" title="Current item">
+                    Export all surveys and unassigned pages in item{" "}
                     {initialBundleId}.
                   </ScopeOption>
                 )}
 
-                <ScopeOption value="bundle" title="Export bundle JSON">
-                  JSON file containing all surveys in one bundle.
+                <ScopeOption value="bundle" title="Export item JSON">
+                  JSON file containing all surveys in one item.
                 </ScopeOption>
 
                 {/* Choose a loaded bundle from the database. */}
                 {scope === "bundle" && (
                   <Field className="pl-9">
                     <FieldLabel htmlFor="export-bundle">
-                      Bundle number
+                      Item number
                     </FieldLabel>
                     <NativeSelect
                       id="export-bundle"
@@ -317,7 +317,7 @@ export default function ExportDialog({
                         setFailure("");
                       }}
                     >
-                      <option value="">Choose a loaded bundle</option>
+                      <option value="">Choose a loaded item</option>
                       {bundles.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.name} · {b.id}

@@ -26,7 +26,7 @@ failed = {}  #bundle number -> when the archive last couldn't send one of its pa
 #a session that has opened a bundle's download page, which lets it download the bundle's files; page number -> file id
 def archive_bundle(bundle):
     if not bundle.isdigit():
-        raise OSError(f"{bundle} isn't an archive bundle number")
+        raise OSError(f"{bundle} isn't an archive item number")
     session = build_opener(HTTPCookieProcessor())
     session.addheaders = [("User-Agent", AGENT)]
     with session.open(f"{ARCHIVE}/nodes/download/{bundle}", timeout=30) as response:

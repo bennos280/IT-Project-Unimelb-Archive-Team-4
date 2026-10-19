@@ -67,12 +67,12 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
 
 const row = (page: Page, label: string) => page.getByRole("row").filter({ has: page.getByRole("cell", { name: label, exact: true }) });
 
-test("a collection's page types are listed by label with how they group and their template", async ({ page }) => {
+test("a series' page types are listed by label with how they group and their template", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?collection=1&view=page-types");
   await expect(page.getByRole("heading", { name: "Page types", level: 1 })).toBeVisible();
   await expect(page.locator('[data-slot="breadcrumb-item"]')).toHaveText(
-    ["Collections", "Wilfred Prest Survey", "Page types"]);
+    ["Series", "Wilfred Prest Survey", "Page types"]);
   await expect(row(page, "Main page")).toContainText("Starts a survey");
   await expect(row(page, "Coded page")).toContainText("Joins the survey with the same number");
   await expect(row(page, "Notes page")).toContainText("Follows the page before it");

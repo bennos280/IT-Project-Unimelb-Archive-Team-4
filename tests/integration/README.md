@@ -168,11 +168,11 @@ Run from the project folder:
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Downloads backend correction instead of an unsaved on-screen edit         | The downloaded export uses the backend response rather than an unsaved browser draft. |
 | Shows backend export failure and permits retry                            | A failed export displays an error and allows another attempt.                         |
-| Downloads a selected bundle as JSON                                       | Selecting a bundle produces a JSON download.                                          |
-| Dashboard exports the selected bundle ID rather than its display number   | Dashboard export requests use the database bundle ID.                                 |
-| Review screen exports its current bundle using the backend bundle ID      | The Current bundle option uses the bundle ID supplied by the survey response.         |
+| Downloads a selected item as JSON                                         | Selecting an item produces a JSON download.                                           |
+| Dashboard exports the selected item's ID rather than its display number   | Dashboard export requests use the database item ID.                                   |
+| Review screen exports its current item using the backend item ID          | The Current item option uses the item ID supplied by the survey response.             |
 | Warns for unreviewed data and clears the warning for a reviewed selection | The export warning reflects whether the selected data has been reviewed.              |
-| Conditional export warning on dashboard — 2 cases                         | Checks the warning on both the all-bundles and selected-bundle dashboard views.       |
+| Conditional export warning on dashboard — 2 cases                         | Checks the warning on both the all-items and selected-item dashboard views.           |
 
 These tests cover browser interactions with mocked API responses.
 The backend export tests separately check database selection and saved values.
@@ -226,17 +226,17 @@ npm --prefix tests run test:e2e -- progress.spec.ts
 
 | Test                                                                     | What it checks                                                                                                                                                                    |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `searches bundles and clears an empty result`                            | Bundle search finds a match; an unmatched search shows an empty state; Clear filters restores the list.                                                                           |
-| `disables pagination for one bundle and filters by status`               | Next is disabled for a single bundle, and Reviewed/Ready to review filters return the expected results.                                                                           |
-| `opens bundle pages with matching review targets`                        | Opening a bundle shows its pages and the correct survey/page review link; Back returns to all bundles.                                                                            |
+| `searches items and clears an empty result`                              | Item search finds a match; an unmatched search shows an empty state; Clear filters restores the list.                                                                             |
+| `disables pagination for one item and filters by status`                 | Next is disabled for a single item, and Reviewed/Ready to review filters return the expected results.                                                                             |
+| `opens item pages with matching review targets`                          | Opening an item shows its pages and the correct survey/page review link.                                                                                                          |
 | `Import opens the import screen` | The Import button opens the import screen. |
 | `Pg 1/2/3 opens its matching US7 page` — 3 tests                         | Each page's Review link opens the matching page in the review screen.                                                                                                             |
 | `page table keeps actions visible at 936/640/375px` — 3 tests            | Flags and review actions remain visible without horizontal table overflow at desktop, tablet and phone widths.                                                                    |
-| `untouched bundle prompts Transcribe and shows zero progress`            | A bundle without pages or a job shows 0% progress, the not-started message and an enabled Transcribe button beside the filters.                                                   |
-| `partial bundle shows model and completion action without review access` | A failed partial bundle offers Retry transcription and error details; its page list shows the incomplete notice, Complete transcription and the saved model, with no Review link. |
+| `untouched item prompts Transcribe and shows no reviewable pages`        | An item without pages or a job shows No reviewable pages, the not-started message and an enabled Transcribe button beside the filters.                                            |
+| `partial item shows model and completion action without review access`   | A failed partial item offers Retry transcription and error details; its page list shows the incomplete notice, Complete transcription and the saved model, with no Review link.   |
 | `waiting job disables duplicate transcription`                           | A queued job disables the transcription button and keeps the incomplete notice visible.                                                                                           |
 | `running job disables duplicate transcription`                           | A running job disables the transcription button and keeps the incomplete notice visible.                                                                                          |
-| `loaded bundle shows model or dash and hides incomplete notice`          | The Model column shows saved model information or a dash; completed bundles hide the incomplete notice and transcription action.                                                  |
+| `loaded item shows model or dash and hides incomplete notice`            | The Model column shows saved model information or a dash; completed items hide the incomplete notice and transcription action.                                                    |
 | `pagination changes rows and searching resets to first page`             | Eleven pages span two table pages; searching from the second page resets pagination and shows matching rows.                                                                      |
 | `failed progress request can be retried`                                 | A failed request displays its error; Try again restores the dashboard after the API recovers.                                                                                     |
 | `polling updates review counts without a reload`                         | Updated API data changes the displayed reviewed count and percentage automatically.                                                                                               |
@@ -245,11 +245,11 @@ Related backend coverage lives in `tests/unit/test_progress.py` (3 tests): model
 
 ### US7 → US9 review round trip — 3 browser tests
 
-`review round trip: saved/unsaved/failed save updates progress only after persistence` opens a page from US9, reviews all fields in US7, and returns through Back to all bundles. An accepted save updates the reviewed count, ready count, percentage, page status, flags and View action, including after refresh. Unsaved drafts and rejected saves leave progress unchanged. These tests use a stateful mock API; they verify the screen-to-screen flow, not real database persistence.
+`review round trip: saved/unsaved/failed save updates progress only after persistence` opens a page from US9, reviews all fields in US7, and returns through Back to All items. An accepted save updates the reviewed count, ready count, percentage, page status, flags and View action, including after refresh. Unsaved drafts and rejected saves leave progress unchanged. These tests use a stateful mock API; they verify the screen-to-screen flow, not real database persistence.
 
 ## `page-actions.spec.ts` — 3 tests
 
-Checks same-bundle moves, immediate type changes without queuing, persistence of the transcription prompt after refresh, and separate transcription with or without a preceding type change. Also checks editable model selection and the model table.
+Checks same-item moves, immediate type changes without queuing, persistence of the transcription prompt after refresh, and separate transcription with or without a preceding type change. Also checks editable model selection and the model table.
 
 ## Import screen browser tests — 5 tests
 
@@ -262,8 +262,8 @@ npm --prefix tests run test:e2e -- import.spec.ts
 
 | Test                                                                                    | What it checks                                                                                                          |
 | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `files need a bundle number, and unsupported, empty or repeated files are not added`    | Import stays disabled until every file has a 1–30 digit bundle number; other types, empty files and repeats are left out. |
-| `each file is sent with its own bundle number and a refusal shows the server's reason`  | Each upload carries its file's trimmed bundle number; a refused file keeps its row editable and shows why.              |
-| `page images of one bundle share its bundle number`                                     | Two page images with the same bundle number are both sent under it.                                                     |
-| `controls are locked while an upload is under way`                                      | Choose files, Remove and the bundle numbers are disabled until the upload finishes.                                     |
+| `files need an item number, and unsupported, empty or repeated files are not added`     | Import stays disabled until every file has a 1–30 digit item number; other types, empty files and repeats are left out. |
+| `each file is sent with its own item number and a refusal shows the server's reason`    | Each upload carries its file's trimmed item number; a refused file keeps its row editable and shows why.                |
+| `page images of one item share its item number`                                         | Two page images with the same item number are both sent under it.                                                       |
+| `controls are locked while an upload is under way`                                      | Choose files, Remove and the item numbers are disabled until the upload finishes.                                       |
 | `a dropped file is added`                                                               | Dragging a file over the drop zone highlights it, and dropping adds the file.                                           |

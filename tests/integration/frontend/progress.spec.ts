@@ -219,26 +219,26 @@ test.describe("Progress navigation and layout", () => {
     });
   }
 
-  test("searches bundles and clears an empty result", async ({ page }) => {
+  test("searches items and clears an empty result", async ({ page }) => {
     await page.goto("/?collection=1");
 
     await expect(
-      page.getByRole("heading", { name: "All survey bundles" }),
+      page.getByRole("heading", { name: "All items" }),
     ).toBeVisible();
 
-    await page.getByLabel("Search bundles").fill("216417");
+    await page.getByLabel("Search items").fill("216417");
     await expect(bundleRows(page)).toHaveCount(1);
 
-    await page.getByLabel("Search bundles").fill("missing");
+    await page.getByLabel("Search items").fill("missing");
     await expect(
-      page.getByText("No bundles match your filters."),
+      page.getByText("No items match your filters."),
     ).toBeVisible();
 
     await page.getByRole("button", { name: "Clear filters" }).click();
     await expect(bundleRows(page)).toHaveCount(1);
   });
 
-  test("disables pagination for one bundle and filters by status", async ({
+  test("disables pagination for one item and filters by status", async ({
     page,
   }) => {
     await page.goto("/?collection=1");
@@ -249,7 +249,7 @@ test.describe("Progress navigation and layout", () => {
 
     await page.getByLabel("Status", { exact: true }).selectOption("Reviewed");
     await expect(
-      page.getByText("No bundles match your filters."),
+      page.getByText("No items match your filters."),
     ).toBeVisible();
 
     await page
@@ -261,12 +261,12 @@ test.describe("Progress navigation and layout", () => {
     ).toBeVisible();
   });
 
-  test("opens bundle pages with matching review targets", async ({ page }) => {
+  test("opens item pages with matching review targets", async ({ page }) => {
     await page.goto("/?collection=1");
     await page.getByRole("link", { name: "216417", exact: true }).click();
 
     await expect(
-      page.getByRole("heading", { name: "Bundle Number · 216417" }),
+      page.getByRole("heading", { name: "Item 216417" }),
     ).toBeVisible();
 
     const notesRow = pageRow(page, "Pg 2");
@@ -278,14 +278,14 @@ test.describe("Progress navigation and layout", () => {
     await page.getByRole("link", { name: "Wilfred Prest Survey" }).click();
 
     await expect(
-      page.getByRole("heading", { name: "All survey bundles" }),
+      page.getByRole("heading", { name: "All items" }),
     ).toBeVisible();
   });
 
   test("Import opens the import screen", async ({ page }) => {
     await page.goto("/?collection=1");
     await page.getByRole("button", { name: "Import", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Import survey bundles" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Import items" })).toBeVisible();
   });
 
   for (const [label, pageId] of [
@@ -440,7 +440,7 @@ test.describe("Progress and transcription states", () => {
     await page.getByRole("link", { name: "216424", exact: true }).click();
   }
 
-  test("untouched bundle prompts Transcribe and shows no reviewable pages", async ({
+  test("untouched item prompts Transcribe and shows no reviewable pages", async ({
     page,
   }) => {
     await mock(page);
@@ -450,7 +450,7 @@ test.describe("Progress and transcription states", () => {
     await openBundle(page);
     await expect(
       page.getByText(
-        "This bundle has not been processed yet. Press Transcribe to get started.",
+        "This item has not been processed yet. Press Transcribe to get started.",
       ),
     ).toBeVisible();
     await expect(
@@ -461,7 +461,7 @@ test.describe("Progress and transcription states", () => {
     ).toHaveCount(0);
   });
 
-  test("partial bundle shows model and completion action without review access", async ({
+  test("partial item shows model and completion action without review access", async ({
     page,
   }) => {
     await mock(page, { status: "failed", partial: true });
@@ -506,7 +506,7 @@ test.describe("Progress and transcription states", () => {
     });
   }
 
-  test("loaded bundle shows model or dash and hides incomplete notice", async ({
+  test("loaded item shows model or dash and hides incomplete notice", async ({
     page,
   }) => {
     await mock(page, { loaded: true });
@@ -539,7 +539,7 @@ test.describe("Progress and transcription states", () => {
     ).toBeDisabled();
   });
 
-  test("bundle, page and status stay in the URL across reload and Back", async ({
+  test("item, page and status stay in the URL across reload and Back", async ({
     page,
   }) => {
     await mock(page, { loaded: true, count: 11 });
@@ -559,7 +559,7 @@ test.describe("Progress and transcription states", () => {
     await expect(page.getByRole("link", { name: "216424", exact: true })).toBeVisible();
   });
 
-  test("clicking a bundle row opens it, but its Transcribe button only opens the dialog", async ({
+  test("clicking an item row opens it, but its Transcribe button only opens the dialog", async ({
     page,
   }) => {
     await mock(page);
@@ -570,17 +570,17 @@ test.describe("Progress and transcription states", () => {
     await expect(page.getByRole("dialog", { name: "Transcribe scans" })).toBeVisible();
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
     await expect(page).toHaveURL(/\/\?collection=1$/);
     // The row link's overlay covers the Total pages cell, so click its centre with the mouse.
     const box = await row.getByRole("cell").nth(1).boundingBox();
     expect(box).not.toBeNull();
     await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
-    await expect(page.getByRole("heading", { name: "Bundle Number · 216424" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Item 216424" })).toBeVisible();
     await expect(page).toHaveURL(/\/\?collection=1&bundle=216424$/);
   });
 
-  test("a failed bundle's Retry and error buttons act without opening the bundle", async ({
+  test("a failed item's Retry and error buttons act without opening the item", async ({
     page,
   }) => {
     await mock(page, { status: "failed" });
@@ -594,11 +594,11 @@ test.describe("Progress and transcription states", () => {
     await row.getByRole("button", { name: "more details here" }).click();
     await expect(page.getByRole("dialog")).toContainText("Test transcription failure");
     await page.getByRole("button", { name: "Close", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
     await expect(page).toHaveURL(/\/\?collection=1$/);
   });
 
-  test("bundle rows have one keyboard stop, an Actions header, and open natively in a new tab", async ({
+  test("item rows have one keyboard stop, an Actions header, and open natively in a new tab", async ({
     page,
   }) => {
     await page.context().route("**/api/**", (route) => route.abort());
@@ -617,11 +617,11 @@ test.describe("Progress and transcription states", () => {
     expect(new URL(tab.url()).search).toBe("?collection=1&bundle=216424");
     await tab.close();
     await expect(page).toHaveURL(/\/\?collection=1$/);
-    await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
     await link.focus();
     await expect(link).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("heading", { name: "Bundle Number · 216424" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Item 216424" })).toBeVisible();
     await expect(page).toHaveURL(/\/\?collection=1&bundle=216424$/);
     await expect(page.getByRole("columnheader", { name: "Actions", exact: true })).toHaveCount(1);
   });
@@ -788,7 +788,7 @@ test.describe("Pages without a survey", () => {
     await expect(page.getByRole("columnheader", { name: "Actions", exact: true })).toHaveCount(1);
   });
 
-  test("a bundle with only unassigned pages has no review percentage", async ({ page }) => {
+  test("an item with only unassigned pages has no review percentage", async ({ page }) => {
     const row = await showBundle(page, false);
     await expect(row.locator("td").nth(1)).toHaveText("1");
     await expect(meter(row)).toContainText("No reviewable pages");

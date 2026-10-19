@@ -15,6 +15,6 @@ export function loadExportBundles(collectionId?: number): Promise<Array<{ id: st
 }
 export function loadBundleExport(bundleId: string): Promise<SurveyExport> {
   const id = bundleId.trim();
-  if (!id) throw new Error("Choose a bundle.");
+  if (!id) throw new Error("Choose an item.");
   return request(`/export?bundle_id=${encodeURIComponent(id)}`);
 }

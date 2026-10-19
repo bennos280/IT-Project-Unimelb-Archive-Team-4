@@ -39,26 +39,26 @@ export default function CollectionsScreen() {
   const load = useCallback(() => {
     backendRequest<Collection[]>("/collections")
       .then((result) => { setCollections(result); setLoadError(""); })
-      .catch((e) => setLoadError(message(e, "Could not load the collections.")));
+      .catch((e) => setLoadError(message(e, "Could not load the series.")));
   }, []);
   useEffect(load, [load]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader
-        crumbs={[{ label: "Collections" }]}
+        crumbs={[{ label: "Series" }]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => setCreating(true)}><Plus /> New collection</Button>
+            <Button onClick={() => setCreating(true)}><Plus /> New series</Button>
             <Button variant="outline" onClick={() => { window.location.href = "/?view=settings"; }}><Settings /> Settings</Button>
           </div>
         }
       />
       <main className="mx-auto max-w-6xl space-y-6 p-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Collections</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Series</h1>
           <p className="text-sm text-muted-foreground">
-            Each collection is a series on the University of Melbourne Archives, with its own page types and bundles.
+            Series from the University of Melbourne Archives, each with its own page types and items.
           </p>
         </div>
         {loadError && (
@@ -72,8 +72,8 @@ export default function CollectionsScreen() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Collection</TableHead>
-                <TableHead>Archive series</TableHead>
+                <TableHead>Series</TableHead>
+                <TableHead>On the archive</TableHead>
                 <TableHead>Items</TableHead>
                 <TableHead>Reviewed</TableHead>
                 <TableHead>Needs attention</TableHead>
@@ -195,7 +195,7 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
         archiveItems: shown?.series?.items ?? undefined,
       })));
     } catch (e) {
-      setError(message(e, "Could not create the collection."));
+      setError(message(e, "Could not create the series."));
       setBusy(false);
     }
   }
@@ -204,8 +204,8 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
     <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>New collection</DialogTitle>
-          <DialogDescription>A collection is one series on the University of Melbourne Archives.</DialogDescription>
+          <DialogTitle>New series</DialogTitle>
+          <DialogDescription>A series on the University of Melbourne Archives, with its own page types and items.</DialogDescription>
         </DialogHeader>
         <FieldGroup className="gap-4">
           <Field>
@@ -260,7 +260,7 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button disabled={busy || node === null || !name.trim()} onClick={create}>Create collection</Button>
+          <Button disabled={busy || node === null || !name.trim()} onClick={create}>Create series</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -95,14 +95,14 @@ export default function ImportScreen() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader crumbs={[{ label: "Collections", href: "/" }, { label: "Import" }]} />
+      <AppHeader crumbs={[{ label: "Series", href: "/" }, { label: "Import" }]} />
       <main className="mx-auto max-w-6xl space-y-4 p-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Import survey bundles</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Import items</h1>
           <p className="text-sm text-muted-foreground">
-            Upload your survey files and enter a bundle number for each file.
-            A PDF is a whole bundle. For page images, give every page of a bundle
-            the same bundle number; pages are read in file name order.
+            Upload your survey files and enter an item number for each file.
+            A PDF is a whole item. For page images, give every page of an item
+            the same item number; pages are read in file name order.
           </p>
         </div>
         <div
@@ -161,14 +161,14 @@ export default function ImportScreen() {
                 <TableRow>
                   <TableHead className="w-[32%]">File</TableHead>
                   <TableHead className="w-[14%]">Size</TableHead>
-                  <TableHead className="w-[36%]">Bundle number *</TableHead>
+                  <TableHead className="w-[36%]">Item number *</TableHead>
                   <TableHead className="w-[18%]">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {files.map((item, index) => {
                   const error = !/^[0-9]{1,30}$/.test(item.bundle.trim())
-                    ? "Enter a bundle number containing 1–30 digits."
+                    ? "Enter an item number containing 1–30 digits."
                     : "";
                   return (
                     <TableRow key={item.id} className="align-top">
@@ -184,13 +184,13 @@ export default function ImportScreen() {
                       <TableCell className="p-3 align-top whitespace-normal">
                         <Input
                           disabled={uploading || item.uploaded}
-                          aria-label={`Bundle number for ${item.file.name}`}
+                          aria-label={`Item number for ${item.file.name}`}
                           aria-invalid={Boolean(error)}
                           aria-describedby={
                             error ? `bundle-error-${index}` : undefined
                           }
                           value={item.bundle}
-                          placeholder="Enter bundle number"
+                          placeholder="Enter item number"
                           required
                           onChange={(event) =>
                             setFiles((current) =>
@@ -232,7 +232,7 @@ export default function ImportScreen() {
           </div>
         )}
         <p className="text-sm text-muted-foreground">
-          Each file must have a bundle number before import.
+          Each file must have an item number before import.
         </p>
         <footer className="flex flex-col items-start justify-between gap-4 border-t pt-4 sm:flex-row sm:items-center">
           <p id="import-availability" role="status" className="text-sm text-muted-foreground">

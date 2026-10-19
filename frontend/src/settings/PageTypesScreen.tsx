@@ -53,13 +53,13 @@ export default function PageTypesScreen() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader crumbs={[{ label: "Collections", href: "/" }, { label: collection?.name ?? "Collection", href: `/?collection=${collectionId}` },
+      <AppHeader crumbs={[{ label: "Series", href: "/" }, { label: collection?.name ?? "Series", href: `/?collection=${collectionId}` },
         { label: "Page types" }]} />
       <main className="mx-auto max-w-6xl space-y-8 p-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Page types</h1>
           <p className="text-sm text-muted-foreground">
-            The kinds of page in {collection?.name ?? "this collection"}: what each is called, how it is read, and how pages group into surveys.
+            The kinds of page in {collection?.name ?? "this series"}: what each is called, how it is read, and how pages group into surveys.
           </p>
         </div>
         {loadError && (
@@ -299,7 +299,7 @@ function EditDialog({ type, collection, reviewers, onClose, onSaved }: {
                   <GroupingOption value="starts" title={GROUPINGS.starts}>A page of this type begins a new survey; the pages after it join it.</GroupingOption>
                   <GroupingOption value="matched" title={GROUPINGS.matched} disabled={!collection.recordKey}>
                     {collection.recordKey
-                      ? `Filed with the survey showing the same ${collection.recordKey}, wherever it is in the bundle.`
+                      ? `Filed with the survey showing the same ${collection.recordKey}, wherever it is in the item.`
                       : "Set a survey number field first."}
                   </GroupingOption>
                   <GroupingOption value="follows" title={GROUPINGS.follows}>Joins the survey of the page before it.</GroupingOption>

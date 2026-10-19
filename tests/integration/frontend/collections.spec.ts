@@ -41,9 +41,9 @@ async function mockApi(page: Page, { archiveDown = false, slowNode = 0 } = {}) {
   return created;
 }
 
-const dialog = (page: Page) => page.getByRole("dialog", { name: "New collection" });
+const dialog = (page: Page) => page.getByRole("dialog", { name: "New series" });
 
-test("home lists each collection with its archive series, items, review progress and what needs attention", async ({ page }) => {
+test("home lists each series with its archive identifier, items, review progress and what needs attention", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
   const row = page.getByRole("row").filter({ hasText: "Wilfred Prest Survey" });
@@ -59,7 +59,7 @@ test("home lists each collection with its archive series, items, review progress
   await expect(row.getByRole("progressbar", { name: "Wilfred Prest Survey review progress" })).toBeVisible();
 });
 
-test("a collection not set up yet shows its next step, and one with no identifier its series number", async ({ page }) => {
+test("a series not set up yet shows its next step, and one with no identifier its series number", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
   const row = page.getByRole("row").filter({ hasText: "Shipping manifests" });
@@ -69,7 +69,7 @@ test("a collection not set up yet shows its next step, and one with no identifie
   await expect(row).toContainText("Nothing");
 });
 
-test("clicking anywhere on a collection's row opens it", async ({ page }) => {
+test("clicking anywhere on a series' row opens it", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
   // A plain cell, clicked where a person would: the name's link covers the row.
@@ -78,10 +78,10 @@ test("clicking anywhere on a collection's row opens it", async ({ page }) => {
   await expect(page).toHaveURL("/?collection=1");
 });
 
-test("a new collection previews its archive series, takes its name from it, and opens its page types", async ({ page }) => {
+test("a new series previews what it links to on the archive, takes its name from it, and opens its page types", async ({ page }) => {
   const created = await mockApi(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "New collection" }).click();
+  await page.getByRole("button", { name: "New series" }).click();
   await dialog(page).getByLabel("Archive series").fill("https://archives.library.unimelb.edu.au/nodes/view/499420");
   const preview = dialog(page).getByRole("region", { name: "Archive series" });
   await expect(preview).toContainText("[UMA-SR-000000842] University of Melbourne Social Survey forms");
@@ -90,7 +90,7 @@ test("a new collection previews its archive series, takes its name from it, and 
   await expect(preview.getByRole("link", { name: "Open on the archive" })).toHaveAttribute("href", SERIES.url);
   await expect(dialog(page).getByLabel("Name")).toHaveValue("University of Melbourne Social Survey forms");
   await dialog(page).getByLabel("Name").fill("Social survey forms");
-  await dialog(page).getByRole("button", { name: "Create collection" }).click();
+  await dialog(page).getByRole("button", { name: "Create series" }).click();
   await expect(page).toHaveURL("/?collection=2&view=page-types");
   expect(created).toEqual([{ name: "Social survey forms", archiveSeries: "https://archives.library.unimelb.edu.au/nodes/view/499420",
     archiveIdentifier: "UMA-SR-000000842", archiveTitle: "[UMA-SR-000000842] University of Melbourne Social Survey forms", archiveItems: 45 }]);
@@ -99,7 +99,7 @@ test("a new collection previews its archive series, takes its name from it, and 
 test("an item that isn't a series is pointed out, and a typed name is kept", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "New collection" }).click();
+  await page.getByRole("button", { name: "New series" }).click();
   await dialog(page).getByLabel("Name").fill("My name");
   await dialog(page).getByLabel("Archive series").fill("216412");
   await expect(dialog(page).getByText("This isn't a series.", { exact: false })).toBeVisible();
@@ -109,10 +109,10 @@ test("an item that isn't a series is pointed out, and a typed name is kept", asy
 test("an address that isn't a series, and an archive that can't be reached, are said plainly", async ({ page }) => {
   await mockApi(page, { archiveDown: true });
   await page.goto("/");
-  await page.getByRole("button", { name: "New collection" }).click();
+  await page.getByRole("button", { name: "New series" }).click();
   await dialog(page).getByLabel("Archive series").fill("UMA-SR-000000842");
   await expect(dialog(page).getByText("That isn't a series address or number.")).toBeVisible();
-  await expect(dialog(page).getByRole("button", { name: "Create collection" })).toBeDisabled();
+  await expect(dialog(page).getByRole("button", { name: "Create series" })).toBeDisabled();
   await dialog(page).getByLabel("Archive series").fill("499420");
   await expect(dialog(page).getByText("Couldn't reach the archive (timed out).")).toBeVisible();
 });
@@ -120,7 +120,7 @@ test("an address that isn't a series, and an archive that can't be reached, are 
 test("Where do I find it? shows where the series' number is", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "New collection" }).click();
+  await page.getByRole("button", { name: "New series" }).click();
   await expect(dialog(page).getByText("Copy the address from your browser's address bar.", { exact: false })).toBeHidden();
   await dialog(page).getByText("Where do I find it?").click();
   await expect(dialog(page).getByText("Copy the address from your browser's address bar.", { exact: false })).toBeVisible();
@@ -131,7 +131,7 @@ test("Where do I find it? shows where the series' number is", async ({ page }) =
 test("a slow reply for an earlier address doesn't replace the newer one", async ({ page }) => {
   await mockApi(page, { slowNode: 216412 });
   await page.goto("/");
-  await page.getByRole("button", { name: "New collection" }).click();
+  await page.getByRole("button", { name: "New series" }).click();
   const asked = page.waitForRequest("**/api/archive-series/216412");
   await dialog(page).getByLabel("Archive series").fill("216412");
   await asked;

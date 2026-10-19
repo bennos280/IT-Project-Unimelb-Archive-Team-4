@@ -151,10 +151,10 @@ export default function ReviewScreen({
     <>
       <AppHeader
         crumbs={[
-          { label: "Collections", href: "/" },
+          { label: "Series", href: "/" },
           ...(survey?.collectionId ? [{ label: survey.title, href: `/?collection=${survey.collectionId}` }] : []),
           ...(survey?.bundleId
-            ? [{ label: `Bundle ${bundleLabel}`, href: `/?collection=${survey.collectionId ?? 1}&bundle=${encodeURIComponent(bundleLabel)}` }]
+            ? [{ label: `Item ${bundleLabel}`, href: `/?collection=${survey.collectionId ?? 1}&bundle=${encodeURIComponent(bundleLabel)}` }]
             : []),
           { label: `Survey ${session.surveyId}`.trim() },
         ]}

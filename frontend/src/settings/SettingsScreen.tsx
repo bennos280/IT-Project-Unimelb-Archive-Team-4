@@ -190,7 +190,7 @@ export default function SettingsScreen() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <AppHeader crumbs={[{ label: "Collections", href: "/" }, { label: "Settings" }]} />
+      <AppHeader crumbs={[{ label: "Series", href: "/" }, { label: "Settings" }]} />
       <TooltipProvider>
         <main className="mx-auto max-w-6xl space-y-8 p-6">
           <div className="flex flex-col gap-3">

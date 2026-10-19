@@ -130,7 +130,7 @@ test("shows backend export failure and permits retry", async ({ page }) => {
 });
 
 // Checks that choosing a bundle sends its ID and downloads JSON with the matching bundle ID and filename.
-test("downloads a selected bundle as JSON", async ({ page }) => {
+test("downloads a selected item as JSON", async ({ page }) => {
   const exports: URLSearchParams[] = [];
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
@@ -150,11 +150,11 @@ test("downloads a selected bundle as JSON", async ({ page }) => {
   });
   await page.goto(`/?survey=${demo.id}`);
   await page.getByRole("button", { name: "Export", exact: true }).click();
-  await page.getByRole("radio", { name: /Export bundle JSON/ }).check();
+  await page.getByRole("radio", { name: /Export item JSON/ }).check();
   await expect(
     page.getByRole("button", { name: "Export JSON", exact: true }),
   ).toBeDisabled();
-  await page.getByLabel("Bundle number").selectOption("bundle-test");
+  await page.getByLabel("Item number").selectOption("bundle-test");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export JSON", exact: true }).click();
   const file = await download;
@@ -168,7 +168,7 @@ test("downloads a selected bundle as JSON", async ({ page }) => {
 });
 
 // Checks that dashboard export preselects the current bundle and requests its database ID rather than its display number.
-test("dashboard exports the selected bundle ID rather than its display number", async ({
+test("dashboard exports the selected item's ID rather than its display number", async ({
   page,
 }) => {
   await page.route("**/api/**", (route) => {
@@ -197,9 +197,9 @@ test("dashboard exports the selected bundle ID rather than its display number", 
   await page.getByRole("link", { name: "123", exact: true }).click();
   await page.getByRole("button", { name: "Export", exact: true }).click();
   await expect(
-    page.getByRole("radio", { name: /Export bundle JSON/ }),
+    page.getByRole("radio", { name: /Export item JSON/ }),
   ).toBeChecked();
-  await expect(page.getByLabel("Bundle number")).toHaveValue("db-bundle-abc");
+  await expect(page.getByLabel("Item number")).toHaveValue("db-bundle-abc");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export JSON", exact: true }).click();
   const file = await download;
@@ -210,7 +210,7 @@ test("dashboard exports the selected bundle ID rather than its display number", 
 });
 
 // Checks that Current bundle on the review screen downloads the bundle identified by the survey response.
-test("review screen exports its current bundle using the backend bundle ID", async ({
+test("review screen exports its current item using the backend item ID", async ({
   page,
 }) => {
   const exports: URLSearchParams[] = [];
@@ -236,7 +236,7 @@ test("review screen exports its current bundle using the backend bundle ID", asy
   });
   await page.goto(`/?survey=${demo.id}`);
   await page.getByRole("button", { name: "Export", exact: true }).click();
-  await page.getByRole("radio", { name: /Current bundle/ }).check();
+  await page.getByRole("radio", { name: /Current item/ }).check();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export JSON", exact: true }).click();
   const file = await download;
@@ -289,7 +289,7 @@ test("warns for unreviewed data and clears the warning for a reviewed selection"
 
 // Both dashboard entry points use the same warning for surveys and bundles.
 for (const selectedBundle of [false, true]) {
-  test(`conditional export warning on ${selectedBundle ? "selected bundle" : "all bundles"} dashboard`, async ({
+  test(`conditional export warning on ${selectedBundle ? "selected item" : "all items"} dashboard`, async ({
     page,
   }) => {
     await page.route("**/api/**", (route) => {
@@ -334,13 +334,13 @@ for (const selectedBundle of [false, true]) {
     );
     if (!selectedBundle) {
       await expect(warning).toBeHidden();
-      await page.getByLabel("Bundle number").selectOption("pending");
+      await page.getByLabel("Item number").selectOption("pending");
     }
     await expect(warning).toBeVisible();
     const checked = page.waitForResponse((response) =>
       response.url().includes("bundle_id=reviewed"),
     );
-    await page.getByLabel("Bundle number").selectOption("reviewed");
+    await page.getByLabel("Item number").selectOption("reviewed");
     await checked;
     await expect(warning).toBeHidden();
     await page.getByRole("radio", { name: /Survey ID JSON/ }).check();

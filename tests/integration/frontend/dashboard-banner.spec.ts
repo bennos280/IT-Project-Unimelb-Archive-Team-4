@@ -45,7 +45,7 @@ const banner = (page: Page) => page.getByRole("status").filter({ hasText: /isn't
 const stat = (page: Page) => page.getByTestId("stat-total-pages");
 const NOT_SET_UP = "Transcription isn't set up yet. Choose a model in Settings to start transcribing.";
 
-for (const [view, url] of [["all-bundles", "/?collection=1"], ["bundle page", "/?collection=1&bundle=b"]] as const) {
+for (const [view, url] of [["all-items", "/?collection=1"], ["item page", "/?collection=1&bundle=b"]] as const) {
   test(`${view} view: no model chosen shows the setup banner above the stats`, async ({ page }) => {
     await mock(page, { configured: null });
     await page.goto(url);

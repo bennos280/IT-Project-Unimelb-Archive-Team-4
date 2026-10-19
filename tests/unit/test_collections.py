@@ -63,13 +63,13 @@ def test_each_collection_has_its_own_bundles_page_types_and_surveys(client, db):
 def test_bad_names_series_and_collections_are_refused_with_the_reason(client, db):
     client.post("/collections", json={"name": "Ships", "archiveSeries": "7"})
     taken = client.patch("/collections/2", json={"name": "Wilfred Prest Survey"})
-    assert (taken.status_code, taken.json()["detail"]) == (409, "There is already a collection called Wilfred Prest Survey.")
+    assert (taken.status_code, taken.json()["detail"]) == (409, "There is already a series called Wilfred Prest Survey.")
     for series in ("9999999999999999999999", "0", "-5"):
         assert client.post("/collections", json={"name": "Big", "archiveSeries": series}).status_code == 400, series
     db.add(models.Reviewer(reviewer_id=1, name="Ben"))
     db.commit()
     missing = client.post("/page-types", json={"label": "Cargo", "reviewerId": 1, "collectionId": 99})
-    assert (missing.status_code, missing.json()["detail"]) == (400, "No such collection.")
+    assert (missing.status_code, missing.json()["detail"]) == (400, "No such series.")
     assert client.get("/page-types?collection=0").json() == []  # a filter, not "every collection"
 
 

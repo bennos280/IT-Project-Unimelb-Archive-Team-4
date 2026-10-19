@@ -39,7 +39,7 @@ export default function TranscriptionDialog({ source, busy, error, onClose, onSt
       onInteractOutside={(event) => event.preventDefault()}>
       <DialogHeader>
         <DialogTitle>{table ? "Transcription models" : "Transcribe scans"}</DialogTitle>
-        <DialogDescription>Bundle {source.name}</DialogDescription>
+        <DialogDescription>Item {source.name}</DialogDescription>
       </DialogHeader>
       {failure && <Alert variant="destructive"><AlertDescription className="flex flex-wrap items-center gap-2">{failure} <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>Try again</Button></AlertDescription></Alert>}
       {!data && !failure && <p role="status" className="flex items-center gap-2 text-muted-foreground"><Spinner role="presentation" aria-hidden="true" />Loading model information…</p>}

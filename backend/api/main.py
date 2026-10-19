@@ -396,7 +396,7 @@ def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
     if not db.get(models.Collection, payload.collectionId):
-        raise HTTPException(status_code=400, detail="No such collection.")
+        raise HTTPException(status_code=400, detail="No such series.")
     try:
         db.add(models.PageType(name=name, label=label, reviewer_id=payload.reviewerId, collection_id=payload.collectionId))
         db.commit()
@@ -480,7 +480,7 @@ def get_collections(db: Session = Depends(get_db)):
 def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
     name, node = payload.name.strip(), series_node(payload.archiveSeries)
     if not name:
-        raise HTTPException(status_code=400, detail="A collection needs a name.")
+        raise HTTPException(status_code=400, detail="A series needs a name.")
     if node is None:
         raise HTTPException(status_code=400, detail=SERIES_HELP)
     write_lock(db)
@@ -491,7 +491,7 @@ def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
         db.flush()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail=f"There is already a collection called {name}.")
+        raise HTTPException(status_code=409, detail=f"There is already a series called {name}.")
     db.add(models.PageType(name=new_name(db, "Unknown"), label="Unknown", unknown=True, built_in=True, collection_id=collection.collection_id))
     db.commit()
     return collection_json(collection, db)
@@ -500,7 +500,7 @@ def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
 def get_collection(collection_id: int, db: Session = Depends(get_db)):
     c = db.get(models.Collection, collection_id)
     if not c:
-        raise HTTPException(status_code=404, detail="No such collection.")
+        raise HTTPException(status_code=404, detail="No such series.")
     return collection_json(c, db)
 
 #renames a collection, relinks its series, or sets the field holding a survey's number, which the templates of the types that
@@ -510,11 +510,11 @@ def update_collection(collection_id: int, payload: CollectionSettings, db: Sessi
     write_lock(db)
     c = db.get(models.Collection, collection_id)
     if not c:
-        raise HTTPException(status_code=404, detail="No such collection.")
+        raise HTTPException(status_code=404, detail="No such series.")
     given = payload.model_fields_set
     if "name" in given:
         if not (payload.name or "").strip():
-            raise HTTPException(status_code=400, detail="A collection needs a name.")
+            raise HTTPException(status_code=400, detail="A series needs a name.")
         c.name = payload.name.strip()
     if "archiveSeries" in given:
         if series_node(payload.archiveSeries) is None:
@@ -537,7 +537,7 @@ def update_collection(collection_id: int, payload: CollectionSettings, db: Sessi
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail=f"There is already a collection called {name}.")
+        raise HTTPException(status_code=409, detail=f"There is already a series called {name}.")
     return collection_json(c, db)
 
 #a series on the archive, to check before a collection links to it
@@ -716,9 +716,9 @@ def start_job(payload: StartJobRequest, db: Session = Depends(get_db)):
     write_lock(db)
     #a rerun could lose saved reviews
     if db.query(models.Bundle).filter(models.Bundle.bundle_id == pdf.stem).first():
-        raise HTTPException(status_code=409, detail="This bundle is already loaded.")
+        raise HTTPException(status_code=409, detail="This item is already loaded.")
     if db.query(models.Job).filter(models.Job.pdf == payload.pdf, models.Job.status.in_(("waiting", "running"))).first():
-        raise HTTPException(status_code=409, detail="This bundle is already waiting or running.")
+        raise HTTPException(status_code=409, detail="This item is already waiting or running.")
 
     chosen = chosen_transcription(db, payload.provider, payload.model, payload.effort)
     check_transcription(**chosen)
@@ -799,7 +799,7 @@ def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
     if job is None:
         raise HTTPException(status_code=404, detail="No such job.")
     if job.kind != "bundle" or not job.pdf:
-        raise HTTPException(status_code=400, detail="This job is not a bundle transcription.")
+        raise HTTPException(status_code=400, detail="This job is not an item transcription.")
     folder = ROOT / settings()["OUTPUT"] / Path(job.pdf).stem
     manifest = read_manifest(folder)
     pages = []
@@ -880,14 +880,14 @@ def export_bundles(collection: int | None = None, db: Session = Depends(get_db))
 def download_export(request: Request, survey_id: str | None = None, bundle_id: str | None = None,
                     db: Session = Depends(get_db)):
     if (survey_id is None) == (bundle_id is None):
-        raise HTTPException(status_code=400, detail="Choose a survey ID or a bundle.")
+        raise HTTPException(status_code=400, detail="Choose a survey ID or an item.")
     if survey_id is not None:
         return export_survey(survey_id, request, db)
     bundle_id = bundle_id.strip()
     if not bundle_id:
-        raise HTTPException(status_code=400, detail="Choose a bundle.")
+        raise HTTPException(status_code=400, detail="Choose an item.")
     if not db.get(models.Bundle, bundle_id):
-        raise HTTPException(status_code=404, detail="Bundle not found.")
+        raise HTTPException(status_code=404, detail="Item not found.")
     surveys = []
     for (sid,) in db.query(models.Survey.survey_id).filter_by(bundle_id=bundle_id).order_by(models.Survey.survey_id):
         surveys.extend(export_survey(sid, request, db)["surveys"])
@@ -934,7 +934,7 @@ def move_page(page_id: str, payload: MovePageRequest, db: Session = Depends(get_
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(400, "Select a valid reviewer.")
     if target.bundle_id != page.bundle_id:
-        raise HTTPException(400, "Pages can only move within the same bundle.")
+        raise HTTPException(400, "Pages can only move within the same item.")
     if target.survey_id == page.survey_id:
         raise HTTPException(400, "Choose a different survey.")
     if page.survey_id != payload.sourceSurveyId or (page.revision_no or 0) != payload.revision:
@@ -981,7 +981,7 @@ def classify_page(page_id: str, payload: PageClassificationRequest, db: Session 
     page = actionable_page(db, page_id, payload.reviewerId, payload.revision)
     new_type = db.get(models.PageType, payload.pageType)
     if not new_type or new_type.collection_id != db.get(models.Bundle, page.bundle_id).collection_id:
-        raise HTTPException(400, f"No page type called {payload.pageType} in this page's collection.")
+        raise HTTPException(400, f"No page type called {payload.pageType} in this page's series.")
     if payload.pageType == page.category:
         raise HTTPException(400, "The page is already that type.")
     from backend.db.page_history import snapshot

@@ -19,7 +19,7 @@ export default function JobErrorDialog({ bundle, message, onClose }: { bundle: s
       >
         <DialogHeader>
           <DialogTitle>Transcription error</DialogTitle>
-          <DialogDescription>Bundle {bundle}</DialogDescription>
+          <DialogDescription>Item {bundle}</DialogDescription>
         </DialogHeader>
         {/* Preserve error line breaks and allow long messages to wrap and scroll. */}
         <pre className="max-h-[50vh] overflow-y-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">{message}</pre>
