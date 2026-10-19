@@ -137,21 +137,26 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
   const grouped = parts.filter((p) => p.how !== "follows" && fields[p.type]).map((p) => p.type);
   const choices = grouped.length ? fields[grouped[0]].filter((f) => grouped.every((t) => fields[t].includes(f))) : [];
   if (key && !choices.includes(key)) choices.unshift(key);
-  const typeSelect = (label: string, value: string, set: (type: string) => void, skip?: string) => (
-    <NativeSelect size="sm" aria-label={label} className="w-auto" value={value} onChange={(e) => set(e.target.value)}>
+  const typeSelect = (at: string, value: string, set: (type: string) => void, skip?: string) => (
+    <NativeSelect size="sm" id={`${id}-${at}`} className="w-full" value={value} onChange={(e) => set(e.target.value)}>
       {read.filter((t) => t.name !== skip).map((t) => <option key={t.name} value={t.name}>{t.label}</option>)}
     </NativeSelect>
   );
-  const numberSelect = (label: string, none: string) => (
-    <NativeSelect size="sm" aria-label={label} className="w-auto" value={key} onChange={(e) => setKey(e.target.value)}>
+  const numberSelect = (none: string) => (
+    <NativeSelect size="sm" id={`${id}-number`} className="w-full" value={key} onChange={(e) => setKey(e.target.value)}>
       <option value="">{none}</option>
       {choices.map((f) => <option key={f} value={f}>{start(f.replaceAll("_", " "))}</option>)}
     </NativeSelect>
   );
-  const line = "flex w-full flex-wrap items-center gap-1";
+  // A setting of the chosen shape: its label (with what it means, on hover) beside its control.
+  const row = (label: string, at: string, control: ReactNode, tip?: string) => (
+    <div className="grid w-full grid-cols-[7rem_minmax(0,1fr)] items-center gap-2">
+      <label htmlFor={`${id}-${at}`} title={tip}>{label}</label>{control}
+    </div>
+  );
   // A starting page showing the same number as the one before, or none, is another sheet of it.
-  const sheets = (byNumber: boolean) => (byNumber ? ", unless it's another sheet of the one before" : ", and the pages after it belong to it");
-  const sheetsTip = "Another sheet shows the same number as the one before, or none.";
+  const startsTip = (byNumber: boolean) => `Each starts a new ${words.one}${byNumber
+    ? ", unless it's another sheet of the one before: the same number, or none." : ", and the pages after it belong to it."}`;
   // What the shape's parts include, how many of each.
   const howMany: Record<Part["count"], string> = { one: "exactly one", one_or_more: "one or more", any: "any", at_most_one: "at most one" };
   const includes = <span className="w-full text-xs">Includes {list(parts.map((p) =>
@@ -162,18 +167,16 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
     { kind: "page", title: `One ${words.one} per page`, body: `Every page is its own ${words.one}, like a card index.` },
     { kind: "run", title: `${start(words.many)} start at a page`, off: !read.length,
       body: kind === "run" ? <>
-        <span className={line} title={key ? sheetsTip : undefined}>Each {typeSelect(`Page that starts ${words.a}`, startType, chooseStart)} starts a
-          new {words.one}{sheets(!!key)}.</span>
-        <span className={line}>Numbered by {numberSelect("Numbered by", "None: page order only")}</span>
+        {row("Starts with", "start", typeSelect("start", startType, chooseStart), startsTip(!!key))}
+        {row("Numbered by", "number", numberSelect("None: page order only"))}
         {includes}
       </> : `A chosen kind of page starts each ${words.one}, and the pages after it belong to it.` },
     { kind: "matched", title: `${start(words.many)} start at a page, with pages matched by number`, off: read.length < 2,
       body: kind === "matched" ? <>
-        <span className={line} title={sheetsTip}>Each {typeSelect(`Page that starts ${words.a}`, startType, chooseStart)} starts a
-          new {words.one}{sheets(true)}.</span>
-        <span className={line}>Each {typeSelect("Page matched by number", matchType, setMatchType, startType)} joins
-          the {words.one} with the same number.</span>
-        <span className={line}>Matched using {numberSelect("Matched using", "Choose a field")}</span>
+        {row("Starts with", "start", typeSelect("start", startType, chooseStart), startsTip(true))}
+        {row("Matched page", "match", typeSelect("match", matchType, setMatchType, startType),
+          `Each joins the ${words.one} with the same number, wherever it's filed.`)}
+        {row("Match using", "number", numberSelect("Choose a field"))}
         {includes}
       </> : `As above, and one kind of page joins the ${words.one} with the same number, wherever it's filed.` },
     { kind: "custom", title: "Custom", body: "Choose each part yourself." },
@@ -187,7 +190,7 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
     try {
       setPreview({ ...tried, result: await backendRequest<Preview>(`/collections/${collection.id}/levels/preview`, json("POST", { levels: next, item })) });
     } catch (e) {
-      setPreview({ ...tried, error: message(e, "Could not try it.") });
+      setPreview({ ...tried, error: message(e, "Could not preview it.") });
     }
     setPreviewing(false);
   }
@@ -217,7 +220,7 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
         <div className="flex flex-wrap items-center gap-2">
           {existing && (
             <Button variant="ghost" className="text-destructive" disabled={busy}
-              onClick={() => save(collection.levels.filter((_, i) => i !== index))}>Remove level</Button>
+              onClick={() => save(collection.levels.filter((_, i) => i !== index))}>Remove {existing.name} grouping</Button>
           )}
           <Button variant="outline" asChild><a href={setup}>Cancel</a></Button>
           <Button disabled={busy || (kind !== "item" && !name.trim())} onClick={() => save(next)}>Save</Button>
@@ -307,15 +310,15 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
         </div>
         <section aria-labelledby={`${id}-try`} className="min-w-0 space-y-3">
           <div className="space-y-3 bg-background pb-1 lg:sticky lg:top-0 lg:z-10 lg:pt-2">
-            <h2 id={`${id}-try`} className="text-lg font-semibold tracking-tight">Try it on an item</h2>
+            <h2 id={`${id}-try`} className="text-lg font-semibold tracking-tight">Preview on an item</h2>
             {items?.length ? (
               <div className="flex flex-wrap items-center gap-2">
-                <NativeSelect aria-label="Item to try it on" className="w-full sm:w-72" value={item} onChange={(e) => setItem(e.target.value)}>
+                <NativeSelect aria-label="Item to preview" className="w-full sm:w-72" value={item} onChange={(e) => setItem(e.target.value)}>
                   {items.map((i) => <option key={i.id} value={i.id}>{itemTitle(i.name)}</option>)}
                 </NativeSelect>
-                <Button variant="outline" disabled={previewing || !name.trim()} onClick={tryIt}>{previewing ? "Trying…" : "Try it"}</Button>
+                <Button variant="outline" disabled={previewing || !name.trim()} onClick={tryIt}>{previewing ? "Previewing…" : "Preview grouping"}</Button>
               </div>
-            ) : items && <p className="text-sm text-muted-foreground">No items read yet to try it on.</p>}
+            ) : items && <p className="text-sm text-muted-foreground">No items read yet to preview.</p>}
           </div>
           {loadError && <Alert variant="destructive"><AlertDescription>{loadError}</AlertDescription></Alert>}
           {preview?.for === trying && preview.error && <Alert variant="destructive"><AlertDescription>{preview.error}</AlertDescription></Alert>}
@@ -325,7 +328,7 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
             <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-12 text-center">
               <ScanSearch aria-hidden="true" className="size-8 text-muted-foreground" />
               <p className="font-medium">See how an item would group</p>
-              <p className="text-sm text-muted-foreground">{previewing ? "Trying…" : "Pick an item, then press Try it. Nothing is saved."}</p>
+              <p className="text-sm text-muted-foreground">{previewing ? "Previewing…" : "Pick an item, then press Preview grouping. Nothing is saved."}</p>
             </div>
           ) : null}
         </section>
@@ -369,7 +372,7 @@ function PreviewResult({ preview, levels, bundle, stale }: { preview: Preview; l
   const topWords = recordWords(levels[0]?.name.trim().toLowerCase() || "record");
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const all = [
-    ...(preview.loose.length ? [{ id: null, key: "", label: "In no record", pages: preview.loose, depth: 1 }] : []),
+    ...(preview.loose.length ? [{ id: null, key: "", label: `Not in ${topWords.a}`, pages: preview.loose, depth: 1 }] : []),
     ...preview.records.map((r) => ({ id: r.id, key: r.id, pages: r.pages, depth: depth.get(r.id)!,
       label: `${start(levels[depth.get(r.id)! - 1]?.name.trim().toLowerCase() || "record")} ${recordNumber(r.id, r.parent ?? bundle)}` })),
   ];
@@ -379,7 +382,7 @@ function PreviewResult({ preview, levels, bundle, stale }: { preview: Preview; l
     <section className="space-y-3 text-sm" aria-label="Preview">
       {stale && (
         <p role="status" className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          Changed since this try: press Try it again.
+          Changed since this preview: press Preview grouping again.
         </p>
       )}
       <div className={`space-y-3 ${stale ? "opacity-50" : ""}`}>
@@ -388,16 +391,16 @@ function PreviewResult({ preview, levels, bundle, stale }: { preview: Preview; l
           {!withProblems && (
             <span className={`${chip} text-emerald-700 dark:text-emerald-400`}><CircleCheck aria-hidden="true" className="size-3.5" />No problems</span>
           )}
-          <span className={chip}>{plural(preview.loose.length, "page", "pages")} in no {topWords.one}</span>
+          <span className={chip}>{plural(preview.loose.length, "page", "pages")} not in {topWords.a}</span>
           {withProblems > 0 && (
-            <Button variant="outline" size="sm" className="ml-auto" onClick={() => setOnlyProblems((only) => !only)}>
+            <Button variant="outline" size="sm" onClick={() => setOnlyProblems((only) => !only)}>
               {!onlyProblems && <TriangleAlert aria-hidden="true" className="text-amber-600" />}
               {onlyProblems ? `Show all ${topWords.many}` : `Show the ${plural(withProblems, topWords.one, topWords.many)} with problems`}
             </Button>
           )}
         </div>
         {rows.length ? (
-          <ol aria-label="Records" className="space-y-3">
+          <ol aria-label="Records" className={preview.records.some((r) => r.parent) ? "space-y-3" : "grid grid-cols-[repeat(auto-fill,minmax(min(24rem,100%),1fr))] gap-3"}>
             {rows.map((row) => (
               <li key={row.key} style={{ marginLeft: `${(row.depth - 1) * 1.5}rem` }} className="space-y-2 rounded-md border p-3">
                 <p className="flex items-center gap-2">

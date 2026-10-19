@@ -284,9 +284,9 @@ test("a level opens on its shape, and its name, what one is made of in order (cu
   await expect(page.getByRole("heading", { name: "Survey structure", level: 1 })).toBeVisible();
   // its shape: a main form starts each survey, and its coded card is matched by number
   await expect(page.getByLabel("Surveys start at a page, with pages matched by number")).toBeChecked();
-  await expect(page.getByLabel("Page that starts a survey")).toHaveValue("main");
-  await expect(page.getByLabel("Page matched by number")).toHaveValue("coded");
-  await expect(page.getByLabel("Matched using")).toHaveValue("number_of_dwelling");
+  await expect(page.getByLabel("Starts with")).toHaveValue("main");
+  await expect(page.getByLabel("Matched page")).toHaveValue("coded");
+  await expect(page.getByLabel("Match using")).toHaveValue("number_of_dwelling");
   await expect(page.getByText("Includes one or more Main pages, any Notes pages and exactly one Coded page.")).toBeVisible();
   await page.getByLabel("Custom").check(); // its parts, to choose each one
   await expect(parts(page).locator("p:first-child")).toHaveText(["Main page", "Notes page", "Coded page"]);
@@ -347,7 +347,7 @@ test("a level added goes inside the bottom one, its first page type starting one
 test("a level can be removed, leaving each item one record, and added again", async ({ page }) => {
   const calls = await mockApi(page);
   await page.goto("/?collection=1&view=setup&level=1");
-  await page.getByRole("button", { name: "Remove level" }).click();
+  await page.getByRole("button", { name: "Remove survey grouping" }).click();
   await expect(ladder(page)).toHaveText([/^Item/, /^Page/]);
   await expect(page.getByText("No levels: each item is one record.")).toBeVisible();
   await page.goto("/?collection=1&view=setup&level=1");
@@ -374,10 +374,10 @@ test("a level can be removed, leaving each item one record, and added again", as
 test("a level's shape fills in what one is made of: a run of pages from one, each page, or, as the only level, the whole item", async ({ page }) => {
   const calls = await mockApi(page);
   await page.goto("/?collection=1&view=setup&level=1");
-  await page.getByLabel("Page that starts a survey").selectOption("Coded page"); // the matched one can't start one too
-  await expect(page.getByLabel("Page matched by number")).toHaveValue("main");
+  await page.getByLabel("Starts with").selectOption("Coded page"); // the matched one can't start one too
+  await expect(page.getByLabel("Matched page")).toHaveValue("main");
   await page.getByLabel("Surveys start at a page", { exact: true }).check();
-  await page.getByLabel("Page that starts a survey").selectOption("Notes page");
+  await page.getByLabel("Starts with").selectOption("Notes page");
   await expect(page.getByText("Includes one or more Notes pages, any Coded pages and any Main pages.")).toBeVisible();
   await page.getByLabel("Numbered by").selectOption("");
   await page.getByRole("button", { name: "Save" }).click();
@@ -539,15 +539,16 @@ test("a level's settings are tried on an item already read before they're saved,
   const calls = await mockApi(page);
   await page.goto("/?collection=1&view=setup&level=1");
   const main = page.getByRole("main");
-  await expect(main.getByLabel("Item to try it on")).toHaveValue("b1");
+  await expect(main.getByLabel("Item to preview")).toHaveValue("b1");
   await expect(main.getByText("See how an item would group")).toBeVisible(); // nothing tried yet
-  await main.getByRole("button", { name: "Try it" }).click();
-  const preview = main.getByLabel("Preview");
+  await main.getByRole("button", { name: "Preview grouping" }).click();
+  const preview = main.getByLabel("Preview", { exact: true });
   await expect(preview.getByText("2 surveys", { exact: true })).toBeVisible();
-  await expect(preview.getByText("1 page in no survey", { exact: true })).toBeVisible();
+  await expect(preview.getByText("1 page not in a survey", { exact: true })).toBeVisible();
   const problems = preview.getByRole("button", { name: "Show the 1 survey with problems" });
   const records = preview.getByRole("list", { name: "Records" }).getByRole("listitem");
-  await expect(records.locator("p:first-child")).toHaveText(["In no record · Pg 1", "Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5"]);
+  await expect(records.locator("p:first-child")).toHaveText(["Not in a survey · Pg 1", "Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5"]);
+  await expect(preview.getByRole("list", { name: "Records" })).toHaveCSS("display", "grid"); // side by side where there's room: none sits in another
   await expect(records.nth(2)).toContainText("expected one Coded page, found 2");
   // each page as a small scan, named by its type and place, opening the whole scan; one not on this computer says so
   const scans = records.nth(1).getByRole("link");
@@ -563,16 +564,16 @@ test("a level's settings are tried on an item already read before they're saved,
   await problems.click();
   expect(calls.tried).toEqual([{ levels: [{ name: "survey", parts: [MAIN_PART, NOTES_PART, CODED_PART], key: "number_of_dwelling" }], item: "b1" }]);
   expect(calls.putLevels).toEqual([]); // nothing saved
-  await main.getByRole("button", { name: "Try it" }).click(); // tried again: every record shown
-  await expect(records.locator("p:first-child")).toHaveText(["In no record · Pg 1", "Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5"]);
+  await main.getByRole("button", { name: "Preview grouping" }).click(); // tried again: every record shown
+  await expect(records.locator("p:first-child")).toHaveText(["Not in a survey · Pg 1", "Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5"]);
   await expect(problems).toBeVisible();
   await main.getByLabel("Surveys start at a page", { exact: true }).check();
-  await expect(preview.getByRole("status")).toHaveText("Changed since this try: press Try it again.");
+  await expect(preview.getByRole("status")).toHaveText("Changed since this preview: press Preview grouping again.");
   await expect(records).toHaveCount(3); // still there to compare, faded
   await main.getByLabel("Name").fill("survey #1");
   await page.route("**/api/collections/1/levels/preview", (route) =>
     route.fulfill({ status: 400, json: { detail: "A level's name is a word or two, like survey or letter." } }));
-  await main.getByRole("button", { name: "Try it" }).click();
+  await main.getByRole("button", { name: "Preview grouping" }).click();
   await expect(main.getByText("A level's name is a word or two, like survey or letter.")).toBeVisible();
   await main.getByLabel("Name").fill("survey");
   await expect(main.getByText("A level's name is a word or two, like survey or letter.")).toHaveCount(0); // tried with another name
