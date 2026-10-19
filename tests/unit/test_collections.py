@@ -13,8 +13,8 @@ def test_a_new_collection_needs_a_name_and_its_archive_series_and_starts_with_an
     assert client.post("/collections", json={"name": " ", "archiveSeries": "5"}).status_code == 400
     created = client.post("/collections", json={"name": "Shipping manifests",
                                                 "archiveSeries": "https://archives.library.unimelb.edu.au/nodes/view/123456"}).json()
-    assert {k: created[k] for k in ("name", "archiveSeries", "recordKey", "bundles", "pages")} == {
-        "name": "Shipping manifests", "archiveSeries": 123456, "recordKey": None, "bundles": 0, "pages": 0}
+    assert {k: created[k] for k in ("name", "archiveSeries", "levels", "bundles", "pages")} == {
+        "name": "Shipping manifests", "archiveSeries": 123456, "levels": [], "bundles": 0, "pages": 0}
     assert client.post("/collections", json={"name": "Shipping manifests", "archiveSeries": "7"}).status_code == 409
     assert [(t["name"], t["label"], t["unknown"]) for t in client.get(f"/page-types?collection={created['id']}").json()] == [
         ("unknown", "Unknown", True)]
@@ -25,7 +25,7 @@ def test_a_new_collection_needs_a_name_and_its_archive_series_and_starts_with_an
 
 def test_a_rename_leaves_the_other_settings_as_they_were(client):
     renamed = client.patch("/collections/1", json={"name": "Prest survey"}).json()
-    assert (renamed["name"], renamed["recordKey"], renamed["archiveSeries"]) == ("Prest survey", "number_of_dwelling", 499420)
+    assert (renamed["name"], renamed["levels"][0]["key"], renamed["archiveSeries"]) == ("Prest survey", "number_of_dwelling", 499420)
     assert client.patch("/collections/1", json={"archiveSeries": "nowhere"}).status_code == 400
     assert client.patch("/collections/1", json={"name": ""}).status_code == 400
 

@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
+import { Box, File, Layers, Plus } from "lucide-react";
 
 import AppHeader from "@/components/AppHeader";
 import SeriesHeader from "@/components/SeriesHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { backendRequest, recordWords } from "../progress/backend";
 import ChecksSection from "./ChecksSection";
@@ -16,28 +18,37 @@ import FieldRules from "./FieldRules";
 import ReviewerField, { type Reviewer } from "./ReviewerField";
 import { cleanRules, parseTemplate, sameRules, type Rules } from "./rules";
 
-type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; startsRecord: boolean; matchedByKey: boolean; templateVersion: number | null };
+type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; templateVersion: number | null };
+// A level of record between an item and its pages: what one is called, the page types whose pages start one and those whose
+// pages join the one showing the same number, and the field holding that number (null: page order only).
+type Level = { name: string; starts: string[]; matched: string[]; key: string | null };
 type Collection = {
-  id: number; name: string; recordKey: string | null; recordName: string; groupPages: boolean; grouped: boolean;
-  archiveIdentifier?: string | null; archiveSeries?: number | null;
+  id: number; name: string; levels: Level[]; recordName: string; grouped: boolean; archiveIdentifier?: string | null;
+  archiveSeries?: number | null;
 };
 type Version = { id: number; body: string; rules: Rules; reviewer: string | null; note: string | null; createdAt: string };
-type Grouping = "starts" | "matched" | "follows";
+type Role = "starts" | "matched" | "follows";
 
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
-const groupingOf = (t: PageType): Grouping => (t.startsRecord ? "starts" : t.matchedByKey ? "matched" : "follows");
-// How a type groups, in the series' words.
-const groupings = ({ recordName }: Collection): Record<Grouping, string> => ({
-  starts: `Starts ${recordWords(recordName).a}`,
-  matched: `Joins the ${recordName} with the same number`,
-  follows: "Follows the page before it",
-});
+const start = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+const SECTIONS = ["levels", "page-types", "checks"];
 
-// A series' Setup tab: what its records are, its page types (what each is called, the template its pages are read with, its
-// fields' rules, and how they group into records), and its checks across fields.
+// A series' Setup tab, in three: its levels of record, its page types (what each is called, the template its pages are read
+// with and its fields' rules), and its checks across fields. The one shown is in the URL (?section=; the old ?view=page-types
+// opens the page types).
 export default function PageTypesScreen() {
-  const collectionId = Number(new URLSearchParams(location.search).get("collection")) || 1;
+  const params = new URLSearchParams(location.search);
+  const collectionId = Number(params.get("collection")) || 1;
+  const [section, setSection] = useState(() => SECTIONS.find((s) => s === params.get("section"))
+    ?? (params.get("view") === "page-types" ? "page-types" : "levels"));
+  function show(next: string) {
+    const url = new URL(location.href);
+    if (next === "levels") url.searchParams.delete("section");
+    else url.searchParams.set("section", next);
+    history.replaceState(null, "", url);
+    setSection(next);
+  }
   const [types, setTypes] = useState<PageType[] | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
   const [reviewers, setReviewers] = useState<Reviewer[]>([]);
@@ -45,7 +56,7 @@ export default function PageTypesScreen() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<PageType | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback(() =>
     Promise.all([
       backendRequest<PageType[]>(`/page-types?collection=${collectionId}`),
       backendRequest<Collection>(`/collections/${collectionId}`),
@@ -55,23 +66,16 @@ export default function PageTypesScreen() {
       setCollection(c);
       setReviewers(r);
       setLoadError("");
-    }).catch((e) => setLoadError(message(e, "Could not load the page types.")));
-  }, [collectionId]);
-  useEffect(load, [load]);
+    }).catch((e) => setLoadError(message(e, "Could not load the page types."))), [collectionId]);
+  useEffect(() => { void load(); }, [load]);
   const addReviewer = (person: Reviewer) => setReviewers((r) => [...r.filter((p) => p.id !== person.id), person]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader series={{ id: collectionId, name: collection?.name ?? "" }} />
       <main className="space-y-8 p-6">
-        <div className="space-y-3">
-          <SeriesHeader series={{ id: collectionId, name: collection?.name ?? "", archiveIdentifier: collection?.archiveIdentifier,
-            archiveSeries: collection?.archiveSeries }} tab="setup" />
-          <p className="text-sm text-muted-foreground">
-            How {collection?.name ?? "this series"}'s pages are read and checked: what one of its {recordWords(collection?.recordName).many} is, its
-            kinds of page with their templates and fields' rules, and checks across its fields.
-          </p>
-        </div>
+        <SeriesHeader series={{ id: collectionId, name: collection?.name ?? "", archiveIdentifier: collection?.archiveIdentifier,
+          archiveSeries: collection?.archiveSeries }} tab="setup" />
         {loadError && (
           <Alert variant="destructive">
             <AlertDescription className="flex flex-wrap items-center gap-2">
@@ -79,122 +83,202 @@ export default function PageTypesScreen() {
             </AlertDescription>
           </Alert>
         )}
-        {collection && <Records key={`${collection.groupPages} ${collection.recordName} ${collection.recordKey}`} collection={collection} onSaved={load} />}
-        {types && (
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold tracking-tight">Page types</h2>
-                <p className="text-sm text-muted-foreground">A page is read with its type's template; a type with no template isn't read.</p>
-              </div>
-              <Button onClick={() => setAdding(true)}>Add page type</Button>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Page type</TableHead>
-                  {collection?.groupPages && <TableHead>Grouping</TableHead>}
-                  <TableHead>Template</TableHead>
-                  <TableHead className="w-0"><span className="sr-only">Actions</span></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {types.map((t) => (
-                  <TableRow key={t.name}>
-                    <TableCell className="font-medium">{t.label}</TableCell>
-                    {collection?.groupPages && (
-                      <TableCell>
-                        {t.unknown ? "Pages sorting couldn't place wait here"
-                          : collection.grouped ? groupings(collection)[groupingOf(t)] : `${recordWords(collection.recordName).A} of its own`}
-                      </TableCell>
-                    )}
-                    <TableCell>{t.unknown ? "Not read" : t.templateVersion ? "Saved" : "None yet"}</TableCell>
-                    <TableCell>
-                      <Button variant="outline" size="sm" aria-label={`Edit ${t.label}`} onClick={() => setEditing(t)}>Edit</Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </section>
-        )}
-        {types && <ChecksSection collectionId={collectionId} types={types} reviewers={reviewers} onAddReviewer={addReviewer} />}
+        <Tabs value={section} onValueChange={show} className="gap-6">
+          <TabsList aria-label="Setup">
+            <TabsTrigger value="levels">Levels</TabsTrigger>
+            <TabsTrigger value="page-types">Page types</TabsTrigger>
+            <TabsTrigger value="checks">Checks</TabsTrigger>
+          </TabsList>
+          <TabsContent value="levels">
+            {collection && types && <Levels collection={collection} types={types} onSaved={load} />}
+          </TabsContent>
+          <TabsContent value="page-types">
+            {types && (
+              <section className="space-y-3">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-semibold tracking-tight">Page types</h2>
+                    <p className="text-sm text-muted-foreground">A page is read with its type's template; a type with no template isn't read.</p>
+                  </div>
+                  <Button onClick={() => setAdding(true)}>Add page type</Button>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Page type</TableHead>
+                      <TableHead>Template</TableHead>
+                      <TableHead className="w-0"><span className="sr-only">Actions</span></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {types.map((t) => (
+                      <TableRow key={t.name}>
+                        <TableCell className="font-medium">{t.label}</TableCell>
+                        <TableCell>{t.unknown ? "Not read: pages sorting couldn't place wait here" : t.templateVersion ? "Saved" : "None yet"}</TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm" aria-label={`Edit ${t.label}`} onClick={() => setEditing(t)}>Edit</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </section>
+            )}
+          </TabsContent>
+          <TabsContent value="checks">
+            {types && <ChecksSection collectionId={collectionId} types={types} reviewers={reviewers} onAddReviewer={addReviewer} />}
+          </TabsContent>
+        </Tabs>
       </main>
       {adding && (
         <AddDialog collectionId={collectionId} reviewers={reviewers} onAddReviewer={addReviewer} onClose={() => setAdding(false)}
           onAdded={(created) => { setAdding(false); setEditing(created); load(); }} />
       )}
-      {editing && collection && (
-        <EditDialog type={editing} collection={collection} reviewers={reviewers} onAddReviewer={addReviewer}
+      {editing && (
+        <EditDialog type={editing} reviewers={reviewers} onAddReviewer={addReviewer}
           onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
       )}
     </div>
   );
 }
 
-// Whether each item is one record or holds several, what one is called, and with several the field holding each one's number
-// (empty: pages group by their order only).
-function Records({ collection, onSaved }: { collection: Collection; onSaved: () => void }) {
-  const id = useId();
-  const [several, setSeveral] = useState(collection.groupPages);
-  const [name, setName] = useState(collection.recordName);
-  const [key, setKey] = useState(collection.recordKey ?? "");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const words = recordWords(collection.recordName);
-  const stored = name.toLowerCase().split(/\s+/).filter(Boolean).join(" ") || "record"; // as the backend stores it
-  const unchanged = several === collection.groupPages && stored === collection.recordName
-    && (!several || key.trim() === (collection.recordKey ?? ""));
+// One rung of the levels' ladder, indented under the one above.
+function Rung({ depth, icon, name, how, fixed, children }: {
+  depth: number; icon: ReactNode; name: string; how: string; fixed?: boolean; children?: ReactNode;
+}) {
+  return (
+    <li className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${fixed ? "bg-muted/50 text-muted-foreground" : ""}`}
+      style={{ marginLeft: `${depth * 1.5}rem` }}>
+      <span aria-hidden="true" className="[&_svg]:size-4">{icon}</span>
+      <span className={`min-w-20 font-medium ${fixed ? "" : "text-foreground"}`}>{name}</span>
+      <span className="flex-1 text-muted-foreground">{how}</span>
+      {children}
+    </li>
+  );
+}
 
-  async function save() {
-    setBusy(true);
-    setError("");
-    try {
-      await backendRequest<Collection>(`/collections/${collection.id}`,
-        json("PATCH", { groupPages: several, recordName: name, ...(several && { recordKey: key }) }));
-      onSaved();
-    } catch (e) {
-      setError(message(e, "Could not save the records' settings."));
-    }
-    setBusy(false);
-  }
-
+// The series' levels of record between an item and its pages, top first, as a ladder from Item to Page; with none, each item
+// is one record. ponytail: one level until grouping nests, so Add level shows only with none.
+function Levels({ collection, types, onSaved }: { collection: Collection; types: PageType[]; onSaved: () => Promise<void> }) {
+  const [editing, setEditing] = useState<number | null>(null); // the level's index; levels.length: a new one
+  const levels = collection.levels;
+  const label = (name: string) => types.find((t) => t.name === name)?.label ?? name;
+  const how = (level: Level) => [
+    level.starts.length ? `starts at ${level.starts.map(label).join(", ")}` : "each page is one",
+    level.matched.length ? `${level.matched.map(label).join(", ")} ${level.matched.length === 1 ? "joins" : "join"} by ${level.key}` : "",
+  ].filter(Boolean).join(" · ");
   return (
     <section className="space-y-3">
       <div>
-        <h2 className="text-xl font-semibold tracking-tight">Records</h2>
-        <p className="text-sm text-muted-foreground">A record's pages are reviewed together. Changes apply to items read from now on.</p>
+        <h2 className="text-xl font-semibold tracking-tight">Levels</h2>
+        <p className="text-sm text-muted-foreground">
+          How an item's pages group into records for review, each level inside the one above. Changes apply to items read from now on.
+        </p>
       </div>
-      <RadioGroup aria-label="Records" className="max-w-2xl" value={several ? "several" : "one"}
-        onValueChange={(value) => setSeveral(value === "several")}>
-        <Choice id={`${id}-one`} value="one" title="Each item is one record">All of an item's pages are reviewed together, like a card or a letter.</Choice>
-        <Choice id={`${id}-several`} value="several" title="Each item holds several records">
-          Its page types say which pages start a record, like the surveys in a box of forms; with none, each page is a record.
-        </Choice>
-      </RadioGroup>
-      <div className="max-w-2xl space-y-2">
-        <div className="flex flex-wrap items-end gap-2">
-          <Field className="min-w-48 flex-1">
-            <FieldLabel htmlFor={`${id}-name`}>Record name</FieldLabel>
-            <Input id={`${id}-name`} value={name} placeholder="record" onChange={(e) => setName(e.target.value)} />
-          </Field>
-          {several && (
-            <Field className="min-w-48 flex-1">
-              <FieldLabel htmlFor={`${id}-key`}>{words.One} number field</FieldLabel>
-              <Input id={`${id}-key`} value={key} placeholder="e.g. number_of_dwelling" onChange={(e) => setKey(e.target.value)} />
-            </Field>
-          )}
-        </div>
-        {several && (
-          <p className="text-sm text-muted-foreground">
-            A page that joins by number is filed with the {words.one} showing the same number; leave the number field empty to group
-            pages by their order only.
-          </p>
-        )}
-      </div>
-      <Button disabled={busy || unchanged} onClick={save}>Save</Button>
-      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      <ol aria-label="Levels" className="max-w-2xl space-y-1.5">
+        <Rung depth={0} icon={<Box />} name="Item" how="From the archive" fixed />
+        {levels.map((level, i) => (
+          <Rung key={level.name} depth={i + 1} icon={<Layers />} name={start(level.name)} how={how(level)}>
+            <Button variant="outline" size="sm" aria-label={`Edit ${level.name}`} onClick={() => setEditing(i)}>Edit</Button>
+          </Rung>
+        ))}
+        <Rung depth={levels.length + 1} icon={<File />} name="Page" how="From the scan" fixed />
+      </ol>
+      {!levels.length && <p className="text-sm text-muted-foreground">No levels: each item is one record.</p>}
+      {!levels.length && <Button variant="outline" onClick={() => setEditing(0)}><Plus /> Add level</Button>}
+      {editing !== null && (
+        <LevelDialog collection={collection} types={types} index={editing} onClose={() => setEditing(null)}
+          onSaved={async () => { await onSaved(); setEditing(null); }} />
+      )}
     </section>
+  );
+}
+
+// A level's name, what each read page type does in it (starts one, joins the one with the same number, or follows the page
+// before it) and its number field; saved with the series' other levels, or removed from them.
+function LevelDialog({ collection, types, index, onClose, onSaved }: {
+  collection: Collection; types: PageType[]; index: number; onClose: () => void; onSaved: () => Promise<void>;
+}) {
+  const id = useId();
+  const existing = collection.levels[index] as Level | undefined;
+  const read = types.filter((t) => !t.unknown);
+  const [name, setName] = useState(existing?.name ?? "");
+  const [roles, setRoles] = useState<Record<string, Role>>(() => Object.fromEntries(read.map((t) =>
+    [t.name, existing?.starts.includes(t.name) ? "starts" : existing?.matched.includes(t.name) ? "matched" : "follows"])));
+  const [key, setKey] = useState(existing?.key ?? "");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const words = recordWords(name.trim().toLowerCase() || "record");
+  const level: Level = { name, key, starts: read.filter((t) => roles[t.name] === "starts").map((t) => t.name),
+    matched: read.filter((t) => roles[t.name] === "matched").map((t) => t.name) };
+
+  async function save(levels: Level[]) {
+    setBusy(true);
+    setError("");
+    try {
+      await backendRequest<Collection>(`/collections/${collection.id}/levels`, json("PUT", { levels }));
+      await onSaved(); // the ladder shows the saved levels before the dialog closes
+    } catch (e) {
+      setError(message(e, "Could not save the levels."));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{existing ? `Edit level: ${existing.name}` : "Add level"}</DialogTitle>
+          <DialogDescription>Items read from now on group by it.</DialogDescription>
+        </DialogHeader>
+        <FieldGroup className="gap-4">
+          <Field>
+            <FieldLabel htmlFor={`${id}-name`}>Name</FieldLabel>
+            <Input id={`${id}-name`} value={name} placeholder="e.g. survey" onChange={(e) => setName(e.target.value)} />
+            <FieldDescription>What one is called on screen, like survey or letter.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldTitle>Page types</FieldTitle>
+            <FieldDescription>Which pages start {words.a}, and which join the one showing the same number wherever they are.</FieldDescription>
+            <ul className="space-y-1.5">
+              {read.map((t) => (
+                <li key={t.name} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="font-medium">{t.label}</span>
+                  <NativeSelect aria-label={`What ${t.label} does`} className="w-full sm:w-96" value={roles[t.name]}
+                    onChange={(e) => setRoles((r) => ({ ...r, [t.name]: e.target.value as Role }))}>
+                    <option value="follows">Follows the page before it</option>
+                    <option value="starts">Starts {words.a}</option>
+                    <option value="matched">Joins the {words.one} with the same number</option>
+                  </NativeSelect>
+                </li>
+              ))}
+            </ul>
+            {!read.length && <p className="text-sm text-muted-foreground">Add a page type first.</p>}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor={`${id}-key`}>Number field</FieldLabel>
+            <Input id={`${id}-key`} value={key} placeholder="e.g. number_of_dwelling" onChange={(e) => setKey(e.target.value)} />
+            <FieldDescription>
+              The field holding each {words.one}'s number, which joining by number needs; leave it empty to group pages by their order only.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+        <DialogFooter className="sm:justify-between">
+          {existing ? (
+            <Button variant="ghost" className="text-destructive" disabled={busy}
+              onClick={() => save(collection.levels.filter((_, i) => i !== index))}>Remove level</Button>
+          ) : <span />}
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+            <Button disabled={busy || !name.trim()}
+              onClick={() => save(existing ? collection.levels.map((l, i) => (i === index ? level : l)) : [...collection.levels, level])}>
+              Save
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -243,30 +327,13 @@ function AddDialog({ collectionId, reviewers, onAddReviewer, onClose, onAdded }:
   );
 }
 
-// One choice of a radio group, as a card with its title and what it means.
-function Choice({ id, value, title, disabled, children }: { id: string; value: string; title: string; disabled?: boolean; children: ReactNode }) {
-  return (
-    <FieldLabel htmlFor={id}>
-      <Field orientation="horizontal" data-disabled={disabled || undefined}>
-        <RadioGroupItem value={value} id={id} disabled={disabled} />
-        <FieldContent>
-          <FieldTitle>{title}</FieldTitle>
-          <FieldDescription>{children}</FieldDescription>
-        </FieldContent>
-      </Field>
-    </FieldLabel>
-  );
-}
-
-// A page type's label, how its pages group, its template and its fields' rules (each save of those is a new version; an
-// older one can be brought back).
-function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSaved }: {
-  type: PageType; collection: Collection; reviewers: Reviewer[]; onAddReviewer: (person: Reviewer) => void; onClose: () => void;
-  onSaved: () => void;
+// A page type's label, its template and its fields' rules (each save of those is a new version; an older one can be brought
+// back).
+function EditDialog({ type, reviewers, onAddReviewer, onClose, onSaved }: {
+  type: PageType; reviewers: Reviewer[]; onAddReviewer: (person: Reviewer) => void; onClose: () => void; onSaved: () => void;
 }) {
   const id = useId();
   const [label, setLabel] = useState(type.label);
-  const [grouping, setGrouping] = useState<Grouping>(groupingOf(type));
   const [versions, setVersions] = useState<Version[]>([]); // newest first
   const [template, setTemplate] = useState<string | null>(type.templateVersion ? null : ""); // null: loading
   const [rules, setRules] = useState<Rules>({});
@@ -286,23 +353,16 @@ function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSav
   const cleaned = cleanRules(rules, parsed);
   const rulesChanged = !sameRules(cleaned, cleanRules(newest?.rules ?? {}, parseTemplate(newest?.body ?? null)));
   const templateChanged = template !== null && (template !== (newest?.body ?? "") || rulesChanged);
-  const settingsChanged = label.trim() !== type.label || grouping !== groupingOf(type);
+  const settingsChanged = label.trim() !== type.label;
 
   async function save() {
     setBusy(true);
     setError("");
-    const settings = () => backendRequest(`/page-types/${type.name}`,
-      json("PATCH", { label, startsRecord: grouping === "starts", matchedByKey: grouping === "matched" }));
-    const saveTemplate = () => backendRequest(`/instructions/${type.name}`,
-      json("POST", { body: template, rules: cleaned, basedOn: newest?.id ?? null, reviewerId: Number(reviewerId) }));
     try {
-      // A type that groups by number needs the number field in its template before its setting; one that stops, after.
-      if (grouping === "follows") {
-        if (settingsChanged) await settings();
-        if (templateChanged) await saveTemplate();
-      } else {
-        if (templateChanged) await saveTemplate();
-        if (settingsChanged) await settings();
+      if (settingsChanged) await backendRequest(`/page-types/${type.name}`, json("PATCH", { label }));
+      if (templateChanged) {
+        await backendRequest(`/instructions/${type.name}`,
+          json("POST", { body: template, rules: cleaned, basedOn: newest?.id ?? null, reviewerId: Number(reviewerId) }));
       }
       onSaved();
     } catch (e) {
@@ -325,27 +385,10 @@ function EditDialog({ type, collection, reviewers, onAddReviewer, onClose, onSav
           </Field>
           {type.unknown ? (
             <p className="text-sm text-muted-foreground">
-              Pages sorting couldn't place wait here, unread, until a reviewer picks their type. They have no template
-              {collection.groupPages ? ` and don't start or join ${recordWords(collection.recordName).a}.` : "."}
+              Pages sorting couldn't place wait here, unread, until a reviewer picks their type. They have no template.
             </p>
           ) : (
             <>
-              {collection.groupPages && (
-                <Field>
-                  <FieldTitle>Grouping</FieldTitle>
-                  <RadioGroup aria-label="Grouping" value={grouping} onValueChange={(value) => setGrouping(value as Grouping)}>
-                    <Choice id={`${id}-starts`} value="starts" title={groupings(collection).starts}>A page of this type begins a new {collection.recordName}; the pages after it join it.</Choice>
-                    <Choice id={`${id}-matched`} value="matched" title={groupings(collection).matched} disabled={!collection.recordKey}>
-                      {collection.recordKey
-                        ? `Filed with the ${collection.recordName} showing the same ${collection.recordKey}, wherever it is in the item.`
-                        : `Set ${recordWords(collection.recordName).a} number field first.`}
-                    </Choice>
-                    <Choice id={`${id}-follows`} value="follows" title={groupings(collection).follows}>
-                      {collection.grouped ? `Joins the ${collection.recordName} of the page before it.` : `Each page of this type is ${recordWords(collection.recordName).a} of its own.`}
-                    </Choice>
-                  </RadioGroup>
-                </Field>
-              )}
               <Field>
                 <FieldLabel htmlFor={`${id}-template`}>Template</FieldLabel>
                 <Textarea id={`${id}-template`} rows={12} className="font-mono text-xs" value={template ?? ""} disabled={template === null}

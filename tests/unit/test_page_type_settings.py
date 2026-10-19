@@ -1,5 +1,5 @@
-"""The Page types screen's API: a new page type named from its label (POST /page-types), a type's label and how it groups
-(PATCH /page-types/{name}), and the collection's survey number field (/collections/{id})."""
+"""The Setup tab's page types API: a new page type named from its label (POST /page-types) and a type's label (PATCH
+/page-types/{name}); how pages group is the series' levels' (test_record_levels.py)."""
 from backend.db import grouping, models
 from tests.unit.test_backend_api import add_in_order
 
@@ -26,49 +26,14 @@ def test_a_new_page_type_is_named_from_its_label(client, db):
     assert add("  ").status_code == 400
 
 
-def test_a_page_types_label_and_grouping_change_within_the_rules(client, db):
+def test_a_page_types_label_changes_and_must_be_its_series_own(client, db):
     setup(db)
 
     def patch(name, **body):
         return client.patch(f"/page-types/{name}", json=body)
 
-    assert patch("notes", startsRecord=True).json()["detail"] == "Add the survey number field 'number_of_dwelling' to its template first."
-    assert patch("other", matchedByKey=True).json()["detail"] == "Unknown pages aren't read, so they can't start or join a survey."
-    assert patch("coded", startsRecord=True).json()["detail"] == "A page type starts a survey or joins one by number, not both."
     assert patch("notes", label="Main page").status_code == 409
-    assert patch("notes", label=" ").status_code == 400
+    assert patch("notes", label=" ").json()["detail"] == "A page type's label can't be empty."
     assert patch("missing", label="x").status_code == 404
-    changed = patch("notes", label="Interviewer notes").json()
-    assert (changed["label"], changed["startsRecord"], changed["matchedByKey"]) == ("Interviewer notes", False, False)
-    # a type with no template yet can start surveys; its first template then needs the number field
-    client.post("/page-types", json={"label": "Letter", "reviewerId": 1})
-    assert patch("letter", startsRecord=True).json()["startsRecord"] is True
-    refused = client.post("/instructions/letter", json={"body": '{"text": null}', "basedOn": None, "reviewerId": 1})
-    assert refused.json()["detail"] == ["letter: needs 'number_of_dwelling'"]
-    assert grouping.rule(db, 1)["starts"] == {"main", "letter"}
-
-
-def test_the_survey_number_field_must_be_in_the_templates_that_group_by_it(client, db):
-    setup(db)
-    assert client.get("/collections/1").json()["recordKey"] == "number_of_dwelling"
-    refused = client.patch("/collections/1", json={"recordKey": "address"})
-    assert (refused.status_code, refused.json()["detail"]) == (400, "These page types' templates don't have 'address': Coded page.")
-    assert client.patch("/collections/1", json={"recordKey": "Bad key"}).status_code == 400
-    assert client.patch("/collections/1", json={"recordKey": ""}).json()["recordKey"] is None  # page order only
-    assert client.get("/collections/9").status_code == 404
-
-
-def test_items_can_hold_several_records_again_only_with_the_number_field_in_the_templates_that_group_by_it(client, db):
-    setup(db)
-    assert client.patch("/collections/1", json={"groupPages": False}).json()["groupPages"] is False
-    assert grouping.required_fields(db) == {}
-    # while each item is one record, how a type groups is unused, so its template needn't have the number
-    assert client.patch("/page-types/notes", json={"label": "Interviewer notes", "startsRecord": True}).status_code == 200
-    assert client.patch("/collections/1", json={"recordKey": "address"}).json()["recordKey"] == "address"
-    refused = client.patch("/collections/1", json={"groupPages": True})
-    assert (refused.status_code, refused.json()["detail"]) == (
-        400, "These page types' templates don't have 'address': Coded page, Interviewer notes.")
-    assert client.get("/collections/1").json()["groupPages"] is False
-    client.patch("/page-types/notes", json={"startsRecord": False})
-    assert client.patch("/collections/1", json={"groupPages": True, "recordKey": "number_of_dwelling"}).json()["groupPages"] is True
-    assert grouping.required_fields(db) == {"main": "number_of_dwelling", "coded": "number_of_dwelling"}
+    changed = patch("notes", label=" Interviewer notes ").json()
+    assert (changed["label"], "startsRecord" in changed) == ("Interviewer notes", False)

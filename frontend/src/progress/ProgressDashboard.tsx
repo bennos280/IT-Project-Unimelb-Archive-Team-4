@@ -72,10 +72,11 @@ export default function ProgressDashboard() {
   const collectionId = Number(new URLSearchParams(location.search).get("collection")) || 1;
   // Until the series loads it has no name, its records are "records" and they group, so nothing flickers away.
   // archiveSeries is the series' node on the archive: undefined until it loads, null when none is linked. archiveItems is how many items it had when linked.
-  const [series, setSeries] = useState<{ name: string; recordName: string; groupPages: boolean; grouped: boolean; archiveSeries?: number | null; archiveItems: number | null; archiveIdentifier?: string | null }>({ name: "", recordName: "record", groupPages: true, grouped: true, archiveItems: null });
+  // levels: how many levels of record the series has (none: each item is one record).
+  const [series, setSeries] = useState<{ name: string; recordName: string; levels: number; grouped: boolean; archiveSeries?: number | null; archiveItems: number | null; archiveIdentifier?: string | null }>({ name: "", recordName: "record", levels: 1, grouped: true, archiveItems: null });
   useEffect(() => {
-    backendRequest<{ name: string; recordName: string; groupPages: boolean; grouped: boolean; archiveSeries?: number | null; archiveItems?: number | null; archiveIdentifier?: string | null }>(`/collections/${collectionId}`)
-      .then(({ name, recordName, groupPages, grouped, archiveSeries, archiveItems, archiveIdentifier }) => setSeries({ name, recordName, groupPages, grouped, archiveSeries: archiveSeries ?? null, archiveItems: archiveItems ?? null, archiveIdentifier }))
+    backendRequest<{ name: string; recordName: string; levels: unknown[]; grouped: boolean; archiveSeries?: number | null; archiveItems?: number | null; archiveIdentifier?: string | null }>(`/collections/${collectionId}`)
+      .then(({ name, recordName, levels, grouped, archiveSeries, archiveItems, archiveIdentifier }) => setSeries({ name, recordName, levels: levels?.length ?? 0, grouped, archiveSeries: archiveSeries ?? null, archiveItems: archiveItems ?? null, archiveIdentifier }))
       .catch(() => {});
   }, [collectionId]);
   const words = recordWords(series.recordName);
@@ -703,7 +704,7 @@ export default function ProgressDashboard() {
                                           {b.job.status === "waiting"
                                             ? "Waiting for the worker to start this job"
                                             : ((b.job.step === "group"
-                                                ? !series.groupPages ? `Making the item ${words.a}`
+                                                ? !series.levels ? `Making the item ${words.a}`
                                                   : series.grouped ? `Grouping pages into ${words.many}` : `Making each page ${words.a}`
                                                 : jobStages[b.job.step ?? ""]) ??
                                               b.job.step ??

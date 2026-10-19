@@ -126,10 +126,11 @@ def test_only_one_worker_runs_at_a_time(tmp_path, monkeypatch):
 
 
 def test_an_item_of_another_series_runs_with_that_series_page_types_and_rule(db, tmp_path, monkeypatch):
-    db.add(models.Collection(collection_id=2, name="Letters", record_name="letter", group_pages=True))
+    db.add(models.Collection(collection_id=2, name="Letters"))
     db.flush()
     db.add_all([models.PageType(name="unknown_2", label="Unknown", collection_id=2, unknown=True),
-                models.PageType(name="docket", label="Docket", collection_id=2, starts_record=True),
+                models.PageType(name="docket", label="Docket", collection_id=2),
+                models.RecordLevel(collection_id=2, position=1, name="letter", starts='["docket"]'),
                 models.ArchiveItem(node=216441, collection_id=2, identifier="UMA-IT-1", title="A file")])
     db.commit()
     queue(db, tmp_path)  # tmp/216441/a.pdf: an item series 2 lists

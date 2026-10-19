@@ -39,7 +39,7 @@ def dump_into_db(manifest_path):
                 raise ValueError(f"Bundle {bundle_id}'s collection has no Unknown page type to store {p['file']} as.")
             insert_page(Path(p["file"]).stem, page, stored_path(p["path"]), category,
                         p.get("survey"), bundle_id, con, transcripts.get(p["file"], {}).get("request") if page else None)
-        key = con.exec_driver_sql("SELECT record_key FROM collections WHERE collection_id ="
+        key = con.exec_driver_sql("SELECT record_key FROM record_levels WHERE position = 1 AND collection_id ="
                                   " (SELECT collection_id FROM bundles WHERE bundle_id = ?)", (bundle_id,)).scalar()
         insert_flags(run_folder / "review.json", con, key)
         checks.check_pages(con, [p for (p,) in con.exec_driver_sql("SELECT page_id FROM pages WHERE bundle_id = ?", (bundle_id,))])

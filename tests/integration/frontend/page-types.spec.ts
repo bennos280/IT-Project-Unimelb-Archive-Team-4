@@ -1,24 +1,26 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // A series' Setup tab (/?view=setup; /?view=page-types, its old name, still opens it) on an intercepted API: nothing reaches the real backend.
-type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; startsRecord: boolean; matchedByKey: boolean; templateVersion: number | null };
+type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; templateVersion: number | null };
+type Level = { name: string; starts: string[]; matched: string[]; key: string | null };
 type Version = { id: number; body: string; rules: object; reviewer: string | null; note: string | null; createdAt: string };
 type CheckVersion = { id: number; number: number; checks: object[]; reviewer: string | null; note: string | null; createdAt: string };
 const type = (name: string, label: string, over: Partial<PageType> = {}): PageType => ({
-  name, label, builtIn: true, unknown: false, startsRecord: false, matchedByKey: false, templateVersion: null, ...over,
+  name, label, builtIn: true, unknown: false, templateVersion: null, ...over,
 });
 
 async function mockApi(page: Page, recordKey: string | null = "number_of_dwelling", reviewers = [{ id: 1, name: "Ben" }],
   checkVersions: CheckVersion[] = []) {
   const types = [
-    type("coded", "Coded page", { matchedByKey: true, templateVersion: 8 }),
-    type("main", "Main page", { startsRecord: true, templateVersion: 7 }),
+    type("coded", "Coded page", { templateVersion: 8 }),
+    type("main", "Main page", { templateVersion: 7 }),
     type("notes", "Notes page", { templateVersion: 9 }),
     type("other", "Unknown", { unknown: true }),
   ];
   const collection = {
-    id: 1, name: "Wilfred Prest Survey", recordKey, recordName: "survey", groupPages: true,
-    get grouped() { return this.groupPages && types.some((t) => t.startsRecord); },
+    id: 1, name: "Wilfred Prest Survey", levels: [{ name: "survey", starts: ["main"], matched: ["coded"], key: recordKey }] as Level[],
+    get recordName() { return this.levels.at(-1)?.name ?? "record"; },
+    get grouped() { return Boolean(this.levels[0]?.starts.length); },
   };
   const version = (id: number, body: string, extra: Partial<Version> = {}): Version =>
     ({ id, body, rules: {}, reviewer: null, note: null, createdAt: "2026-10-01T02:00:00+00:00", ...extra });
@@ -29,7 +31,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
     notes: [version(9, '{"text": null}')],
   };
   const calls = {
-    patchType: [] as unknown[], patchCollection: [] as unknown[], addType: [] as unknown[], saveTemplate: [] as unknown[], addReviewer: [] as unknown[],
+    patchType: [] as unknown[], putLevels: [] as unknown[], addType: [] as unknown[], saveTemplate: [] as unknown[], addReviewer: [] as unknown[],
     saveChecks: [] as { checks: object[]; basedOn: number | null; reviewerId: number; note: string | null }[], checkAgain: 0,
   };
   await page.route("**/api/**", async (route) => {
@@ -47,13 +49,11 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
     }
     if (path === "/api/reviewers") return route.fulfill({ json: reviewers });
     if (path === "/api/collections/1" && method === "GET") return route.fulfill({ json: collection });
-    if (path === "/api/collections/1" && method === "PATCH") {
+    if (path === "/api/collections/1/levels" && method === "PUT") {
       const body = request.postDataJSON();
-      calls.patchCollection.push(body);
-      if (body.recordKey === "address") return route.fulfill({ status: 400, json: { detail: "These page types' templates don't have 'address': Coded page." } });
-      collection.groupPages = body.groupPages;
-      if ("recordKey" in body) collection.recordKey = body.recordKey || null;
-      if ("recordName" in body) collection.recordName = body.recordName.trim().toLowerCase() || "record";
+      calls.putLevels.push(body);
+      if (body.levels.some((l: Level) => l.key === "address")) return route.fulfill({ status: 400, json: { detail: "These page types' templates don't have 'address': Coded page." } });
+      collection.levels = body.levels.map((l: Level) => ({ ...l, name: l.name.trim().toLowerCase(), key: l.key?.trim() || null }));
       return route.fulfill({ json: collection });
     }
     if (path === "/api/page-types" && method === "POST") {
@@ -67,7 +67,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
       const body = request.postDataJSON();
       calls.patchType.push(body);
       const t = types.find((t) => t.name === named[2])!;
-      Object.assign(t, { label: body.label, startsRecord: body.startsRecord, matchedByKey: body.matchedByKey });
+      Object.assign(t, { label: body.label });
       return route.fulfill({ json: t });
     }
     if (path === "/api/instructions" && method === "GET") return route.fulfill({ json: Object.fromEntries(Object.entries(versions).map(([k, v]) => [k, v[0]])) });
@@ -167,31 +167,40 @@ test("a template's history lists each version, and an older one can be brought b
 
 const row = (page: Page, label: string) => page.getByRole("row").filter({ has: page.getByRole("cell", { name: label, exact: true }) });
 
-test("a series' page types are listed by label with how they group and their template", async ({ page }) => {
+// The levels' ladder and a level's dialog.
+const ladder = (page: Page) => page.getByRole("list", { name: "Levels" }).getByRole("listitem");
+const levelDialog = (page: Page, name: string) => page.getByRole("dialog", { name });
+
+test("a series' levels are a ladder from Item to Page, and its page types are listed by label with their template", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?collection=1&view=setup");
   await expect(page.getByRole("heading", { name: "Wilfred Prest Survey", level: 1 })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Series" }).getByRole("link", { name: "Setup" })).toHaveAttribute("aria-current", "page");
+  await expect(ladder(page)).toHaveText([/^Item\s*From the archive$/, /^Survey\s*starts at Main page · Coded page joins by number_of_dwelling\s*Edit$/,
+    /^Page\s*From the scan$/]);
+  await expect(page.getByRole("button", { name: "Add level" })).toHaveCount(0); // one level for now
+  await expect(page.getByRole("tablist", { name: "Setup" }).getByRole("tab")).toHaveText(["Levels", "Page types", "Checks"]);
+  await expect(page.getByRole("tab", { name: "Levels" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Page types" }).click();
+  await expect(page).toHaveURL("/?collection=1&view=setup&section=page-types");
+  await page.reload(); // the tab shown is kept
   await expect(page.getByRole("heading", { name: "Page types", level: 2 })).toBeVisible();
-  await expect(row(page, "Main page")).toContainText("Starts a survey");
-  await expect(row(page, "Coded page")).toContainText("Joins the survey with the same number");
-  await expect(row(page, "Notes page")).toContainText("Follows the page before it");
-  await expect(row(page, "Unknown")).toContainText("Pages sorting couldn't place wait here");
-  await expect(row(page, "Unknown")).toContainText("Not read");
-  await expect(page.getByLabel("Survey number field")).toHaveValue("number_of_dwelling");
+  await expect(row(page, "Main page")).toContainText("Saved");
+  await expect(row(page, "Unknown")).toContainText("Not read: pages sorting couldn't place wait here");
+  await expect(page.getByRole("columnheader", { name: "Grouping" })).toHaveCount(0);
 });
 
-test("a page type's label and grouping are saved together", async ({ page }) => {
+test("a page type's label is saved on its own: how its pages group is its series' levels'", async ({ page }) => {
   const calls = await mockApi(page);
   await page.goto("/?view=page-types");
   await row(page, "Notes page").getByRole("button", { name: "Edit Notes page" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit Notes page" });
+  await expect(dialog.getByRole("radiogroup")).toHaveCount(0);
   await dialog.getByLabel("Label").fill("Interviewer notes");
-  await dialog.getByRole("radio", { name: /Starts a survey/ }).click();
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog).toHaveCount(0);
-  expect(calls.patchType).toEqual([{ label: "Interviewer notes", startsRecord: true, matchedByKey: false }]);
-  await expect(row(page, "Interviewer notes")).toContainText("Starts a survey");
+  expect(calls.patchType).toEqual([{ label: "Interviewer notes" }]);
+  await expect(row(page, "Interviewer notes")).toBeVisible();
 });
 
 test("a template is saved as a new version by the chosen reviewer, and the checks' problems are listed", async ({ page }) => {
@@ -249,79 +258,50 @@ test("with no reviewers yet, whoever adds a page type adds their name there, and
   await expect(edit.getByLabel("New reviewer name")).toHaveCount(0);
 });
 
-test("the survey number field saves, and a refusal is shown", async ({ page }) => {
-  const calls = await mockApi(page);
-  await page.goto("/?view=page-types");
-  const field = page.getByLabel("Survey number field");
-  await field.fill("address");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("These page types' templates don't have 'address': Coded page.")).toBeVisible();
-  await field.fill("");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(field).toHaveValue("");
-  expect(calls.patchCollection).toEqual([{ groupPages: true, recordName: "survey", recordKey: "address" },
-    { groupPages: true, recordName: "survey", recordKey: "" }]);
-});
-
-test("the record name words the page types, and is saved with the number field", async ({ page }) => {
-  const calls = await mockApi(page);
-  await page.goto("/?view=page-types");
-  await page.getByLabel("Record name").fill("Household card");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(row(page, "Main page")).toContainText("Starts a household card");
-  await expect(page.getByLabel("Household card number field")).toHaveValue("number_of_dwelling");
-  expect(calls.patchCollection).toEqual([{ groupPages: true, recordName: "Household card", recordKey: "number_of_dwelling" }]);
-});
-
-test("each item can be one record, with no grouping to set, or hold several again", async ({ page }) => {
+test("a level's name, what each read page type does in it, and its number field are saved together, and a refusal is shown", async ({ page }) => {
   const calls = await mockApi(page);
   await page.goto("/?collection=1&view=setup");
-  const one = page.getByRole("radio", { name: /Each item is one record/ });
-  const several = page.getByRole("radio", { name: /Each item holds several records/ });
-  await expect(several).toBeChecked();
-  await one.click();
-  await expect(page.getByLabel("Survey number field")).toHaveCount(0);
-  await expect(page.getByLabel("Record name")).toHaveValue("survey");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByRole("columnheader", { name: "Grouping" })).toHaveCount(0);
-  await expect(one).toBeChecked();
-  await row(page, "Notes page").getByRole("button", { name: "Edit Notes page" }).click();
-  const dialog = page.getByRole("dialog", { name: "Edit Notes page" });
-  await expect(dialog.getByRole("radiogroup", { name: "Grouping" })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Cancel" }).click();
-  await row(page, "Unknown").getByRole("button", { name: "Edit Unknown" }).click();
-  await expect(page.getByRole("dialog", { name: "Edit Unknown" }).getByText("They have no template.", { exact: false })).toBeVisible();
-  await page.getByRole("dialog", { name: "Edit Unknown" }).getByRole("button", { name: "Cancel" }).click();
-  await several.click();
-  await expect(page.getByLabel("Survey number field")).toHaveValue("number_of_dwelling");
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(row(page, "Main page")).toContainText("Starts a survey");
-  expect(calls.patchCollection).toEqual([{ groupPages: false, recordName: "survey" },
-    { groupPages: true, recordName: "survey", recordKey: "number_of_dwelling" }]);
-});
-
-test("with no page type starting a record, each page is a record of its own", async ({ page }) => {
-  await mockApi(page);
-  await page.goto("/?view=page-types");
-  await row(page, "Main page").getByRole("button", { name: "Edit Main page" }).click();
-  const dialog = page.getByRole("dialog", { name: "Edit Main page" });
-  await dialog.getByRole("radio", { name: /Follows the page before it/ }).click();
+  await page.getByRole("button", { name: "Edit survey" }).click();
+  const dialog = levelDialog(page, "Edit level: survey");
+  await expect(dialog.getByRole("combobox")).toHaveCount(3); // the Unknown type isn't read, so it's not offered
+  await expect(dialog.getByLabel("What Main page does")).toHaveValue("starts");
+  await expect(dialog.getByLabel("What Coded page does")).toHaveValue("matched");
+  await dialog.getByLabel("Number field").fill("address");
   await dialog.getByRole("button", { name: "Save" }).click();
-  await expect(row(page, "Notes page")).toContainText("A survey of its own");
+  await expect(dialog.getByText("These page types' templates don't have 'address': Coded page.")).toBeVisible();
+  await dialog.getByLabel("Name").fill("Household card");
+  await expect(dialog.getByLabel("What Notes page does").locator("option")).toHaveText(
+    ["Follows the page before it", "Starts a household card", "Joins the household card with the same number"]);
+  await dialog.getByLabel("What Coded page does").selectOption("follows");
+  await dialog.getByLabel("Number field").fill("");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(calls.putLevels.at(-1)).toEqual({ levels: [{ name: "Household card", starts: ["main"], matched: [], key: "" }] });
+  await expect(ladder(page).nth(1)).toHaveText(/^Household card\s*starts at Main page\s*Edit$/);
 });
 
-test("joining by number needs a survey number field, and the Unknown type has no grouping or template", async ({ page }) => {
+test("a level can be removed, leaving each item one record, and added again", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?collection=1&view=setup");
+  await page.getByRole("button", { name: "Edit survey" }).click();
+  await levelDialog(page, "Edit level: survey").getByRole("button", { name: "Remove level" }).click();
+  await expect(ladder(page)).toHaveText([/^Item/, /^Page/]);
+  await expect(page.getByText("No levels: each item is one record.")).toBeVisible();
+  await page.getByRole("button", { name: "Add level" }).click();
+  const dialog = levelDialog(page, "Add level");
+  await expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled(); // no name yet
+  await dialog.getByLabel("Name").fill("letter");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(ladder(page).nth(1)).toHaveText(/^Letter\s*each page is one\s*Edit$/); // no page type starts one
+  expect(calls.putLevels).toEqual([{ levels: [] }, { levels: [{ name: "letter", starts: [], matched: [], key: "" }] }]);
+});
+
+test("the Unknown type has no template, and says where its pages wait", async ({ page }) => {
   await mockApi(page, null);
   await page.goto("/?view=page-types");
-  await row(page, "Notes page").getByRole("button", { name: "Edit Notes page" }).click();
-  const dialog = page.getByRole("dialog", { name: "Edit Notes page" });
-  await expect(dialog.getByRole("radio", { name: /Joins the survey with the same number/ })).toBeDisabled();
-  await expect(dialog.getByText("Set a survey number field first.")).toBeVisible();
-  await dialog.getByRole("button", { name: "Cancel" }).click();
   await row(page, "Unknown").getByRole("button", { name: "Edit Unknown" }).click();
   const unknown = page.getByRole("dialog", { name: "Edit Unknown" });
-  await expect(unknown.getByText(/wait here, unread, until a reviewer picks their type/)).toBeVisible();
-  await expect(unknown.getByRole("radiogroup")).toHaveCount(0);
+  await expect(unknown.getByText("Pages sorting couldn't place wait here, unread, until a reviewer picks their type. They have no template.")).toBeVisible();
   await expect(unknown.getByLabel("Template")).toHaveCount(0);
 });
 
@@ -332,7 +312,7 @@ const NOTES = { id: "nt", kind: "if", message: "Notes but no address", if: "note
 
 test("a check is built from the series' fields, read back in words, and the checks saved together as a version", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=page-types");
+  await page.goto("/?view=setup&section=checks");
   const section = checksSection(page);
   await expect(section.locator("tbody tr")).toHaveText(["No checks yet."]);
   await section.getByRole("button", { name: "Add check" }).click();
@@ -368,7 +348,7 @@ test("a check can be sums against a value, switched off, edited and removed, and
   const calls = await mockApi(page, undefined, undefined, [
     { id: 102, number: 2, checks: [DWELLING, NOTES], reviewer: "Ben", note: "notes", createdAt: "2026-10-19T04:00:00+00:00" },
     { id: 101, number: 1, checks: [DWELLING], reviewer: "Ben", note: null, createdAt: "2026-10-18T04:00:00+00:00" }]);
-  await page.goto("/?view=page-types");
+  await page.goto("/?view=setup&section=checks");
   const section = checksSection(page);
   const dwelling = "Main page › number_of_dwelling = Coded page › number_of_dwelling";
   await section.getByLabel(`${dwelling} on`).uncheck();
@@ -403,7 +383,7 @@ test("a check can be sums against a value, switched off, edited and removed, and
 
 test("Check again checks the series' pages as a task, linked to it", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=page-types");
+  await page.goto("/?view=setup&section=checks");
   await checksSection(page).getByRole("button", { name: "Check again" }).click();
   await expect(checksSection(page).getByRole("link", { name: "see the task" })).toHaveAttribute("href", "/?view=tasks&task=55");
   expect(calls.checkAgain).toBe(1);
@@ -411,7 +391,7 @@ test("Check again checks the series' pages as a task, linked to it", async ({ pa
 
 test("a check can compare as codes, or say a field names another's code", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=setup");
+  await page.goto("/?view=setup&section=checks");
   const section = checksSection(page);
   await section.getByRole("button", { name: "Add check" }).click();
   let dialog = page.getByRole("dialog", { name: "Add check" });

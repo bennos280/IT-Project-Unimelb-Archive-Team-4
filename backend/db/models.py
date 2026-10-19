@@ -7,14 +7,25 @@ class Collection(Base):
     __tablename__ = "collections"
     collection_id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
-    record_key = Column(String, nullable=True) #the field holding a survey's number, which ties its pages together; None: page order only
-    record_name = Column(String, nullable=True) #what one record is called on screen, like survey or letter; None: record
-    #its items hold several records, grouped by its page types (backend/db/grouping.py); False: each item is one record
-    group_pages = Column(Boolean, nullable=False, default=False, server_default=false())
     archive_series = Column(Integer, nullable=True) #its series on archives.library.unimelb.edu.au: /nodes/view/<archive_series>
     archive_identifier = Column(String, nullable=True) #the series' catalogue identifier (UMA-SR-...), title and number of
     archive_title = Column(String, nullable=True) #items, as the archive showed them when the series was linked
     archive_items = Column(Integer, nullable=True)
+
+#a level of record between a collection's items and their pages, the top one (position 1) first: what one is called, the page
+#types whose pages start one and those whose pages join the one showing the same number (JSON lists of page type names), and
+#the field holding that number (None: page order only); a collection with none has each item as one record
+class RecordLevel(Base):
+    __tablename__ = "record_levels"
+    __table_args__ = (UniqueConstraint("collection_id", "position", name="uq_record_levels_position"),
+                      UniqueConstraint("collection_id", "name", name="uq_record_levels_name"))  #named: both start with collection_id
+    level_id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
+    position = Column(Integer, nullable=False)
+    name = Column(String, nullable=False)
+    starts = Column(Text, nullable=False, server_default="[]")
+    matched = Column(Text, nullable=False, server_default="[]")
+    record_key = Column(String, nullable=True)
 
 #an item of a collection's archive series, as the archive lists it; an item no collection lists is the Wilfred Prest Survey's
 class ArchiveItem(Base):
@@ -48,9 +59,6 @@ class PageType(Base):
     label = Column(String, nullable=False, default=lambda ctx: ctx.get_current_parameters()["name"]) #the name if not given
     #its collection's Unknown type: a page sorting couldn't place waits here, unread and flagged, for a reviewer to pick its type
     unknown = Column(Boolean, nullable=False, default=False, server_default=false())
-    starts_record = Column(Boolean, nullable=False, default=False, server_default=false()) #a page of this type starts a survey
-    #a page of this type joins the survey whose number it shows, not just the one it follows
-    matched_by_key = Column(Boolean, nullable=False, default=False, server_default=false())
     built_in = Column(Boolean, nullable=False, default=False, server_default=false())
     reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #None: built in
     created_at = Column(DateTime, nullable=True, server_default=func.now()) #UTC

@@ -321,18 +321,19 @@ A series' dashboard asks for a page of its items at a time, searched, filtered a
 |`test_a_record_names_its_item_as_the_dashboard_does`|A record's response names its item and its archive title, for the review screen's crumb.|
 |`test_an_item_that_is_one_record_gives_it_so_the_dashboard_opens_it_straight_away`|An item's row gives its record only once all its pages are in it (a page in none, or another item: none), and the record then says it is its whole item.|
 
-## `test_record_name.py`
+## `test_record_levels.py`
 
-Each series names its records (the Wilfred Prest Survey's are surveys), its items are each one record or hold several, and where
-they hold several and no page type starts a record each page is one.
+A series' levels of record (`PUT /collections/{id}/levels`), each with its name and the page types that start or join one, which
+the pipeline's group step reads; a series with none has each item as one record.
 
 |Test|What it checks|
 |---|---|
-|`test_a_series_names_its_records_in_lower_case_and_an_empty_name_is_record`|`PATCH /collections` stores the record name in lower case with single spaces and keeps it when left out; an empty one reads as "record"; anything but a word or two of letters (40 at most) is refused with the reason.|
-|`test_a_series_is_grouped_while_its_items_hold_several_records_and_one_of_its_page_types_starts_one`|A new series' items are each one record, so it isn't `grouped` even once one of its page types starts a record; once its items hold several it is, on the series and on its records, and stays so when left out of a change.|
-|`test_an_ungrouped_series_names_its_record_its_own_way`|A record of an ungrouped "letter" series says so, puts its free text under "Letter details", tells a reviewer to check an Unknown page without calling it part of a bigger record, and words page type refusals with "letter".|
-|`test_an_unknown_page_of_an_item_that_is_one_record_isnt_said_to_follow_its_first_page`|In a series whose items are each one record, an Unknown page sharing the item's record with others is just to be checked, not said to follow the record's first page.|
+|`test_prest_has_one_level_its_surveys_and_a_new_series_none`|The Prest survey has one level, its surveys (main pages start one, coded cards join by `number_of_dwelling`), and is grouped; a new series has none, its records are called "record", and each item is one.|
+|`test_a_level_is_named_in_lower_case_and_says_which_page_types_start_or_join_one`|A level's name is stored in lower case with single spaces and its page types once each; a bad name, another series' or an Unknown page type, one both starting and joining, joining with no number field or no type that starts one, a bad field name, or a number field missing from a type's template is refused with the reason, as is a second level (one for now), and nothing refused is saved.|
+|`test_the_number_field_must_stay_in_the_templates_of_the_page_types_that_group_by_it`|A template that drops a level's number field is refused while a type of that level groups by it, and saved once the level groups by page order.|
+|`test_with_no_levels_each_item_is_one_record_and_with_one_its_page_types_start_them`|A record of a series with no levels is a "record" with its free text under "Record details" and an Unknown page just to be checked; with a level its type starts, the series is grouped and its records take the level's name; with none again each item is one record.|
 |`test_an_unknown_page_grouped_with_others_is_flagged_as_part_of_their_survey`|An Unknown page in a Prest survey with other pages is flagged as in that survey because it follows the survey's first page, with its free text under "Survey details".|
+|`test_an_unknown_page_of_an_item_that_is_one_record_isnt_said_to_follow_its_first_page`|In a series with no levels, an Unknown page sharing the item's record with others is just to be checked, not said to follow the record's first page.|
 
 ## `test_sorting_models.py`
 

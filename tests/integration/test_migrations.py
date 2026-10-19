@@ -198,7 +198,7 @@ def test_010_gives_prest_its_grouping_rule(url, tmp_path):
     db = tmp_path / "test.db"
     config = database.alembic_config(url)
     command.downgrade(config, "009")
-    database.migrate(url)
+    command.upgrade(config, "010")  # 021 moves these settings into levels
     assert rows(db, "SELECT collection_id, record_key FROM collections") == [(1, "number_of_dwelling")]
     assert rows(db, "SELECT name, starts_record, matched_by_key FROM page_types ORDER BY name") == [
         ("coded", 0, 1), ("main", 1, 0), ("notes", 0, 0), ("other", 0, 0)]
@@ -329,7 +329,7 @@ def test_014_calls_prests_records_surveys_and_leaves_other_series_unnamed(url, t
     command.downgrade(config, "013")
     with sqlite3.connect(db) as con:
         con.execute("INSERT INTO collections (collection_id, name) VALUES (2, 'Letters')")
-    database.migrate(url)
+    command.upgrade(config, "014")  # 021 moves these settings into levels
     assert rows(db, "SELECT collection_id, record_name FROM collections") == [(1, "survey"), (2, None)]
     command.downgrade(config, "013")
     assert "record_name" not in {r[1] for r in rows(db, "PRAGMA table_info(collections)")}
@@ -341,7 +341,27 @@ def test_020_has_the_items_of_a_series_with_a_page_type_that_starts_a_record_hol
     command.downgrade(config, "019")
     with sqlite3.connect(db) as con:
         con.execute("INSERT INTO collections (collection_id, name) VALUES (2, 'Letters')")
-    database.migrate(url)
+    command.upgrade(config, "020")  # 021 moves these settings into levels
     assert rows(db, "SELECT collection_id, group_pages FROM collections") == [(1, 1), (2, 0)]
     command.downgrade(config, "019")
     assert "group_pages" not in {r[1] for r in rows(db, "PRAGMA table_info(collections)")}
+
+
+def test_021_makes_the_old_grouping_settings_a_level_for_a_series_whose_items_held_several_and_undoes_it(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "020")
+    with sqlite3.connect(db) as con:
+        con.execute("INSERT INTO collections (collection_id, name, record_name) VALUES (2, 'Letters', 'letter')")
+    database.migrate(url)
+    assert rows(db, "SELECT collection_id, position, name, starts, matched, record_key FROM record_levels") == [
+        (1, 1, "survey", '["main"]', '["coded"]', "number_of_dwelling")]
+    assert not {"record_key", "record_name", "group_pages"} & {r[1] for r in rows(db, "PRAGMA table_info(collections)")}
+    assert not {"starts_record", "matched_by_key"} & {r[1] for r in rows(db, "PRAGMA table_info(page_types)")}
+    assert rows(db, "SELECT edit_text FROM edits") == [("6 Peel St.",)]
+    command.downgrade(config, "020")
+    assert rows(db, "SELECT collection_id, record_name, record_key, group_pages FROM collections") == [
+        (1, "survey", "number_of_dwelling", 1), (2, None, None, 0)]  # Letters' own name doesn't come back
+    assert rows(db, "SELECT name, starts_record, matched_by_key FROM page_types ORDER BY name") == [
+        ("coded", 0, 1), ("main", 1, 0), ("notes", 0, 0), ("other", 0, 0)]
+    assert not rows(db, "SELECT name FROM sqlite_master WHERE name = 'record_levels'")

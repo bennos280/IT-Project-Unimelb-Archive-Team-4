@@ -42,7 +42,7 @@ async function mockApi(page: Page, { archiveDown = false, slowNode = 0, fill = {
         ? route.fulfill({ status: fill.status, json: { detail: fill.detail } })
         : route.fulfill({ status: 202, json: { id: 31, kind: "items", status: "waiting", step: null, donePages: 0, totalPages: 0, error: null } });
     }
-    if (path === "/api/collections/2") return route.fulfill({ json: { ...PREST, id: 2, name: "Social survey forms", recordKey: null, recordName: "record", groupPages: false, grouped: false } });
+    if (path === "/api/collections/2") return route.fulfill({ json: { ...PREST, id: 2, name: "Social survey forms", levels: [], recordName: "record", grouped: false } });
     if (path === "/api/jobs") return route.fulfill({ json: [] });
     if (path === "/api/page-types") return route.fulfill({ json: [] });
     if (path === "/api/reviewers") return route.fulfill({ json: [] });
@@ -102,7 +102,7 @@ test("a new series previews what it links to on the archive, takes its name from
   await dialog(page).getByLabel("Name").fill("Social survey forms");
   await dialog(page).getByRole("button", { name: "Create series" }).click();
   await expect(page).toHaveURL("/?collection=2&view=setup");
-  await expect(page.getByRole("radio", { name: /Each item is one record/ })).toBeChecked();
+  await expect(page.getByText("No levels: each item is one record.")).toBeVisible();
   expect(calls.created).toEqual([{ name: "Social survey forms", archiveSeries: "https://archives.library.unimelb.edu.au/nodes/view/499420",
     archiveIdentifier: "UMA-SR-000000842", archiveTitle: "University of Melbourne Social Survey forms", archiveItems: 45 }]);
   expect(calls.filled).toEqual([{ search: "" }]);

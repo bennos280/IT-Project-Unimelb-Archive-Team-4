@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel
 from functools import cache
 import json
@@ -70,7 +70,7 @@ OTHER_PAGE_ALONE = "Check what it is, and type anything worth keeping."
 
 #what one record of a page's collection is called on screen
 def page_record_name(db, p):
-    return grouping.record_name(db.get(models.Collection, db.get(models.Bundle, p.bundle_id).collection_id))
+    return grouping.record_name(db, db.get(models.Bundle, p.bundle_id).collection_id)
 
 #a page's fields as the review screen shows them: id, label, group, value; free text is under "<record> details"
 def page_fields(db, p):
@@ -115,8 +115,8 @@ def page_flags(db, p, fields_list):
                "reason": "The model couldn't read part of this ([?]): compare it with the scan."}
               for f in fields_list if "[?]" in (f["value"] or "")]
     if db.get(models.PageType, p.category).unknown and any(f["id"] == "text" for f in fields_list):
-        several = db.get(models.Collection, db.get(models.Bundle, p.bundle_id).collection_id).group_pages
-        grouped = several and p.survey_id and db.query(models.Page).filter_by(survey_id=p.survey_id).count() > 1
+        started = grouping.rule(db, db.get(models.Bundle, p.bundle_id).collection_id)["starts"]  #a page type starts its records
+        grouped = started and p.survey_id and db.query(models.Page).filter_by(survey_id=p.survey_id).count() > 1
         flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain",
                       "reason": OTHER_PAGE + (OTHER_PAGE_GROUPED.format(page_record_name(db, p)) if grouped else OTHER_PAGE_ALONE)})
     return flags
@@ -147,7 +147,7 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     item = db.get(models.ArchiveItem, int(name)) if name.isascii() and name.isdigit() and len(name) < 19 else None
     return {"id":survey_id, "bundleId":survey.bundle_id, "collectionId":collection.collection_id, "title":collection.name,
             "item": {"name": name, "archive": {"identifier": item.identifier, "title": item.title} if item else None},
-            "recordName": grouping.record_name(collection), "grouped": bool(grouping.rule(db, collection.collection_id)["starts"]),
+            "recordName": grouping.record_name(db, collection.collection_id), "grouped": bool(grouping.rule(db, collection.collection_id)["starts"]),
             "wholeItem": db.query(models.Page).filter_by(bundle_id=bundle.bundle_id).count() == len(pages_list), "pages":pages_list}
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
@@ -421,8 +421,6 @@ class PageTypeRequest(BaseModel):
 
 class PageTypeSettings(BaseModel):
     label: str | None = None
-    startsRecord: bool | None = None
-    matchedByKey: bool | None = None
 
 class CollectionSettings(BaseModel):
     name: str | None = None
@@ -430,9 +428,17 @@ class CollectionSettings(BaseModel):
     archiveIdentifier: str | None = None #and the series' identifier, title and items from /archive-series, with archiveSeries
     archiveTitle: str | None = None
     archiveItems: int | None = None
-    recordKey: str | None = None #None or "": surveys by page order only
-    recordName: str | None = None #what one record is called on screen; None or "": record
-    groupPages: bool | None = None #its items hold several records; False: each item is one record
+
+#a level of record: what one is called, the page types that start one and those that join the one showing the same number,
+#and the field holding that number (None or "": page order only)
+class LevelSettings(BaseModel):
+    name: str
+    starts: list[str] = []
+    matched: list[str] = []
+    key: str | None = None
+
+class LevelsSettings(BaseModel):
+    levels: list[LevelSettings]
 
 class NewCollection(BaseModel):
     name: str
@@ -451,8 +457,8 @@ class PageTypeChange(BaseModel):
 RESERVED = {instructions.PROMPT, "blank", "review"} #the prompt's kind, and what page sorting answers for no page type
 
 def page_type_json(t, templates):
-    return {"name": t.name, "label": t.label, "builtIn": t.built_in, "unknown": t.unknown, "startsRecord": t.starts_record,
-            "matchedByKey": t.matched_by_key, "templateVersion": templates[t.name].version_id if t.name in templates else None}
+    return {"name": t.name, "label": t.label, "builtIn": t.built_in, "unknown": t.unknown,
+            "templateVersion": templates[t.name].version_id if t.name in templates else None}
 
 #the page types, each with its newest template's version (None: it has none, so its pages aren't read)
 @app.get("/page-types")
@@ -495,9 +501,7 @@ def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
     return page_type_json(db.get(models.PageType, name), {})
 
-#changes a page type's label or how it groups. A type starts a survey or joins one by number, not both; an Unknown type, never
-#read, does neither; and while the collection's items hold several records, grouping needs its number field in the template of
-#a type that does
+#changes a page type's label (how its pages group is its collection's levels')
 @app.patch("/page-types/{name}")
 def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends(get_db)):
     write_lock(db)
@@ -505,19 +509,9 @@ def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends
     if not t:
         raise HTTPException(status_code=404, detail=f"No page type called {name}.")
     label = t.label if payload.label is None else payload.label.strip()
-    starts = t.starts_record if payload.startsRecord is None else payload.startsRecord
-    matched = t.matched_by_key if payload.matchedByKey is None else payload.matchedByKey
-    template = instructions.newest(db).get(name)
-    collection = db.get(models.Collection, t.collection_id)
-    key, record = collection.record_key, grouping.a_record(grouping.record_name(collection))
-    problem = ("A page type's label can't be empty." if not label else
-               f"A page type starts {record} or joins one by number, not both." if starts and matched else
-               f"Unknown pages aren't read, so they can't start or join {record}." if t.unknown and (starts or matched) else
-               f"Add the {grouping.record_name(collection)} number field '{key}' to its template first."
-               if collection.group_pages and key and (starts or matched) and template and key not in json.loads(template.body) else None)
-    if problem:
-        raise HTTPException(status_code=400, detail=problem)
-    t.label, t.starts_record, t.matched_by_key = label, starts, matched
+    if not label:
+        raise HTTPException(status_code=400, detail="A page type's label can't be empty.")
+    t.label = label
     try:
         db.commit()
     except IntegrityError: #the label is taken in the collection
@@ -536,8 +530,8 @@ def bundle_jobs(db, collection_id):
 
 #a collection, and with db how far along it is: bundles loaded (processed), being processed or failed; pages, those in a survey
 #(reviewable) and reviewed; what needs a person (pages of its Unknown type, open flags); how far it is set up (page types
-#other than Unknown, and how many of them have a template); and whether its pages group into records (its items hold several
-#and a type starts one)
+#other than Unknown, and how many of them have a template); and whether its pages group into records (a type starts one of
+#its top level); with its levels of record, top first, and what one record is called
 def collection_json(c, db=None):
     found = {}
     if db is not None:
@@ -552,9 +546,10 @@ def collection_json(c, db=None):
                  "unknownPages": db.query(models.Page).filter(models.Page.category.in_(unknown)).count(),
                  "flagged": sum(p["flagCount"] for p in pages),
                  "pageTypes": len(types) - len(unknown), "templates": sum(t.name in templates for t in types if not t.unknown),
-                 "grouped": c.group_pages and any(t.starts_record for t in types)}
-    return {"id": c.collection_id, "name": c.name, "recordKey": c.record_key, "recordName": grouping.record_name(c),
-            "groupPages": c.group_pages, "archiveSeries": c.archive_series,
+                 "grouped": bool(grouping.rule(db, c.collection_id)["starts"])}
+    levels = grouping.levels(object_session(c), c.collection_id)
+    return {"id": c.collection_id, "name": c.name, "levels": [grouping.level_json(level) for level in levels],
+            "recordName": levels[-1].name if levels else "record", "archiveSeries": c.archive_series,
             "archiveIdentifier": c.archive_identifier, "archiveTitle": c.archive_title, "archiveItems": c.archive_items, **found}
 
 def series_text(text):
@@ -602,9 +597,7 @@ def get_collection(collection_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No such series.")
     return collection_json(c, db)
 
-#renames a collection, relinks its series, names its records (a word or two, lower case), says whether its items hold several,
-#or sets the field holding a survey's number, which the templates of the types that start or join a survey must have while its
-#items hold several; a field left out of the request stays as it is
+#renames a collection or relinks its series; a field left out of the request stays as it is
 @app.patch("/collections/{collection_id}")
 def update_collection(collection_id: int, payload: CollectionSettings, db: Session = Depends(get_db)):
     write_lock(db)
@@ -622,28 +615,56 @@ def update_collection(collection_id: int, payload: CollectionSettings, db: Sessi
         c.archive_series = series_node(payload.archiveSeries)
         c.archive_identifier, c.archive_title = series_text(payload.archiveIdentifier), series_text(payload.archiveTitle)
         c.archive_items = payload.archiveItems
-    key = ((payload.recordKey or "").strip() or None) if "recordKey" in given else c.record_key
-    if key and not instructions.KEY.fullmatch(key):
-        raise HTTPException(status_code=400, detail="A field name is lower-case letters, digits and _, starting with a letter.")
-    several = c.group_pages if payload.groupPages is None else payload.groupPages
-    if several and key and ("recordKey" in given or payload.groupPages):
-        templates = instructions.newest(db)
-        missing = sorted(t.label for t in db.query(models.PageType).filter_by(collection_id=collection_id)
-                         if (t.starts_record or t.matched_by_key) and t.name in templates and key not in json.loads(templates[t.name].body))
-        if missing:
-            raise HTTPException(status_code=400, detail=f"These page types' templates don't have '{key}': {', '.join(missing)}.")
-    c.record_key, c.group_pages = key, several
-    if "recordName" in given:
-        word = " ".join((payload.recordName or "").lower().split())
-        if word and not (len(word) <= 40 and re.fullmatch(r"[a-z]+(['-][a-z]+)*( [a-z]+(['-][a-z]+)*)?", word)):
-            raise HTTPException(status_code=400, detail="A record name is a word or two, like survey or letter.")
-        c.record_name = word or None
     name = c.name
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail=f"There is already a series called {name}.")
+    return collection_json(c, db)
+
+LEVEL_NAME = re.compile(r"[a-z]+(['-][a-z]+)*( [a-z]+(['-][a-z]+)*)?")
+
+#why a level can't be saved, or None: its name (a word or two, lower case, after names), its page types (the collection's own,
+#read, and starting one or joining by number, not both), and its number field and a type that starts one, which joining by
+#number needs
+def level_problem(level, name, names, types):
+    roles = level.starts + level.matched
+    key = (level.key or "").strip()
+    return ("A level's name is a word or two, like survey or letter." if not (len(name) <= 40 and LEVEL_NAME.fullmatch(name)) else
+            f"There is already a level called {name}." if name in names else
+            "A level's page types must be this series' own." if any(t not in types for t in roles) else
+            f"Unknown pages aren't read, so they can't start or join {grouping.a_record(name)}." if any(types[t].unknown for t in roles) else
+            f"A page type starts {grouping.a_record(name)} or joins one by number, not both." if set(level.starts) & set(level.matched) else
+            "A field name is lower-case letters, digits and _, starting with a letter." if key and not instructions.KEY.fullmatch(key) else
+            f"Pages join {grouping.a_record(name)} by its number field: set one first." if level.matched and not key else
+            f"Pages can only join {grouping.a_record(name)} a page type starts: choose one that starts it." if level.matched and not level.starts else None)
+
+#a collection's levels of record, top first, in place of the ones it had; a level's number field must be in the templates of
+#the page types that start or join one. Items read from now on group by them
+@app.put("/collections/{collection_id}/levels")
+def put_levels(collection_id: int, payload: LevelsSettings, db: Session = Depends(get_db)):
+    write_lock(db)
+    c = db.get(models.Collection, collection_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="No such series.")
+    if len(payload.levels) > 1:  #ponytail: grouping reads one level until it nests
+        raise HTTPException(status_code=400, detail="A series has one level for now.")
+    types = {t.name: t for t in db.query(models.PageType).filter_by(collection_id=collection_id)}
+    templates, rows = instructions.newest(db), []
+    for position, level in enumerate(payload.levels, start=1):
+        name, key = " ".join(level.name.lower().split()), (level.key or "").strip() or None
+        if problem := level_problem(level, name, {row.name for row in rows}, types):
+            raise HTTPException(status_code=400, detail=problem)
+        missing = sorted(types[t].label for t in set(level.starts + level.matched)
+                         if key and t in templates and key not in json.loads(templates[t].body))
+        if missing:
+            raise HTTPException(status_code=400, detail=f"These page types' templates don't have '{key}': {', '.join(missing)}.")
+        rows.append(models.RecordLevel(collection_id=collection_id, position=position, name=name, record_key=key,
+                                       starts=json.dumps(sorted(set(level.starts))), matched=json.dumps(sorted(set(level.matched)))))
+    db.query(models.RecordLevel).filter_by(collection_id=collection_id).delete()
+    db.add_all(rows)
+    db.commit()
     return collection_json(c, db)
 
 #a series on the archive, to check before a collection links to it
