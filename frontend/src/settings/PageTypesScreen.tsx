@@ -12,7 +12,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { backendRequest, recordWords } from "../progress/backend";
+import { backendRequest, itemTitle, recordNumber, recordWords } from "../progress/backend";
 import ChecksSection from "./ChecksSection";
 import FieldRules from "./FieldRules";
 import ReviewerField, { type Reviewer } from "./ReviewerField";
@@ -27,6 +27,9 @@ type Collection = {
   archiveSeries?: number | null;
 };
 type Version = { id: number; body: string; rules: Rules; reviewer: string | null; note: string | null; createdAt: string };
+// How an item already read would group by some levels: the records grouping would make, parents first, each with the one it
+// sits in and its pages; the pages in none; and what grouping would flag.
+type Preview = { records: { id: string; parent: string | null; pages: string[] }[]; loose: string[]; problems: string[] };
 type Role = "starts" | "matched" | "follows";
 
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -208,9 +211,46 @@ function LevelDialog({ collection, types, index, onClose, onSaved }: {
   const [key, setKey] = useState(existing?.key ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Each page type's template's fields that can hold a number (not lists or groups of fields), and the series' items read.
+  const [fields, setFields] = useState<Record<string, string[]>>({});
+  const [items, setItems] = useState<{ id: string; name: string }[] | null>(null);
+  const [item, setItem] = useState("");
+  const [preview, setPreview] = useState<{ for: string; result?: Preview; error?: string } | null>(null); // for: what was tried
+  const [previewing, setPreviewing] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    backendRequest<Record<string, { body: string }>>("/instructions").then((found) => setFields(Object.fromEntries(
+      Object.entries(found).map(([kind, v]) => {
+        const template = parseTemplate(v.body) ?? {};
+        return [kind, Object.keys(template).filter((f) => template[f] === null || typeof template[f] === "string")];
+      })))).catch(() => setLoadError("Could not load the templates' fields."));
+    backendRequest<{ id: string; name: string }[]>(`/export/bundles?collection=${collection.id}`)
+      .then((found) => { setItems(found); setItem(found[0]?.id ?? ""); }).catch(() => setLoadError("Could not load the series' items."));
+  }, [collection.id]);
   const words = recordWords(name.trim().toLowerCase() || "record");
   const level: Level = { name, key, starts: read.filter((t) => roles[t.name] === "starts").map((t) => t.name),
     matched: read.filter((t) => roles[t.name] === "matched").map((t) => t.name) };
+  // The series' levels as saving would leave them.
+  const next = existing ? collection.levels.map((l, i) => (i === index ? level : l)) : [...collection.levels, level];
+  // The number field can be one every page type that starts or joins one has (one with no template isn't read: it has none);
+  // with none chosen yet, any type's.
+  const grouped = [...level.starts, ...level.matched].filter((t) => fields[t]);
+  const choices = (grouped.length
+    ? (fields[grouped[0]] ?? []).filter((f) => grouped.every((t) => (fields[t] ?? []).includes(f)))
+    : [...new Set(read.flatMap((t) => fields[t.name] ?? []))].sort());
+  if (key && !choices.includes(key)) choices.unshift(key);
+
+  // What a try was of: once the settings or the item change, its result or error no longer says anything.
+  const trying = JSON.stringify([next, item]);
+  async function tryIt() {
+    setPreviewing(true);
+    try {
+      setPreview({ for: trying, result: await backendRequest<Preview>(`/collections/${collection.id}/levels/preview`, json("POST", { levels: next, item })) });
+    } catch (e) {
+      setPreview({ for: trying, error: message(e, "Could not try it.") });
+    }
+    setPreviewing(false);
+  }
 
   async function save(levels: Level[]) {
     setBusy(true);
@@ -259,10 +299,29 @@ function LevelDialog({ collection, types, index, onClose, onSaved }: {
           </Field>
           <Field>
             <FieldLabel htmlFor={`${id}-key`}>Number field</FieldLabel>
-            <Input id={`${id}-key`} value={key} placeholder="e.g. number_of_dwelling" onChange={(e) => setKey(e.target.value)} />
+            <NativeSelect id={`${id}-key`} className="w-full" value={key} onChange={(e) => setKey(e.target.value)}>
+              <option value="">None: by page order only</option>
+              {choices.map((f) => <option key={f} value={f}>{start(f.replaceAll("_", " "))}</option>)}
+            </NativeSelect>
             <FieldDescription>
-              The field holding each {words.one}'s number, which joining by number needs; leave it empty to group pages by their order only.
+              The field each {words.one}'s number is read from, which joining by number needs: one the templates of every page type
+              that starts or joins {words.a} have.
             </FieldDescription>
+          </Field>
+          <Field>
+            <FieldTitle>Try it on an item</FieldTitle>
+            <FieldDescription>How an item already read would group by these settings, before you save. Nothing changes.</FieldDescription>
+            {items?.length ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <NativeSelect aria-label="Item to try it on" className="w-full sm:w-72" value={item} onChange={(e) => setItem(e.target.value)}>
+                  {items.map((i) => <option key={i.id} value={i.id}>{itemTitle(i.name)}</option>)}
+                </NativeSelect>
+                <Button variant="outline" disabled={previewing || !name.trim()} onClick={tryIt}>{previewing ? "Trying…" : "Try it"}</Button>
+              </div>
+            ) : items && <p className="text-sm text-muted-foreground">No items read yet to try it on.</p>}
+            {loadError && <Alert variant="destructive"><AlertDescription>{loadError}</AlertDescription></Alert>}
+            {preview?.for === trying && preview.error && <Alert variant="destructive"><AlertDescription>{preview.error}</AlertDescription></Alert>}
+            {preview?.for === trying && preview.result && <PreviewResult preview={preview.result} levels={next} bundle={item} />}
           </Field>
         </FieldGroup>
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
@@ -273,14 +332,52 @@ function LevelDialog({ collection, types, index, onClose, onSaved }: {
           ) : <span />}
           <div className="flex gap-2">
             <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-            <Button disabled={busy || !name.trim()}
-              onClick={() => save(existing ? collection.levels.map((l, i) => (i === index ? level : l)) : [...collection.levels, level])}>
-              Save
-            </Button>
+            <Button disabled={busy || !name.trim()} onClick={() => save(next)}>Save</Button>
           </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// A preview of an item's records: each under the one it sits in, named by its level and number, with its pages by their place
+// in the item ("Pg 1–3, 5"); how many there are at the top and in none; and what grouping would flag.
+function PreviewResult({ preview, levels, bundle }: { preview: Preview; levels: Level[]; bundle: string }) {
+  const place = new Map([...preview.records.flatMap((r) => r.pages), ...preview.loose].sort().map((page, i) => [page, i + 1]));
+  const depth = new Map<string, number>();
+  for (const r of preview.records) depth.set(r.id, r.parent ? (depth.get(r.parent) ?? 0) + 1 : 1);
+  const pages = (ids: string[]) => {
+    const runs: [number, number][] = [];
+    for (const n of ids.map((page) => place.get(page)!).sort((a, b) => a - b)) {
+      if (runs.length && runs.at(-1)![1] === n - 1) runs.at(-1)![1] = n;
+      else runs.push([n, n]);
+    }
+    return runs.length ? `Pg ${runs.map(([a, b]) => (a === b ? `${a}` : `${a}–${b}`)).join(", ")}` : "no pages of its own";
+  };
+  const top = preview.records.filter((r) => !r.parent).length;
+  const topWords = recordWords(levels[0]?.name.trim().toLowerCase() || "record");
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  return (
+    <section className="space-y-2 text-sm" aria-label="Preview" aria-live="polite">
+      <p className="text-muted-foreground">
+        {plural(top, topWords.one, topWords.many)} · {plural(preview.loose.length, "page", "pages")} in none · {plural(preview.problems.length, "problem", "problems")}
+      </p>
+      <ol aria-label="Records" className="max-h-64 space-y-0.5 overflow-auto rounded-md border p-2">
+        {preview.records.map((r) => (
+          <li key={r.id} style={{ paddingLeft: `${(depth.get(r.id)! - 1) * 1.25}rem` }}>
+            <span className="font-medium">{start(levels[depth.get(r.id)! - 1]?.name.trim().toLowerCase() || "record")} {recordNumber(r.id, r.parent ?? bundle)}</span>
+            <span className="text-muted-foreground"> · {pages(r.pages)}</span>
+          </li>
+        ))}
+        {preview.loose.length > 0 && <li className="text-muted-foreground">In none: {pages(preview.loose).replace("no pages of its own", "")}</li>}
+      </ol>
+      {preview.problems.length > 0 && (
+        <ul aria-label="Problems" className="list-disc space-y-0.5 pl-5 text-muted-foreground">
+          {preview.problems.slice(0, 5).map((problem) => <li key={problem}>{problem}</li>)}
+          {preview.problems.length > 5 && <li>and {preview.problems.length - 5} more</li>}
+        </ul>
+      )}
+    </section>
   );
 }
 

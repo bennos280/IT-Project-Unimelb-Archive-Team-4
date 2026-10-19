@@ -138,3 +138,26 @@ def test_a_record_inside_another_says_so_is_named_by_its_level_and_its_export_ke
     db.delete(db.get(models.Survey, "f"))
     db.commit()
     assert db.query(models.Survey).filter_by(survey_id="f-1").count() == 0  # a record goes with the one it sits in
+
+
+def test_levels_tried_on_an_item_read_show_its_records_by_the_numbers_reviewers_saved_and_save_nothing(client, db):
+    setup(db)
+    pages = [(1, "notes", None), (2, "main", "3"), (3, "coded", "3"), (4, "main", "7"), (5, "coded", "9")]
+    add(db, models.Bundle(bundle_id="b", source_pdf="b.pdf"),
+        *[models.Page(page_id=f"b_{n}", bundle_id="b", category=t, import_path="x.png") for n, t, _ in pages],
+        *[models.Field(page_id=f"b_{n}", field_title="number_of_dwelling", text_raw=v) for n, _, v in pages if v],
+        models.Edit(page_id="b_5", field_title="number_of_dwelling", edit_text="7", reviewer_id=1))  # 9 read, 7 saved
+    survey = {"name": "survey", "starts": ["main"], "matched": ["coded"], "key": "number_of_dwelling"}
+    tried = client.post("/collections/1/levels/preview", json={"levels": [survey], "item": "b"}).json()
+    assert tried == {"records": [{"id": "b-3", "parent": None, "pages": ["b_2", "b_3"]}, {"id": "b-7", "parent": None, "pages": ["b_4", "b_5"]}],
+                     "loose": ["b_1"], "problems": ["1 page(s) before the first Main page belong to no survey"]}
+    nested = client.post("/collections/1/levels/preview", json={"levels": [{"name": "box", "starts": ["notes"]}, survey], "item": "b"}).json()
+    assert [(r["id"], r["parent"]) for r in nested["records"]] == [("b_1", None), ("b_1-3", "b_1"), ("b_1-7", "b_1")]
+    assert db.query(models.Survey).count() == 0 and len(client.get("/collections/1").json()["levels"]) == 1  # nothing saved
+    db.get(models.Page, "b_5").needs_transcription = True  # to be read again as another type: its old number doesn't count
+    db.commit()
+    assert client.post("/collections/1/levels/preview", json={"levels": [survey], "item": "b"}).json()["problems"] == [
+        "survey b-7: its pages don't agree on 'number of dwelling'", "1 page(s) before the first Main page belong to no survey"]
+    assert client.post("/collections/1/levels/preview", json={"levels": [survey], "item": "nowhere"}).status_code == 404
+    assert client.post("/collections/1/levels/preview", json={"levels": [{"name": "survey #1"}], "item": "b"}).json()["detail"] == (
+        "A level's name is a word or two, like survey or letter.")

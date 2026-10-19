@@ -250,8 +250,8 @@ def group_level(run: Run, pages: list[dict], level: dict, labels: dict, parent: 
     surveys, cards, last = [], [], None
     for i, page in enumerate(pages):
         found = set()
-        if key and page.get("transcript"):
-            answer = json.loads((run.out / page["transcript"]).read_text(encoding="utf-8"))
+        if key and ("values" in page or page.get("transcript")):  # values: as a reviewer last saved them (a preview)
+            answer = page["values"] if "values" in page else json.loads((run.out / page["transcript"]).read_text(encoding="utf-8"))
             text = str(answer.get(key) or "")
             found = {n.lstrip("0") + flat.upper() for n, flat in re.findall(r"(\d+)\s*([A-Za-z]?)(?![A-Za-z])", text)} - {""}
         if page["label"] in by_key:

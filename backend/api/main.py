@@ -453,6 +453,9 @@ class LevelSettings(BaseModel):
 class LevelsSettings(BaseModel):
     levels: list[LevelSettings]
 
+class LevelsPreview(LevelsSettings):
+    item: str #the bundle id of an item already read
+
 class NewCollection(BaseModel):
     name: str
     archiveSeries: str
@@ -653,17 +656,14 @@ def level_problem(level, name, names, types):
             f"Pages join {grouping.a_record(name)} by its number field: set one first." if level.matched and not key else
             f"Pages can only join {grouping.a_record(name)} a page type starts: choose one that starts it." if level.matched and not level.starts else None)
 
-#a collection's levels of record, top first, in place of the ones it had; a level's number field must be in the templates of
-#the page types that start or join one. Items read from now on group by them
-@app.put("/collections/{collection_id}/levels")
-def put_levels(collection_id: int, payload: LevelsSettings, db: Session = Depends(get_db)):
-    write_lock(db)
-    c = db.get(models.Collection, collection_id)
-    if not c:
+#a collection's levels of record as they would be stored, top first, unsaved; refused with the first problem (level_problem),
+#and a level's number field must be in the templates of the page types that start or join one
+def checked_levels(db, collection_id, levels):
+    if not db.get(models.Collection, collection_id):
         raise HTTPException(status_code=404, detail="No such series.")
     types = {t.name: t for t in db.query(models.PageType).filter_by(collection_id=collection_id)}
     templates, rows = instructions.newest(db), []
-    for position, level in enumerate(payload.levels, start=1):
+    for position, level in enumerate(levels, start=1):
         name, key = " ".join(level.name.lower().split()), (level.key or "").strip() or None
         if problem := level_problem(level, name, {row.name for row in rows}, types):
             raise HTTPException(status_code=400, detail=problem)
@@ -673,10 +673,47 @@ def put_levels(collection_id: int, payload: LevelsSettings, db: Session = Depend
             raise HTTPException(status_code=400, detail=f"These page types' templates don't have '{key}': {', '.join(missing)}.")
         rows.append(models.RecordLevel(collection_id=collection_id, position=position, name=name, record_key=key,
                                        starts=json.dumps(sorted(set(level.starts))), matched=json.dumps(sorted(set(level.matched)))))
+    return rows
+
+#a collection's levels of record, top first, in place of the ones it had. Items read from now on group by them
+@app.put("/collections/{collection_id}/levels")
+def put_levels(collection_id: int, payload: LevelsSettings, db: Session = Depends(get_db)):
+    write_lock(db)
+    rows = checked_levels(db, collection_id, payload.levels)
     db.query(models.RecordLevel).filter_by(collection_id=collection_id).delete()
     db.add_all(rows)
     db.commit()
-    return collection_json(c, db)
+    return collection_json(db.get(models.Collection, collection_id), db)
+
+#how one of a collection's items already read would group by these levels, saving nothing: the records grouping would make,
+#parents first, each its id, the record it sits in and its pages; the pages in none; and the problems grouping would flag.
+#It reads the item's page types and its pages' number fields as reviewers last saved them, as the group step does a run's; a
+#page waiting to be read again as another type has none yet
+@app.post("/collections/{collection_id}/levels/preview")
+def preview_levels(collection_id: int, payload: LevelsPreview, db: Session = Depends(get_db)):
+    from backend.pipeline.run import Run, step_group
+    rows = checked_levels(db, collection_id, payload.levels)
+    bundle = db.get(models.Bundle, payload.item)
+    if not bundle or bundle.collection_id != collection_id:
+        raise HTTPException(status_code=404, detail="No such item read in this series.")
+    ids = [page_id for (page_id,) in db.query(models.Page.page_id).filter_by(bundle_id=bundle.bundle_id).order_by(models.Page.page_id)]
+    unread = {page_id for (page_id,) in db.query(models.Page.page_id).filter_by(bundle_id=bundle.bundle_id, needs_transcription=True)}
+    keys, values = {row.record_key for row in rows if row.record_key}, {}
+    for page_id, key, text in db.query(models.Field.page_id, models.Field.field_title, models.Field.text_raw).filter(
+            models.Field.page_id.in_(ids), models.Field.field_title.in_(keys)):
+        values.setdefault(page_id, {})[key] = text
+    for edit in db.query(models.Edit).filter(models.Edit.page_id.in_(ids), models.Edit.field_title.in_(keys)).order_by(models.Edit.edit_id):
+        values.setdefault(edit.page_id, {})[edit.field_title] = edit.edit_text
+    categories = dict(db.query(models.Page.page_id, models.Page.category).filter_by(bundle_id=bundle.bundle_id))
+    run = Run(Path(f"{bundle.bundle_id}.pdf"), Path(bundle.bundle_id), grouping={
+        "levels": [grouping.level_json(row) for row in rows],
+        "labels": {t.name: t.label for t in db.query(models.PageType).filter_by(collection_id=collection_id)}})
+    run.pages = [{"file": f"{page_id}.png", "label": categories[page_id], "values": {} if page_id in unread else values.get(page_id, {}),
+                  "id": page_id} for page_id in ids]
+    step_group(run)
+    return {"records": [{**record, "pages": [p["id"] for p in run.pages if p["survey"] == record["id"]]} for record in run.records],
+            "loose": [p["id"] for p in run.pages if p["survey"] is None],
+            "problems": [entry["reason"] for entry in run.review]}
 
 #a series on the archive, to check before a collection links to it
 @app.get("/archive-series/{node}")
