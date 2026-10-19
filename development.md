@@ -1,6 +1,6 @@
 # Development notes
 
-See the [main README](../README.md) for setup and everyday use. Run all commands below from the project root.
+See the [main README](README.md) for setup and everyday use. Run all commands below from the project root.
 
 ## Tests
 
