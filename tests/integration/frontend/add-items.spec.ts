@@ -12,7 +12,7 @@ const ALL = [DIARY_A, DIARY_B, LEDGER, LETTERS];
 const listing = (items: Item[], extra: { page?: number; pages?: number; total?: number } = {}) =>
   ({ json: { items, page: 1, pages: 1, total: items.length, ...extra } });
 const REFUSAL = "The archive has no PDF of this item.";
-const TOO_MANY = "There are 29,326 items in this list, more than 1,000 to add at once. Search to narrow it down.";
+const QUEUED = "You can follow it in Tasks.";
 // A page of 24 items; each page's numbering carries on from the one before.
 const entries = (page: number) =>
   Array.from({ length: 24 }, (_, i) => item(1000 + (page - 1) * 24 + i, `Diary ${(page - 1) * 24 + i + 1}`));
@@ -27,7 +27,7 @@ type Mock = {
   existing?: boolean; // the series already has an item
   listed?: (url: URL) => { status?: number; json: unknown }; // GET archive-items
   refuse?: Record<number, string>; // nodes the POST refuses, with the reason
-  all?: { status?: number; json: unknown }; // POST items/all
+  all?: { status: number; json: unknown }; // POST items/all answers with this instead of queuing the job
   gate?: Promise<void>; // POST items/all waits for this before answering
   items?: { status: number; json: unknown }; // POST items answers with this alone
   lateAdded?: number[]; // nodes the list shows as added once an add has been posted
@@ -36,7 +36,7 @@ type Mock = {
 
 // The API is intercepted: no requests reach the real backend or the archive.
 async function mock(page: Page, options: Mock = {}) {
-  const calls = { listed: [] as URL[], posted: [] as unknown[], postedAll: [] as unknown[], overviews: 0 };
+  const calls = { listed: [] as URL[], posted: [] as unknown[], postedAll: [] as unknown[], overviews: 0, jobs: 0 };
   const onList: Item[] = options.existing ? [LETTERS] : [];
   const refuse = options.refuse ?? {};
   // The dashboard polls every 5 s; with that off, a request for its items after an add is the add's own refresh.
@@ -90,9 +90,13 @@ async function mock(page: Page, options: Mock = {}) {
     if (path === "/api/collections/1/items/all" && request.method() === "POST") {
       calls.postedAll.push(request.postDataJSON());
       await options.gate;
-      const result: { status?: number; json: unknown } = options.all ?? { json: { added: 2, skipped: 2 } };
-      if (!result.status) onList.push(DIARY_A, DIARY_B);
-      return route.fulfill({ status: result.status ?? 200, json: result.json });
+      if (options.all) return route.fulfill(options.all);
+      onList.push(DIARY_A, DIARY_B);
+      return route.fulfill({ status: 202, json: { id: 31, kind: "items", status: "waiting", step: null, donePages: 0, totalPages: 0, error: null } });
+    }
+    if (path === "/api/jobs") {
+      calls.jobs++;
+      return route.fulfill({ json: [] });
     }
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
@@ -170,7 +174,7 @@ test("a series whose size isn't known offers to add every item", async ({ page }
   const d = dialog(page);
   await expect(d.getByText("Add every item this series has on the archive.")).toBeVisible();
   await d.getByRole("button", { name: "Add all items", exact: true }).click();
-  await expect(d.getByText("Added 2 items.", { exact: false })).toBeVisible();
+  await expect(d.getByText(`Adding the series' items in the background. ${QUEUED}`, { exact: true })).toBeVisible();
   expect(calls.postedAll).toEqual([{ search: "" }]);
 });
 
@@ -180,50 +184,47 @@ test("a series of one item reads Add 1 item", async ({ page }) => {
   const d = dialog(page);
   await expect(d.getByText("Estate diaries has 1 item on the archive.")).toBeVisible();
   await d.getByRole("button", { name: "Add 1 item", exact: true }).click();
-  await expect(d.getByText("Added 2 items.", { exact: false })).toBeVisible();
+  await expect(d.getByText(`Adding 1 item in the background. ${QUEUED}`, { exact: true })).toBeVisible();
   expect(calls.postedAll).toEqual([{ search: "" }]);
 });
 
-test("a series of over 1,000 items can't be added at once, and its list counts the real size", async ({ page }) => {
+test("a series of 60,772 items is added all at once, and its list counts the real size", async ({ page }) => {
   const calls = await mock(page, {
     archiveItems: 60772,
     listed: (url) => listing([DIARY_A], { pages: 417, total: url.searchParams.get("search") ? 12 : 10000 }),
   });
   await emptyStateButton(page).click();
   const d = dialog(page);
-  await expect(
-    d.getByText("60,772 items: too many to add at once. Choose items instead, or search for the ones you want."),
-  ).toBeVisible();
-  await expect(d.getByRole("button", { name: "Add all 60,772 items", exact: true })).toBeDisabled();
-  await expect(d).toBeFocused(); // the primary button is off, so the dialog has focus
-  expect(calls.postedAll).toEqual([]);
+  await expect(d.getByText("Estate diaries has 60,772 items on the archive.")).toBeVisible();
+  await expect(d.getByRole("button", { name: "Add all 60,772 items", exact: true })).toBeEnabled();
+  await expect(d.getByRole("button", { name: "Add all 60,772 items", exact: true })).toBeFocused();
   await chooseInstead(d).click();
   // The archive lists 10,000 at most, so the label counts the series' own 60,772.
   await expect(d.getByText("10,000 items", { exact: true })).toBeVisible();
   await expect(d.getByText("Showing the first 10,000; search to find others.")).toBeVisible();
-  await expect(d.getByRole("button", { name: "Add all 60,772 items", exact: true })).toBeDisabled();
   await expect(d.getByRole("button", { name: "Add all 10,000 items" })).toHaveCount(0);
-  await expect(d.getByText("Over 1,000 items: search to narrow the list, or tick the ones you want.")).toBeVisible();
-  await d.getByRole("textbox", { name: "Search archive items" }).fill("diary");
-  await d.getByRole("button", { name: "Search", exact: true }).click();
-  await expect(d.getByRole("button", { name: "Add all 12 items", exact: true })).toBeEnabled();
+  await expect(d.getByText("Over 1,000", { exact: false })).toHaveCount(0);
+  await d.getByRole("button", { name: "Add all 60,772 items", exact: true }).click();
+  await expect(d.getByText(`Adding 60,772 items in the background. ${QUEUED}`, { exact: true })).toBeVisible();
+  expect(calls.postedAll).toEqual([{ search: "" }]);
 });
 
-test("Add all adds the whole series without listing it, shows progress, then the result, and refreshes at once", async ({ page }) => {
+test("Add all queues the whole series without listing it, then points to Tasks, refreshing the dashboard and the tasks at once", async ({ page }) => {
   let release = () => {};
   const gate = new Promise<void>((resolve) => (release = resolve));
   const calls = await mock(page, { gate });
   await emptyStateButton(page).click();
   const d = dialog(page);
   const before = calls.overviews;
+  const jobsBefore = calls.jobs;
   await d.getByRole("button", { name: "Add all 4 items", exact: true }).click();
-  await expect(d.getByText("Adding items… a long list can take a minute.")).toBeVisible();
   for (const name of ["Cancel", "Adding…", "Choose items instead"])
     await expect(d.getByRole("button", { name, exact: true })).toBeDisabled();
   release();
-  await expect(d.getByText("Added 2 items. 2 were skipped (no scans online, or already listed).", { exact: true })).toBeVisible();
+  await expect(d.getByText(`Adding 4 items in the background. ${QUEUED}`, { exact: true })).toBeVisible();
   await expect(d.getByRole("button")).toHaveCount(1); // only Done
   await expectRefreshed(calls, before);
+  await expect.poll(() => calls.jobs).toBeGreaterThan(jobsBefore);
   expect(calls.postedAll).toEqual([{ search: "" }]);
   expect(calls.posted).toEqual([]);
   expect(calls.listed).toEqual([]);
@@ -233,23 +234,11 @@ test("Add all adds the whole series without listing it, shows progress, then the
     await expect(page.getByRole("link", { name: entry.title, exact: true })).toBeVisible();
 });
 
-for (const [outcome, text] of [
-  [{ added: 17, skipped: 0 }, "Added 17 items."],
-  [{ added: 1, skipped: 1 }, "Added 1 item. 1 was skipped (no scans online, or already listed)."],
-  [{ added: 15, skipped: 3 }, "Added 15 items. 3 were skipped (no scans online, or already listed)."],
+for (const [status, detail] of [
+  [409, "This series is already adding items."],
+  [400, "This series isn't linked to the archive."],
+  [502, "Couldn't reach the archive (timed out)"],
 ] as const) {
-  test(`after adding all, the dialog says "${text}"`, async ({ page }) => {
-    await mock(page, { all: { json: outcome } });
-    await emptyStateButton(page).click();
-    const d = dialog(page);
-    await d.getByRole("button", { name: "Add all 4 items", exact: true }).click();
-    await expect(d.getByText(text, { exact: true })).toBeVisible();
-    await d.getByRole("button", { name: "Done", exact: true }).click();
-    await expect(d).toHaveCount(0);
-  });
-}
-
-for (const [status, detail] of [[400, TOO_MANY], [502, "Couldn't reach the archive (timed out)"]] as const) {
   test(`adding all shows a ${status} and leaves the dialog open`, async ({ page }) => {
     const calls = await mock(page, { all: { status, json: { detail } } });
     await emptyStateButton(page).click();
@@ -282,7 +271,6 @@ test("the list shows the page's items, with unscanned and added ones disabled", 
   await expect(d.getByRole("button", { name: "Previous", exact: true })).toBeDisabled();
   await expect(d.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
   await expect(d.getByText("Showing the first 10,000")).toHaveCount(0);
-  await expect(d.getByText("Over 1,000 items", { exact: false })).toHaveCount(0);
   await expect(d.getByRole("button", { name: "Add all 4 items", exact: true })).toBeEnabled(); // nothing ticked
   expect(lastParams(calls)).toEqual({ page: "1" });
 });
@@ -305,7 +293,7 @@ test("switching to the list and back keeps what was ticked, and Add all instead 
   await d.getByRole("button", { name: "Add all instead", exact: true }).click();
   // The whole series, whatever was searched or ticked.
   await d.getByRole("button", { name: "Add all 4 items", exact: true }).click();
-  await expect(d.getByText("Added 2 items.", { exact: false })).toBeVisible();
+  await expect(d.getByText(QUEUED, { exact: false })).toBeVisible();
   expect(calls.postedAll).toEqual([{ search: "" }]);
   expect(calls.posted).toEqual([]);
 });
@@ -485,13 +473,12 @@ test("in the list with nothing ticked the footer adds the whole list, locking th
   const calls = await mock(page, { gate, listed: twoPages });
   const d = await openList(page);
   await d.getByRole("button", { name: "Add all 48 items", exact: true }).click();
-  await expect(d.getByText("Adding items… a long list can take a minute.")).toBeVisible();
   for (const name of ["Cancel", "Search", "Adding…", "Next", "Add all instead"])
     await expect(d.getByRole("button", { name, exact: true })).toBeDisabled();
   await expect(selectAll(d)).toBeDisabled();
   await expect(d.getByRole("checkbox", { name: "Diary 1", exact: true })).toBeDisabled();
   release();
-  await expect(d.getByText("Added 2 items. 2 were skipped (no scans online, or already listed).", { exact: true })).toBeVisible();
+  await expect(d.getByText(`Adding 48 items in the background. ${QUEUED}`, { exact: true })).toBeVisible();
   expect(calls.postedAll).toEqual([{ search: "" }]);
   expect(calls.posted).toEqual([]);
 });
@@ -505,7 +492,7 @@ test("adding the list adds the submitted search's results, not text typed since"
   await expect.poll(() => lastParams(calls)).toEqual({ page: "1", search: "diary" });
   await box.fill("ledger");
   await d.getByRole("button", { name: "Add all 4 items", exact: true }).click();
-  await expect(d.getByText("Added 2 items.", { exact: false })).toBeVisible();
+  await expect(d.getByText(QUEUED, { exact: false })).toBeVisible();
   expect(calls.postedAll).toEqual([{ search: "diary" }]);
 });
 
@@ -528,27 +515,21 @@ test("a list of one reads Add 1 item and still adds the list", async ({ page }) 
   const calls = await mock(page, { listed: () => listing([DIARY_A]) });
   const d = await openList(page);
   await d.getByRole("button", { name: "Add 1 item", exact: true }).click();
-  await expect(d.getByText("Added 2 items.", { exact: false })).toBeVisible();
+  await expect(d.getByText(QUEUED, { exact: false })).toBeVisible();
   expect(calls.postedAll).toEqual([{ search: "" }]);
 });
 
-test("over 1,000 items the list's footer is off until a search narrows it or items are ticked", async ({ page }) => {
-  await mock(page, {
-    listed: (url) => listing([DIARY_A], { total: url.searchParams.get("search") ? 1000 : 1001 }),
-  });
+test("over 1,000 items the list's footer still adds them all, and ticking one adds just that one", async ({ page }) => {
+  const calls = await mock(page, { listed: () => listing([DIARY_A], { total: 1001 }) });
   const d = await openList(page);
-  const hint = d.getByText("Over 1,000 items: search to narrow the list, or tick the ones you want.");
-  await expect(d.getByRole("button", { name: "Add all 1,001 items", exact: true })).toBeDisabled();
-  await expect(hint).toBeVisible();
+  await expect(d.getByRole("button", { name: "Add all 1,001 items", exact: true })).toBeEnabled();
+  await expect(d.getByText("Over 1,000", { exact: false })).toHaveCount(0);
   await d.getByRole("checkbox", { name: DIARY_A.title }).check();
   await expect(d.getByRole("button", { name: "Add 1 item", exact: true })).toBeEnabled();
-  await expect(hint).toHaveCount(0);
   await d.getByRole("checkbox", { name: DIARY_A.title }).uncheck();
-  await expect(d.getByRole("button", { name: "Add all 1,001 items", exact: true })).toBeDisabled();
-  await d.getByRole("textbox", { name: "Search archive items" }).fill("diary");
-  await d.getByRole("button", { name: "Search", exact: true }).click();
-  await expect(d.getByRole("button", { name: "Add all 1,000 items", exact: true })).toBeEnabled();
-  await expect(hint).toHaveCount(0);
+  await d.getByRole("button", { name: "Add all 1,001 items", exact: true }).click();
+  await expect(d.getByText(`Adding 1,001 items in the background. ${QUEUED}`, { exact: true })).toBeVisible();
+  expect(calls.postedAll).toEqual([{ search: "" }]);
 });
 
 test("an item refused as already listed leaves the selection once the list shows it added", async ({ page }) => {

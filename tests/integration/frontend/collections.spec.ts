@@ -17,7 +17,7 @@ const LETTERS = { ...SERIES, id: 71423, title: "Registrar's Correspondence", ide
 const ITEM = { ...SERIES, id: 216412, title: "Box Hill 00", identifier: "UMA-ITE-1973000200001", items: null,
   url: "https://archives.library.unimelb.edu.au/nodes/view/216412" };
 
-type Fill = { status?: number; detail?: string; gate?: Promise<void> }; // how POST items/all answers
+type Fill = { status?: number; detail?: string; gate?: Promise<void> }; // how POST items/all answers; it queues the job unless it has a status
 async function mockApi(page: Page, { archiveDown = false, slowNode = 0, fill = {} as Fill } = {}) {
   const calls = { created: [] as unknown[], filled: [] as unknown[] };
   await page.route("**/api/**", async (route) => {
@@ -40,9 +40,10 @@ async function mockApi(page: Page, { archiveDown = false, slowNode = 0, fill = {
       await fill.gate;
       return fill.status
         ? route.fulfill({ status: fill.status, json: { detail: fill.detail } })
-        : route.fulfill({ json: { added: 45, skipped: 0 } });
+        : route.fulfill({ status: 202, json: { id: 31, kind: "items", status: "waiting", step: null, donePages: 0, totalPages: 0, error: null } });
     }
     if (path === "/api/collections/2") return route.fulfill({ json: { ...PREST, id: 2, name: "Social survey forms", recordKey: null, recordName: "record", grouped: false } });
+    if (path === "/api/jobs") return route.fulfill({ json: [] });
     if (path === "/api/page-types") return route.fulfill({ json: [] });
     if (path === "/api/reviewers") return route.fulfill({ json: [] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
@@ -115,7 +116,7 @@ async function startNewSeries(page: Page, address = "499420") {
   await expect(dialog(page).getByRole("region", { name: "Archive series" })).toBeVisible();
 }
 
-test("creating a series adds all its items before opening it, and says so while it works", async ({ page }) => {
+test("creating a series queues all its items before opening it", async ({ page }) => {
   let release = () => {};
   const gate = new Promise<void>((resolve) => (release = resolve));
   const calls = await mockApi(page, { fill: { gate } });
@@ -123,11 +124,11 @@ test("creating a series adds all its items before opening it, and says so while 
   await expect(addItems(page)).toBeChecked();
   await expect(addItems(page)).toBeEnabled();
   await dialog(page).getByRole("button", { name: "Create series" }).click();
-  await expect(dialog(page).getByText("Adding its items… this can take a minute.")).toBeVisible();
   await expect(dialog(page).getByRole("button", { name: "Create series" })).toBeDisabled();
   await expect.poll(() => calls.filled).toEqual([{ search: "" }]);
   expect(calls.created).toHaveLength(1);
-  await expect(page).toHaveURL("/"); // still here: the items come first
+  await expect(page).toHaveURL("/"); // still here until the items are queued
+  await expect(dialog(page).getByText("this can take a minute", { exact: false })).toHaveCount(0);
   release();
   await expect(page).toHaveURL("/?collection=2&view=page-types");
 });
@@ -142,15 +143,15 @@ test("unticking Add all its items creates the series alone", async ({ page }) =>
   expect(calls.filled).toEqual([]);
 });
 
-test("a series of over 1,000 items has Add all its items unticked and off, and creates it alone", async ({ page }) => {
+test("a series of 29,326 items has Add all its items ticked and on, with no limit, and queues them", async ({ page }) => {
   const calls = await mockApi(page);
   await startNewSeries(page, "71423");
-  await expect(addItems(page)).not.toBeChecked();
-  await expect(addItems(page)).toBeDisabled();
-  await expect(dialog(page).getByText("Too many to add at once (29,326). Add them from the series' page with a search.")).toBeVisible();
+  await expect(addItems(page)).toBeChecked();
+  await expect(addItems(page)).toBeEnabled();
+  await expect(dialog(page).getByText("Too many to add at once", { exact: false })).toHaveCount(0);
   await dialog(page).getByRole("button", { name: "Create series" }).click();
   await expect(page).toHaveURL("/?collection=2&view=page-types");
-  expect(calls.filled).toEqual([]);
+  expect(calls.filled).toEqual([{ search: "" }]);
 });
 
 for (const detail of ["Couldn't reach the archive (timed out).", "Couldn't reach the archive (timed out)"]) {

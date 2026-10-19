@@ -127,7 +127,7 @@ class InstructionVersion(Base):
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (CheckConstraint("status IN ('waiting', 'running', 'done', 'failed')", name="status"),
-                      CheckConstraint("kind IN ('bundle', 'page', 'train')", name="kind"))
+                      CheckConstraint("kind IN ('bundle', 'page', 'train', 'items')", name="kind"))
     job_id = Column(Integer, primary_key=True, autoincrement=True)
     base_revision = Column(Integer, nullable=True)
     transcription_model = Column(String, nullable=True)
@@ -138,6 +138,8 @@ class Job(Base):
     page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), nullable=True) #a page job's page...
     page_type = Column(String, ForeignKey("page_types.name"), nullable=True) #...and the type to read it as
     reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #who asked for a page or training job
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=True) #an items job's series...
+    search = Column(String, nullable=True) #...and the search whose results it adds; None: all its items
     status = Column(String, nullable=False, default="waiting", server_default="waiting")
     step = Column(String, nullable=True) #step the worker is on
     done_pages = Column(Integer, nullable=False, default=0, server_default="0")

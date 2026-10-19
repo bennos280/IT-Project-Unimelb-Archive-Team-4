@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Progress as ProgressBar } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ADD_ALL_MAX, ARCHIVE, backendRequest } from "../progress/backend";
+import { ARCHIVE, backendRequest } from "../progress/backend";
 
 type Collection = {
   id: number; name: string; archiveSeries: number | null; archiveIdentifier: string | null; archiveTitle: string | null;
@@ -167,7 +167,6 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [addItems, setAddItems] = useState(true);
-  const [filling, setFilling] = useState(false);
   // The series exists but its items didn't come with it; Continue goes on to the series.
   const [stranded, setStranded] = useState<{ created: Collection; detail: string } | null>(null);
   const node = nodeOf(address);
@@ -189,10 +188,6 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
   }, [node]);
   const shown = lookup && lookup.node === node ? lookup : null;
 
-  const items = shown?.series?.items ?? null;
-  const tooMany = items !== null && items > ADD_ALL_MAX;
-  const adding = addItems && !tooMany;
-
   async function create() {
     setBusy(true);
     setError("");
@@ -207,12 +202,10 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
       setBusy(false);
       return;
     }
-    if (adding) {
-      setFilling(true);
+    if (addItems) {
       try {
         await backendRequest<unknown>(`/collections/${created.id}/items/all`, json("POST", { search: "" }));
       } catch (e) {
-        setFilling(false);
         setStranded({ created, detail: message(e, "Could not add the items.") });
         return;
       }
@@ -278,15 +271,13 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
           </Field>
           <Field>
             <label className="flex items-center gap-2 text-sm font-medium">
-              <input type="checkbox" className="size-4 accent-primary" checked={adding} disabled={tooMany || busy}
+              <input type="checkbox" className="size-4 accent-primary" checked={addItems} disabled={busy}
                 onChange={(e) => setAddItems(e.target.checked)} />
               Add all its items
             </label>
-            {tooMany && <FieldDescription>Too many to add at once ({items.toLocaleString()}). Add them from the series' page with a search.</FieldDescription>}
           </Field>
         </FieldGroup>
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-        {filling && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Spinner role={undefined} aria-hidden="true" />Adding its items… this can take a minute.</p>}
         {stranded && (
           <Alert variant="destructive">
             <AlertDescription>The series was created, but its items weren't added: {stranded.detail.replace(/\.$/, "")}. Add them from the series' page.</AlertDescription>

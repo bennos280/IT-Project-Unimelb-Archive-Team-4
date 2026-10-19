@@ -256,7 +256,7 @@ Page types added from the review screen, and a page read again as another type.
 
 ## `test_add_items.py`
 
-A series' items listed from the archive (a fake archive here) and added to its list, one by one or the whole list, then run into that series.
+A series' items listed from the archive (a fake archive here) and added to its list, one by one or the whole list as a queued task, then run into that series.
 
 |Test|What it checks|
 |---|---|
@@ -264,12 +264,13 @@ A series' items listed from the archive (a fake archive here) and added to its l
 |`test_listing_needs_a_series_linked_to_an_archive_that_answers`|A series with no archive series can't list items (400), and an archive that can't be reached says so (502).|
 |`test_chosen_items_are_added_once_the_archive_shows_them_in_this_series`|Chosen items are added once the archive's page shows each in this series; one of another series, one a series lists already, and a number the archive doesn't know are refused with the reason; no download page is read.|
 |`test_an_added_item_is_listed_and_run_under_its_series_only`|An added item is listed under its series, not the Prest survey's, can be run, and its job counts on its series only.|
-|`test_the_whole_list_is_added_at_once_but_for_items_it_cant_download_or_a_series_lists`|Adding the whole list (or a search's) reads every page of it and adds each downloadable item no series lists, with its title.|
 |`test_a_series_linked_without_its_identifier_checks_items_against_the_archives`|A series stored without its archive identifier checks items against the identifier the archive shows for it, and refuses to add when the archive shows none.|
 |`test_an_item_number_out_of_range_is_refused`|An item number below 1 or too big for the db is refused with the reason.|
-|`test_adding_a_list_from_an_archive_that_cant_be_reached_says_so`|Adding a whole list when the archive can't be reached says so (502).|
+|`test_adding_a_series_whole_list_is_queued_and_the_worker_adds_each_downloadable_item_no_series_lists`|Adding a whole list (or a search's) queues a task, once per series at a time; the worker goes through every page of it, saving each downloadable item no series lists, and its progress counts the items gone through of those listed.|
+|`test_a_list_too_long_for_the_archive_to_show_is_added_a_box_at_a_time`|A list the archive can't show whole (10,000 or more) is gone through a unit (box) at a time, without paging the capped list, and counted against the series' item count.|
+|`test_adding_a_list_from_an_archive_that_cant_be_reached_fails_the_task_with_the_reason`|A task that can't reach the archive, even when asked again, fails with the reason.|
+|`test_tasks_say_what_each_job_is_how_far_it_has_got_and_where_to_see_it`|The Tasks list gives running tasks first, then finished ones newest first, each with what it is, its progress in items or pages, its error, its series and where to see it.|
 |`test_a_run_saves_the_series_it_is_loaded_into`|A run's manifest names the series its item is loaded into.|
-|`test_a_list_of_over_a_thousand_items_is_left_for_a_search_to_narrow`|A list of over 1,000 items is refused after reading its first page, with the count and what to do.|
 |`test_an_added_items_pdf_is_its_newest_original_looked_up_when_it_is_downloaded`|An added item's PDF is its newest original, found on its download page when it is downloaded; an item with none says so.|
 |`test_a_page_takes_only_a_page_type_of_its_own_series`|Changing a page's type to another series' type is refused.|
 |`test_sorting_gives_only_the_series_own_page_types_and_sends_the_rest_to_review`|Sorting's label outside the series' page types becomes review, and is flagged.|

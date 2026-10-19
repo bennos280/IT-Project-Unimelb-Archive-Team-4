@@ -124,10 +124,11 @@ def archive_item(node):
     return {"title": title, "identifier": details.get("Identifier", ""), "series": details.get("Series", "")}
 
 
-#the address of a series' list of items on the archive, from its page's "Items in this series" link; None if it has none
-def listing_link(series_node):
-    view = node_page(series_node)
-    link = view and re.search(r'href="([^"]*/nodes/browse\?[^"]*)"[^>]*>Items in this series', view)
+#the address of a list on the archive, from the link a node's page names it by: a series' "Items in this series" or "Units in
+#this series" (its boxes), a unit's "Items in this unit"; None if it has none
+def listing_link(node, of="Items in this series"):
+    view = node_page(node)
+    link = view and re.search(rf'href="([^"]*/nodes/browse\?[^"]*)"[^>]*>{of}', view)
     return urljoin(ARCHIVE, html.unescape(link.group(1))) if link else None
 
 

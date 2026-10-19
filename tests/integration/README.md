@@ -260,9 +260,13 @@ Related backend coverage lives in `tests/unit/test_progress.py` (3 tests): model
 
 Checks same-item moves, immediate type changes without queuing, persistence of the transcription prompt after refresh, and separate transcription with or without a preceding type change. Also checks editable model selection and the model table, and that in a series whose pages don't group a page can't be moved to another record and the screen uses the series' own word for one.
 
-## `add-items.spec.ts` — 34 tests
+## `add-items.spec.ts` — 32 tests
 
-The Add items dialog on a series' dashboard, and its empty state, with the API mocked: a series with no items says so and offers Add items (or says it isn't linked to the archive); the dialog opens at once on "Add all N items" for the series' count, asking the archive nothing, refuses over 1,000, and reports what it added and skipped; "Choose items instead" lists the archive's items with those that can't be added disabled, searches only when asked, pages without losing focus, selects across pages and a page at a time up to 25, drops a choice the archive turns down, and shows the archive's errors with Try again.
+The Add items dialog on a series' dashboard, and its empty state, with the API mocked: a series with no items says so and offers Add items (or says it isn't linked to the archive); the dialog opens at once on "Add all N items" for the series' count, asking the archive nothing, and queues it as a background task, however many; "Choose items instead" lists the archive's items with those that can't be added disabled, searches only when asked, pages without losing focus, selects across pages and a page at a time up to 25, drops a choice the archive turns down, and shows the archive's errors with Try again.
+
+## `tasks.spec.ts` — 17 tests
+
+The Tasks button on every screen, with the API mocked: its count of waiting and running tasks, kept up to date; its panel listing them first, then recent ones, each with its label (a link where there is one), status, progress in items or pages and, for a failed one, its error; an empty list; a failed refresh keeping the last list; and a series' dashboard saying while its items are being added.
 
 ## Import screen browser tests — 5 tests
 

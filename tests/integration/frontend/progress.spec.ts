@@ -954,7 +954,7 @@ test.describe("The server pages, searches and filters the overview", () => {
     await expect(page.getByRole("cell", { name: "partial-model", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Item 216424" })).toBeVisible();
     expect(new Set(asked)).toEqual(new Set([
-      "/api/collections/1", "/api/collections/1/items/216424", "/api/jobs/7/transcripts",
+      "/api/collections/1", "/api/collections/1/items/216424", "/api/jobs/7/transcripts", "/api/jobs",
       "/api/transcription-models", "/api/connections",
     ]));
   });

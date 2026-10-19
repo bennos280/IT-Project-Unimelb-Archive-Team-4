@@ -12,14 +12,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { ADD_ALL_MAX, backendRequest } from "./backend";
+import { backendRequest } from "./backend";
+import { refreshTasks } from "./tasks";
 
 const MAX_ADD = 25; // the most one request may add
 const LISTED_MAX = 10_000; // the archive lists no further than this
 type Listed = { node: number; title: string; identifier: string; scanned: boolean; added: boolean };
 type Listing = { items: Listed[]; page: number; pages: number; total: number };
 type Added = { added: { node: number; title: string }[]; refused: { node: number; reason: string }[] };
-type Result = { added: number; skipped: number };
 
 const itemCount = (n: number) => `${n.toLocaleString()} ${n === 1 ? "item" : "items"}`;
 // The primary button's words; a null count (the series' size isn't known) only comes with adding everything.
@@ -46,7 +46,8 @@ export default function AddItemsDialog({ collectionId, seriesTitle, archiveItems
   const [selected, setSelected] = useState<Map<number, string>>(new Map());
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<{ text: string; refused: { node: number; line: string }[] } | null>(null);
-  const [result, setResult] = useState<Result | null>(null);
+  // What was queued, once adding everything has been.
+  const [queued, setQueued] = useState("");
   useEffect(() => {
     if (!request) return;
     let active = true;
@@ -137,18 +138,19 @@ export default function AddItemsDialog({ collectionId, seriesTitle, archiveItems
       setBusy(false);
     }
   }
-  // Adds every item of the series, or of a search of it, then tells how it went.
-  async function addAll(search: string) {
+  // Queues adding every item of the series, or of a search of it; the Tasks panel follows it.
+  async function addAll(search: string, shown: number | null) {
     setBusy(true);
     setProblem(null);
     try {
-      const done = await backendRequest<Result>(`/collections/${collectionId}/items/all`, {
+      await backendRequest<unknown>(`/collections/${collectionId}/items/all`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ search }),
       });
       onAdded();
-      setResult(done);
+      void refreshTasks();
+      setQueued(shown === null ? "Adding the series' items in the background." : `Adding ${itemCount(shown)} in the background.`);
     } catch (e) {
       setProblem({ text: e instanceof Error ? e.message : "Could not add the items.", refused: [] });
     } finally {
@@ -165,7 +167,6 @@ export default function AddItemsDialog({ collectionId, seriesTitle, archiveItems
   // The archive lists no more than 10,000 of a longer series, so then the series' own count is the list's size.
   const capped = choosing && !request.search && listing !== null && listing.total >= LISTED_MAX && archiveItems !== null && archiveItems > listing.total;
   const count = !choosing ? archiveItems : everything ? ((capped ? archiveItems : null) ?? listing?.total ?? 0) : selected.size;
-  const tooMany = everything && count !== null && count > ADD_ALL_MAX;
   return <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
     <DialogContent showCloseButton={false} className="max-h-[90dvh] overflow-y-auto sm:max-w-xl"
       onInteractOutside={(event) => event.preventDefault()}
@@ -179,18 +180,13 @@ export default function AddItemsDialog({ collectionId, seriesTitle, archiveItems
         <DialogTitle>Add items</DialogTitle>
         <DialogDescription>Choose items from the archive to add to {seriesTitle}.</DialogDescription>
       </DialogHeader>
-      {result ? <>
-        <p role="status">
-          Added {itemCount(result.added)}.
-          {result.skipped > 0 && ` ${result.skipped === 1 ? "1 was" : `${result.skipped.toLocaleString()} were`} skipped (no scans online, or already listed).`}
-        </p>
+      {queued ? <>
+        <p role="status">{queued} You can follow it in Tasks.</p>
         <DialogFooter><Button onClick={onClose}>Done</Button></DialogFooter>
       </> : <>
         {!choosing && <div className="grid gap-2">
           <p>
-            {tooMany ? `${itemCount(archiveItems ?? 0)}: too many to add at once. Choose items instead, or search for the ones you want.`
-              : archiveItems === null ? "Add every item this series has on the archive."
-              : `${seriesTitle} has ${itemCount(archiveItems)} on the archive.`}
+            {archiveItems === null ? "Add every item this series has on the archive." : `${seriesTitle} has ${itemCount(archiveItems)} on the archive.`}
           </p>
           <p className="text-muted-foreground">Items with no scans online are skipped.</p>
           <Button variant="link" className="h-auto w-fit p-0" disabled={busy} onClick={openList}>Choose items instead</Button>
@@ -238,20 +234,18 @@ export default function AddItemsDialog({ collectionId, seriesTitle, archiveItems
                   onClick={() => { if (!loading) load({ page: listing.page + 1 }); }}>Next <ArrowRight /></Button>
               </div>
             </div>
-            {tooMany && <p className="text-muted-foreground">Over 1,000 items: search to narrow the list, or tick the ones you want.</p>}
             {listing.total >= LISTED_MAX && <p className="text-muted-foreground">Showing the first 10,000; search to find others.</p>}
           </div>}
           {full && <p className="text-muted-foreground">Add up to {MAX_ADD} at a time.</p>}
         </>}
-        {busy && everything && <p role="status" className="flex items-center gap-2 text-muted-foreground"><Spinner role="presentation" aria-hidden="true" />Adding items… a long list can take a minute.</p>}
         {problem && <Alert variant="destructive"><AlertDescription>
           {problem.text}
           {problem.refused.length > 0 && <ul className="mt-1 list-disc pl-4">{problem.refused.map((r) => <li key={r.node}>{r.line}</li>)}</ul>}
         </AlertDescription></Alert>}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button ref={primary} disabled={locked || count === 0 || tooMany}
-            onClick={() => void (everything ? addAll(request?.search ?? "") : add())}>
+          <Button ref={primary} disabled={locked || count === 0}
+            onClick={() => void (everything ? addAll(request?.search ?? "", count) : add())}>
             {busy ? "Adding…" : primaryLabel(everything, count)}
           </Button>
         </DialogFooter>

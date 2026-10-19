@@ -54,11 +54,17 @@ class FakeArchive:
     def __init__(self):
         self.pages, self.files, self.requests, self.cut_short, self.views, self.listings = {}, {}, [], set(), {}, {}
 
-    def add_series(self, node, title, description, items):
-        """A series' view page (/nodes/view/<node>), with the og: tags and the item count the real one has."""
+    def add_series(self, node, title, description, items, units=None):
+        """A series' view page (/nodes/view/<node>), with the og: tags and the item count the real one has, and when given the
+        count of its units (boxes); its lists are add_listing(node) and add_listing(f"units:{node}")."""
         self.views[str(node)] = (f'<meta property="og:title" content="{title}" />'
                                  f'<meta property="og:description" content="{description}" />'
-                                 f'<a href="/nodes/browse?bid={node}">Items in this series ({items})</a>')
+                                 f'<a href="/nodes/browse?bid={node}">Items in this series ({items})</a>'
+                                 + (f'<a href="/nodes/browse?filter=units&bid={node}">Units in this series ({units})</a>' if units else ""))
+
+    def add_unit(self, node, items):
+        """A unit's (box's) view page, linking to its list of items, add_listing(f"unit:{node}")."""
+        self.views[str(node)] = f'<a href="/nodes/browse?filter=unit&bid={node}">Items in this unit ({items})</a>'
 
     def add_listing(self, series, items, pages=1, count=None):
         """A series' items page (/nodes/browse?...&bid=<series>) as the real one marks them up: (node, title, identifier,
@@ -100,9 +106,10 @@ class FakeArchive:
                 kind, _, key = path.rpartition("/")
                 if not any(name == "User-Agent" for name, _ in self.addheaders):
                     raise HTTPError(url, 403, "Forbidden", Message(), None)
-                if path.startswith("/nodes/browse?"):
-                    series = parse_qs(urlparse(path).query)["bid"][0]
-                    return response(archive.listings.get(series, "").encode(), "text/html")
+                if path.startswith("/nodes/browse?"):  #a list: by its filter and node, else by its node
+                    query = parse_qs(urlparse(path).query)
+                    listing = archive.listings.get(f"{query.get('filter', [''])[0]}:{query['bid'][0]}", archive.listings.get(query["bid"][0], ""))
+                    return response(listing.encode(), "text/html")
                 if kind == "/nodes/view" and key in archive.views:
                     return response(archive.views[key].encode(), "text/html")
                 if kind == "/nodes/download" and key in archive.pages:

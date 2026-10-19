@@ -25,7 +25,8 @@ import {
   type ProgressPage,
   type PageStatus,
 } from "./progressData";
-import { ARCHIVE, backendRequest, itemTitle, providerNames, recordWords, type AvailableBundle } from "./backend";
+import { ARCHIVE, backendRequest, itemTitle, jobStages, providerNames, recordWords, type AvailableBundle } from "./backend";
+import { useTasks } from "./tasks";
 import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
 import type { ModelData } from "./ModelControls";
 import JobErrorDialog from "./JobErrorDialog";
@@ -57,15 +58,6 @@ function readView(): View {
     pageNumber: Math.max(0, Math.floor(Number(params.get("page")) || 1) - 1),
   };
 }
-// Translate backend pipeline step names into descriptions for reviewers.
-const jobStages: Record<string, string> = {
-  split: "Preparing page images (downloads PDF if needed)",
-  identify: "Identifying page types",
-  preprocess: "Preparing images",
-  transcribe: "Transcribing pages",
-  load: "Saving results to database",
-};
-
 // Shows the bundle overview or the selected bundle’s pages using saved US8 data.
 export default function ProgressDashboard() {
   // The collection whose bundles these are (/?collection=<id>).
@@ -80,6 +72,9 @@ export default function ProgressDashboard() {
   }, [collectionId]);
   const words = recordWords(series.recordName);
   const canAdd = typeof series.archiveSeries === "number";
+  // The series' items being added in the background, if any.
+  const { tasks } = useTasks();
+  const addingItems = tasks?.find((t) => t.kind === "items" && t.collectionId === collectionId && (t.status === "waiting" || t.status === "running"));
   // A status as shown: in the series' words, and without grouping where its pages don't group.
   const statusLabel = (s: string) =>
     s === "Not in a survey" ? `Not in ${words.a}` : s === "Transcribed — not grouped" && !series.grouped ? "Transcribed" : s;
@@ -388,6 +383,17 @@ export default function ProgressDashboard() {
                 ? `${providerNames[setup.configured.provider] ?? setup.configured.provider} isn't signed in, so transcription won't work yet.`
                 : "Transcription isn't set up yet. Choose a model in Settings to start transcribing."}
               <Button asChild variant="link" size="sm" className="h-auto p-0"><a href="/?view=settings">Open Settings</a></Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        {addingItems && (
+          <Alert role="status">
+            <AlertDescription className="text-foreground">
+              {addingItems.status === "waiting"
+                ? "Waiting to add items from the archive."
+                : addingItems.total > 0
+                  ? `Adding items from the archive: ${addingItems.done.toLocaleString()} of ${addingItems.total.toLocaleString()}.`
+                  : "Adding items from the archive…"}
             </AlertDescription>
           </Alert>
         )}

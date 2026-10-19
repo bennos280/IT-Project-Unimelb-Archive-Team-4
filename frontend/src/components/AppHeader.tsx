@@ -1,5 +1,6 @@
 import { Fragment, type MouseEvent, type ReactNode } from "react";
 
+import TasksPanel from "@/components/TasksPanel";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -11,7 +12,7 @@ import {
 
 type Crumb = { label: string; href?: string; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void };
 
-// Shared top bar: the app name, a breadcrumb trail ending at the current screen, and screen actions.
+// Shared top bar: the app name, a breadcrumb trail ending at the current screen, screen actions and the Tasks button.
 export default function AppHeader({ crumbs, actions }: { crumbs: Crumb[]; actions?: ReactNode }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b px-6 py-4">
@@ -34,7 +35,10 @@ export default function AppHeader({ crumbs, actions }: { crumbs: Crumb[]; action
           </BreadcrumbList>
         </Breadcrumb>
       </div>
-      {actions}
+      <div className="flex flex-wrap items-center gap-2">
+        {actions}
+        <TasksPanel />
+      </div>
     </header>
   );
 }
