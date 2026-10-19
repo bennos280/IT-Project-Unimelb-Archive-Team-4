@@ -20,7 +20,7 @@ parser.add_argument('--survey', default='1252581_1973-0002-00018-225', help='Sur
 args = parser.parse_args()
 args.frontend = args.frontend.resolve()
 args.backend = args.backend.resolve()
-source_database = args.database.resolve() if args.database else args.backend / 'db' / 'wilfprestsurvey.db'
+source_database = args.database.resolve() if args.database else args.backend / 'db' / 'prestcribe.db'
 if not source_database.is_file() or not (args.backend / 'api' / 'main.py').is_file():
     parser.error('Source database or backend/api/main.py was not found. Supply --database and --backend.')
 try:

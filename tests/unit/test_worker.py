@@ -20,7 +20,10 @@ def committed(sessions):
     return read
 
 
-def queue(db, tmp_path, status="waiting"):
+def queue(db, tmp_path, status="waiting", series=1):
+    """A job for tmp/216441/a.pdf, an item the given series lists (None: no series does)."""
+    if series:
+        db.add(models.ArchiveItem(node=216441, collection_id=series, identifier="UMA-ITE-216441", title="A file", pdf="216441/a.pdf"))
     job = models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), status=status, transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")
     db.add(job)
     db.commit()
@@ -133,7 +136,7 @@ def test_an_item_of_another_series_runs_with_that_series_page_types_and_rule(db,
                 models.RecordLevel(collection_id=2, position=1, name="letter", parts='[{"type": "docket", "count": "one", "how": "starts"}]'),
                 models.ArchiveItem(node=216441, collection_id=2, identifier="UMA-IT-1", title="A file")])
     db.commit()
-    queue(db, tmp_path)  # tmp/216441/a.pdf: an item series 2 lists
+    queue(db, tmp_path, series=None)  # tmp/216441/a.pdf: an item series 2 lists
     runs = []
     fake_pipeline(monkeypatch, lambda run: runs.append(run) or run.pages.append({"file": "a_00001.png"}))
     worker.work_once(db)
@@ -143,13 +146,21 @@ def test_an_item_of_another_series_runs_with_that_series_page_types_and_rule(db,
                          "starts": ["docket"], "matched": []}])
 
 
-def test_an_item_on_no_series_list_runs_as_the_prest_surveys_keeping_its_blank_pages_out(db, tmp_path, monkeypatch):
+def test_an_item_of_the_prest_survey_runs_keeping_its_blank_pages_out(db, tmp_path, monkeypatch):
     queue(db, tmp_path)
     runs = []
     fake_pipeline(monkeypatch, lambda run: runs.append(run) or run.pages.append({"file": "a_00001.png"}))
     worker.work_once(db)
     [run] = runs
     assert run.collection == 1 and {"main", "coded", "notes", "blank"} <= run.page_types and "other" not in run.page_types
+
+
+def test_an_item_no_series_lists_fails_without_running(db, committed, tmp_path, monkeypatch):
+    job = queue(db, tmp_path, series=None)
+    runs = []
+    fake_pipeline(monkeypatch, lambda run: runs.append(run))
+    assert worker.work_once(db)
+    assert (committed(job).status, committed(job).error, runs) == ("failed", "no series lists this item: add it to one first", [])
 
 
 def test_a_job_reads_with_the_newest_prompt_and_templates(db, tmp_path, monkeypatch):

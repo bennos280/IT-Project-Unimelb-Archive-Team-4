@@ -59,7 +59,7 @@ def test_a_retraining_that_fails_its_check_is_not_kept(fingerprints, tmp_path):
 def settled(db):
     """A reviewer, two added page types, and pages: 12 followup and 3 letters pages reviewers settled, 2 main forms,
     an other page, and a notes page nobody has checked yet."""
-    rows = [models.Reviewer(reviewer_id=1, name="Ben"), models.PageType(name="followup"), models.PageType(name="letters")]
+    rows = [models.Reviewer(reviewer_id=1, name="Ben"), models.PageType(name="followup", collection_id=1), models.PageType(name="letters", collection_id=1)]
     for n, (page_type, revision) in enumerate([("followup", 1)] * 12 + [("letters", 1)] * 3 + [("main", 2)] * 2
                                               + [("other", 1), ("notes", 0)]):
         rows.append(models.Page(page_id=f"6789_{n:05d}", category=page_type, revision_no=revision, import_path="x.png", bundle_id="6789"))
@@ -108,7 +108,8 @@ def test_a_model_that_fails_its_check_is_recorded_but_not_used(settled, monkeypa
 def test_a_bundle_job_sorts_with_the_active_model(db, tmp_path, monkeypatch):
     (tmp_path / "model-1.npz").write_bytes(b"weights")
     db.add_all([models.SortingModel(path=str(tmp_path / "model-1.npz"), page_types="main", pages=1, answered=1, wrong=0,
-                                    passed=True, active=True), models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")])
+                                    passed=True, active=True), models.ArchiveItem(node=216441, collection_id=1, identifier="UMA-ITE-216441", title="A file"),
+                models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")])
     db.commit()
     used = []
     monkeypatch.setattr(worker, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})

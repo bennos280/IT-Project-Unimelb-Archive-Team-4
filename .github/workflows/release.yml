@@ -1,6 +1,7 @@
 # A version tag pushed (git tag v0.1.0 && git push origin v0.1.0) makes a GitHub release: PrestCribe.zip (the code at that tag,
-# with the frontend built, so no Node is needed) and install.ps1, which installs it from the latest release.
-# No database: an install starts empty (made on first run, the Prest survey's series built in). ponytail: tests/ is left out (its labelled pages are 545 MB), so retraining page sorting needs a full checkout; ship those
+# with the frontend built, so no Node is needed), install.ps1, which installs it from the latest release, and each series' setup
+# in setups/ (a PrestCribe file to open from Import).
+# No database: an install starts empty (made on first run). ponytail: tests/ is left out (its labelled pages are 545 MB), so retraining page sorting needs a full checkout; ship those
 # pages as their own download when an installed copy retrains.
 name: Release
 
@@ -24,8 +25,8 @@ jobs:
       - run: npm --prefix frontend ci && npm --prefix frontend run build
       - name: Zip the code and the built frontend
         run: |
-          git archive --format=zip --output=PrestCribe.zip HEAD -- . ':(exclude)tests' ':(exclude)backend/db/wilfprestsurvey.db'
+          git archive --format=zip --output=PrestCribe.zip HEAD -- . ':(exclude)tests'
           zip -qr PrestCribe.zip frontend/dist
-      - run: gh release create "$GITHUB_REF_NAME" PrestCribe.zip install.ps1 --title "PrestCribe $GITHUB_REF_NAME" --generate-notes
+      - run: gh release create "$GITHUB_REF_NAME" PrestCribe.zip install.ps1 setups/*.prestcribe --title "PrestCribe $GITHUB_REF_NAME" --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

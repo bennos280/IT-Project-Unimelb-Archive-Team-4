@@ -110,7 +110,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
 
 test("each of a template's fields gets a rule and a description, saved with it", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=page-types");
+  await page.goto("/?collection=1&view=page-types");
   await row(page, "Main page").getByRole("button", { name: "Edit Main page" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit Main page" });
   await expect(dialog.getByRole("table").first().locator("tbody tr td:first-child")).toHaveText(["number_of_dwelling", "address"]);
@@ -133,7 +133,7 @@ test("each of a template's fields gets a rule and a description, saved with it",
 
 test("a rule changed on its own is a new version, a pattern takes an example, and broken JSON has no fields to set", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=page-types");
+  await page.goto("/?collection=1&view=page-types");
   await row(page, "Coded page").getByRole("button", { name: "Edit Coded page" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit Coded page" });
   await expect(dialog.getByLabel("number_of_dwelling required")).toBeChecked(); // the newest version's rule
@@ -155,7 +155,7 @@ test("a rule changed on its own is a new version, a pattern takes an example, an
 
 test("a template's history lists each version, and an older one can be brought back as the newest", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=page-types");
+  await page.goto("/?collection=1&view=page-types");
   await row(page, "Main page").getByRole("button", { name: "Edit Main page" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit Main page" });
   const history = dialog.getByRole("table").last().locator("tbody tr");
@@ -201,7 +201,7 @@ test("a series' levels are a ladder from Item to Page, and its page types are li
 
 test("a page type's label is saved on its own: how its pages group is its series' levels'", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=page-types");
+  await page.goto("/?collection=1&view=page-types");
   await row(page, "Notes page").getByRole("button", { name: "Edit Notes page" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit Notes page" });
   await expect(dialog.getByRole("radiogroup")).toHaveCount(0);
@@ -214,7 +214,7 @@ test("a page type's label is saved on its own: how its pages group is its series
 
 test("a template is saved as a new version by the person working, and the checks' problems are listed", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=page-types");
+  await page.goto("/?collection=1&view=page-types");
   await row(page, "Main page").getByRole("button", { name: "Edit Main page" }).click();
   const dialog = page.getByRole("dialog", { name: "Edit Main page" });
   const template = dialog.getByLabel("Template");
@@ -231,7 +231,7 @@ test("a template is saved as a new version by the person working, and the checks
 
 test("a new page type is added by label, then opened to give it a template", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=page-types");
+  await page.goto("/?collection=1&view=page-types");
   await page.getByRole("button", { name: "Add page type" }).click();
   const add = page.getByRole("dialog", { name: "Add page type" });
   await add.getByLabel("Label").fill("Follow-up visit");
@@ -385,7 +385,7 @@ test("a level opened and saved unchanged keeps its parts, and parts chosen by ha
 
 test("the Unknown type has no template, and says where its pages wait", async ({ page }) => {
   await mockApi(page, null);
-  await page.goto("/?view=page-types");
+  await page.goto("/?collection=1&view=page-types");
   await row(page, "Unknown").getByRole("button", { name: "Edit Unknown" }).click();
   const unknown = page.getByRole("dialog", { name: "Edit Unknown" });
   await expect(unknown.getByText("Pages sorting couldn't place wait here, unread, until a reviewer picks their type. They have no template.")).toBeVisible();
@@ -399,7 +399,7 @@ const NOTES = { id: "nt", kind: "if", message: "Notes but no address", if: "note
 
 test("a check is built from the series' fields, read back in words, and the checks saved together as a version", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=setup&section=checks");
+  await page.goto("/?collection=1&view=setup&section=checks");
   const section = checksSection(page);
   await expect(section.locator("tbody tr")).toHaveText(["No checks yet."]);
   await section.getByRole("button", { name: "Add check" }).click();
@@ -434,7 +434,7 @@ test("a check can be sums against a value, switched off, edited and removed, and
   const calls = await mockApi(page, undefined, [
     { id: 102, number: 2, checks: [DWELLING, NOTES], reviewer: "Ben", note: "notes", createdAt: "2026-10-19T04:00:00+00:00" },
     { id: 101, number: 1, checks: [DWELLING], reviewer: "Ben", note: null, createdAt: "2026-10-18T04:00:00+00:00" }]);
-  await page.goto("/?view=setup&section=checks");
+  await page.goto("/?collection=1&view=setup&section=checks");
   const section = checksSection(page);
   const dwelling = "Main page › number_of_dwelling = Coded page › number_of_dwelling";
   await section.getByLabel(`${dwelling} on`).uncheck();
@@ -467,7 +467,7 @@ test("a check can be sums against a value, switched off, edited and removed, and
 
 test("Check again checks the series' pages as a task, linked to it", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=setup&section=checks");
+  await page.goto("/?collection=1&view=setup&section=checks");
   await checksSection(page).getByRole("button", { name: "Check again" }).click();
   await expect(checksSection(page).getByRole("link", { name: "see the task" })).toHaveAttribute("href", "/?view=tasks&task=55");
   expect(calls.checkAgain).toBe(1);
@@ -475,7 +475,7 @@ test("Check again checks the series' pages as a task, linked to it", async ({ pa
 
 test("a check can compare as codes, or say a field names another's code", async ({ page }) => {
   const calls = await mockApi(page);
-  await page.goto("/?view=setup&section=checks");
+  await page.goto("/?collection=1&view=setup&section=checks");
   const section = checksSection(page);
   await section.getByRole("button", { name: "Add check" }).click();
   let dialog = page.getByRole("dialog", { name: "Add check" });

@@ -155,6 +155,8 @@ def run_bundle(db, job, progress):
         raise SystemExit(f"page sorting model {active.model_id}'s file {active.path} is missing: choose another model, or retrain")
     #the item's series' own page types, and blank too for a series that has any of sorting's own types (the Prest survey)
     series = loader.series_of(loader.archive_owners(db), job.pdf)
+    if series is None:
+        raise SystemExit("no series lists this item: add it to one first")
     types = {t.name for t in db.query(models.PageType).filter_by(collection_id=series, unknown=False)}
     run = pipeline.Run(pdf, out, progress=progress, texts=instructions.texts(db), #the newest versions, as the job starts
                        sorting_model=ROOT / active.path if active else None, grouping=grouping.rule(db, series),

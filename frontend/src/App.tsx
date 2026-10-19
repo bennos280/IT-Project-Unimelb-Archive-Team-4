@@ -35,6 +35,7 @@ export default function App() {
   if (view === "import") return <ImportScreen/>;
   if (view === "settings") return <SettingsScreen/>;
   if (view === "tasks") return params.get("task") ? <TaskScreen id={params.get("task")!}/> : <TasksScreen/>;
+  if ((view === "setup" || view === "page-types") && !params.get("collection")) return <CollectionsScreen/>; // which series's? home asks
   if (view === "setup" && params.has("level")) return <LevelScreen/>; // one of the series' levels of record
   if (view === "setup" || view === "page-types") return <PageTypesScreen/>; // page-types: the old name of a series' Setup
   if (params.has("survey")) return <SurveyReview/>;

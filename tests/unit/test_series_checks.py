@@ -220,15 +220,14 @@ def test_a_page_changed_to_another_type_is_checked_against_that_types_rules(clie
 
 
 def _prest():
-    """Migration 019's Prest checks, and its coded card's rules from the codebook."""
-    import importlib.util
+    """The Prest survey's checks and its coded card's rules, as its setup file (setups/wilfred-prest-survey.prestcribe) has them."""
+    import sqlite3
     from pathlib import Path
-    path = Path(checks.__file__).parent / "migrations" / "versions" / "019_prest_checks.py"
-    spec = importlib.util.spec_from_file_location("prest_checks", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    codebook = json.loads((Path(checks.__file__).parent / "data_dict.json").read_text(encoding="utf-8"))["pages"]["3"]["fields"]
-    return {c["id"]: c for c in module.CHECKS}, module.rules(codebook, set(codebook))
+    setup = sqlite3.connect(Path(checks.__file__).parents[2] / "setups" / "wilfred-prest-survey.prestcribe")
+    [(body,)] = setup.execute("SELECT body FROM check_versions").fetchall()
+    [(rules,)] = setup.execute("SELECT rules FROM instruction_versions WHERE kind = 'coded'").fetchall()
+    setup.close()
+    return {c["id"]: c for c in json.loads(body)}, json.loads(rules)
 
 
 PREST_CHECKS, PREST_RULES = _prest()

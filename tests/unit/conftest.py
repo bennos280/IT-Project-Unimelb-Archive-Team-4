@@ -19,7 +19,7 @@ def sessions(tmp_path):
                                                                 "archive_series": 499420, "archive_identifier": "UMA-SR-000000842",
                                                                 "archive_title": "University of Melbourne Social Survey forms", "archive_items": 45}])
         con.execute(models.PageType.__table__.insert(), [
-            {"name": name, "label": label, "built_in": True, "unknown": name == "other"}
+            {"name": name, "label": label, "built_in": True, "unknown": name == "other", "collection_id": 1}
             for name, label in (("main", "Main page"), ("notes", "Notes page"), ("coded", "Coded page"), ("other", "Unknown"))])
         con.execute(models.RecordLevel.__table__.insert(), [{"collection_id": 1, "position": 1, "name": "survey", "record_key": "number_of_dwelling",
                                                                  "parts": '[{"type": "main", "count": "one_or_more", "how": "starts"}, '

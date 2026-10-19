@@ -26,7 +26,6 @@ def offline(monkeypatch):
     lookup = socket.getaddrinfo
     monkeypatch.setattr(scans, "build_opener", unreachable)
     monkeypatch.setattr(socket, "getaddrinfo", this_computer_only)
-    monkeypatch.setattr(scans, "ARCHIVE_PDFS", [])
     monkeypatch.setattr(scans, "failed", {})
 
 

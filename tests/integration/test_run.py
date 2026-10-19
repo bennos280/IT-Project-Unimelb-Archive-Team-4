@@ -27,15 +27,19 @@ def labels(images, weights=None):
 @pytest.fixture
 def survey(tmp_path, monkeypatch):
     data, output = tmp_path / "data", tmp_path / "output"
-    source = data / "survey"
+    source = data / "216412"  # an item a series lists is a folder named by its number
     source.mkdir(parents=True)
     for i in (1, 2):
         Image.new("RGB", (8, 8), (i, i, i)).save(source / f"page{i}.png")
     config = {"DATA": str(data), "OUTPUT": str(output)}
     monkeypatch.setattr(run, "settings", lambda: config)
     url = f"sqlite:///{(tmp_path / 'choice.db').as_posix()}"
-    database.migrate(url)  # as the real db: collection 1 and its grouping rule
-    monkeypatch.setattr(database, "SessionLocal", sessionmaker(autoflush=False, bind=database.make_engine(url)))
+    database.migrate(url)
+    engine = database.make_engine(url)
+    with engine.begin() as con:  # a series listing the item
+        con.exec_driver_sql("INSERT INTO collections (collection_id, name) VALUES (1, 'Wilfred Prest Survey')")
+        con.exec_driver_sql("INSERT INTO archive_items (node, collection_id, identifier, title) VALUES (216412, 1, 'UMA-ITE-216412', 'Item 216412')")
+    monkeypatch.setattr(database, "SessionLocal", sessionmaker(autoflush=False, bind=engine))
     save_choice()
     monkeypatch.setattr(identify, "identify_pages", labels)
 
@@ -297,10 +301,11 @@ def test_a_damaged_manifest_is_logged_before_the_run_starts_again(tmp_path, capl
     assert len(caplog.records) == 1
 
 
-def test_the_command_line_exits_on_a_db_the_app_has_not_updated(survey, monkeypatch, tmp_path):
-    """A db before 010 has no grouping rule: the run says to start the app first instead of failing on a missing column."""
-    from alembic import command
-    url = f"sqlite:///{(tmp_path / 'choice.db').as_posix()}"
-    command.downgrade(database.alembic_config(url), "009")
-    with pytest.raises(SystemExit, match="start the app once to update the db"):
-        run.main(["--transcribe"])
+def test_the_command_line_skips_an_input_no_series_lists(survey, capsys):
+    source, output, _ = survey
+    with database.SessionLocal() as db:
+        db.query(models.ArchiveItem).delete()
+        db.commit()
+    assert run.main([]) == 0
+    assert f"skipped {source.name}: no series lists it; add it to one from the app first" in capsys.readouterr().out
+    assert not (output / source.stem).exists()

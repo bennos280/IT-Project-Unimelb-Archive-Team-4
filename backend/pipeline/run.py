@@ -37,7 +37,7 @@ class Run:
     sorting_model: Path | None = None                    # retrained page sorting's weights; None: the shipped model
     grouping: dict | None = None                         # how pages group into records (backend.db.grouping.rule); None: one each
     records: list[dict] = field(default_factory=list)    # every record grouping made, parents first: its id and its parent's
-    collection: int = 1                                  # the series the item is loaded into
+    collection: int | None = None                        # the series the item is loaded into; None: the one that lists it
     page_types: set[str] | None = None                   # the labels the series has; sorting's others are review. None: any
     progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
 
@@ -171,16 +171,13 @@ def transcription_config(chosen: dict | None = None) -> dict:
     return {**settings(), **chosen}
 
 
-def grouping_rule() -> dict:
-    """How the command line's bundles group into surveys: collection 1's rule, from the db; a db the app hasn't updated yet
-    has none, so the run exits."""
-    from sqlalchemy.exc import OperationalError
-    from backend.db import database, grouping
+def series_rules(inputs) -> dict:
+    """{input: (its series, how its pages group into records)} for the command line's inputs a series lists, from the db."""
+    from backend.db import database, grouping, loader
     with database.SessionLocal() as db:
-        try:
-            return grouping.rule(db, 1)  # ponytail: a new bundle joins collection 1 (models.Bundle)
-        except OperationalError:
-            sys.exit("The db has no grouping rule yet: start the app once to update the db, then run this again.")
+        owners = loader.archive_owners(db)
+        return {path: (series, grouping.rule(db, series)) for path in inputs
+                if (series := loader.series_of(owners, path)) is not None}
 
 
 def step_transcribe(run: Run) -> None:
@@ -417,10 +414,14 @@ def main(argv=None) -> int:
         print(f"nothing to do: every input in DATA has completed the requested steps under {output}")
         return 0
     chosen = transcription_config() if opts.transcribe else {}
-    rule = grouping_rule() if opts.transcribe else None
+    listed = series_rules(inputs)
     print(f"{len(inputs)} to process -> {output}" + (f"   ({chosen['PROVIDER']}: {chosen['MODEL']})" if opts.transcribe else ""))
     for path in inputs:
-        run_steps(Run(path.resolve(), output / path.stem, grouping=rule), steps)
+        if path not in listed:
+            print(f"skipped {path.name}: no series lists it; add it to one from the app first")
+            continue
+        series, rule = listed[path]
+        run_steps(Run(path.resolve(), output / path.stem, grouping=rule if opts.transcribe else None, collection=series), steps)
     return 0
 
 

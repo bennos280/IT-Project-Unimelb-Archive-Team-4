@@ -117,7 +117,7 @@ def test_other_does_not_require_transcription_but_main_does(client, db):
 def test_a_page_can_be_changed_to_any_type_of_its_collection_which_are_listed_by_label(client, db):
     seed(db)
     db.add(models.Collection(collection_id=2, name="Shipping manifests"))
-    db.add(models.PageType(name="followup", label="Follow-up visit"))
+    db.add(models.PageType(name="followup", label="Follow-up visit", collection_id=1))
     db.add(models.PageType(name="manifest", label="Manifest", collection_id=2))
     db.commit()
     assert client.get('/page-actions/b/p4').json()['pageTypes'] == [

@@ -101,6 +101,7 @@ def test_the_list_counts_review_progress_and_how_far_each_collection_is_set_up(c
                  models.Page(page_id="p3", bundle_id="6789", category="other", import_path="3.png"),  # in no survey
                  models.Edit(page_id="p1", field_title="address", edit_text="5 Peel St.", reviewer_id=1, time=datetime.now()),
                  models.InstructionVersion(kind="main", body="{}", sha256="m"),
+                 *[models.ArchiveItem(node=n, collection_id=1, identifier=f"UMA-ITE-{n}", title=f"Item {n}") for n in (216498, 216499, 216500)],
                  models.Job(pdf="data/216498/216498.pdf", status="failed"), models.Job(pdf="data/216498/216498.pdf", status="done"),
                  models.Job(pdf="data/216499/216499.pdf", status="failed"), models.Job(pdf="data/216500/216500.pdf", status="running"))
     db.commit()

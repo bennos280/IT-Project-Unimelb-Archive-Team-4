@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { ExternalLink, Lock, Plus } from "lucide-react";
+import { ExternalLink, FolderOpen, Lock, Plus } from "lucide-react";
 
 import AppHeader from "@/components/AppHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -65,7 +65,10 @@ export default function CollectionsScreen({ onChosen }: { onChosen?: (person: Re
               Series from the University of Melbourne Archives, each with its own page types and items.
             </p>
           </div>
-          <Button onClick={() => setCreating(true)}><Plus /> New series</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild><a href="/?view=import"><FolderOpen /> Open a PrestCribe file</a></Button>
+            <Button onClick={() => setCreating(true)}><Plus /> New series</Button>
+          </div>
         </div>
         {loadError && (
           <Alert variant="destructive">

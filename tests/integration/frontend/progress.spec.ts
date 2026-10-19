@@ -258,12 +258,6 @@ test.describe("Progress navigation and layout", () => {
     ).toBeVisible();
   });
 
-  test("Import opens the import screen", async ({ page }) => {
-    await page.goto("/?collection=1");
-    await page.getByRole("button", { name: "Import", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Import items" })).toBeVisible();
-  });
-
   for (const [label, pageId] of [
     ["Pg 1", "216417/p0"],
     ["Pg 2", "216417/p1"],

@@ -1,7 +1,7 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { ArrowRight, ExternalLink, ListPlus, Search, Upload } from "lucide-react";
+import { ArrowRight, ExternalLink, ListPlus, Search } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import SeriesHeader from "@/components/SeriesHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -385,11 +385,6 @@ export default function ProgressDashboard() {
         hasDrafts={false}
         variant={canAdd ? "outline" : "default"}
       />
-      {collectionId === 1 && ( // ponytail: imports go to collection 1 until the import screen picks a collection
-        <Button type="button" variant="outline" onClick={() => { window.location.href = "/?view=import"; }}>
-          <Upload /> Import
-        </Button>
-      )}
     </div>
   );
   return (

@@ -28,14 +28,15 @@ class RecordLevel(Base):
     record_key = Column(String, nullable=True)
     parts = Column(Text, nullable=False, server_default="[]")
 
-#an item of a collection's archive series, as the archive lists it; an item no collection lists is the Wilfred Prest Survey's
+#an item of a collection's archive series, as the archive lists it
 class ArchiveItem(Base):
     __tablename__ = "archive_items"
     node = Column(Integer, primary_key=True) #its page on the archive, /nodes/view/<node>, and its bundle number
     collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
     identifier = Column(String, nullable=False) #its catalogue identifier, UMA-ITE-...
     title = Column(String, nullable=False)
-    pdf = Column(String, nullable=True) #<node>/<node>.pdf, where its PDF goes once downloaded; None: in backend/archive_pdfs.txt
+    pdf = Column(String, nullable=True) #where its PDF goes once downloaded: <node>/<node>.pdf, or <node>/<file id>_<name>.pdf when
+                                        #the file was named (the Prest survey's); None: none known
 
 #which of its series' page types a page of an item not yet read is, as said while setting the series up on it (a sample)
 class SampleLabel(Base):
@@ -44,12 +45,17 @@ class SampleLabel(Base):
     page = Column(Integer, primary_key=True) #its page in its PDF, from 1
     page_type = Column(String, ForeignKey("page_types.name"), nullable=False)
 
-#ponytail: an uploaded bundle joins collection 1 until the import screen picks a series
+#an item uploaded on the Import screen (its number: its folder in DATA), and the series it was uploaded to
+class UploadedItem(Base):
+    __tablename__ = "uploaded_items"
+    bundle = Column(String, primary_key=True)
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
+
 class Bundle(Base):
     __tablename__ = "bundles"
     bundle_id = Column(String, primary_key=True)
     source_pdf = Column(String, nullable=False)
-    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False, server_default="1")
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
 
 #a record: its pages point at it, and one of a level below the top sits in its parent, a record of the level above (a folder's
 #letter in the folder); None: at the top, inside its item
@@ -66,7 +72,7 @@ class PageType(Base):
     __table_args__ = (UniqueConstraint("collection_id", "label"),
                       Index("uq_page_types_unknown", "collection_id", unique=True, sqlite_where=text("unknown"))) #one per collection
     name = Column(String, primary_key=True)
-    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False, server_default="1")
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
     label = Column(String, nullable=False, default=lambda ctx: ctx.get_current_parameters()["name"]) #the name if not given
     #its collection's Unknown type: a page sorting couldn't place waits here, unread and flagged, for a reviewer to pick its type
     unknown = Column(Boolean, nullable=False, default=False, server_default=false())

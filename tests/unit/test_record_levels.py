@@ -105,7 +105,7 @@ def test_with_no_levels_each_item_is_one_record_and_with_one_its_page_types_star
 
 
 def test_an_unknown_page_grouped_with_others_is_flagged_as_part_of_their_survey(client, db):
-    add(db, models.Bundle(bundle_id="6789", source_pdf="6789.pdf"), models.Survey(survey_id="s", bundle_id="6789"),
+    add(db, models.Bundle(bundle_id="6789", source_pdf="6789.pdf", collection_id=1), models.Survey(survey_id="s", bundle_id="6789"),
         models.Page(page_id="s_1", survey_id="s", bundle_id="6789", category="main", import_path="x.png"),
         models.Page(page_id="s_2", survey_id="s", bundle_id="6789", category="other", import_path="y.png"),
         models.Field(page_id="s_2", field_title="text", text_raw="Moved away"))
@@ -142,7 +142,7 @@ def test_levels_nest_top_first_and_a_page_type_can_need_a_number_field_for_each_
 def test_a_record_inside_another_says_so_is_named_by_its_level_and_its_export_keeps_it(client, db):
     setup(db)
     assert put(client, 1, {"name": "folder"}, {"name": "letter"}).status_code == 200
-    add(db, models.Bundle(bundle_id="b", source_pdf="b.pdf"), models.Survey(survey_id="f", bundle_id="b"),
+    add(db, models.Bundle(bundle_id="b", source_pdf="b.pdf", collection_id=1), models.Survey(survey_id="f", bundle_id="b"),
         models.Survey(survey_id="f-1", bundle_id="b", parent_id="f"), models.Survey(survey_id="g", bundle_id="b"),
         models.Survey(survey_id="g-1", bundle_id="b", parent_id="g"),
         models.Page(page_id="b_3", survey_id="g-1", bundle_id="b", category="notes", import_path="z.png"),
@@ -160,7 +160,7 @@ def test_a_record_inside_another_says_so_is_named_by_its_level_and_its_export_ke
 def test_levels_tried_on_an_item_read_show_its_records_by_the_numbers_reviewers_saved_and_save_nothing(client, db):
     setup(db)
     pages = [(1, "notes", None), (2, "main", "3"), (3, "coded", "3"), (4, "main", "7"), (5, "coded", "9")]
-    add(db, models.Bundle(bundle_id="b", source_pdf="b.pdf"),
+    add(db, models.Bundle(bundle_id="b", source_pdf="b.pdf", collection_id=1),
         *[models.Page(page_id=f"b_{n}", bundle_id="b", category=t, import_path="x.png") for n, t, _ in pages],
         *[models.Field(page_id=f"b_{n}", field_title="number_of_dwelling", text_raw=v) for n, _, v in pages if v],
         models.Edit(page_id="b_5", field_title="number_of_dwelling", edit_text="7", reviewer_id=1))  # 9 read, 7 saved
@@ -192,7 +192,7 @@ def test_a_page_is_shown_small_from_its_items_pdf_or_its_scan_here_and_never_fet
         for _ in range(2):
             doc.new_page(width=600, height=800)
         doc.save(pdf)
-    add(db, models.Bundle(bundle_id="t", source_pdf=str(pdf)), models.Bundle(bundle_id="u", source_pdf=str(tmp_path / "gone.pdf")),
+    add(db, models.Bundle(bundle_id="t", source_pdf=str(pdf), collection_id=1), models.Bundle(bundle_id="u", source_pdf=str(tmp_path / "gone.pdf"), collection_id=1),
         *[models.Page(page_id=page, bundle_id=bundle, category="main", import_path=str(tmp_path / f"{page}.png"))
           for page, bundle in (("t_00002", "t"), ("t_00009", "t"), ("u_00001", "u"))])
     shown = client.get("/pages/t_00002/thumbnail")
@@ -203,7 +203,7 @@ def test_a_page_is_shown_small_from_its_items_pdf_or_its_scan_here_and_never_fet
     assert [client.get(f"/pages/{page}/thumbnail").status_code for page in ("t_00009", "u_00001", "nowhere")] == [404] * 3
     # a folder of scans: each page's own, whatever it's called; one not here yet is drawn once it is
     Image.new("L", (300, 400)).save(tmp_path / "front.png")
-    add(db, models.Bundle(bundle_id="v", source_pdf=str(tmp_path / "v")),
+    add(db, models.Bundle(bundle_id="v", source_pdf=str(tmp_path / "v"), collection_id=1),
         *[models.Page(page_id=page, bundle_id="v", category="main", import_path=str(tmp_path / f"{scan}.png"))
           for page, scan in (("v_front", "front"), ("v_00002", "later"))])
     assert [client.get(f"/pages/{page}/thumbnail").status_code for page in ("v_front", "v_00002")] == [200, 404]
@@ -222,7 +222,7 @@ def test_a_record_with_too_many_or_too_few_of_a_part_or_a_page_type_it_isnt_made
     setup(db)
     pages = [(1, "main", "3"), (2, "notes", None), (3, "notes", None), (4, "coded", "3"), (5, "coded", "3"), (6, "main", "8"), (7, "letter", None),
              (8, "other", None)]  # an Unknown page: flagged as unread, not as a type the survey isn't made of
-    add(db, models.PageType(name="letter", label="Letter page"), models.Bundle(bundle_id="b", source_pdf="b.pdf"),
+    add(db, models.PageType(name="letter", label="Letter page", collection_id=1), models.Bundle(bundle_id="b", source_pdf="b.pdf", collection_id=1),
         *[models.Page(page_id=f"b_{n}", bundle_id="b", category=t, import_path="x.png") for n, t, _ in pages],
         *[models.Field(page_id=f"b_{n}", field_title="number_of_dwelling", text_raw=v) for n, _, v in pages if v])
     level = {**SURVEY, "parts": [MAIN, {**NOTES, "count": "at_most_one"}, CODED]}
@@ -240,7 +240,7 @@ def test_a_record_with_too_many_or_too_few_of_a_part_or_a_page_type_it_isnt_made
 def test_a_level_isnt_flagged_for_the_page_types_of_the_levels_below_and_its_problems_are_its_own(client, db):
     setup(db)
     pages = [(1, "main", "3"), (2, "coded", "3"), (3, "main", "8"), (4, "coded", "8")]
-    add(db, models.Bundle(bundle_id="b", source_pdf="b.pdf"),
+    add(db, models.Bundle(bundle_id="b", source_pdf="b.pdf", collection_id=1),
         *[models.Page(page_id=f"b_{n}", bundle_id="b", category=t, import_path="x.png") for n, t, _ in pages],
         *[models.Field(page_id=f"b_{n}", field_title="number_of_dwelling", text_raw=v) for n, _, v in pages])
     box = {"name": "box", "parts": [{"type": "main", "count": "one", "how": "starts"}, {"type": "notes", "count": "one", "how": "follows"}]}

@@ -26,5 +26,7 @@ backend/wilfprestsurvey.db
 *.db-journal
 # the running worker's lock file
 backend/worker.lock
-# copies of the db made before a migration changes it
-backend/db/wilfprestsurvey-backup-*.db
+# the database, made on first run (no data in git: what earlier ones held is in results/), and its copies kept before a migration or opening a PrestCribe file
+backend/db/prestcribe.db
+backend/db/prestcribe-backup-*.db
+backend/db/wilfprestsurvey*.db

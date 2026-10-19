@@ -55,7 +55,7 @@ const switcher = (page: Page) => page.getByRole("banner").getByRole("button", { 
 const menuItems = (page: Page) => page.getByRole("menu").getByRole("menuitem");
 const itemsCrumb = (page: Page) => trail(page).getByRole("link", { name: "Items", exact: true });
 const bundleLink = (page: Page) => page.getByRole("link", { name: "216417", exact: true });
-const appName = (page: Page) => page.getByRole("link", { name: "PrestCribe" });
+const appName = (page: Page) => page.getByRole("link", { name: "PrestCribe", exact: true });
 const tabs = (page: Page) => page.getByRole("navigation", { name: "Series" }).getByRole("link");
 
 test("home is the app's name alone, which links home, with Settings and Tasks", async ({ page }) => {
@@ -219,7 +219,7 @@ test("a survey without item info falls back to the bundle id in the crumb, and t
   await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
 });
 
-for (const [url, crumb, h1] of [["/?view=import", "Import", "Import items"], ["/?view=settings", "Settings", "Settings"], ["/?view=tasks", "Tasks", "Tasks"]]) {
+for (const [url, crumb, h1] of [["/?view=import", "Open a PrestCribe file", "Open a PrestCribe file"], ["/?view=settings", "Settings", "Settings"], ["/?view=tasks", "Tasks", "Tasks"]]) {
   test(`the ${crumb} screen is a crumb after the app's name, with one h1`, async ({ page }) => {
     await mockApi(page);
     await page.goto(url);
@@ -236,14 +236,11 @@ test("a series' actions sit by its title, Add items first; Settings and Tasks ar
   await mockApi(page);
   await page.goto("/?collection=1");
   const main = page.getByRole("main");
-  await expect(main.getByRole("button", { name: /^(Add items|Export|Import)$/ })).toHaveText(["Add items", "Export", "Import"]);
-  await expect(page.getByRole("banner").getByRole("button")).toHaveCount(1); // the series menu; the rest are links
+  await expect(main.getByRole("button", { name: /^(Add items|Export|Import)$/ })).toHaveText(["Add items", "Export"]);
+  await expect(page.getByRole("banner").getByRole("button")).toHaveCount(2); // the series menu and who is working; the rest are links
   await main.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByRole("dialog").getByRole("heading", { name: "Export" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await main.getByRole("button", { name: "Import", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Import items" })).toBeVisible();
-  await page.goBack();
   await tabs(page).last().click();
   await expect(page).toHaveURL("/?collection=1&view=setup");
   await page.getByRole("banner").getByRole("link", { name: "Settings" }).click();

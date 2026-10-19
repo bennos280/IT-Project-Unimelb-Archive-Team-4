@@ -20,12 +20,14 @@ def data(tmp_path, monkeypatch, db):
     for number, stem in (("216441", "a"), ("216444", "b")):
         (tmp_path / number).mkdir()
         (tmp_path / number / f"{stem}.pdf").write_bytes(b"%PDF")
+        db.add(models.ArchiveItem(node=int(number), collection_id=1, identifier=f"UMA-ITE-{number}", title=f"Item {number}", pdf=f"{number}/{stem}.pdf"))
+    db.commit()
     monkeypatch.setattr(main, "settings", lambda: {"DATA": str(tmp_path)})
     return tmp_path
 
 
 def test_bundles_list_each_pdf_whether_it_is_loaded_and_its_surveys(client, db, data):
-    db.add(models.Bundle(bundle_id="b", source_pdf="b.pdf"))
+    db.add(models.Bundle(bundle_id="b", source_pdf="b.pdf", collection_id=1))
     db.flush()
     db.add_all([models.Survey(survey_id="b-9", bundle_id="b"), models.Survey(survey_id="b-7", bundle_id="b")])
     db.flush()
@@ -39,8 +41,9 @@ def test_bundles_list_each_pdf_whether_it_is_loaded_and_its_surveys(client, db, 
 def test_a_pdf_is_listed_under_the_series_whose_archive_item_it_is_with_its_identifier_and_title(client, db, data):
     db.add(models.Collection(collection_id=2, name="Ships"))
     db.flush()
-    db.add_all([models.ArchiveItem(node=216441, collection_id=1, identifier="UMA-ITE-1973000200030", title="Oakleigh 19"),
-                models.ArchiveItem(node=216444, collection_id=2, identifier="UMA-ITE-1", title="Another series' item")])
+    first, second = db.get(models.ArchiveItem, 216441), db.get(models.ArchiveItem, 216444)
+    first.identifier, first.title = "UMA-ITE-1973000200030", "Oakleigh 19"
+    second.collection_id, second.identifier, second.title = 2, "UMA-ITE-1", "Another series' item"
     db.commit()
     assert [(b["name"], b["archive"]) for b in client.get("/bundles").json()] == [
         ("216441", {"identifier": "UMA-ITE-1973000200030", "title": "Oakleigh 19"})]
@@ -73,15 +76,15 @@ def test_pdfs_inside_the_repo_are_named_relative_to_it(client, data, monkeypatch
 
 
 def test_jobs_only_for_unloaded_pdfs_in_data(client, db, data):
-    db.add(models.Bundle(bundle_id="b", source_pdf="b.pdf"))
+    db.add(models.Bundle(bundle_id="b", source_pdf="b.pdf", collection_id=1))
     db.commit()
     assert client.post("/jobs", json={"pdf": "C:/Windows/notepad.pdf"}).status_code == 404
     assert client.post("/jobs", json={"pdf": stored_path(data / "216444" / "b.pdf")}).status_code == 409  # loaded
 
 
-def test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run(client, data, monkeypatch):
-    from backend import scans
-    monkeypatch.setattr(scans, "ARCHIVE_PDFS", ["216441/a.pdf", "216450/c.pdf"])
+def test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run(client, db, data):
+    db.add(models.ArchiveItem(node=216450, collection_id=1, identifier="UMA-ITE-216450", title="Item 216450", pdf="216450/c.pdf"))
+    db.commit()
     bundles = client.get("/bundles").json()
     assert [(b["name"], b["bundle"]) for b in bundles] == [("216441", "a"), ("216444", "b"), ("216450", "c")]  # a.pdf once
     pdf = stored_path(data / "216450" / "c.pdf")
@@ -89,9 +92,11 @@ def test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run(clien
     assert client.post("/jobs", json={"pdf": pdf}).status_code == 202
 
 
-def test_the_real_archive_list_names_each_bundle_as_the_archive_does():
+def test_the_prest_setup_names_each_archive_pdf_as_the_archive_does():
+    import sqlite3
     from backend.scans import ARCHIVE
-    names = (ROOT / "backend" / "archive_pdfs.txt").read_text(encoding="utf-8").split()
+    with sqlite3.connect(ROOT / "setups" / "wilfred-prest-survey.prestcribe") as con:
+        names = [pdf for (pdf,) in con.execute("select pdf from archive_items")]
     assert len(names) == len(set(names)) == 45 and ARCHIVE.startswith("https://")
     assert all(re.fullmatch(r"\d+/\d+_[\w.-]+\.pdf", name) for name in names)  # <bundle number>/<file id>_<file name>
 
@@ -169,7 +174,7 @@ def test_model_history_groups_versions_and_averages_available_runtimes(client, d
     Pages without a runtime still count, but do not lower the average. Pages
     without a recorded model are excluded from the model history.
     """
-    db.add(models.Bundle(bundle_id="bundle", source_pdf="bundle.pdf"))
+    db.add(models.Bundle(bundle_id="bundle", source_pdf="bundle.pdf", collection_id=1))
     versions = [models.InstructionVersion(kind=kind, body="test", sha256="test")
                 for kind in ("prompt", "main", "main")]
     db.add_all(versions)

@@ -1,7 +1,9 @@
 """A page type's field rules (backend/db/checks.py): saved with its template version, and a page's values that break them
 flagged for review (kind invalid) when its item is loaded or it is read again."""
 import json
+import shutil
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -108,7 +110,7 @@ def test_a_templates_rules_are_saved_with_it_changed_alone_and_refused_when_they
 
 def test_a_loaded_items_values_that_break_their_rules_are_flagged_and_a_new_check_replaces_the_last(tmp_path, monkeypatch):
     url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
-    database.migrate(url)
+    shutil.copy(Path(__file__).parents[2] / "setups" / "wilfred-prest-survey.prestcribe", tmp_path / "test.db")  # Prest's setup
     engine = database.make_engine(url)
     monkeypatch.setattr(database, "engine", engine)
     rules = {"type_of_family": {"type": "one_of", "values": ["1 = Complete simple family", "2", "3"]},

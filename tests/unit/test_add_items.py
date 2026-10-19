@@ -243,7 +243,7 @@ def test_a_page_takes_only_a_page_type_of_its_own_series(client, db):
     db.add_all([models.Reviewer(reviewer_id=1, name="Ben"), models.Collection(collection_id=2, name="Letters")])
     db.flush()
     db.add_all([models.PageType(name="docket", label="Docket", collection_id=2),
-                models.Bundle(bundle_id="b", source_pdf="b.pdf")])
+                models.Bundle(bundle_id="b", source_pdf="b.pdf", collection_id=1)])
     db.flush()
     db.add(models.Page(page_id="b_00001", bundle_id="b", category="main", import_path="x.png"))
     db.commit()
@@ -269,10 +269,10 @@ def test_an_upload_cant_take_the_number_of_an_item_added_from_the_archive(client
     monkeypatch.setattr(uploads, "settings", lambda: {"DATA": str(tmp_path)})
     db.add(models.ArchiveItem(node=637675, collection_id=1, identifier="UMA-IT-1", title="A", pdf="637675/637675.pdf"))
     db.commit()
-    refused = client.post("/bundles/upload", params={"bundle": "637675", "filename": "mine.pdf"}, content=b"%PDF")
+    refused = client.post("/bundles/upload", params={"bundle": "637675", "filename": "mine.pdf", "collection": 1}, content=b"%PDF")
     assert (refused.status_code, refused.json()["detail"]) == (
         409, "Item number 637675 belongs to an archive PDF. Choose a different item number.")
-    refused = client.post("/bundles/upload", params={"bundle": "1", "filename": "637675.pdf"}, content=b"%PDF")
+    refused = client.post("/bundles/upload", params={"bundle": "1", "filename": "637675.pdf", "collection": 1}, content=b"%PDF")
     assert (refused.status_code, refused.json()["detail"]) == (
         409, "This PDF belongs to archive item 637675. Use that item number.")
 
@@ -303,11 +303,10 @@ def test_an_items_pages_can_be_seen_before_it_is_read_its_pdf_downloaded_once_to
 def test_an_item_of_the_archives_known_pdfs_is_seen_from_its_pdf_there(client, db, archive, tmp_path, monkeypatch):
     import pymupdf
     monkeypatch.setattr(main, "settings", lambda: {"DATA": str(tmp_path)})
-    monkeypatch.setattr(scans, "ARCHIVE_PDFS", ["216412/423444_x.pdf"])
     with pymupdf.open() as pdf:
         pdf.new_page()
         archive.add("216412", {}, pdf=("423444", pdf.tobytes()))
-    db.add(models.ArchiveItem(node=216412, collection_id=1, identifier="UMA-ITE-1", title="Box Hill"))  # its PDF one of those
+    db.add(models.ArchiveItem(node=216412, collection_id=1, identifier="UMA-ITE-1", title="Box Hill", pdf="216412/423444_x.pdf"))
     db.commit()
     assert client.get("/collections/1/items/216412/scans").json() == {"pages": 1}
     assert (tmp_path / "216412" / "423444_x.pdf").is_file()

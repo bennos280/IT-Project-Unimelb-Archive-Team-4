@@ -39,8 +39,8 @@ def write_lock(db):
 get_db = database.get_db #the db session dependency, defined there so connections.py can use it too
 
 @app.post("/bundles/upload", status_code=201)
-async def import_bundle(request: Request, bundle: str, filename: str, db: Session = Depends(get_db)):
-    return await upload_bundle(request, bundle, filename, db)
+async def import_bundle(request: Request, bundle: str, filename: str, collection: int, db: Session = Depends(get_db)):
+    return await upload_bundle(request, bundle, filename, collection, db)
 
 
 #request bodies
@@ -1057,7 +1057,7 @@ def series_items(db, collection):
     latest = {job.pdf: job for job in db.query(models.Job).order_by(models.Job.job_id)}
     rows = []
     for stored, bundle, name, folder in runnables(db):
-        if bundle in elsewhere or (bundle not in loaded and owners.get(folder, 1) != collection):
+        if bundle in elsewhere or (bundle not in loaded and owners.get(folder) != collection):
             continue
         job = latest.get(stored)
         rows.append({"pdf": stored, "bundle": bundle, "name": name, "archive": items.get(name), "loaded": bundle in loaded,
@@ -1153,7 +1153,7 @@ def series_item(db, collection_id, name):
 #where a series' archive item's PDF is, or goes once downloaded (as reading it puts it); 404 if the series doesn't list it
 def item_pdf(db, collection_id, name):
     item = series_item(db, collection_id, name)
-    pdf = item.pdf or next((p for p in scans.ARCHIVE_PDFS if p.startswith(f"{name}/")), None)
+    pdf = item.pdf
     if not pdf:
         raise HTTPException(status_code=404, detail="There's no PDF of that item to get.")
     return ROOT / settings()["DATA"] / pdf
@@ -1582,7 +1582,7 @@ def save_state(db: Session = Depends(get_db)):
                         background=BackgroundTask(shutil.rmtree, folder, ignore_errors=True))
 
 #opens a PrestCribe file (GET /state) in place of everything here, once nothing is being read; what was here is kept first as
-#backend/db/wilfprestsurvey-backup-<when>.db, and an older file is brought up to date
+#backend/db/prestcribe-backup-<when>.db, and an older file is brought up to date
 @app.post("/state")
 async def open_state(request: Request, db: Session = Depends(get_db)):
     import tempfile
@@ -1600,7 +1600,7 @@ async def open_state(request: Request, db: Session = Depends(get_db)):
             found.close()
             raise HTTPException(status_code=400, detail="That isn't a PrestCribe file.")
         live = db.connection().connection.driver_connection
-        with sqlite3.connect(ROOT / "backend" / "db" / f"wilfprestsurvey-backup-{datetime.now():%Y%m%d-%H%M%S}.db") as kept:
+        with sqlite3.connect(ROOT / "backend" / "db" / f"prestcribe-backup-{datetime.now():%Y%m%d-%H%M%S}.db") as kept:
             live.backup(kept)
         kept.close()
         found.backup(live)

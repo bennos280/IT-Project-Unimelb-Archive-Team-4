@@ -3,7 +3,7 @@ from backend.db import models
 
 
 def seed(db):
-    for row in [models.Bundle(bundle_id='b',source_pdf='b.pdf'), models.Bundle(bundle_id='x',source_pdf='x.pdf'),
+    for row in [models.Bundle(bundle_id='b', source_pdf='b.pdf', collection_id=1), models.Bundle(bundle_id='x', source_pdf='x.pdf', collection_id=1),
                 models.Survey(survey_id='s1',bundle_id='b'),models.Survey(survey_id='s2',bundle_id='b'),models.Survey(survey_id='outside',bundle_id='x'),
                 models.Reviewer(reviewer_id=1,name='Alex'),
                 models.Page(page_id='b/p4',bundle_id='b',survey_id='s1',category='main',import_path='image.png'),

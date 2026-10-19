@@ -258,7 +258,7 @@ test("with the model lists, nothing is picked for you: the dropdowns start on Ch
   await page.goto("/?view=settings");
   const save = page.getByRole("button", { name: "Save defaults" });
   for (const label of ["Provider", "Model", "Effort"]) await expect(field(page, label)).toHaveValue("");
-  expect(await optionTexts(page, "Provider")).toEqual(["Choose…", "Claude", "Codex"]);
+  expect(await optionTexts(page, "Provider")).toEqual(["Choose…", "Claude Code", "Codex CLI", "Claude API", "OpenAI API", "Gemini API", "OpenRouter", "Ollama (this computer)"]);
   await field(page, "Provider").selectOption("claude");
   expect(await optionTexts(page, "Model")).toEqual(["Choose…", "claude-used-1", "opus (latest)", "sonnet (latest)", "Other…"]);
   await expect(field(page, "Model")).toHaveValue("");
@@ -831,7 +831,7 @@ test("checklist: updates when a sign-in finishes", async ({ page }) => {
   await expect(checklist(page)).toHaveCount(0);
 });
 
-test("sections run Transcription model, Accounts, then the folders footer", async ({ page }) => {
+test("sections run Transcription model, Accounts, API keys, then the folders footer", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
   await page.goto("/?view=settings");
   const tops = [];
@@ -840,7 +840,7 @@ test("sections run Transcription model, Accounts, then the folders footer", asyn
   expect(tops[0]).toBeLessThan(tops[1]);
   expect(tops[1]).toBeLessThan(tops[2]);
   await expect(page.locator("footer", { has: page.getByRole("heading", { name: "Folders", level: 2 }) })).toBeVisible();
-  await expect(page.locator("section#transcription-defaults + section#connections + footer")).toHaveCount(1);
+  await expect(page.locator("section#transcription-defaults + section#connections + section#api-keys + footer")).toHaveCount(1);
 });
 
 test("the model row leaves no empty line under it until there is a message", async ({ page }) => {

@@ -8,7 +8,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from backend.common import ROOT
 
 #the db file, wherever the server is started from
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{Path(__file__).parent / 'wilfprestsurvey.db'}"
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{Path(__file__).parent / 'prestcribe.db'}"
 
 #an engine for a SQLite db: foreign keys checked, and a 15 s wait so the API and the worker can use it at once
 def make_engine(url):

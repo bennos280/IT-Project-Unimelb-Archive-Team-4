@@ -18,8 +18,6 @@ from backend.common import ROOT, settings
 
 ARCHIVE = "https://archives.library.unimelb.edu.au"
 AGENT = "prest-survey-pipeline (University of Melbourne COMP30022 Team 4, 2026 Semester 2)"  #the archive refuses curl's default name
-#each bundle's PDF on the archive, as <bundle number>/<file id>_<file name>
-ARCHIVE_PDFS = (Path(__file__).parent / "archive_pdfs.txt").read_text(encoding="utf-8").split()
 ARCHIVE_ERRORS = (OSError, HTTPException)  #the archive can't be reached, or broke off
 log = logging.getLogger("scans")
 RETRY = 300  #seconds before asking the archive again for a bundle's pages after it couldn't send one

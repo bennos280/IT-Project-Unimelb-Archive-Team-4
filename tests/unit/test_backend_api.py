@@ -4,7 +4,7 @@ from backend.db import models
 def add_in_order(db, *rows):
     """Adds the test rows one at a time after the bundle they belong to: the db checks foreign keys,
     and the models have no relationships to tell SQLAlchemy which to insert first."""
-    for row in [models.Bundle(bundle_id="6789", source_pdf="6789.pdf"), *rows]:
+    for row in [models.Bundle(bundle_id="6789", source_pdf="6789.pdf", collection_id=1), *rows]:
         db.add(row)
         db.flush()
 
@@ -254,7 +254,7 @@ def test_a_page_scan_not_on_this_computer_comes_from_the_archive_and_is_kept(cli
     from backend import scans
     archive.add("216441", {4: ("44", b"jpeg of page 4")})
     monkeypatch.setattr(scans, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
-    add_in_order(db, models.Bundle(bundle_id="x", source_pdf="data/raw/Surveys/216441/x.pdf"),
+    add_in_order(db, models.Bundle(bundle_id="x", source_pdf="data/raw/Surveys/216441/x.pdf", collection_id=1),
                  *[models.Page(page_id=f"x_0000{n}", category="main", import_path=f"output/x/pages/x_0000{n}.png",
                                bundle_id="x") for n in (4, 9)])
     db.commit()
@@ -271,7 +271,7 @@ def test_a_page_the_archive_breaks_off_is_not_kept_and_its_bundle_is_not_asked_a
     archive.add("216441", {4: ("44", b"jpeg of page 4")})
     archive.cut_short.add("44")
     monkeypatch.setattr(scans, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
-    add_in_order(db, models.Bundle(bundle_id="x", source_pdf="data/raw/Surveys/216441/x.pdf"),
+    add_in_order(db, models.Bundle(bundle_id="x", source_pdf="data/raw/Surveys/216441/x.pdf", collection_id=1),
                  models.Page(page_id="x_00004", category="main", import_path="output/x/pages/x_00004.png", bundle_id="x"))
     db.commit()
 

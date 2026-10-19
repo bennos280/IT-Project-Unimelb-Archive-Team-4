@@ -21,7 +21,7 @@ log = logging.getLogger("uploads")
 
 def archive_sources(db):
     """The archive's PDFs this app knows, as <item number>/<file id>_<name>.pdf: the Prest survey's and those added to a series."""
-    return [*scans.ARCHIVE_PDFS, *(pdf for (pdf,) in db.query(models.ArchiveItem.pdf).filter(models.ArchiveItem.pdf.is_not(None)))]
+    return [pdf for (pdf,) in db.query(models.ArchiveItem.pdf).filter(models.ArchiveItem.pdf.is_not(None))]
 
 
 def check_bundle_number(db, data, bundle, filename):
@@ -59,10 +59,15 @@ def check_pdf_identity(db, data, filename, bundle):
             raise HTTPException(409, f"This PDF belongs to archive item {path.parent.name}. Use that item number.")
 
 
-async def upload_bundle(request: Request, bundle: str, filename: str, db):
-    """Stream one file to a temporary path, validate it, then publish without overwrite."""
+async def upload_bundle(request: Request, bundle: str, filename: str, collection: int, db):
+    """Stream one file to a temporary path, validate it, then publish without overwrite; the item is the series' (collection)."""
     if not re.fullmatch(r"[0-9]{1,30}", bundle):
         raise HTTPException(400, "Item number must contain 1–30 digits.")
+    if not db.get(models.Collection, collection):
+        raise HTTPException(400, "Choose the series these files are for.")
+    owner = db.get(models.UploadedItem, bundle)
+    if owner and owner.collection_id != collection:
+        raise HTTPException(409, f"Item number {bundle} was uploaded to another series. Choose a different item number.")
     # Characters Windows can't store in a name; it also drops a trailing dot or space.
     if not filename or len(filename) > 200 or re.search(r'[<>:"/\\|?*\x00-\x1f]', filename) or filename[-1] in ". ":
         raise HTTPException(400, "Invalid filename.")
@@ -114,6 +119,9 @@ async def upload_bundle(request: Request, bundle: str, filename: str, db):
                     check_pdf_identity(db, data, filename, bundle)
                 folder.mkdir(parents=True, exist_ok=True)
                 os.link(temporary, destination)
+                if not owner:
+                    db.add(models.UploadedItem(bundle=bundle, collection_id=collection))
+                    db.commit()
         except FileExistsError:
             raise HTTPException(409, "A file with this name already exists in this item. Rename it before uploading.")
         return {"filename": destination.name, "bundle": bundle, "size": size}

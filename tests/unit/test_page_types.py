@@ -104,7 +104,7 @@ def test_the_unknown_setting_decides_not_the_name_other(client, setup):
     """Made the collection's Unknown type, any page type is emptied at once, can't have a template and is flagged for a
     check; other, no longer Unknown, is read like any type."""
     setup.get(models.PageType, "other").unknown = False
-    setup.add(models.PageType(name="unsorted", label="Unsorted", unknown=True))
+    setup.add(models.PageType(collection_id=1, name="unsorted", label="Unsorted", unknown=True))
     setup.commit()
     assert client.post("/instructions/unsorted", json={"body": FOLLOWUP, "basedOn": None, "reviewerId": 1}).status_code == 404
     assert change(client, "other").json()["detail"] == "Give other a template first."
@@ -125,7 +125,7 @@ def test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown(clien
 def queued(setup, tmp_path, monkeypatch):
     """The followup type with a template, a job to read the page as it, and a scan of the page."""
     followup = models.InstructionVersion(kind="followup", body=FOLLOWUP, sha256="f")
-    for row in (models.PageType(name="followup", reviewer_id=1), followup, models.Job(kind="page", page_id=PAGE, page_type="followup", transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")):
+    for row in (models.PageType(collection_id=1, name="followup", reviewer_id=1), followup, models.Job(kind="page", page_id=PAGE, page_type="followup", transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")):
         setup.add(row)
         setup.flush()
     setup.commit()
