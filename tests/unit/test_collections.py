@@ -81,3 +81,32 @@ def test_export_lists_only_the_collections_bundles(client, db):
     assert [b["id"] for b in client.get("/export/bundles?collection=2").json()] == ["ship1"]
     assert [b["id"] for b in client.get("/export/bundles?collection=1").json()] == ["6789"]
     assert len(client.get("/export/bundles").json()) == 2
+
+
+def test_the_list_counts_review_progress_and_how_far_each_collection_is_set_up(client, db):
+    from datetime import datetime
+    add_in_order(db, models.Reviewer(reviewer_id=1, name="Ben"), models.Survey(survey_id="s", bundle_id="6789"),
+                 models.Page(page_id="p1", survey_id="s", bundle_id="6789", category="main", import_path="1.png"),
+                 models.Field(page_id="p1", field_title="address", text_raw="5 Peel St."),
+                 models.Page(page_id="p2", survey_id="s", bundle_id="6789", category="notes", import_path="2.png"),
+                 models.Field(page_id="p2", field_title="text", text_raw="notes"),
+                 models.Page(page_id="p3", bundle_id="6789", category="other", import_path="3.png"),  # in no survey
+                 models.Edit(page_id="p1", field_title="address", edit_text="5 Peel St.", reviewer_id=1, time=datetime.now()),
+                 models.InstructionVersion(kind="main", body="{}", sha256="m"),
+                 models.Job(pdf="data/216498/216498.pdf", status="failed"), models.Job(pdf="data/216498/216498.pdf", status="done"),
+                 models.Job(pdf="data/216499/216499.pdf", status="failed"), models.Job(pdf="data/216500/216500.pdf", status="running"))
+    db.commit()
+    client.post("/collections", json={"name": "Ships", "archiveSeries": "7", "archiveIdentifier": "UMA-SR-000000007",
+                                      "archiveTitle": "  Shipping manifests  ", "archiveItems": 12})
+    listed = {c["name"]: c for c in client.get("/collections").json()}
+    keys = ("bundles", "running", "failed", "pages", "reviewable", "reviewed", "unknownPages", "flagged", "pageTypes", "templates",
+            "archiveIdentifier", "archiveTitle", "archiveItems")
+    # 216498's newest job is done, so only 216499 counts as failed; the Unknown page is waiting for a type, and flagged for it
+    assert {k: listed["Wilfred Prest Survey"][k] for k in keys} == {
+        "bundles": 1, "running": 1, "failed": 1, "pages": 3, "reviewable": 2, "reviewed": 1, "unknownPages": 1, "flagged": 1,
+        "pageTypes": 3, "templates": 1, "archiveIdentifier": "UMA-SR-000000842",
+        "archiveTitle": "University of Melbourne Social Survey forms", "archiveItems": 45}
+    assert {k: listed["Ships"][k] for k in keys} == {
+        "bundles": 0, "running": 0, "failed": 0, "pages": 0, "reviewable": 0, "reviewed": 0, "unknownPages": 0, "flagged": 0,
+        "pageTypes": 0, "templates": 0,  # its Unknown type doesn't count
+        "archiveIdentifier": "UMA-SR-000000007", "archiveTitle": "Shipping manifests", "archiveItems": 12}

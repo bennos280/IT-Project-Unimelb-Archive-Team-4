@@ -205,3 +205,14 @@ def test_010_gives_prest_its_grouping_rule(url, tmp_path):
     command.downgrade(config, "009")
     assert "record_key" not in {r[1] for r in rows(db, "PRAGMA table_info(collections)")}
     assert not {"starts_record", "matched_by_key"} & {r[1] for r in rows(db, "PRAGMA table_info(page_types)")}
+
+
+def test_012_names_prests_archive_series(url, tmp_path):
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "011")
+    database.migrate(url)
+    assert rows(db, "SELECT archive_series, archive_identifier, archive_title, archive_items FROM collections") == [
+        (499420, "UMA-SR-000000842", "University of Melbourne Social Survey forms", 45)]
+    command.downgrade(config, "011")
+    assert not {"archive_identifier", "archive_title", "archive_items"} & {r[1] for r in rows(db, "PRAGMA table_info(collections)")}

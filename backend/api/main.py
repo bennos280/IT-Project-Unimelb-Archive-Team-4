@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from functools import cache
 import json
 import re
+from pathlib import PurePosixPath
 import sqlite3
 import threading
 from backend.db import app_settings, database, grouping, instructions, loader, models
@@ -338,11 +339,17 @@ class PageTypeSettings(BaseModel):
 class CollectionSettings(BaseModel):
     name: str | None = None
     archiveSeries: str | None = None #its series' address on the archive, or the number at its end
+    archiveIdentifier: str | None = None #and the series' identifier, title and items from /archive-series, with archiveSeries
+    archiveTitle: str | None = None
+    archiveItems: int | None = None
     recordKey: str | None = None #None or "": surveys by page order only
 
 class NewCollection(BaseModel):
     name: str
     archiveSeries: str
+    archiveIdentifier: str | None = None #the series' identifier, title and items from /archive-series; None: not looked up
+    archiveTitle: str | None = None
+    archiveItems: int | None = None
 
 class PageTypeChange(BaseModel):
     pageType: str
@@ -426,11 +433,35 @@ def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends
         raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
     return page_type_json(t, instructions.newest(db))
 
+#bundle jobs: those waiting or running, and the PDFs whose latest job failed and that aren't loaded
+def bundle_jobs(db):
+    latest = {job.pdf: job for job in db.query(models.Job).filter_by(kind="bundle").order_by(models.Job.job_id)}
+    loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id)}
+    return {"running": sum(job.status in ("waiting", "running") for job in latest.values()),
+            "failed": sum(job.status == "failed" and PurePosixPath(job.pdf.replace("\\", "/")).stem not in loaded for job in latest.values())}
+
+#a collection, and with db how far along it is: bundles loaded (processed), being processed or failed; pages, those in a survey
+#(reviewable) and reviewed; what needs a person (pages of its Unknown type, open flags); and how far it is set up (page types
+#other than Unknown, and how many of them have a template)
 def collection_json(c, db=None):
-    counts = {} if db is None else {
-        "bundles": db.query(models.Bundle).filter_by(collection_id=c.collection_id).count(),
-        "pages": db.query(models.Page).join(models.Bundle).filter(models.Bundle.collection_id == c.collection_id).count()}
-    return {"id": c.collection_id, "name": c.name, "recordKey": c.record_key, "archiveSeries": c.archive_series, **counts}
+    found = {}
+    if db is not None:
+        pages = [p for b in cached_progress(db) if b["collectionId"] == c.collection_id for p in b["pages"]]
+        reviewable = [p for p in pages if p["surveyId"] is not None]
+        templates = instructions.newest(db)
+        types = db.query(models.PageType).filter_by(collection_id=c.collection_id).all()
+        unknown = {t.name for t in types if t.unknown}
+        jobs = bundle_jobs(db) if c.collection_id == 1 else {"running": 0, "failed": 0}  #ponytail: imports go to collection 1
+        found = {"bundles": db.query(models.Bundle).filter_by(collection_id=c.collection_id).count(), **jobs, "pages": len(pages),
+                 "reviewable": len(reviewable), "reviewed": sum(p["status"] == "Reviewed" for p in reviewable),
+                 "unknownPages": db.query(models.Page).filter(models.Page.category.in_(unknown)).count(),
+                 "flagged": sum(p["flagCount"] for p in pages),
+                 "pageTypes": len(types) - len(unknown), "templates": sum(t.name in templates for t in types if not t.unknown)}
+    return {"id": c.collection_id, "name": c.name, "recordKey": c.record_key, "archiveSeries": c.archive_series,
+            "archiveIdentifier": c.archive_identifier, "archiveTitle": c.archive_title, "archiveItems": c.archive_items, **found}
+
+def series_text(text):
+    return (text or "").strip()[:300] or None
 
 #a series' node id on archives.library.unimelb.edu.au, from its address (.../nodes/view/499420) or the number itself; None: neither
 def series_node(text):
@@ -453,7 +484,8 @@ def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
     if node is None:
         raise HTTPException(status_code=400, detail=SERIES_HELP)
     write_lock(db)
-    collection = models.Collection(name=name, archive_series=node)
+    collection = models.Collection(name=name, archive_series=node, archive_identifier=series_text(payload.archiveIdentifier),
+                                   archive_title=series_text(payload.archiveTitle), archive_items=payload.archiveItems)
     db.add(collection)
     try:
         db.flush()
@@ -488,6 +520,8 @@ def update_collection(collection_id: int, payload: CollectionSettings, db: Sessi
         if series_node(payload.archiveSeries) is None:
             raise HTTPException(status_code=400, detail=SERIES_HELP)
         c.archive_series = series_node(payload.archiveSeries)
+        c.archive_identifier, c.archive_title = series_text(payload.archiveIdentifier), series_text(payload.archiveTitle)
+        c.archive_items = payload.archiveItems
     if "recordKey" in given:
         key = (payload.recordKey or "").strip() or None
         if key and not instructions.KEY.fullmatch(key):

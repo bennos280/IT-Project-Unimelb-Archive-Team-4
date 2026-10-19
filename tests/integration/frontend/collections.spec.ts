@@ -1,7 +1,14 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // Home (the collections) and New collection, on an intercepted API: nothing reaches the real backend or the archive.
-const PREST = { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", archiveSeries: 499420, bundles: 26, pages: 8853 };
+const PREST = {
+  id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", archiveSeries: 499420, archiveIdentifier: "UMA-SR-000000842",
+  archiveTitle: "University of Melbourne Social Survey forms", archiveItems: 45, bundles: 26, running: 1, failed: 1, pages: 8853,
+  reviewable: 8719, reviewed: 1744, unknownPages: 463, flagged: 1579, pageTypes: 3, templates: 3,
+};
+const SHIPS = { ...PREST, id: 3, name: "Shipping manifests", archiveSeries: 7, archiveIdentifier: null, archiveTitle: null,
+  archiveItems: null, bundles: 0, running: 0, failed: 0, pages: 0, reviewable: 0, reviewed: 0, unknownPages: 0, flagged: 0,
+  pageTypes: 0, templates: 0 };
 const SERIES = {
   id: 499420, title: "[UMA-SR-000000842] University of Melbourne Social Survey forms", identifier: "UMA-SR-000000842",
   date: "1941-1943", access: "Open for public access", items: 45, url: "https://archives.library.unimelb.edu.au/nodes/view/499420",
@@ -14,7 +21,7 @@ async function mockApi(page: Page, { archiveDown = false, slowNode = 0 } = {}) {
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === "/api/collections" && request.method() === "GET") return route.fulfill({ json: [PREST] });
+    if (path === "/api/collections" && request.method() === "GET") return route.fulfill({ json: [PREST, SHIPS] });
     if (path === "/api/collections" && request.method() === "POST") {
       created.push(request.postDataJSON());
       return route.fulfill({ status: 201, json: { ...PREST, id: 2, name: request.postDataJSON().name, bundles: 0, pages: 0 } });
@@ -36,14 +43,39 @@ async function mockApi(page: Page, { archiveDown = false, slowNode = 0 } = {}) {
 
 const dialog = (page: Page) => page.getByRole("dialog", { name: "New collection" });
 
-test("home lists the collections with their archive series, bundles and pages", async ({ page }) => {
+test("home lists each collection with its archive series, items, review progress and what needs attention", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
   const row = page.getByRole("row").filter({ hasText: "Wilfred Prest Survey" });
   await expect(row.getByRole("link", { name: "Wilfred Prest Survey" })).toHaveAttribute("href", "/?collection=1");
-  await expect(row.getByRole("link", { name: "Series 499420" })).toHaveAttribute("href", "https://archives.library.unimelb.edu.au/nodes/view/499420");
-  await expect(row).toContainText("26");
-  await expect(row).toContainText("8,853");
+  await expect(row.getByRole("link", { name: "UMA-SR-000000842" })).toHaveAttribute("href", "https://archives.library.unimelb.edu.au/nodes/view/499420");
+  await expect(row).toContainText("University of Melbourne Social Survey forms");
+  await expect(row).toContainText("26 of 45 processed");
+  await expect(row).toContainText("1 processing now");
+  await expect(row).toContainText("1 failed");
+  await expect(row).toContainText("1,744 / 8,719 pages · 20%");
+  await expect(row).toContainText("463 pages need a type");
+  await expect(row).toContainText("1,579 flags to check");
+  await expect(row.getByRole("progressbar", { name: "Wilfred Prest Survey review progress" })).toBeVisible();
+});
+
+test("a collection not set up yet shows its next step, and one with no identifier its series number", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+  const row = page.getByRole("row").filter({ hasText: "Shipping manifests" });
+  await expect(row.getByRole("link", { name: "Next: add its page types" })).toHaveAttribute("href", "/?collection=3&view=page-types");
+  await expect(row.getByRole("link", { name: "Series 7" })).toBeVisible();
+  await expect(row).toContainText("0 processed");
+  await expect(row).toContainText("Nothing");
+});
+
+test("clicking anywhere on a collection's row opens it", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+  // A plain cell, clicked where a person would: the name's link covers the row.
+  const box = (await page.getByRole("row").filter({ hasText: "Wilfred Prest Survey" }).getByRole("cell", { name: /26 of 45 processed/ }).boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page).toHaveURL("/?collection=1");
 });
 
 test("a new collection previews its archive series, takes its name from it, and opens its page types", async ({ page }) => {
@@ -60,7 +92,8 @@ test("a new collection previews its archive series, takes its name from it, and 
   await dialog(page).getByLabel("Name").fill("Social survey forms");
   await dialog(page).getByRole("button", { name: "Create collection" }).click();
   await expect(page).toHaveURL("/?collection=2&view=page-types");
-  expect(created).toEqual([{ name: "Social survey forms", archiveSeries: "https://archives.library.unimelb.edu.au/nodes/view/499420" }]);
+  expect(created).toEqual([{ name: "Social survey forms", archiveSeries: "https://archives.library.unimelb.edu.au/nodes/view/499420",
+    archiveIdentifier: "UMA-SR-000000842", archiveTitle: "[UMA-SR-000000842] University of Melbourne Social Survey forms", archiveItems: 45 }]);
 });
 
 test("an item that isn't a series is pointed out, and a typed name is kept", async ({ page }) => {

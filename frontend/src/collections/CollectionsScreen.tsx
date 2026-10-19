@@ -8,11 +8,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Progress as ProgressBar } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { backendRequest } from "../progress/backend";
 
-type Collection = { id: number; name: string; archiveSeries: number | null; bundles: number; pages: number };
+type Collection = {
+  id: number; name: string; archiveSeries: number | null; archiveIdentifier: string | null; archiveTitle: string | null;
+  archiveItems: number | null; bundles: number; running: number; failed: number; pages: number; reviewable: number; reviewed: number;
+  unknownPages: number; flagged: number; pageTypes: number; templates: number;
+};
 type Series = { id: number; title: string; identifier: string; date: string; access: string; items: number | null; url: string };
 type Lookup = { node: number; series?: Series; error?: string };
 
@@ -69,26 +74,35 @@ export default function CollectionsScreen() {
               <TableRow>
                 <TableHead>Collection</TableHead>
                 <TableHead>Archive series</TableHead>
-                <TableHead className="text-right">Bundles</TableHead>
-                <TableHead className="text-right">Pages</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Reviewed</TableHead>
+                <TableHead>Needs attention</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {collections.map((c) => (
-                <TableRow key={c.id}>
+                // The name's link covers the row; the links in the row sit above it.
+                <TableRow key={c.id} className="relative cursor-pointer hover:bg-muted focus-within:bg-muted">
                   <TableCell>
-                    <a href={`/?collection=${c.id}`} className="font-medium hover:underline">{c.name}</a>
+                    <a href={`/?collection=${c.id}`}
+                      className="rounded-sm font-medium outline-none after:absolute after:inset-0 hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring/50">
+                      {c.name}
+                    </a>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="max-w-72 whitespace-normal">
                     {c.archiveSeries ? (
-                      <a href={`${ARCHIVE}/nodes/view/${c.archiveSeries}`} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 hover:underline">
-                        Series {c.archiveSeries} <ExternalLink aria-hidden="true" className="size-3.5" />
-                      </a>
+                      <div className="flex flex-col">
+                        <a href={`${ARCHIVE}/nodes/view/${c.archiveSeries}`} target="_blank" rel="noopener noreferrer"
+                          className="relative z-10 inline-flex w-fit items-center gap-1 hover:underline">
+                          {c.archiveIdentifier ?? `Series ${c.archiveSeries}`} <ExternalLink aria-hidden="true" className="size-3.5" />
+                        </a>
+                        {c.archiveTitle && <span className="text-muted-foreground">{c.archiveTitle}</span>}
+                      </div>
                     ) : "Not linked"}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">{c.bundles.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums">{c.pages.toLocaleString()}</TableCell>
+                  <TableCell><Items collection={c} /></TableCell>
+                  <TableCell><Progress collection={c} /></TableCell>
+                  <TableCell><Attention collection={c} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -99,6 +113,47 @@ export default function CollectionsScreen() {
         <NewCollectionDialog onClose={() => setCreating(false)}
           onCreated={(created) => { window.location.href = `/?collection=${created.id}&view=page-types`; }} />
       )}
+    </div>
+  );
+}
+
+// The series' items processed so far (sorted, transcribed and grouped), and any being processed or failed.
+function Items({ collection: c }: { collection: Collection }) {
+  const n = (count: number) => count.toLocaleString();
+  return (
+    <div className="flex flex-col">
+      <span>{c.archiveItems ? `${n(c.bundles)} of ${n(c.archiveItems)}` : n(c.bundles)} processed</span>
+      {c.running > 0 && <span className="text-muted-foreground">{n(c.running)} processing now</span>}
+      {c.failed > 0 && <span className="text-destructive">{n(c.failed)} failed</span>}
+    </div>
+  );
+}
+
+// What waits for a person: pages sorting couldn't place, and flags not yet checked.
+function Attention({ collection: c }: { collection: Collection }) {
+  const n = (count: number) => count.toLocaleString();
+  if (!c.unknownPages && !c.flagged) return <span className="text-muted-foreground">Nothing</span>;
+  return (
+    <div className="flex flex-col">
+      {c.unknownPages > 0 && <span>{n(c.unknownPages)} {c.unknownPages === 1 ? "page needs" : "pages need"} a type</span>}
+      {c.flagged > 0 && <span>{n(c.flagged)} {c.flagged === 1 ? "flag" : "flags"} to check</span>}
+    </div>
+  );
+}
+
+// How far a collection's review has got; until it can be reviewed, the next step of its setup.
+function Progress({ collection: c }: { collection: Collection }) {
+  const setup = (text: string) => <a href={`/?collection=${c.id}&view=page-types`} className="relative z-10 underline">{text}</a>;
+  const note = (text: string) => <span className="text-muted-foreground">{text}</span>;
+  if (!c.pageTypes) return setup("Next: add its page types");
+  if (!c.templates) return setup("Next: give its page types templates");
+  if (!c.bundles) return note("No items processed yet");
+  if (!c.reviewable) return note("No pages to review yet");
+  const percent = Math.round((c.reviewed / c.reviewable) * 100);
+  return (
+    <div className="flex max-w-sm flex-col gap-1.5">
+      <span>{c.reviewed.toLocaleString()} / {c.reviewable.toLocaleString()} pages · {percent}%</span>
+      <ProgressBar className="h-2" aria-label={`${c.name} review progress`} value={percent} aria-valuenow={c.reviewed} max={c.reviewable} />
     </div>
   );
 }
@@ -135,7 +190,10 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
     setBusy(true);
     setError("");
     try {
-      onCreated(await backendRequest<Collection>("/collections", json("POST", { name, archiveSeries: address })));
+      onCreated(await backendRequest<Collection>("/collections", json("POST", {
+        name, archiveSeries: address, archiveIdentifier: shown?.series?.identifier, archiveTitle: shown?.series?.title,
+        archiveItems: shown?.series?.items ?? undefined,
+      })));
     } catch (e) {
       setError(message(e, "Could not create the collection."));
       setBusy(false);
