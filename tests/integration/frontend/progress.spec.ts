@@ -1027,3 +1027,59 @@ test.describe("The server pages, searches and filters the overview", () => {
     await expect(bundleRows(page)).toHaveCount(0);
   });
 });
+
+test.describe("Records inside records", () => {
+  // Item b of a series of folders of letters: folder 1 has a cover of its own and two letters, folder 4 one letter (awaiting
+  // transcription) and nothing of its own, folder 5 two letters.
+  const listed = (n: number, surveyId: string, status = "Ready to review") =>
+    ({ id: `p${n}`, label: `Pg ${n}`, category: "Letter", status, flagCount: n === 2 ? 2 : 0, surveyId, reviewPageId: `p${n}` });
+  const item: MockItem = {
+    bundle: "b", name: "b",
+    pages: [listed(1, "b_1"), listed(2, "b_1-n1"), listed(3, "b_1-n2", "Reviewed"), listed(4, "b_4-n1", "Awaiting transcription"),
+      listed(5, "b_5-n1"), listed(6, "b_5-n2")],
+    records: [["b_1", null], ["b_1-n1", "b_1"], ["b_1-n2", "b_1"], ["b_4", null], ["b_4-n1", "b_4"], ["b_5", null], ["b_5-n1", "b_5"],
+      ["b_5-n2", "b_5"], ["b_9", null]].map(([id, parent]) => ({ id: id!, parent })), // b_9: a move emptied it
+  };
+
+  test.beforeEach(async ({ page }) => {
+    await page.route("**/api/**", (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const served = serveItems([item], route.request());
+      if (served) return route.fulfill(served);
+      if (path === "/api/collections/1")
+        return route.fulfill({ json: { id: 1, name: "Letters", recordName: "letter", grouped: true, levels: [{ name: "folder" }, { name: "letter" }] } });
+      return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${path}` } });
+    });
+  });
+
+  test("an item lists its top level, each record opening the level below, past a level with only one thing in it", async ({ page }) => {
+    await page.goto("/?collection=1&bundle=b");
+    await expect(page.locator("main")).toContainText("3 folders · 4 pages ready to review");
+    await expect(page.getByRole("columnheader").first()).toHaveText("Folder");
+    await expect(bundleRows(page).getByRole("link")).toHaveText(["Folder 1", "Folder 4", "Folder 5"]);
+    await expect(bundleRows(page).first().getByRole("cell")).toHaveText(["Folder 1", "3", "2 need checking", "Ready to review", ""]);
+    await expect(page.getByRole("link", { name: "Open Folder 1", exact: true })).toHaveAttribute("href", "/?collection=1&bundle=b&record=b_1");
+    // folder 4 holds one letter and nothing of its own: it opens that letter, to transcribe it
+    await expect(page.getByRole("link", { name: "Transcribe Folder 4", exact: true })).toHaveAttribute("href", "/?survey=b_4-n1&page=p4&action=transcribe");
+
+    await page.getByRole("link", { name: "Open Folder 1", exact: true }).click();
+    await expect(page).toHaveURL("/?collection=1&bundle=b&record=b_1");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Folder 1");
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator('[data-slot="breadcrumb-item"]:not(:has(button))'))
+      .toHaveText(["Items", "Item b", "Folder 1"]);
+    await expect(page.getByRole("columnheader").first()).toHaveText("Letter");
+    await expect(bundleRows(page).getByRole("link")).toHaveText(["Letter #1", "Letter #2"]); // by place: they have no numbers
+    await expect(page.getByRole("link", { name: "Review Letter #1", exact: true })).toHaveAttribute("href", "/?survey=b_1-n1&page=p2");
+    await expect(page.getByRole("link", { name: "View Letter #2", exact: true })).toHaveAttribute("href", "/?survey=b_1-n2&page=p3");
+    await expect(page.getByText("1 page is the folder's own.")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Review it" })).toHaveAttribute("href", "/?survey=b_1&page=p1");
+    await page.getByRole("group", { name: "Show" }).getByRole("button", { name: "Pages" }).click();
+    await expect(page.getByText("Showing 1–3 of 3 pages")).toBeVisible(); // the folder's pages, not the item's
+
+    await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Item b" }).click();
+    await expect(page).toHaveURL("/?collection=1&bundle=b");
+    await expect(bundleRows(page).getByRole("link")).toHaveText(["Folder 1", "Folder 4", "Folder 5"]);
+    await page.goBack();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Folder 1");
+  });
+});

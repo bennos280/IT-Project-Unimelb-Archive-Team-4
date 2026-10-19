@@ -120,8 +120,8 @@ def page_flags(db, p, fields_list):
                       "reason": OTHER_PAGE + (OTHER_PAGE_GROUPED.format(page_record_name(db, p)) if grouped else OTHER_PAGE_ALONE)})
     return flags
 
-#a survey's pages in scan order, with fields, flags and scan URL, whether it is its whole item (all the item's pages), and the
-#record it sits in (None: at the top)
+#a survey's pages in scan order, with fields, flags and scan URL, whether it is its whole item (all the item's pages), the
+#record it sits in (None: at the top), and the records it sits inside, top first, each with its level's name
 @app.get("/survey/{survey_id}")
 def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     survey = db.get(models.Survey, survey_id)
@@ -149,7 +149,18 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
             "item": {"name": name, "archive": {"identifier": item.identifier, "title": item.title} if item else None},
             "recordName": grouping.record_name(db, collection.collection_id, survey_id), "grouped": grouping.grouped(db, collection.collection_id),
             "wholeItem": db.query(models.Page).filter_by(bundle_id=bundle.bundle_id).count() == len(pages_list),
-            "parentId": survey.parent_id, "pages":pages_list}
+            "parentId": survey.parent_id, "ancestors": ancestors(db, collection.collection_id, survey.parent_id), "pages":pages_list}
+
+#a record and the records it sits inside, top first, each its id and its level's name, but not one holding just one record
+#and no pages of its own (the item's page opens past it); [] for none
+def ancestors(db, collection_id, survey_id):
+    found = []
+    while survey_id is not None:
+        held = (db.query(models.Survey).filter_by(parent_id=survey_id).count(), db.query(models.Page).filter_by(survey_id=survey_id).count())
+        if held != (1, 0):
+            found.insert(0, {"id": survey_id, "name": grouping.record_name(db, collection_id, survey_id)})
+        survey_id = db.get(models.Survey, survey_id).parent_id
+    return found
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
 #and black and white (the scan itself if that fails)
@@ -1057,13 +1068,16 @@ def list_items(collection_id: int, page: int = 0, size: int = 9, search: str = "
             "most": {"pages": max((len(p) for p in pages.values()), default=0),
                      "records": max((page_counts(p)["records"] for p in pages.values()), default=0)}}
 
-#one of a series' items, by its number or bundle id, with its pages as /progress gives them (none until it's loaded)
+#one of a series' items, by its number or bundle id, with its pages as /progress gives them (none until it's loaded) and its
+#records, each with the record it sits in (None: at the top)
 @app.get("/collections/{collection_id}/items/{name}")
 def get_item(collection_id: int, name: str, db: Session = Depends(get_db)):
     row = next((row for row in series_items(db, collection_id) if name in (row["name"], row["bundle"])), None)
     if row is None:
         raise HTTPException(status_code=404, detail="No such item.")
-    return {**row, "pages": next((b["pages"] for b in cached_progress(db) if b["id"] == row["bundle"]), [])}
+    records = db.query(models.Survey.survey_id, models.Survey.parent_id).filter_by(bundle_id=row["bundle"]).order_by(models.Survey.survey_id)
+    return {**row, "pages": next((b["pages"] for b in cached_progress(db) if b["id"] == row["bundle"]), []),
+            "records": [{"id": record, "parent": parent} for record, parent in records]}
 
 #queues a pipeline run of one PDF; the worker picks it up
 @app.post("/jobs", status_code=202)

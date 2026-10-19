@@ -137,18 +137,21 @@ export default function ReviewScreen({
   // The dashboard names an item by its name; the bundle id is accepted too when the survey doesn't say.
   const bundleLabel = survey?.item?.name || survey?.bundleId || "";
   const words = recordWords(survey?.recordName);
-  // A record that is its whole item is named by the item, with no step between them.
+  // A record that is its whole item is named by the item, with no step between them; one inside others follows them, each
+  // named by its level and its number within the one above, and opening its records on the item's page.
   const items = survey?.collectionId ? [{ label: "Items", href: `/?collection=${survey.collectionId}` }] : [];
+  const itemLink = `/?collection=${survey?.collectionId ?? 1}&bundle=${encodeURIComponent(bundleLabel)}`;
+  const outer = survey?.ancestors ?? [];
   return (
     <>
       <AppHeader
         series={survey?.collectionId ? { id: survey.collectionId, name: survey.title } : undefined}
         crumbs={survey?.wholeItem ? [...items, { label: itemTitle(bundleLabel, survey.item?.archive) }] : [
           ...items,
-          ...(survey?.bundleId
-            ? [{ label: itemTitle(bundleLabel, survey.item?.archive), href: `/?collection=${survey.collectionId ?? 1}&bundle=${encodeURIComponent(bundleLabel)}` }]
-            : []),
-          { label: survey ? `${words.One} ${recordNumber(session.surveyId, survey.bundleId)}` : session.surveyId || words.One },
+          ...(survey?.bundleId ? [{ label: itemTitle(bundleLabel, survey.item?.archive), href: itemLink }] : []),
+          ...outer.map((a, i) => ({ label: `${recordWords(a.name).One} ${recordNumber(a.id, outer[i - 1]?.id ?? survey?.bundleId)}`,
+            href: `${itemLink}&record=${encodeURIComponent(a.id)}` })),
+          { label: survey ? `${words.One} ${recordNumber(session.surveyId, outer.at(-1)?.id ?? survey.bundleId)}` : session.surveyId || words.One },
         ]}
       />
       <main>

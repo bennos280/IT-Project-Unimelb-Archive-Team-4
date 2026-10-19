@@ -6,9 +6,10 @@ export type MockPage = {
   id: string; label: string; category: string; status: string; flagCount: number;
   surveyId?: string | null; reviewPageId?: string; model?: string | null;
 };
+// records: the item's records, each with the one it sits in; none given: those its pages name, all at the top.
 export type MockItem = {
   bundle: string; name: string; pdf?: string; archive?: { identifier: string; title: string } | null;
-  loaded?: boolean; job?: unknown; pages?: MockPage[];
+  loaded?: boolean; job?: unknown; pages?: MockPage[]; records?: { id: string; parent: string | null }[];
 };
 type Reply = { status?: number; json: unknown };
 
@@ -60,7 +61,9 @@ export function serveItems(items: MockItem[] | (() => MockItem[]), request: Requ
   if (found[1]) {
     const name = decodeURIComponent(found[1]);
     const one = all.find((item) => item.name === name || item.bundle === name);
-    return one ? { json: { ...row(one), pages: one.pages ?? [] } } : { status: 404, json: { detail: "No such item." } };
+    const records = one?.records ?? [...new Set((one?.pages ?? []).flatMap((page) => (page.surveyId ? [page.surveyId] : [])))]
+      .map((id) => ({ id, parent: null }));
+    return one ? { json: { ...row(one), pages: one.pages ?? [], records } } : { status: 404, json: { detail: "No such item." } };
   }
   const search = (url.searchParams.get("search") ?? "").trim().toLowerCase();
   const status = url.searchParams.get("status") ?? "All";

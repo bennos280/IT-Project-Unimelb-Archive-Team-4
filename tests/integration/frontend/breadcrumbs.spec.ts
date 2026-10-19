@@ -273,3 +273,13 @@ test("an old item link without a series still opens the item", async ({ page }) 
   await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
   await expect(crumbs(page)).toHaveText(["Items", "Item 216417"]);
 });
+
+test("a record inside others follows them in the trail, each opening its records on the item's page", async ({ page }) => {
+  await mockApi(page);
+  await page.route("**/api/survey/216417_1", (route) => route.fulfill({ json: {
+    id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", recordName: "letter", grouped: true, pages,
+    item: { name: "216417", archive: null }, parentId: "216417", ancestors: [{ id: "216417", name: "folder" }] } }));
+  await page.goto("/?survey=216417_1");
+  await expect(crumbs(page)).toHaveText(["Items", "Item 216417", "Folder 216417", "Letter 1"]);
+  await expect(trail(page).getByRole("link", { name: "Folder 216417" })).toHaveAttribute("href", "/?collection=1&bundle=216417&record=216417");
+});

@@ -320,6 +320,7 @@ A series' dashboard asks for a page of its items at a time, searched, filtered a
 |`test_items_are_found_by_number_title_or_identifier_and_by_status`|Search finds an item by its number, title or identifier, any case; each status filter finds the items the dashboard always showed for it.|
 |`test_an_item_is_given_by_its_number_or_bundle_id_with_its_pages`|One item comes with its pages; an item not loaded has none; an unknown item or series is 404.|
 |`test_a_record_names_its_item_as_the_dashboard_does`|A record's response names its item and its archive title, for the review screen's crumb.|
+|`test_an_item_gives_its_records_and_a_record_the_ones_it_sits_inside_top_first`|An item comes with its records, each with the one it sits in, and a record with the records it sits inside, top first, each named by its level (not one holding just it and no pages, which the item's page opens past), itself named by its own.|
 |`test_an_item_that_is_one_record_gives_it_so_the_dashboard_opens_it_straight_away`|An item's row gives its record only once all its pages are in it (a page in none, or another item: none), and the record then says it is its whole item.|
 
 ## `test_record_levels.py`

@@ -84,3 +84,18 @@ def test_an_item_that_is_one_record_gives_it_so_the_dashboard_opens_it_straight_
     db.commit()
     assert (nine()["record"], client.get("/survey/9_00001").json()["wholeItem"]) == ("9_00001", True)
     assert [item["record"] for item in client.get("/collections/2/items").json()["items"] if item["name"] != "9"] == [None] * 3
+
+
+def test_an_item_gives_its_records_and_a_record_the_ones_it_sits_inside_top_first(client, db, diaries):
+    db.add(models.RecordLevel(collection_id=2, position=1, name="volume", starts="[]"))
+    db.add(models.RecordLevel(collection_id=2, position=2, name="month", starts="[]"))
+    db.add(models.Survey(survey_id="9", bundle_id="9"))
+    db.flush()
+    db.get(models.Survey, "9_00001").parent_id = "9"
+    db.commit()
+    assert client.get("/collections/2/items/9").json()["records"] == [{"id": "9", "parent": None}, {"id": "9_00001", "parent": "9"}]
+    assert client.get("/survey/9_00001").json()["ancestors"] == []  # 9 holds just 9_00001 and no pages: the item opens past it
+    db.get(models.Page, "9_00002").survey_id = "9"
+    db.commit()
+    assert client.get("/survey/9_00001").json()["ancestors"] == [{"id": "9", "name": "volume"}]
+    assert client.get("/survey/9_00001").json()["recordName"] == "month"
