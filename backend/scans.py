@@ -70,8 +70,8 @@ def archive_scan(bundle, page_no):
     return jpeg if jpeg.is_file() else None
 
 
-#a series' page on the archive (/nodes/view/<node>, which robots.txt allows): its title, catalogue identifier, dates, access
-#status and number of items; None if the archive has no such page
+#a series' page on the archive (/nodes/view/<node>, which robots.txt allows): its title (without the "[identifier] " the archive
+#starts it with), catalogue identifier, dates, access status and number of items; None if the archive has no such page
 def archive_series(node):
     session = build_opener()
     session.addheaders = [("User-Agent", AGENT)]
@@ -82,13 +82,13 @@ def archive_series(node):
         if error.code == 404:
             return None
         raise
-    def meta(name):
+    def meta(name):  #the archive escapes these twice: Registrar&amp;#039;s
         found = re.search(rf'<meta property="og:{name}" content="([^"]*)"', page)
-        return html.unescape(found.group(1)) if found else ""
+        return html.unescape(html.unescape(found.group(1))) if found else ""
     details = dict(part.split(": ", 1) for part in meta("description").split(" | ") if ": " in part)
-    items = re.search(r"Items in this series \((\d+)\)", page)
-    return {"id": node, "title": meta("title"), "identifier": details.get("Identifier", ""), "date": details.get("Date", ""),
-            "access": details.get("Access Status", ""), "items": int(items.group(1)) if items else None,
+    items = re.search(r"Items in this series \(([\d,]+)\)", page)
+    return {"id": node, "title": re.sub(r"^\[[^\]]*\]\s*", "", meta("title")), "identifier": details.get("Identifier", ""), "date": details.get("Date", ""),
+            "access": details.get("Access Status", ""), "items": int(items.group(1).replace(",", "")) if items else None,
             "url": f"{ARCHIVE}/nodes/view/{node}"}
 
 

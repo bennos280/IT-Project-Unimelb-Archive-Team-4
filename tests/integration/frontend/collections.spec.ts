@@ -10,9 +10,10 @@ const SHIPS = { ...PREST, id: 3, name: "Shipping manifests", archiveSeries: 7, a
   archiveItems: null, bundles: 0, running: 0, failed: 0, pages: 0, reviewable: 0, reviewed: 0, unknownPages: 0, flagged: 0,
   pageTypes: 0, templates: 0 };
 const SERIES = {
-  id: 499420, title: "[UMA-SR-000000842] University of Melbourne Social Survey forms", identifier: "UMA-SR-000000842",
+  id: 499420, title: "University of Melbourne Social Survey forms", identifier: "UMA-SR-000000842",
   date: "1941-1943", access: "Open for public access", items: 45, url: "https://archives.library.unimelb.edu.au/nodes/view/499420",
 };
+const LETTERS = { ...SERIES, id: 71423, title: "Registrar's Correspondence", identifier: "UMA-SRE-19990014", items: 29326 };
 const ITEM = { ...SERIES, id: 216412, title: "Box Hill 00", identifier: "UMA-ITE-1973000200001", items: null,
   url: "https://archives.library.unimelb.edu.au/nodes/view/216412" };
 
@@ -30,7 +31,7 @@ async function mockApi(page: Page, { archiveDown = false, slowNode = 0 } = {}) {
     if (series) {
       if (archiveDown) return route.fulfill({ status: 502, json: { detail: "Couldn't reach the archive (timed out)." } });
       if (Number(series[1]) === slowNode) await new Promise((resolve) => setTimeout(resolve, 1500));
-      const found = [SERIES, ITEM].find((s) => s.id === Number(series[1]));
+      const found = [SERIES, ITEM, LETTERS].find((s) => s.id === Number(series[1]));
       return found ? route.fulfill({ json: found }) : route.fulfill({ status: 404, json: { detail: "The archive has no page with that number." } });
     }
     if (path === "/api/collections/2") return route.fulfill({ json: { ...PREST, id: 2, name: "Social survey forms", recordKey: null, recordName: "record", grouped: false } });
@@ -84,7 +85,7 @@ test("a new series previews what it links to on the archive, takes its name from
   await page.getByRole("button", { name: "New series" }).click();
   await dialog(page).getByLabel("Archive series").fill("https://archives.library.unimelb.edu.au/nodes/view/499420");
   const preview = dialog(page).getByRole("region", { name: "Archive series" });
-  await expect(preview).toContainText("[UMA-SR-000000842] University of Melbourne Social Survey forms");
+  await expect(preview).toContainText("University of Melbourne Social Survey forms");
   await expect(preview).toContainText("UMA-SR-000000842 · 1941-1943 · Open for public access");
   await expect(preview).toContainText("45 items in this series");
   await expect(preview.getByRole("link", { name: "Open on the archive" })).toHaveAttribute("href", SERIES.url);
@@ -94,7 +95,7 @@ test("a new series previews what it links to on the archive, takes its name from
   await expect(page).toHaveURL("/?collection=2&view=page-types");
   await expect(page.getByText("No page type starts a record, so each page is a record of its own.", { exact: false })).toBeVisible();
   expect(created).toEqual([{ name: "Social survey forms", archiveSeries: "https://archives.library.unimelb.edu.au/nodes/view/499420",
-    archiveIdentifier: "UMA-SR-000000842", archiveTitle: "[UMA-SR-000000842] University of Melbourne Social Survey forms", archiveItems: 45 }]);
+    archiveIdentifier: "UMA-SR-000000842", archiveTitle: "University of Melbourne Social Survey forms", archiveItems: 45 }]);
 });
 
 test("an item that isn't a series is pointed out, and a typed name is kept", async ({ page }) => {
@@ -105,6 +106,16 @@ test("an item that isn't a series is pointed out, and a typed name is kept", asy
   await dialog(page).getByLabel("Archive series").fill("216412");
   await expect(dialog(page).getByText("This isn't a series.", { exact: false })).toBeVisible();
   await expect(dialog(page).getByLabel("Name")).toHaveValue("My name");
+});
+
+test("a series whose identifier starts UMA-SRE is a series too", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "New series" }).click();
+  await dialog(page).getByLabel("Archive series").fill("71423");
+  await expect(dialog(page).getByRole("region", { name: "Archive series" })).toContainText("29,326 items in this series");
+  await expect(dialog(page).getByText("This isn't a series.", { exact: false })).toHaveCount(0);
+  await expect(dialog(page).getByLabel("Name")).toHaveValue("Registrar's Correspondence");
 });
 
 test("an address that isn't a series, and an archive that can't be reached, are said plainly", async ({ page }) => {

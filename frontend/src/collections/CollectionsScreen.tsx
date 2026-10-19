@@ -177,7 +177,7 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
         .then((series) => {
           if (!current) return;
           setLookup({ node, series });
-          if (!named.current) setName(series.title.replace(/^\[[^\]]*\]\s*/, ""));
+          if (!named.current) setName(series.title);
         })
         .catch((e) => { if (current) setLookup({ node, error: message(e, "Could not look the series up.") }); });
     }, 400);
@@ -242,7 +242,7 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
                   {[shown.series.identifier, shown.series.date, shown.series.access].filter(Boolean).join(" · ")}
                 </p>
                 {shown.series.items !== null && <p>{shown.series.items.toLocaleString()} items in this series</p>}
-                {!shown.series.identifier.startsWith("UMA-SR-") && (
+                {!/^UMA-SRE?-/.test(shown.series.identifier) && (
                   <p className="text-destructive">This isn't a series. Open the series it belongs to and paste that address instead.</p>
                 )}
                 <a href={shown.series.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">

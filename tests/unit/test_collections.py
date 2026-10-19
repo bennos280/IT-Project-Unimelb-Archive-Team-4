@@ -30,10 +30,16 @@ def test_a_rename_leaves_the_other_settings_as_they_were(client):
 
 def test_the_archive_preview_reads_the_series_page(client, archive):
     archive.add_series(499420, PREST, DESCRIPTION, 45)
-    assert client.get("/archive-series/499420").json() == {
-        "id": 499420, "title": PREST, "identifier": "UMA-SR-000000842", "date": "1941-1943", "access": "Open for public access",
+    assert client.get("/archive-series/499420").json() == {  # the title without the "[identifier] " it starts with
+        "id": 499420, "title": "University of Melbourne Social Survey forms", "identifier": "UMA-SR-000000842", "date": "1941-1943", "access": "Open for public access",
         "items": 45, "url": "https://archives.library.unimelb.edu.au/nodes/view/499420"}
     assert client.get("/archive-series/1").status_code == 404
+
+
+def test_the_archive_preview_reads_a_twice_escaped_title_and_a_count_in_thousands(client, archive):
+    archive.add_series(71423, "[UMA-SRE-19990014] Registrar&amp;#039;s Correspondence", "Identifier: UMA-SRE-19990014", "29,326")
+    preview = client.get("/archive-series/71423").json()
+    assert (preview["title"], preview["items"]) == ("Registrar's Correspondence", 29326)
 
 
 def test_the_archive_preview_says_when_the_archive_cant_be_reached(client):
