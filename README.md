@@ -57,7 +57,4 @@ The npm dependency and browser installation commands are needed for initial test
 
 ## Development
 
-See [Development notes](docs/development.md) for test coverage and individual commands, a manual pipeline check, validation configuration and maintenance tasks.
-```
-
-Heavy code goes in `backend/pipeline/thing/`, imported inside the function. Flagged pages land in `review.json`.
+See [Development notes](development.md) for test coverage and individual commands, a manual pipeline check, validation configuration and maintenance tasks.
