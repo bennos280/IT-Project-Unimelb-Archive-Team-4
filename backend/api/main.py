@@ -815,7 +815,7 @@ def list_jobs(db: Session = Depends(get_db)):
     owners, names = loader.archive_owners(db), dict(db.query(models.Collection.collection_id, models.Collection.name))
     return [task_json(db, job, owners, names) for job in active + recent]
 
-#a task as the Tasks panel shows it: what it is (label), how far it has got, in items or pages, and where to see it (href)
+#a task as the Tasks page shows it: what it is (label), its series, how far it has got, in items or pages, and where to see it (href)
 def task_json(db, job, owners, names):
     series, href, unit = None, None, "pages"
     if job.kind == "items":
@@ -837,7 +837,7 @@ def task_json(db, job, owners, names):
     else:
         label = "Training page sorting"
     return {"id": job.job_id, "kind": job.kind, "label": label, "status": job.status, "step": job.step, "done": job.done_pages,
-            "total": job.total_pages, "unit": unit, "error": job.error, "collectionId": series, "href": href,
+            "total": job.total_pages, "unit": unit, "error": job.error, "collectionId": series, "series": names.get(series), "href": href,
             "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
 
 #a series' items, loaded or not, in order of their PDFs: bundle id, name (the bundle number: the PDF's folder), stored PDF,

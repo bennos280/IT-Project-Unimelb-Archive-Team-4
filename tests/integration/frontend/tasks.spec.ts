@@ -1,31 +1,33 @@
 import { test, expect, type Page } from "@playwright/test";
 import { serveItems } from "./items-mock";
 
-// The Tasks link in the header, the Tasks page and the dashboard's banner follow GET /api/jobs. The API is intercepted: nothing reaches a real backend.
+// The Tasks link in the header, the Tasks page (each task with its series' name) and the dashboard's banner follow GET /api/jobs. The API is intercepted: nothing reaches a real backend.
 type Task = {
   id: number; kind: "items" | "bundle" | "page" | "train"; label: string; status: "waiting" | "running" | "done" | "failed";
   step: string | null; done: number; total: number; unit: "items" | "pages"; error: string | null;
-  updatedAt: string; collectionId: number | null; href: string | null;
+  updatedAt: string; collectionId: number | null; series: string | null; href: string | null;
 };
 const task = (extra: Partial<Task>): Task => ({
   id: 1, kind: "items", label: "Adding items", status: "running", step: "adding", done: 0, total: 0, unit: "items", error: null,
-  updatedAt: "2026-10-19T03:04:05+00:00", collectionId: 2, href: "/?collection=2", ...extra,
+  updatedAt: "2026-10-19T03:04:05+00:00", collectionId: 2, series: "Missing, Wounded and Prisoner Of War Cards", href: "/?collection=2",
+  ...extra,
 });
 const ADDING = task({
   id: 31, label: "Adding Missing, Wounded and Prisoner Of War Cards' items", done: 12400, total: 60772,
 });
 const TRANSCRIBING = task({
   id: 32, kind: "bundle", label: "Transcribing Box Hill 00", step: "transcribe", done: 40, total: 227, unit: "pages",
-  collectionId: 1, href: "/?collection=1&bundle=216412",
+  collectionId: 1, series: "Wilfred Prest Survey", href: "/?collection=1&bundle=216412",
 });
-const QUEUED = task({ id: 33, label: "Adding Shipping manifests' items matching \"Davis\"", status: "waiting", step: null, collectionId: 3, href: "/?collection=3" });
-const READING = task({ id: 35, kind: "page", label: "Reading page 216412_00005 again", unit: "pages", step: null, collectionId: null, href: null });
+const QUEUED = task({ id: 33, label: "Adding Shipping manifests' items matching \"Davis\"", status: "waiting", step: null, collectionId: 3, series: "Shipping manifests",
+  href: "/?collection=3" });
+const READING = task({ id: 35, kind: "page", label: "Reading page 216412_00005 again", unit: "pages", step: null, collectionId: null, series: null, href: null });
 const FINISHED = task({
   id: 28, kind: "bundle", label: "Transcribing Box Hill 01", status: "done", step: null, done: 227, total: 227, unit: "pages",
-  collectionId: 1, href: "/?collection=1&bundle=216413",
+  collectionId: 1, series: "Wilfred Prest Survey", href: "/?collection=1&bundle=216413",
 });
 const FAILED = task({
-  id: 27, kind: "train", label: "Training page sorting", status: "failed", step: null, collectionId: null, href: null,
+  id: 27, kind: "train", label: "Training page sorting", status: "failed", step: null, collectionId: null, series: null, href: null,
   error: "The archive timed out.",
 });
 const EVERYTHING = [ADDING, TRANSCRIBING, QUEUED, READING, FINISHED, FAILED];
@@ -112,6 +114,7 @@ test("the Tasks link opens the Tasks page, a table of the active tasks first, th
   await expect(transcribing.getByRole("link")).toHaveAttribute("href", "/?collection=1&bundle=216412");
 
   const queued = row(page, "Adding Shipping manifests");
+  await expect(queued.getByRole("cell").nth(1)).toHaveText("Shipping manifests"); // the task names its series: GET /api/collections lists no such series
   await expect(queued).toContainText("Waiting to start");
   await expect(queued.getByRole("progressbar")).toBeVisible();
 

@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import AppHeader from "@/components/AppHeader";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableOpenArrow, TableRow, TableRowLink } from "@/components/ui/table";
-import { backendRequest, jobStages } from "../progress/backend";
+import { jobStages } from "../progress/backend";
 import { isActive, refreshTasks, useTasks, type Task } from "../progress/tasks";
 
 const statusWords = { waiting: "Waiting", running: "Running", done: "Done", failed: "Failed" } as const;
@@ -28,13 +28,7 @@ function TaskProgress({ task }: { task: Task }) {
 // The app's background work: what's waiting or running, then what finished lately, each with its series and progress.
 export default function TasksScreen() {
   const { tasks, error } = useTasks();
-  const [series, setSeries] = useState<Record<number, string>>({});
-  useEffect(() => {
-    void refreshTasks();
-    backendRequest<{ id: number; name: string }[]>("/collections")
-      .then((list) => setSeries(Object.fromEntries(list.map((c) => [c.id, c.name]))))
-      .catch(() => {});
-  }, []);
+  useEffect(() => void refreshTasks(), []);
   const listed = [...(tasks ?? []).filter(isActive), ...(tasks ?? []).filter((task) => !isActive(task))];
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -71,7 +65,7 @@ export default function TasksScreen() {
                     {task.href ? <TableRowLink href={task.href}>{task.label}</TableRowLink> : <span className="font-medium">{task.label}</span>}
                     {task.status === "failed" && task.error && <p className="text-destructive">{task.error}</p>}
                   </TableCell>
-                  <TableCell className="whitespace-normal">{task.collectionId == null ? "" : series[task.collectionId] ?? ""}</TableCell>
+                  <TableCell className="whitespace-normal">{task.series}</TableCell>
                   <TableCell>
                     <Badge variant={task.status === "failed" ? "destructive" : task.status === "running" ? "default" : "outline"}>
                       {statusWords[task.status]}

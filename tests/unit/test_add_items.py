@@ -166,7 +166,7 @@ def test_tasks_say_what_each_job_is_how_far_it_has_got_and_where_to_see_it(clien
         ('Adding items to Diaries matching "diary"', "running", 24, 30, "items", "/?collection=2", None),
         ("Transcribing Box Hill 00", "failed", 0, 0, "pages", "/?collection=1&bundle=216412", "the archive broke off"),
         ("Training page sorting", "done", 0, 0, "pages", None, None)]
-    assert [t["collectionId"] for t in tasks] == [2, 1, None]
+    assert [(t["collectionId"], t["series"]) for t in tasks] == [(2, "Diaries"), (1, "Wilfred Prest Survey"), (None, None)]
 
 
 def test_a_run_saves_the_series_it_is_loaded_into(tmp_path):
