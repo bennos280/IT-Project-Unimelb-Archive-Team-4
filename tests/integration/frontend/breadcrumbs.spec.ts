@@ -15,8 +15,9 @@ const COLLECTION = { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_
   archiveIdentifier: "UMA-SR-000000842", bundles: 1, pages: 2 };
 const DIARIES = { ...COLLECTION, id: 2, name: "Strathfieldsaye Estate Diaries", archiveSeries: 524173, archiveIdentifier: "UMA-SR-000001769" };
 
-// noItemInfo leaves the item's name and archive title out of the survey, as an older server would.
-async function mockApi(page: Page, { noItemInfo = false, archive = false } = {}) {
+// noItemInfo leaves the item's name and archive title out of the survey, as an older server would. The item holds a second
+// survey (one more page), so it isn't one record; whole makes the survey say it is its whole item.
+async function mockApi(page: Page, { noItemInfo = false, archive = false, whole = false } = {}) {
   const archiveItem = archive ? { identifier: "UMA-ITE-1973000200006", title: "Brunswick 02 - Part 3" } : null;
   await page.route("**/test-scan.svg", (route) =>
     route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"/>' }),
@@ -25,15 +26,16 @@ async function mockApi(page: Page, { noItemInfo = false, archive = false } = {})
     const path = new URL(route.request().url()).pathname;
     const served = serveItems([{
       bundle: "pdf-216417", name: "216417", pdf: "216417/pdf-216417.pdf", archive: archiveItem,
-      pages: pages.map((p, i) => ({
+      pages: [...pages, { id: "216417/p2", type: "main" }].map((p, i) => ({
         id: p.id, label: `Pg ${i + 1}`, category: p.type, status: "Ready to review", flagCount: 0,
-        surveyId: "216417_1", reviewPageId: p.id,
+        surveyId: i < pages.length ? "216417_1" : "216417_2", reviewPageId: p.id,
       })),
     }], route.request());
     if (served) return route.fulfill(served);
     if (path === "/api/survey/216417_1")
       return route.fulfill({ json: {
         id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", recordName: "survey", grouped: true, pages,
+        wholeItem: whole,
         ...(noItemInfo ? {} : { item: { name: "216417", archive: archiveItem } }),
       } });
     if (path === "/api/reviews/216417_1") return route.fulfill({ json: { reviews: {}, revisions: {} } });
@@ -158,7 +160,27 @@ test("the review screen shows the series, then Items > Item > Survey, and the it
   await trail(page).getByRole("link", { name: "Item 216417" }).click();
   await expect(page).toHaveURL("/?collection=1&bundle=216417");
   await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Review Pg 1", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Review Survey 216417_1", exact: true })).toBeVisible();
+});
+
+test("a record that is its whole item is named by the item, with no step between them", async ({ page }) => {
+  await mockApi(page, { whole: true });
+  await page.goto("/?survey=216417_1");
+  await expect(crumbs(page)).toHaveText(["Items", "Item 216417"]);
+  await expect(current(page)).toHaveText("Item 216417");
+  await expect(trail(page).locator("a[href]", { hasText: "Item 216417" })).toHaveCount(0); // where you are, not a way to its pages
+  await expect(itemsCrumb(page)).toHaveAttribute("href", "/?collection=1");
+});
+
+test("a record of one page has no page arrows, and one of several has", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?survey=216417_1");
+  await expect(page.getByRole("navigation", { name: "Survey pages" })).toContainText("Page 1 of 2");
+  await page.route("**/api/survey/216417_1", (route) => route.fulfill({ json: {
+    id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", recordName: "survey", grouped: true, pages: [pages[0]] } }));
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Transcript Review" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Survey pages" })).toHaveCount(0);
 });
 
 test("an item on the archive is named by its title in the review screen's crumbs and on its own page", async ({ page }) => {

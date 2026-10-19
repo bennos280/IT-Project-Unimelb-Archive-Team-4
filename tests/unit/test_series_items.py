@@ -42,9 +42,10 @@ def names(reply):
 def test_items_come_a_page_at_a_time_in_order_of_their_numbers_with_their_counts_and_the_series(client, diaries):
     first = client.get("/collections/2/items", params={"size": 2}).json()
     assert (names(first), first["page"], first["total"], first["all"]) == (["2", "9"], 0, 4, 4)
-    assert first["items"][1]["counts"] == {"total": 2, "reviewable": 1, "unassigned": 1, "reviewed": 0, "ready": 1}
+    assert first["items"][1]["counts"] == {"total": 2, "reviewable": 1, "unassigned": 1, "reviewed": 0, "ready": 1, "records": 1}
     assert first["items"][1]["archive"] == {"identifier": "UMA-IT-000000009", "title": "Diary nine"}
-    assert first["totals"] == {"total": 4, "reviewable": 1, "unassigned": 1, "reviewed": 0, "ready": 1}  # with 10's two so far
+    assert first["totals"] == {"total": 4, "reviewable": 1, "unassigned": 1, "reviewed": 0, "ready": 1, "records": 1}  # with 10's two so far
+    assert first["most"] == {"pages": 2, "records": 1}
     second = client.get("/collections/2/items", params={"size": 2, "page": 1}).json()
     assert (names(second), second["items"][0]["counts"]["total"], second["items"][0]["job"]["status"]) == (["10", "100"], 2, "running")
     assert client.get("/collections/2/items", params={"size": 2, "page": 7}).json()["page"] == 1  # past the end: the last
@@ -73,3 +74,13 @@ def test_an_item_is_given_by_its_number_or_bundle_id_with_its_pages(client, diar
 def test_a_record_names_its_item_as_the_dashboard_does(client, diaries):
     assert client.get("/survey/9_00001").json()["item"] == {
         "name": "9", "archive": {"identifier": "UMA-IT-000000009", "title": "Diary nine"}}
+
+
+def test_an_item_that_is_one_record_gives_it_so_the_dashboard_opens_it_straight_away(client, db, diaries):
+    def nine():
+        return next(item for item in client.get("/collections/2/items").json()["items"] if item["name"] == "9")
+    assert (nine()["record"], client.get("/survey/9_00001").json()["wholeItem"]) == (None, False)  # a page is in no record
+    db.get(models.Page, "9_00002").survey_id = "9_00001"
+    db.commit()
+    assert (nine()["record"], client.get("/survey/9_00001").json()["wholeItem"]) == ("9_00001", True)
+    assert [item["record"] for item in client.get("/collections/2/items").json()["items"] if item["name"] != "9"] == [None] * 3

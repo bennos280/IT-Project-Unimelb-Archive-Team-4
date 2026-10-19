@@ -64,6 +64,7 @@ export type Survey = {
   title: string;
   recordName: string; // what the collection calls a record
   grouped: boolean; // whether the collection's pages group into records
+  wholeItem?: boolean; // the record is its whole item, all the item's pages
   pages: SurveyPage[];
 };
 

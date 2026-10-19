@@ -315,10 +315,11 @@ A series' dashboard asks for a page of its items at a time, searched, filtered a
 
 |Test|What it checks|
 |---|---|
-|`test_items_come_a_page_at_a_time_in_order_of_their_numbers_with_their_counts_and_the_series`|Items come a page at a time in order of their numbers (2, 9, 10, 100), each with its pages' counts (an item being transcribed, those so far), with how many match and how many there are, the counts of all the series' pages, and a page past the end gives the last.|
+|`test_items_come_a_page_at_a_time_in_order_of_their_numbers_with_their_counts_and_the_series`|Items come a page at a time in order of their numbers (2, 9, 10, 100), each with its pages' counts and records (an item being transcribed, those so far), with how many match and how many there are, the counts of all the series' pages, the most pages and records any item has, and a page past the end gives the last.|
 |`test_items_are_found_by_number_title_or_identifier_and_by_status`|Search finds an item by its number, title or identifier, any case; each status filter finds the items the dashboard always showed for it.|
 |`test_an_item_is_given_by_its_number_or_bundle_id_with_its_pages`|One item comes with its pages; an item not loaded has none; an unknown item or series is 404.|
 |`test_a_record_names_its_item_as_the_dashboard_does`|A record's response names its item and its archive title, for the review screen's crumb.|
+|`test_an_item_that_is_one_record_gives_it_so_the_dashboard_opens_it_straight_away`|An item's row gives its record only once all its pages are in it (a page in none, or another item: none), and the record then says it is its whole item.|
 
 ## `test_record_name.py`
 

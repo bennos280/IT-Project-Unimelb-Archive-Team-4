@@ -121,7 +121,7 @@ def page_flags(db, p, fields_list):
                       "reason": OTHER_PAGE + (OTHER_PAGE_GROUPED.format(page_record_name(db, p)) if grouped else OTHER_PAGE_ALONE)})
     return flags
 
-#a survey's pages in scan order, with fields, flags and scan URL
+#a survey's pages in scan order, with fields, flags and scan URL, and whether it is its whole item (all the item's pages)
 @app.get("/survey/{survey_id}")
 def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     survey = db.get(models.Survey, survey_id)
@@ -148,7 +148,7 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     return {"id":survey_id, "bundleId":survey.bundle_id, "collectionId":collection.collection_id, "title":collection.name,
             "item": {"name": name, "archive": {"identifier": item.identifier, "title": item.title} if item else None},
             "recordName": grouping.record_name(collection), "grouped": bool(grouping.rule(db, collection.collection_id)["starts"]),
-            "pages":pages_list}
+            "wholeItem": db.query(models.Page).filter_by(bundle_id=bundle.bundle_id).count() == len(pages_list), "pages":pages_list}
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
 #and black and white (the scan itself if that fails)
@@ -982,12 +982,19 @@ def get_bundles(collection: int = 1, db: Session = Depends(get_db)):
         surveys.setdefault(bundle_id, []).append(survey_id)
     return [{**row, "surveys": surveys.get(row["bundle"], [])} for row in series_items(db, collection)]
 
-#how many of some pages there are, are in a record (reviewable), aren't, are reviewed and are ready to review
+#how many of some pages there are, are in a record (reviewable), aren't, are reviewed and are ready to review, and how many
+#records they make up
 def page_counts(pages):
     reviewable = [p for p in pages if p.get("surveyId") is not None]
     return {"total": len(pages), "reviewable": len(reviewable), "unassigned": sum(p["status"] == "Not in a survey" for p in pages),
             "reviewed": sum(p["status"] == "Reviewed" for p in reviewable),
-            "ready": sum(p["status"] == "Ready to review" for p in reviewable)}
+            "ready": sum(p["status"] == "Ready to review" for p in reviewable),
+            "records": len({p["surveyId"] for p in reviewable})}
+
+#an item's record when it is the whole item, all its pages; the dashboard opens it straight away. None: it has none or several
+def whole_record(pages):
+    records = {p.get("surveyId") for p in pages}
+    return records.pop() if len(records) == 1 and None not in records else None
 
 #each of a series' items' pages: a loaded one's as /progress gives them, one being transcribed its finished ones so far
 def items_pages(db, collection, rows):
@@ -1010,7 +1017,8 @@ def item_matches(row, pages, search, status):
     return any(p["status"] == status for p in pages)
 
 #a page of a series' items for its dashboard: those its search and status match, in order of their numbers (216412 before
-#2164120), each with its pages' counts; with how many match, how many it has, and the counts of all its pages
+#2164120), each with its pages' counts and its record if it is one; with how many match, how many it has, the counts of all
+#its pages, and the most pages and records any of its items has, so the dashboard leaves out a level none has more than one of
 @app.get("/collections/{collection_id}/items")
 def list_items(collection_id: int, page: int = 0, size: int = 9, search: str = "", status: str = "All", db: Session = Depends(get_db)):
     if not db.get(models.Collection, collection_id):
@@ -1022,9 +1030,12 @@ def list_items(collection_id: int, page: int = 0, size: int = 9, search: str = "
                            (1, 0, [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", row["name"])]))
     matching = sorted((row for row in rows if item_matches(row, pages[row["bundle"]], search, status)), key=natural)
     page = min(max(page, 0), max(len(matching) - 1, 0) // size)
-    return {"items": [{**row, "counts": page_counts(pages[row["bundle"]])} for row in matching[page * size:(page + 1) * size]],
+    return {"items": [{**row, "counts": page_counts(pages[row["bundle"]]), "record": whole_record(pages[row["bundle"]]) if row["loaded"] else None}
+                      for row in matching[page * size:(page + 1) * size]],
             "page": page, "total": len(matching), "all": len(rows),
-            "totals": page_counts([p for row in rows for p in pages[row["bundle"]]])}
+            "totals": page_counts([p for row in rows for p in pages[row["bundle"]]]),
+            "most": {"pages": max((len(p) for p in pages.values()), default=0),
+                     "records": max((page_counts(p)["records"] for p in pages.values()), default=0)}}
 
 #one of a series' items, by its number or bundle id, with its pages as /progress gives them (none until it's loaded)
 @app.get("/collections/{collection_id}/items/{name}")

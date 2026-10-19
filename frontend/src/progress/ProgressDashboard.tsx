@@ -24,20 +24,23 @@ import {
 } from "@/components/ui/table";
 import {
   counts,
+  records as itemRecords,
+  recordStatuses,
   type Counts,
   type ProgressPage,
   type PageStatus,
 } from "./progressData";
-import { ARCHIVE, backendRequest, itemTitle, jobStages, providerNames, recordWords, type AvailableBundle } from "./backend";
+import { ARCHIVE, backendRequest, itemTitle, jobStages, providerNames, recordNumber, recordWords, type AvailableBundle } from "./backend";
 import { useTasks } from "./tasks";
 import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
 import type { ModelData } from "./ModelControls";
 import JobErrorDialog from "./JobErrorDialog";
 import AddItemsDialog from "./AddItemsDialog";
-// One row of the overview: an item, its processing job and its page counts.
-type Row = AvailableBundle & { counts: Counts };
-// A page of the series' items, as the server filters and pages them; totals cover every page of the series.
-type Overview = { items: Row[]; page: number; total: number; all: number; totals: Counts };
+// One row of the overview: an item, its processing job, its page counts and, when it is one record, that record.
+type Row = AvailableBundle & { counts: Counts; record?: string | null };
+// A page of the series' items, as the server filters and pages them; totals cover every page of the series, and most is the
+// most pages and records any of its items has.
+type Overview = { items: Row[]; page: number; total: number; all: number; totals: Counts; most?: { pages: number; records: number } };
 // One item with its pages.
 type Item = AvailableBundle & { pages: ProgressPage[] };
 const pageSize = 9;
@@ -50,12 +53,14 @@ function itemsPath(collectionId: number, page: number, search: string, status: s
   return `/collections/${collectionId}/items?${params}`;
 }
 
-type View = { bundle: string | null; query: string; status: string; pageNumber: number };
+// pages: an item with several records lists its pages instead.
+type View = { bundle: string | null; pages: boolean; query: string; status: string; pageNumber: number };
 // Reads the dashboard view from the URL; its page number counts from 1.
 function readView(): View {
   const params = new URLSearchParams(location.search);
   return {
     bundle: params.get("bundle"),
+    pages: params.get("show") === "pages",
     query: params.get("q") ?? "",
     status: params.get("status") ?? "All",
     pageNumber: Math.max(0, Math.floor(Number(params.get("page")) || 1) - 1),
@@ -81,8 +86,9 @@ export default function ProgressDashboard() {
   // A status as shown: in the series' words, and without grouping where its pages don't group.
   const statusLabel = (s: string) =>
     s === "Not in a survey" ? `Not in ${words.a}` : s === "Transcribed — not grouped" && !series.grouped ? "Transcribed" : s;
-  // The view lives in the URL (?collection, ?bundle, ?q, ?status, ?page) so refresh, Back and shared links keep it.
-  // No bundle displays the series' items, which the server searches, filters and pages; a bundle displays that item's pages, which this page does.
+  // The view lives in the URL (?collection, ?bundle, ?show, ?q, ?status, ?page) so refresh, Back and shared links keep it.
+  // No bundle displays the series' items, which the server searches, filters and pages; a bundle displays that item's records,
+  // or its pages when it has one record or ?show=pages, which this page does.
   const [view, setView] = useState(readView);
   useEffect(() => {
     const sync = () => setView(readView());
@@ -95,6 +101,7 @@ export default function ProgressDashboard() {
     const v = { ...view, ...next };
     const params = new URLSearchParams({ collection: String(collectionId) });
     if (v.bundle) params.set("bundle", v.bundle);
+    if (v.bundle && v.pages) params.set("show", "pages");
     if (v.query) params.set("q", v.query);
     if (v.status !== "All") params.set("status", v.status);
     if (v.pageNumber) params.set("page", String(v.pageNumber + 1));
@@ -234,7 +241,15 @@ export default function ProgressDashboard() {
 
   // Summary cards cover the selected item or every page of the series, regardless of filters.
   const totals = item ? counts(item.pages) : (overview?.totals ?? counts([]));
-  // Search page labels, IDs, and categories, then apply the status filter.
+  // A loaded item's records, each named by its number; one with several lists them, unless its pages are asked for, by the
+  // switch or by a status only pages have (as an older link may).
+  const recordRows = item?.loaded
+    ? itemRecords(item.pages).map((r) => ({ ...r, label: `${words.One} ${recordNumber(r.id, item.bundle)}` }))
+    : [];
+  const byRecord = recordRows.length > 1 && !view.pages && (status === "All" || recordStatuses.includes(status as PageStatus));
+  // The pages in no record, which only the pages list shows.
+  const loose = item?.pages.filter((p) => !p.surveyId).length ?? 0;
+  // Search page labels, IDs, and categories (or records' names), then apply the status filter.
   const matchingPages =
     item?.pages.filter(
       (p) =>
@@ -243,8 +258,14 @@ export default function ProgressDashboard() {
           .includes(query.trim().toLowerCase()) &&
         (status === "All" || p.status === status),
     ) || [];
+  const matchingRecords = recordRows.filter(
+    (r) => `${r.label} ${r.id}`.toLowerCase().includes(query.trim().toLowerCase()) && (status === "All" || r.status === status),
+  );
+  // The overview leaves out a level no item has more than one of; without the counts, pages are shown and records aren't.
+  const recordsColumn = (overview?.most?.records ?? 0) > 1;
+  const pagesColumn = (overview?.most?.pages ?? 2) > 1;
 
-  const totalRows = item ? matchingPages.length : (overview?.total ?? 0);
+  const totalRows = item ? (byRecord ? matchingRecords.length : matchingPages.length) : (overview?.total ?? 0);
   // A series with no items at all, as opposed to filters that match none.
   const noItems = !bundleName && overview?.all === 0 && !query.trim() && status === "All";
   const lastPage = Math.max(0, Math.ceil(totalRows / pageSize) - 1);
@@ -254,7 +275,7 @@ export default function ProgressDashboard() {
 
   // Switch between overview and page list, resetting filters and pagination.
   function openBundle(name: string | null) {
-    show({ bundle: name, query: "", status: "All", pageNumber: 0 });
+    show({ bundle: name, pages: false, query: "", status: "All", pageNumber: 0 });
   }
   // A plain click on the collection's crumb returns in-app; modified clicks keep the link's default.
   function backToOverview(e: MouseEvent) {
@@ -303,6 +324,20 @@ export default function ProgressDashboard() {
   // Stretched link: its overlay makes the whole row clickable; controls inside a row sit above it.
   const above = "relative z-10";
   const rowAction = "h-auto min-h-7 w-full flex-wrap px-1 py-1 text-xs sm:px-2.5 sm:text-[0.8rem]";
+  // The table's columns: heading, width and, for a number, its alignment (sr-only: a heading only screen readers read).
+  const columns: (readonly [string, string, string?])[] = byRecord
+    ? [[words.One, "w-[24%]"], ["Pages", "w-[12%]", num], ["Flags", "w-[20%]"], ["Status", "w-[28%]"], ["Actions", "w-[16%]", "sr-only"]]
+    : item
+      ? [["Page", "w-[9%]"], ["Page category", "w-[16%]"], ["Flags", "w-[15%]"], ["Status", "w-[24%]"], ["Model", "w-[20%]"],
+          ["Actions", "w-[16%]", "sr-only"]]
+      : [
+          ["Item", "w-[25%]"],
+          ...(recordsColumn ? [[words.many.charAt(0).toUpperCase() + words.many.slice(1), "w-[12%]", num] as const] : []),
+          ...(pagesColumn ? [["Total pages", recordsColumn ? "w-[12%]" : "w-[16%]", num] as const] : []),
+          ["Ready to review", recordsColumn ? "w-[13%]" : "w-[17%]", `${num} sm:pr-6`],
+          ["Review progress", recordsColumn ? "w-[20%]" : "w-[24%]"],
+          ["Actions", "w-[18%]", "sr-only"],
+        ];
   // What can be done here: export, add items from the archive (a linked series), import scans (the Prest survey for now).
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
@@ -347,7 +382,7 @@ export default function ProgressDashboard() {
                     {` · ${item.name} · `}
                   </>
                 )}
-                {item ? `${totals.ready} pages ready to review` : ""}
+                {item ? `${recordRows.length > 1 ? `${recordRows.length} ${words.many} · ` : ""}${totals.ready} pages ready to review` : ""}
               </p>
             </div>
             {actions}
@@ -438,13 +473,23 @@ export default function ProgressDashboard() {
             </div>
             {/* Changing search or status returns the table to its first page. */}
             <div className="flex flex-wrap items-center gap-2" data-testid="progress-filters">
+              {recordRows.length > 1 && (
+                <div role="group" aria-label="Show" className="flex gap-1">
+                  {([[true, words.many], [false, "pages"]] as const).map(([records, label]) => (
+                    <Button key={label} variant={byRecord === records ? "secondary" : "ghost"} size="sm" aria-pressed={byRecord === records}
+                      onClick={() => show({ pages: !records, query: "", status: "All", pageNumber: 0 })}>
+                      {label.charAt(0).toUpperCase() + label.slice(1)}
+                    </Button>
+                  ))}
+                </div>
+              )}
               <div className="relative w-full min-w-48 sm:w-auto sm:max-w-md sm:flex-1">
                 <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   className="pl-8"
-                  aria-label={item ? "Search pages" : "Search items"}
+                  aria-label={byRecord ? `Search ${words.many}` : item ? "Search pages" : "Search items"}
                   placeholder={
-                    item ? "Search page number…"
+                    byRecord ? `Search ${words.one} number…` : item ? "Search page number…"
                       : overview?.items.some((b) => b.archive) ? "Search title, identifier or number…" : "Search item number…"
                   }
                   value={query}
@@ -457,7 +502,7 @@ export default function ProgressDashboard() {
                 value={status}
                 onChange={(e) => show({ status: e.target.value, pageNumber: 0 })}
               >
-                {[
+                {(byRecord ? ["All", ...recordStatuses] : [
                   "All",
                   ...(!item
                     ? ["Transcription in progress"]
@@ -470,7 +515,7 @@ export default function ProgressDashboard() {
                   "Ready to review",
                   "Reviewed",
                   ...(series.grouped ? ["Not in a survey"] : []),
-                ].map((s) => (
+                ]).map((s) => (
                   <option key={s} value={s}>
                     Status: {statusLabel(s)}
                   </option>
@@ -500,27 +545,19 @@ export default function ProgressDashboard() {
                 </Button>
               )}
             </div>
-            {/* The same table shows bundle summaries or individual page details. */}
+            {byRecord && loose > 0 && (
+              <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+                {loose} {loose === 1 ? "page isn't" : "pages aren't"} in {words.a}.
+                <Button variant="link" size="sm" className="h-auto p-0" onClick={() => show({ pages: true, query: "", status: "All", pageNumber: 0 })}>
+                  Show pages
+                </Button>
+              </p>
+            )}
+            {/* The same table shows bundle summaries, an item's records or its pages. */}
               <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
-                    {(item
-                      ? [
-                          ["Page", "w-[9%]"],
-                          ["Page category", "w-[16%]"],
-                          ["Flags", "w-[15%]"],
-                          ["Status", "w-[24%]"],
-                          ["Model", "w-[20%]"],
-                          ["Actions", "w-[16%]", "sr-only"],
-                        ]
-                      : [
-                          ["Item", "w-[25%]"],
-                          ["Total pages", "w-[16%]", num],
-                          ["Ready to review", "w-[17%]", `${num} sm:pr-6`],
-                          ["Review progress", "w-[24%]"],
-                          ["Actions", "w-[18%]", "sr-only"],
-                        ]
-                    ).map(([h, width, extra]) => (
+                    {columns.map(([h, width, extra]) => (
                       <TableHead key={h} className={`${head} ${width} ${extra?.startsWith(num) ? extra : ""}`}>
                         {extra === "sr-only" ? <span className="sr-only">{h}</span> : h}
                       </TableHead>
@@ -528,7 +565,27 @@ export default function ProgressDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {item
+                  {byRecord
+                    ? matchingRecords.slice(start, start + pageSize).map((r) => (
+                        <TableRow key={r.id} clickable>
+                          <TableCell className={cell}>
+                            <TableRowLink href={reviewLink(r.page)}
+                              aria-label={`${r.status === "Awaiting transcription" ? "Transcribe" : r.status === "Reviewed" ? "View" : "Review"} ${r.label}`}>
+                              {r.label}
+                            </TableRowLink>
+                          </TableCell>
+                          <TableCell className={`${cell} ${num}`}>{r.pages.length}</TableCell>
+                          <TableCell className={cell}>{r.flagCount > 0 ? `${r.flagCount} need checking` : "No flags"}</TableCell>
+                          <TableCell className={cell}>
+                            <Badge className="h-auto whitespace-normal"
+                              variant={r.status === "Reviewed" ? "default" : r.status === "Ready to review" ? "secondary" : "outline"}>
+                              {r.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={cell}><TableOpenArrow /></TableCell>
+                        </TableRow>
+                      ))
+                    : item
                     ? matchingPages.slice(start, start + pageSize).map((p) => (
                         <TableRow
                           key={p.id}
@@ -585,10 +642,12 @@ export default function ProgressDashboard() {
                           return (
                             <TableRow key={b.bundle} clickable>
                               <TableCell className={cell}>
+                                {/* An item that is one record opens it straight away; any other, its records or pages here. */}
                                 <TableRowLink
-                                  href={`/?collection=${collectionId}&bundle=${encodeURIComponent(b.name)}`}
+                                  href={b.loaded && b.record ? `/?survey=${encodeURIComponent(b.record)}`
+                                    : `/?collection=${collectionId}&bundle=${encodeURIComponent(b.name)}`}
                                   onClick={(e) => {
-                                    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                                    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (b.loaded && b.record)) return;
                                     e.preventDefault();
                                     openBundle(b.name);
                                   }}
@@ -601,7 +660,8 @@ export default function ProgressDashboard() {
                                   </span>
                                 )}
                               </TableCell>
-                              <TableCell className={`${cell} ${num}`}>{c.total}</TableCell>
+                              {recordsColumn && <TableCell className={`${cell} ${num}`}>{c.records}</TableCell>}
+                              {pagesColumn && <TableCell className={`${cell} ${num}`}>{c.total}</TableCell>}
                               <TableCell className={`${cell} ${num} sm:pr-6`}>{c.ready}</TableCell>
                               <TableCell className={cell}>
                                 <div className="flex max-w-sm flex-col gap-1.5">
@@ -719,7 +779,7 @@ export default function ProgressDashboard() {
                   {/* Offer a filter reset when no rows match. */}
                   {!totalRows && (
                     <TableRow>
-                      <TableCell colSpan={item ? 6 : 5}>
+                      <TableCell colSpan={columns.length}>
                         {noItems ? (
                           <div className="flex flex-col items-center gap-3 p-6 text-center whitespace-normal">
                             <p className="font-medium">No items yet.</p>
@@ -738,7 +798,7 @@ export default function ProgressDashboard() {
                           </div>
                         ) : (
                           <div className="flex flex-wrap items-center justify-center gap-3 p-6 text-center whitespace-normal">
-                            No {item ? "pages" : "items"} match your filters.
+                            No {byRecord ? words.many : item ? "pages" : "items"} match your filters.
                             <Button
                               variant="outline"
                               size="sm"
@@ -758,7 +818,7 @@ export default function ProgressDashboard() {
               <span>
                 Showing {totalRows ? start + 1 : 0}–
                 {Math.min(start + pageSize, totalRows)} of {totalRows}{" "}
-                {item ? "pages" : "items"}
+                {byRecord ? words.many : item ? "pages" : "items"}
               </span>
               <div className="flex items-center gap-2">
                 <Button

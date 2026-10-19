@@ -69,7 +69,7 @@ export function bundleFromSurvey(
   };
 }
 // Total includes every status; only the two review states contribute to the other counters.
-// Ready excludes pages without extracted fields and fully reviewed pages.
+// Ready excludes pages without extracted fields and fully reviewed pages. Records: how many the pages make up.
 export function counts(pages: ProgressPage[]) {
   const reviewable = pages.filter((page) => page.surveyId != null);
 
@@ -81,7 +81,21 @@ export function counts(pages: ProgressPage[]) {
     reviewed: reviewable.filter((page) => page.status === "Reviewed").length,
     ready: reviewable.filter((page) => page.status === "Ready to review")
       .length,
+    records: new Set(reviewable.map((page) => page.surveyId)).size,
   };
+}
+// A record's statuses, least far along first; a record is as far along as its least far page.
+export const recordStatuses: PageStatus[] = ["Awaiting transcription", "Ready to review", "Reviewed"];
+// An item's records in scan order, each with its pages, its flags, how far along it is, and the page to open: its first that
+// far along.
+export function records(pages: ProgressPage[]) {
+  const found = new Map<string, ProgressPage[]>();
+  for (const page of pages) if (page.surveyId) found.set(page.surveyId, [...(found.get(page.surveyId) ?? []), page]);
+  return [...found].map(([id, pages]) => {
+    const status = recordStatuses.find((s) => pages.some((page) => page.status === s)) ?? "Reviewed";
+    return { id, pages, status, page: pages.find((page) => page.status === status) ?? pages[0],
+      flagCount: pages.reduce((n, page) => n + page.flagCount, 0) };
+  });
 }
 // The page counts of one item, or of a whole series.
 export type Counts = ReturnType<typeof counts>;

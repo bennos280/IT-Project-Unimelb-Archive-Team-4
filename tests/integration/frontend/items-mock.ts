@@ -21,7 +21,15 @@ export function tally(pages: MockPage[]) {
     unassigned: pages.filter((page) => page.status === "Not in a survey").length,
     reviewed: reviewable.filter((page) => page.status === "Reviewed").length,
     ready: reviewable.filter((page) => page.status === "Ready to review").length,
+    records: new Set(reviewable.map((page) => page.surveyId)).size,
   };
+}
+
+// An item's record when it is the whole item, all its pages, as the server gives it; null: none or several.
+function wholeRecord(item: MockItem) {
+  const records = new Set((item.pages ?? []).map((page) => page.surveyId ?? null));
+  const [only] = records;
+  return (item.loaded ?? true) && records.size === 1 && only ? only : null;
 }
 
 const row = (item: MockItem) => ({
@@ -63,8 +71,10 @@ export function serveItems(items: MockItem[] | (() => MockItem[]), request: Requ
   const page = Math.min(Math.max(0, Number(url.searchParams.get("page")) || 0), Math.max(0, Math.ceil(matching.length / size) - 1));
   return {
     json: {
-      items: matching.slice(page * size, (page + 1) * size).map((item) => ({ ...row(item), counts: tally(item.pages ?? []) })),
+      items: matching.slice(page * size, (page + 1) * size).map((item) => ({ ...row(item), counts: tally(item.pages ?? []), record: wholeRecord(item) })),
       page, total: matching.length, all: all.length, totals: tally(all.flatMap((item) => item.pages ?? [])),
+      most: { pages: Math.max(0, ...all.map((item) => (item.pages ?? []).length)),
+        records: Math.max(0, ...all.map((item) => tally(item.pages ?? []).records)) },
     },
   };
 }

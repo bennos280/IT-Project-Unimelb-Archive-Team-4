@@ -36,6 +36,9 @@ export function recordWords(one = "record") {
 }
 // An item's name on screen: its title on the archive, else its number.
 export const itemTitle = (name: string, archive?: ArchiveItem | null) => archive?.title ?? `Item ${name}`;
+// A record's id without its item's at the start ("216412-24A" of item 216412: "24A"), as its item lists it.
+export const recordNumber = (id: string, bundle = "") =>
+  (bundle && id.startsWith(bundle) && id.slice(bundle.length).replace(/^[-_]/, "")) || id;
 // An item as the series' items list gives it, with its current processing job.
 // loaded means it has been imported into the database; job can be absent; archive is null when it isn't one of the series' archive items.
 export type AvailableBundle = {
