@@ -15,6 +15,7 @@ import {
 import { cn } from "cn";
 import ImageViewer from "./ImageViewer";
 import { request } from "./api";
+import { itemTitle, type AvailableBundle } from "../progress/backend";
 import type { useReviewSession } from "./useReviewSession";
 import { getPageName, isTextPage } from "./model";
 import type { Flag } from "./model";
@@ -137,16 +138,17 @@ export default function ReviewScreen({
   // The dashboard names a bundle by its /bundles name; the id is accepted too when that is unavailable.
   const bundleId = survey?.bundleId;
   const collectionId = survey?.collectionId ?? 1;
-  const [bundleNames, setBundleNames] = useState<{ bundle: string; name: string }[]>([]);
+  const [bundleNames, setBundleNames] = useState<Pick<AvailableBundle, "bundle" | "name" | "archive">[]>([]);
   useEffect(() => {
     if (!bundleId) return;
     let active = true;
-    request<{ bundle: string; name: string }[]>(`/bundles?collection=${collectionId}`)
+    request<Pick<AvailableBundle, "bundle" | "name" | "archive">[]>(`/bundles?collection=${collectionId}`)
       .then((list) => active && Array.isArray(list) && setBundleNames(list))
       .catch(() => {});
     return () => { active = false; };
   }, [bundleId, collectionId]);
-  const bundleLabel = bundleNames.find((b) => b.bundle === bundleId)?.name || bundleId || "";
+  const listed = bundleNames.find((b) => b.bundle === bundleId);
+  const bundleLabel = listed?.name || bundleId || "";
   return (
     <>
       <AppHeader
@@ -154,7 +156,7 @@ export default function ReviewScreen({
           { label: "Series", href: "/" },
           ...(survey?.collectionId ? [{ label: survey.title, href: `/?collection=${survey.collectionId}` }] : []),
           ...(survey?.bundleId
-            ? [{ label: `Item ${bundleLabel}`, href: `/?collection=${survey.collectionId ?? 1}&bundle=${encodeURIComponent(bundleLabel)}` }]
+            ? [{ label: itemTitle(bundleLabel, listed?.archive), href: `/?collection=${survey.collectionId ?? 1}&bundle=${encodeURIComponent(bundleLabel)}` }]
             : []),
           { label: `Survey ${session.surveyId}`.trim() },
         ]}

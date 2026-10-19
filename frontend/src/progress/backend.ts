@@ -13,9 +13,14 @@ export async function backendRequest<T>(path: string, options: RequestInit = {})
   return response.json();
 }
 export const providerNames: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI" };
+// The archive's website; a series' page is /nodes/view/<its number>, and an item's /nodes/view/<its name>.
+export const ARCHIVE = "https://archives.library.unimelb.edu.au";
+export type ArchiveItem = { identifier: string; title: string };
+// An item's name on screen: its title on the archive, else its number.
+export const itemTitle = (name: string, archive?: ArchiveItem | null) => archive?.title ?? `Item ${name}`;
 // Bundle metadata returned by /bundles, including its current processing job.
-// loaded means it has been imported into the database; job can be absent.
+// loaded means it has been imported into the database; job can be absent; archive is null when it isn't one of the series' archive items.
 export type AvailableBundle = {
-  pdf: string; bundle: string; name: string; loaded: boolean; surveys: string[];
+  pdf: string; bundle: string; name: string; archive: ArchiveItem | null; loaded: boolean; surveys: string[];
   job: { id?: number; status: string; step: string | null; donePages: number; totalPages: number; error: string | null } | null;
 };

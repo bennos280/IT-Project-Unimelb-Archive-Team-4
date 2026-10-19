@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Progress as ProgressBar } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { backendRequest } from "../progress/backend";
+import { ARCHIVE, backendRequest } from "../progress/backend";
 
 type Collection = {
   id: number; name: string; archiveSeries: number | null; archiveIdentifier: string | null; archiveTitle: string | null;
@@ -21,7 +21,6 @@ type Collection = {
 type Series = { id: number; title: string; identifier: string; date: string; access: string; items: number | null; url: string };
 type Lookup = { node: number; series?: Series; error?: string };
 
-const ARCHIVE = "https://archives.library.unimelb.edu.au";
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 // A series' node id from its address on the archive (.../nodes/view/499420) or the number itself; null: neither.

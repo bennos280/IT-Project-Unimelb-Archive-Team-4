@@ -216,3 +216,19 @@ def test_012_names_prests_archive_series(url, tmp_path):
         (499420, "UMA-SR-000000842", "University of Melbourne Social Survey forms", 45)]
     command.downgrade(config, "011")
     assert not {"archive_identifier", "archive_title", "archive_items"} & {r[1] for r in rows(db, "PRAGMA table_info(collections)")}
+
+
+def test_013_lists_each_of_prests_archive_items_with_its_identifier_and_title(url, tmp_path):
+    from backend import scans
+    archive_pdfs = (Path(scans.__file__).parent / "archive_pdfs.txt").read_text(encoding="utf-8").split()
+    db = tmp_path / "test.db"
+    config = database.alembic_config(url)
+    command.downgrade(config, "012")
+    database.migrate(url)
+    items = rows(db, "SELECT node, collection_id, identifier, title FROM archive_items ORDER BY node")
+    #an item's identifier is its PDF's file name's first three parts: 216412/423444_1973-0002-00001-00001.pdf is UMA-ITE-1973000200001
+    assert {node: identifier for node, _, identifier, _ in items} == {
+        int(pdf.split("/")[0]): "UMA-ITE-" + "".join(pdf.split("_", 1)[1].removesuffix(".pdf").split("-")[:3]) for pdf in archive_pdfs}
+    assert items[0] == (216412, 1, "UMA-ITE-1973000200001", "Box Hill 00")
+    command.downgrade(config, "012")
+    assert not rows(db, "SELECT name FROM sqlite_master WHERE name = 'archive_items'")

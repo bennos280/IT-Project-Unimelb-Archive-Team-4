@@ -685,9 +685,12 @@ def job_json(job):
             "donePages": job.done_pages, "totalPages": job.total_pages, "error": job.error,
             "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
 
-#every runnable PDF, with its loaded survey ids and latest job; name is the bundle number (the PDF's folder)
+#every runnable PDF, with its loaded survey ids and latest job; name is the bundle number (the PDF's folder), and archive
+#its identifier and title when that number is one of the collection's archive items
 @app.get("/bundles")
 def get_bundles(collection: int = 1, db: Session = Depends(get_db)):
+    items = {str(i.node): {"identifier": i.identifier, "title": i.title}
+             for i in db.query(models.ArchiveItem).filter_by(collection_id=collection)}
     loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id).filter_by(collection_id=collection)}
     elsewhere = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id).filter(models.Bundle.collection_id != collection)}
     surveys = {}
@@ -703,7 +706,8 @@ def get_bundles(collection: int = 1, db: Session = Depends(get_db)):
         if p.stem in elsewhere or (p.stem not in loaded and collection != 1):  #ponytail: a PDF not loaded yet is collection 1's
             continue
         job = latest.get(stored_path(p))
-        bundles.append({"pdf": stored_path(p), "bundle": p.stem, "name": p.stem if p.parent == data else p.parent.name,
+        name = p.stem if p.parent == data else p.parent.name
+        bundles.append({"pdf": stored_path(p), "bundle": p.stem, "name": name, "archive": items.get(name),
                         "loaded": p.stem in loaded, "surveys": surveys.get(p.stem, []), "job": job_json(job) if job else None})
     return bundles
 

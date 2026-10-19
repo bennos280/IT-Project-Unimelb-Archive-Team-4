@@ -370,6 +370,7 @@ test.describe("Progress and transcription states", () => {
       status?: string;
       partial?: boolean;
       count?: number;
+      archive?: boolean;
     } = {},
   ) {
     const loaded = options.loaded ?? false;
@@ -405,6 +406,7 @@ test.describe("Progress and transcription states", () => {
             {
               bundle: "b",
               name: "216424",
+              archive: options.archive ? { identifier: "UMA-ITE-1973000200013", title: "Collingwood 07" } : null,
               pdf: "b.pdf",
               loaded,
               surveys: [],
@@ -439,6 +441,40 @@ test.describe("Progress and transcription states", () => {
   async function openBundle(page: Page) {
     await page.getByRole("link", { name: "216424", exact: true }).click();
   }
+
+  test("an archive item is listed by its title over its identifier and number, found by any of them, and its page links to the archive", async ({
+    page,
+  }) => {
+    await mock(page, { loaded: true, archive: true });
+    const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "Collingwood 07", exact: true }) });
+    await expect(row).toContainText("UMA-ITE-1973000200013 · 216424");
+    await expect(row.getByRole("link")).toHaveCount(1);
+    for (const [query, found] of [["collingwood", 1], ["UMA-ITE-1973000200013", 1], ["216424", 1], ["brighton", 0]] as const) {
+      await page.getByLabel("Search items").fill(query);
+      await expect(row).toHaveCount(found);
+    }
+    await page.getByLabel("Search items").fill("");
+    await row.getByRole("link").click();
+    await expect(page.getByRole("heading", { name: "Collingwood 07", level: 1 })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator('[aria-current="page"]')).toHaveText("Collingwood 07");
+    const archive = page.getByRole("link", { name: "UMA-ITE-1973000200013" });
+    await expect(archive).toHaveAttribute("href", "https://archives.library.unimelb.edu.au/nodes/view/216424");
+    await expect(archive).toHaveAttribute("target", "_blank");
+    await expect(page.locator("main")).toContainText("UMA-ITE-1973000200013 · 216424 · 2 pages ready to review");
+  });
+
+  test("the Transcribe and error dialogs and the progress bar name an archive item by its title", async ({ page }) => {
+    await mock(page, { status: "failed", archive: true });
+    const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "Collingwood 07", exact: true }) });
+    await row.getByRole("button", { name: "Retry transcription", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Transcribe scans" })).toHaveAccessibleDescription("Collingwood 07");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await row.getByRole("button", { name: "more details here" }).click();
+    await expect(page.getByRole("dialog", { name: "Transcription error" })).toHaveAccessibleDescription("Collingwood 07");
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await mock(page, { loaded: true, archive: true });
+    await expect(page.getByRole("progressbar", { name: "Collingwood 07 review progress" })).toBeVisible();
+  });
 
   test("untouched item prompts Transcribe and shows no reviewable pages", async ({
     page,

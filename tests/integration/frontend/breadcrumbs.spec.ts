@@ -12,7 +12,7 @@ const pages = ["main", "notes"].map((type, index) => ({
 const COLLECTION = { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", archiveSeries: 499420, bundles: 1, pages: 2 };
 
 // failFirstBundles fails only the first /bundles request, which the review screen makes before the dashboard does.
-async function mockApi(page: Page, { failFirstBundles = false } = {}) {
+async function mockApi(page: Page, { failFirstBundles = false, archive = false } = {}) {
   let bundleRequests = 0;
   await page.route("**/test-scan.svg", (route) =>
     route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"/>' }),
@@ -33,7 +33,8 @@ async function mockApi(page: Page, { failFirstBundles = false } = {}) {
     if (path === "/api/bundles")
       return failFirstBundles && bundleRequests++ === 0
         ? route.fulfill({ status: 500, json: { detail: "Bundles unavailable" } })
-        : route.fulfill({ json: [{ pdf: "216417/pdf-216417.pdf", bundle: "pdf-216417", name: "216417", loaded: true, surveys: ["216417_1"], job: null }] });
+        : route.fulfill({ json: [{ pdf: "216417/pdf-216417.pdf", bundle: "pdf-216417", name: "216417", loaded: true, surveys: ["216417_1"], job: null,
+            archive: archive ? { identifier: "UMA-ITE-1973000200006", title: "Brunswick 02 - Part 3" } : null }] });
     if (path === "/api/survey/216417_1")
       return route.fulfill({ json: { id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", pages } });
     if (path === "/api/reviews/216417_1") return route.fulfill({ json: { reviews: {}, revisions: {} } });
@@ -124,6 +125,15 @@ test("the review screen shows Series > series > Item > Survey, and the item crum
   await expect(page).toHaveURL("/?collection=1&bundle=216417");
   await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Review Pg 1", exact: true })).toBeVisible();
+});
+
+test("an item on the archive is named by its title in the review screen's crumbs and on its own page", async ({ page }) => {
+  await mockApi(page, { archive: true });
+  await page.goto("/?survey=216417_1&page=216417%2Fp0");
+  await expect(crumbs(page)).toHaveText(["Series", "Wilfred Prest Survey", "Brunswick 02 - Part 3", "Survey 216417_1"]);
+  await trail(page).getByRole("link", { name: "Brunswick 02 - Part 3" }).click();
+  await expect(page).toHaveURL("/?collection=1&bundle=216417");
+  await expect(current(page)).toHaveText("Brunswick 02 - Part 3");
 });
 
 test("the review screen's series crumb opens the series' items", async ({ page }) => {

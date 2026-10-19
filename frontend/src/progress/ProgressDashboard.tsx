@@ -1,7 +1,7 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { ArrowRight, ChevronRight, LayoutList, Search, Settings, Upload } from "lucide-react";
+import { ArrowRight, ChevronRight, ExternalLink, LayoutList, Search, Settings, Upload } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -25,7 +25,7 @@ import {
   type ProgressPage,
   type PageStatus,
 } from "./progressData";
-import { backendRequest, providerNames, type AvailableBundle } from "./backend";
+import { ARCHIVE, backendRequest, itemTitle, providerNames, type AvailableBundle } from "./backend";
 import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
 import type { ModelData } from "./ModelControls";
 import JobErrorDialog from "./JobErrorDialog";
@@ -68,7 +68,7 @@ export default function ProgressDashboard() {
   const [attempt, setAttempt] = useState(0);
   const [starting, setStarting] = useState<string | null>(null);
   const [errorDetails, setErrorDetails] = useState<{
-    bundle: string;
+    item: string;
     message: string;
   } | null>(null);
   const [jobError, setJobError] = useState("");
@@ -249,7 +249,8 @@ export default function ProgressDashboard() {
   // Reviewed requires every page; other statuses match bundles with pending pages.
   const matchingBundles = (bundles ?? []).filter(
     (b) =>
-      `${b.name ?? ""} ${b.id}`.includes(query.trim()) &&
+      [b.name, b.id, b.source?.archive?.title, b.source?.archive?.identifier].join(" ").toLowerCase()
+        .includes(query.trim().toLowerCase()) &&
       (status === "All" ||
         (status === "Awaiting transcription" && b.source && !b.source.loaded) ||
         (status === "Transcription in progress" &&
@@ -343,7 +344,7 @@ export default function ProgressDashboard() {
           bundle
             ? { label: collectionName || "Series", href: `/?collection=${collectionId}`, onClick: backToOverview }
             : { label: collectionName || "Series" },
-          ...(bundle ? [{ label: `Item ${bundle.name ?? bundle.id}` }] : []),
+          ...(bundle ? [{ label: itemTitle(bundle.name ?? bundle.id, bundle.source?.archive) }] : []),
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -378,10 +379,19 @@ export default function ProgressDashboard() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             {bundle
-              ? `Item ${bundle.name ?? bundle.id}`
+              ? itemTitle(bundle.name ?? bundle.id, bundle.source?.archive)
               : "All items"}
           </h1>
           <p className="text-sm text-muted-foreground">
+            {bundle?.source?.archive && (
+              <>
+                <a href={`${ARCHIVE}/nodes/view/${bundle.name}`} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 hover:underline">
+                  {bundle.source.archive.identifier} <ExternalLink aria-hidden="true" className="size-3.5" />
+                </a>
+                {` · ${bundle.name} · `}
+              </>
+            )}
             {bundle
               ? `${totals.ready} pages ready to review`
               : `Track review progress across ${(bundles ?? []).length} items`}
@@ -457,7 +467,8 @@ export default function ProgressDashboard() {
                   className="pl-8"
                   aria-label={bundle ? "Search pages" : "Search items"}
                   placeholder={
-                    bundle ? "Search page number…" : "Search item number…"
+                    bundle ? "Search page number…"
+                      : bundles?.some((b) => b.source?.archive) ? "Search title, identifier or number…" : "Search item number…"
                   }
                   value={query}
                   onChange={(e) => show({ query: e.target.value, pageNumber: 0 }, true)}
@@ -527,10 +538,10 @@ export default function ProgressDashboard() {
                           ["Actions", "w-[16%]", "sr-only"],
                         ]
                       : [
-                          ["Item number", "w-[13%]"],
-                          ["Total pages", "w-[20%]", num],
-                          ["Ready to review", "w-[20%]", `${num} sm:pr-6`],
-                          ["Review progress", "w-[29%]"],
+                          ["Item", "w-[25%]"],
+                          ["Total pages", "w-[16%]", num],
+                          ["Ready to review", "w-[17%]", `${num} sm:pr-6`],
+                          ["Review progress", "w-[24%]"],
                           ["Actions", "w-[18%]", "sr-only"],
                         ]
                     ).map(([h, width, extra]) => (
@@ -610,8 +621,13 @@ export default function ProgressDashboard() {
                                     openBundle(b.id);
                                   }}
                                 >
-                                  {b.name ?? b.id}
+                                  {b.source?.archive?.title ?? b.name ?? b.id}
                                 </a>
+                                {b.source?.archive && (
+                                  <span className="block text-muted-foreground">
+                                    <span className="hidden sm:inline">{b.source.archive.identifier} · </span>{b.name}
+                                  </span>
+                                )}
                               </TableCell>
                               <TableCell className={`${cell} ${num}`}>{c.total}</TableCell>
                               <TableCell className={`${cell} ${num} sm:pr-6`}>{c.ready}</TableCell>
@@ -632,7 +648,7 @@ export default function ProgressDashboard() {
                                   {c.reviewable > 0 && (
                                     <Progress
                                       className="h-2"
-                                      aria-label={`Item ${b.id} review progress`}
+                                      aria-label={`${itemTitle(b.name ?? b.id, b.source?.archive)} review progress`}
                                       value={(c.reviewed / c.reviewable) * 100}
                                       max={c.reviewable}
                                       aria-valuenow={c.reviewed}
@@ -707,7 +723,7 @@ export default function ProgressDashboard() {
                                               className={`h-auto p-0 text-xs text-destructive underline ${above}`}
                                               onClick={() =>
                                                 setErrorDetails({
-                                                  bundle: b.name ?? b.id,
+                                                  item: itemTitle(b.name ?? b.id, b.source?.archive),
                                                   message:
                                                     b.source!.job!.error!,
                                                 })
