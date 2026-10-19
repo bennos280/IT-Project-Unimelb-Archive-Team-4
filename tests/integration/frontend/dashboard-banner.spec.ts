@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { serveItems } from "./items-mock";
 
 // The API is intercepted: no requests reach the real backend, and the real claude and codex programs are never run.
 const choice = { provider: "claude", model: "sonnet", effort: "high" };
@@ -12,20 +13,20 @@ type Mock = {
   codex?: boolean;
   models?: number; // failing status of GET /transcription-models
   connections?: number; // failing status of GET /connections
-  growing?: boolean; // GET /progress returns one more page on every call, so a finished refresh shows in the stats
+  growing?: boolean; // the items come with one more page on every call, so a finished refresh shows in the stats
 };
 
 async function mock(page: Page, options: Mock = {}) {
   const calls = { models: 0, connections: 0, progress: 0 };
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/progress") {
+    const served = serveItems(() => {
       calls.progress++;
       const pages = Array.from({ length: options.growing ? calls.progress : 1 }, (_, i) => (
         { id: `b/p${i + 1}`, label: `Pg ${i + 1}`, category: "Coded", status: "Ready to review", flagCount: 0, surveyId: "s", reviewPageId: `b/p${i + 1}` }));
-      return route.fulfill({ json: [{ id: "b", pages }] });
-    }
-    if (path === "/api/bundles") return route.fulfill({ json: [] });
+      return [{ bundle: "b", name: "b", pages }];
+    }, route.request());
+    if (served) return route.fulfill(served);
     if (path === "/api/transcription-models") {
       calls.models++;
       if (options.models) return route.fulfill({ status: options.models, json: { detail: "failed" } });

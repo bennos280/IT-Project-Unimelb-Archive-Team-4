@@ -28,9 +28,9 @@ export function recordWords(one = "record") {
 }
 // An item's name on screen: its title on the archive, else its number.
 export const itemTitle = (name: string, archive?: ArchiveItem | null) => archive?.title ?? `Item ${name}`;
-// Bundle metadata returned by /bundles, including its current processing job.
+// An item as the series' items list gives it, with its current processing job.
 // loaded means it has been imported into the database; job can be absent; archive is null when it isn't one of the series' archive items.
 export type AvailableBundle = {
-  pdf: string; bundle: string; name: string; archive: ArchiveItem | null; loaded: boolean; surveys: string[];
+  pdf: string; bundle: string; name: string; archive: ArchiveItem | null; loaded: boolean;
   job: { id?: number; status: string; step: string | null; donePages: number; totalPages: number; error: string | null } | null;
 };

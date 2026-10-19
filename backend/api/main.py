@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from functools import cache
 import json
+import os
 import re
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 import sqlite3
 import threading
 from backend.db import app_settings, database, grouping, instructions, loader, models
@@ -138,8 +139,13 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
             "fields": fields_list,
             "flags": page_flags(db, p, fields_list),
         })
-    collection = db.get(models.Collection, db.get(models.Bundle, survey.bundle_id).collection_id)
+    bundle = db.get(models.Bundle, survey.bundle_id)
+    collection = db.get(models.Collection, bundle.collection_id)
+    number = PurePosixPath(bundle.source_pdf.replace("\\", "/")).parent.name
+    name = number if number.isdigit() else bundle.bundle_id  #as the dashboard names it
+    item = db.get(models.ArchiveItem, int(name)) if name.isascii() and name.isdigit() and len(name) < 19 else None
     return {"id":survey_id, "bundleId":survey.bundle_id, "collectionId":collection.collection_id, "title":collection.name,
+            "item": {"name": name, "archive": {"identifier": item.identifier, "title": item.title} if item else None},
             "recordName": grouping.record_name(collection), "grouped": bool(grouping.rule(db, collection.collection_id)["starts"]),
             "pages":pages_list}
 
@@ -788,15 +794,24 @@ class StartJobRequest(BaseModel):
     effort: str | None = None
     pdf: str #as listed by GET /bundles
 
-#every survey PDF under DATA (the data folder), each DATA/<bundle number>/ folder of page images, and each of the archive's
-#bundles whose PDF isn't there (the Prest survey's and those added to a series), as DATA/<bundle number>/<its PDF> (running it
-#downloads the PDF)
-def pdfs(db):
+#every runnable PDF, in order, as (its stored path, bundle id, bundle number, the folder that numbers it): each survey PDF
+#under DATA (the data folder), each DATA/<bundle number>/ folder of page images, and each of the archive's bundles whose PDF
+#isn't there (the Prest survey's and those added to a series), as DATA/<bundle number>/<its PDF> (running it downloads the
+#PDF). The archive's, which can be tens of thousands, are made from their names, without a path object each.
+def runnables(db):
     data = ROOT / settings()["DATA"]
     here = list(data.rglob("*.pdf")) + [p for p in (data.iterdir() if data.is_dir() else ())
                                         if p.is_dir() and p.name.isdigit() and find_images(p)]
     names = {p.name for p in here}
-    return sorted(here + [p for p in (data / pdf for pdf in archive_sources(db)) if p.name not in names])
+    prefix = stored_path(data)
+    under = (lambda pdf: prefix + os.sep + pdf.replace("/", os.sep)) if Path(prefix).is_absolute() else (lambda pdf: f"{prefix}/{pdf}")
+    found = [(stored_path(p), p.stem, p.stem if p.parent == data else p.parent.name,
+              p.parent.name if p.suffix.lower() == ".pdf" else p.name) for p in here]
+    for pdf in archive_sources(db):
+        number, _, file = pdf.rpartition("/")
+        if file not in names:
+            found.append((under(pdf), file.rsplit(".", 1)[0], number, number))
+    return sorted(found)
 
 def job_json(job):
     return {"id": job.job_id, "kind": job.kind, "pdf": job.pdf, "pageId": job.page_id, "pageType": job.page_type,
@@ -804,42 +819,97 @@ def job_json(job):
             "donePages": job.done_pages, "totalPages": job.total_pages, "error": job.error,
             "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
 
-#every runnable PDF, with its loaded survey ids and latest job; name is the bundle number (the PDF's folder), and archive
-#its identifier and title when that number is one of the collection's archive items
-@app.get("/bundles")
-def get_bundles(collection: int = 1, db: Session = Depends(get_db)):
-    items = {str(i.node): {"identifier": i.identifier, "title": i.title}
-             for i in db.query(models.ArchiveItem).filter_by(collection_id=collection)}
+#a series' items, loaded or not, in order of their PDFs: bundle id, name (the bundle number: the PDF's folder), stored PDF,
+#archive (its identifier and title when that number is one of the series' archive items), whether it's loaded, and latest job
+#ponytail: made afresh each request (about 0.5 s for 60,000 items); keep it per db data_version, as cached_progress does, if slower
+def series_items(db, collection):
+    items = {str(node): {"identifier": identifier, "title": title} for node, identifier, title in
+             db.query(models.ArchiveItem.node, models.ArchiveItem.identifier, models.ArchiveItem.title).filter_by(collection_id=collection)}
     owners = loader.archive_owners(db)
     loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id).filter_by(collection_id=collection)}
     elsewhere = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id).filter(models.Bundle.collection_id != collection)}
+    latest = {job.pdf: job for job in db.query(models.Job).order_by(models.Job.job_id)}
+    rows = []
+    for stored, bundle, name, folder in runnables(db):
+        if bundle in elsewhere or (bundle not in loaded and owners.get(folder, 1) != collection):
+            continue
+        job = latest.get(stored)
+        rows.append({"pdf": stored, "bundle": bundle, "name": name, "archive": items.get(name), "loaded": bundle in loaded,
+                     "job": job_json(job) if job else None})
+    return rows
+
+#every runnable PDF of a collection, as series_items, with its loaded survey ids
+@app.get("/bundles")
+def get_bundles(collection: int = 1, db: Session = Depends(get_db)):
     surveys = {}
     for survey_id, bundle_id in (db.query(models.Page.survey_id, models.Page.bundle_id)
                                  .filter(models.Page.survey_id.is_not(None))
                                  .group_by(models.Page.survey_id, models.Page.bundle_id)
                                  .order_by(func.min(models.Page.page_id))):
         surveys.setdefault(bundle_id, []).append(survey_id)
-    latest = {job.pdf: job for job in db.query(models.Job).order_by(models.Job.job_id)}
-    data = ROOT / settings()["DATA"]
-    bundles = []
-    for p in pdfs(db):
-        if p.stem in elsewhere or (p.stem not in loaded and loader.series_of(owners, p) != collection):
-            continue
-        job = latest.get(stored_path(p))
-        name = p.stem if p.parent == data else p.parent.name
-        bundles.append({"pdf": stored_path(p), "bundle": p.stem, "name": name, "archive": items.get(name),
-                        "loaded": p.stem in loaded, "surveys": surveys.get(p.stem, []), "job": job_json(job) if job else None})
-    return bundles
+    return [{**row, "surveys": surveys.get(row["bundle"], [])} for row in series_items(db, collection)]
+
+#how many of some pages there are, are in a record (reviewable), aren't, are reviewed and are ready to review
+def page_counts(pages):
+    reviewable = [p for p in pages if p.get("surveyId") is not None]
+    return {"total": len(pages), "reviewable": len(reviewable), "unassigned": sum(p["status"] == "Not in a survey" for p in pages),
+            "reviewed": sum(p["status"] == "Reviewed" for p in reviewable),
+            "ready": sum(p["status"] == "Ready to review" for p in reviewable)}
+
+#each of a series' items' pages: a loaded one's as /progress gives them, one being transcribed its finished ones so far
+def items_pages(db, collection, rows):
+    loaded = {b["id"]: b["pages"] for b in cached_progress(db) if b["collectionId"] == collection}
+    return {row["bundle"]: loaded.get(row["bundle"], []) if row["loaded"] else
+            partial_pages(db, db.get(models.Job, row["job"]["id"])) if row["job"] and row["job"]["kind"] == "bundle" else []
+            for row in rows}
+
+#whether an item shows under the dashboard's search (its number, bundle id, title or identifier) and status
+def item_matches(row, pages, search, status):
+    if search not in " ".join([row["name"], row["bundle"], *(row["archive"] or {}).values()]).lower():
+        return False
+    if status == "All" or (status == "Awaiting transcription" and not row["loaded"]):
+        return True
+    if status == "Transcription in progress":
+        return not row["loaded"] and (row["job"] or {}).get("status") == "running"
+    if status == "Reviewed":
+        counted = page_counts(pages)
+        return counted["reviewable"] > 0 and counted["reviewed"] == counted["reviewable"]
+    return any(p["status"] == status for p in pages)
+
+#a page of a series' items for its dashboard: those its search and status match, in order of their numbers (216412 before
+#2164120), each with its pages' counts; with how many match, how many it has, and the counts of all its pages
+@app.get("/collections/{collection_id}/items")
+def list_items(collection_id: int, page: int = 0, size: int = 9, search: str = "", status: str = "All", db: Session = Depends(get_db)):
+    if not db.get(models.Collection, collection_id):
+        raise HTTPException(status_code=404, detail="No such series.")
+    rows = series_items(db, collection_id)
+    pages = items_pages(db, collection_id, rows)
+    search, size = search.strip().lower(), min(max(size, 1), 100)
+    natural = lambda row: ((0, int(row["name"]), []) if row["name"].isdigit() else
+                           (1, 0, [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", row["name"])]))
+    matching = sorted((row for row in rows if item_matches(row, pages[row["bundle"]], search, status)), key=natural)
+    page = min(max(page, 0), max(len(matching) - 1, 0) // size)
+    return {"items": [{**row, "counts": page_counts(pages[row["bundle"]])} for row in matching[page * size:(page + 1) * size]],
+            "page": page, "total": len(matching), "all": len(rows),
+            "totals": page_counts([p for row in rows for p in pages[row["bundle"]]])}
+
+#one of a series' items, by its number or bundle id, with its pages as /progress gives them (none until it's loaded)
+@app.get("/collections/{collection_id}/items/{name}")
+def get_item(collection_id: int, name: str, db: Session = Depends(get_db)):
+    row = next((row for row in series_items(db, collection_id) if name in (row["name"], row["bundle"])), None)
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such item.")
+    return {**row, "pages": next((b["pages"] for b in cached_progress(db) if b["id"] == row["bundle"]), [])}
 
 #queues a pipeline run of one PDF; the worker picks it up
 @app.post("/jobs", status_code=202)
 def start_job(payload: StartJobRequest, db: Session = Depends(get_db)):
-    pdf = next((p for p in pdfs(db) if stored_path(p) == payload.pdf), None)
+    pdf = next((found for found in runnables(db) if found[0] == payload.pdf), None)
     if pdf is None:
         raise HTTPException(status_code=404, detail="No such PDF in DATA or on the archive.")
     write_lock(db)
     #a rerun could lose saved reviews
-    if db.query(models.Bundle).filter(models.Bundle.bundle_id == pdf.stem).first():
+    if db.query(models.Bundle).filter(models.Bundle.bundle_id == pdf[1]).first():
         raise HTTPException(status_code=409, detail="This item is already loaded.")
     if db.query(models.Job).filter(models.Job.pdf == payload.pdf, models.Job.status.in_(("waiting", "running"))).first():
         raise HTTPException(status_code=409, detail="This item is already waiting or running.")
@@ -917,13 +987,17 @@ def put_transcription_defaults(payload: TranscriptionDefaults, db: Session = Dep
 @app.get("/jobs/{job_id}/transcripts")
 def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
     """Read completed, checksum-verified page outputs without loading a partial bundle."""
-    from pathlib import Path
-    from backend.pipeline.run import read_manifest, digest
     job = db.get(models.Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="No such job.")
     if job.kind != "bundle" or not job.pdf:
         raise HTTPException(status_code=400, detail="This job is not an item transcription.")
+    return {"jobId": job_id, "status": job.status, "pages": partial_pages(db, job)}
+
+#an item transcription's pages so far, from its run's folder: each one's id, type, status and what was read off it
+def partial_pages(db, job):
+    from pathlib import Path
+    from backend.pipeline.run import read_manifest, digest
     folder = ROOT / settings()["OUTPUT"] / Path(job.pdf).stem
     manifest = read_manifest(folder)
     pages = []
@@ -953,7 +1027,7 @@ def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
                   "Awaiting transcription")
         result.append({"id": page_id, "category": category, "status": status,
                        "data": page["data"] if page else None})
-    return {"jobId": job_id, "status": job.status, "pages": result}
+    return result
 
 
 def export_survey(survey_id: str, request: Request, db: Session):

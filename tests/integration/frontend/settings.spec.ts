@@ -78,7 +78,8 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
       return route.fulfill({ json: options.transcriptionOptions });
     if (path === "/api/transcription-models")
       return route.fulfill({ json: { configured: defaults, models: [] } });
-    if (path === "/api/progress" || path === "/api/bundles") return route.fulfill({ json: [] });
+    if (path === "/api/collections/1/items")
+      return route.fulfill({ json: { items: [], page: 0, total: 0, all: 0, totals: { total: 0, reviewable: 0, unassigned: 0, reviewed: 0, ready: 0 } } });
     if (path === "/api/collections")
       return route.fulfill({ json: [{ id: 1, name: "Wilfred Prest Survey", archiveSeries: 499420, bundles: 0, pages: 0 }] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });

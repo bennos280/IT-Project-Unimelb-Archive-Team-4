@@ -1,3 +1,4 @@
+import type { ArchiveItem } from "../progress/backend";
 // Defines possible survey card/page types shown in the review screen.
 export type PageType = string;
 
@@ -55,6 +56,7 @@ export type SurveyPage = {
 // Represents the complete survey loaded by the review screen.
 export type Survey = {
   bundleId?: string;
+  item?: { name: string; archive: ArchiveItem | null }; // the item the record belongs to
   collectionId?: number;
   id: string;
   title: string;

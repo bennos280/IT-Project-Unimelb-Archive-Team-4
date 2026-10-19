@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
+import { serveItems, type MockItem, type MockPage } from "./items-mock";
 
 // The review-progress cell is the fourth column of a bundle row.
 const meter = (row: Locator) => row.getByRole("cell").nth(3);
@@ -39,6 +40,14 @@ test.describe("Progress navigation and layout", () => {
     })),
   };
 
+  // The review pages of item 216417, as the server lists them; status is what each is at.
+  const listed = (status = (_i: number) => "Ready to review", flags = (i: number) => survey.pages[i].flags.length): MockPage[] =>
+    survey.pages.map((p, i) => ({
+      id: p.id, label: `Pg ${i + 1}`, category: p.type, status: status(i), flagCount: flags(i),
+      surveyId: survey.id, reviewPageId: p.id,
+    }));
+  const items = (pages = listed()): MockItem[] => [{ bundle: "216417", name: "216417", pages }];
+
   // Intercept requests before opening the page.
   // No requests reach the real backend or database.
   test.beforeEach(async ({ page }) => {
@@ -51,27 +60,11 @@ test.describe("Progress navigation and layout", () => {
 
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
+      const served = serveItems(items(), route.request());
+      if (served) return route.fulfill(served);
 
       if (path === "/api/collections/1")
         return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", recordName: "survey", grouped: true, archiveSeries: 499420 } });
-      if (path === "/api/progress")
-        return route.fulfill({
-          json: [
-            {
-              id: "216417",
-              pages: survey.pages.map((p, i) => ({
-                id: p.id,
-                label: `Pg ${i + 1}`,
-                category: p.type,
-                status: "Ready to review",
-                flagCount: p.flags.length,
-                surveyId: survey.id,
-                reviewPageId: p.id,
-              })),
-            },
-          ],
-        });
-      if (path === "/api/bundles") return route.fulfill({ json: [] });
       if (path === "/api/survey/216417_1") {
         return route.fulfill({ json: survey });
       }
@@ -135,23 +128,13 @@ test.describe("Progress navigation and layout", () => {
           },
         });
       });
-      await page.route(/\/api\/progress(\?.*)?$/, (route) =>
-        route.fulfill({
-          json: [
-            {
-              id: "216417",
-              pages: survey.pages.map((p, i) => ({
-                id: p.id,
-                label: `Pg ${i + 1}`,
-                category: p.type,
-                status: persisted && i === 0 ? "Reviewed" : "Ready to review",
-                flagCount: persisted && i === 0 ? 0 : p.flags.length,
-                surveyId: survey.id,
-                reviewPageId: p.id,
-              })),
-            },
-          ],
-        }),
+      await page.route("**/api/collections/1/items**", (route) =>
+        route.fulfill(
+          serveItems(
+            () => items(listed((i) => (persisted && i === 0 ? "Reviewed" : "Ready to review"), (i) => (persisted && i === 0 ? 0 : survey.pages[i].flags.length))),
+            route.request(),
+          )!,
+        ),
       );
 
       await page.goto("/?collection=1");
@@ -386,36 +369,15 @@ test.describe("Progress and transcription states", () => {
             options.status === "failed" ? "Test transcription failure" : null,
         }
       : null;
+    const items: MockItem[] = [{
+      bundle: "b", name: "216424", pdf: "b.pdf", loaded, job,
+      archive: options.archive ? { identifier: "UMA-ITE-1973000200013", title: "Collingwood 07" } : null,
+      pages: loaded ? Array.from({ length: options.count ?? 2 }, (_, i) => readyPage(i + 1)) : [],
+    }];
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path === "/api/progress")
-        return route.fulfill({
-          json: loaded
-            ? [
-                {
-                  id: "b",
-                  pages: Array.from({ length: options.count ?? 2 }, (_, i) =>
-                    readyPage(i + 1),
-                  ),
-                },
-              ]
-            : [],
-        });
-      if (path === "/api/bundles")
-        return route.fulfill({
-          json: [
-            {
-              bundle: "b",
-              name: "216424",
-              archive: options.archive ? { identifier: "UMA-ITE-1973000200013", title: "Collingwood 07" } : null,
-              pdf: "b.pdf",
-              loaded,
-              surveys: [],
-              job,
-            },
-          ],
-        });
-      if (path === "/api/jobs/1") return route.fulfill({ json: job });
+      const served = serveItems(items, route.request());
+      if (served) return route.fulfill(served);
       if (path === "/api/jobs/1/transcripts")
         return route.fulfill({
           json: {
@@ -684,10 +646,10 @@ test.describe("Progress and transcription states", () => {
   test("failed progress request can be retried", async ({ page }) => {
     await mock(page, { loaded: true });
     let failed = true;
-    await page.route(/\/api\/progress(\?.*)?$/, (route) =>
+    await page.route(/\/api\/collections\/1\/items(\?.*)?$/, (route) =>
       failed
         ? route.fulfill({ status: 500, json: { detail: "Temporary failure" } })
-        : route.fulfill({ json: [{ id: "b", pages: [readyPage(1)] }] }),
+        : route.fulfill(serveItems([{ bundle: "b", name: "216424", pages: [readyPage(1)] }], route.request())!),
     );
     await page.reload();
     await expect(page.getByRole("alert")).toContainText("Temporary failure");
@@ -704,15 +666,10 @@ test.describe("Progress and transcription states", () => {
     await expect(
       page.getByText("0 / 2 reviewed · 0%", { exact: true }),
     ).toBeVisible();
-    await page.route(/\/api\/progress(\?.*)?$/, (route) =>
-      route.fulfill({
-        json: [
-          {
-            id: "b",
-            pages: [{ ...readyPage(1), status: "Reviewed" }, readyPage(2)],
-          },
-        ],
-      }),
+    await page.route(/\/api\/collections\/1\/items(\?.*)?$/, (route) =>
+      route.fulfill(
+        serveItems([{ bundle: "b", name: "216424", pages: [{ ...readyPage(1), status: "Reviewed" }, readyPage(2)] }], route.request())!,
+      ),
     );
     await expect(
       page.getByText("1 / 2 reviewed · 50%", { exact: true }),
@@ -727,10 +684,10 @@ test.describe("Progress and transcription states", () => {
     let calls = 0;
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    await page.route(/\/api\/progress(\?.*)?$/, async (route) => {
+    await page.route(/\/api\/collections\/1\/items(\?.*)?$/, async (route) => {
       calls++;
       await held;
-      await route.fulfill({ json: [{ id: "b", pages: [readyPage(1), readyPage(2)] }] });
+      await route.fulfill(serveItems([{ bundle: "b", name: "216424", pages: [readyPage(1), readyPage(2)] }], route.request())!);
     });
     await page.clock.runFor(5000);
     await expect.poll(() => calls).toBe(1);
@@ -754,9 +711,8 @@ test.describe("Progress and transcription states", () => {
 
 test('awaiting transcription page has a Transcribe action targeting its survey page', async ({ page }) => {
   await page.route('**/api/**', route => {
-    const path = new URL(route.request().url()).pathname;
-    if (path === '/api/progress') return route.fulfill({json:[{id:'b',pages:[{id:'b/p4',label:'Pg 4',category:'Coded',status:'Awaiting transcription',flagCount:0,surveyId:'s1',reviewPageId:'b/p4'}]}]});
-    if (path === '/api/bundles') return route.fulfill({json:[]});
+    const served = serveItems([{bundle:'b',name:'b',pages:[{id:'b/p4',label:'Pg 4',category:'Coded',status:'Awaiting transcription',flagCount:0,surveyId:'s1',reviewPageId:'b/p4'}]}], route.request());
+    if (served) return route.fulfill(served);
     return route.fulfill({status:404,json:{detail:'Unexpected test request'}});
   });
   await page.goto("/?collection=1");
@@ -794,14 +750,10 @@ test.describe("Pages without a survey", () => {
     // Keep requests isolated from the real backend and review database.
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path === "/api/progress") {
-        return route.fulfill({ json: [{ id: "test-bundle", pages }] });
-      }
+      const served = serveItems([{ bundle: "test-bundle", name: "test-bundle", pages }], route.request());
+      if (served) return route.fulfill(served);
       if (path === "/api/collections/1") {
         return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true } });
-      }
-      if (path === "/api/bundles") {
-        return route.fulfill({ json: [] });
       }
       return route.fulfill({
         status: 404,
@@ -852,9 +804,8 @@ test("with no transcription model saved, the dialog prefills nothing, links to S
   await page.route("**/api/**", (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === "/api/progress") return route.fulfill({ json: [] });
-    if (path === "/api/bundles")
-      return route.fulfill({ json: [{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false, surveys: [], job: null }] });
+    const served = serveItems([{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false }], request);
+    if (served) return route.fulfill(served);
     if (path === "/api/transcription-models") return route.fulfill({ json: { configured: null, models: [] } });
     if (path === "/api/jobs" && request.method() === "POST") {
       started.push(request.postDataJSON());
@@ -887,9 +838,8 @@ test("with no transcription model saved, the dialog prefills nothing, links to S
 test("with a transcription model saved, the dialog prefills it and shows no notice", async ({ page }) => {
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/progress") return route.fulfill({ json: [] });
-    if (path === "/api/bundles")
-      return route.fulfill({ json: [{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false, surveys: [], job: null }] });
+    const served = serveItems([{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false }], route.request());
+    if (served) return route.fulfill(served);
     if (path === "/api/transcription-models")
       return route.fulfill({ json: { configured: { provider: "codex", model: "gpt-x", effort: "high" }, models: [] } });
     return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${path}` } });
@@ -901,4 +851,123 @@ test("with a transcription model saved, the dialog prefills it and shows no noti
   await expect(dialog.getByLabel("Provider", { exact: true })).toHaveValue("codex");
   await expect(dialog.getByLabel("Effort", { exact: true })).toHaveValue("high");
   await expect(dialog.getByText("No transcription model is set.")).toHaveCount(0);
+});
+
+test.describe("The server pages, searches and filters the overview", () => {
+  const SERIES = { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true };
+  const params = (url: URL) => Object.fromEntries(url.searchParams);
+  // The different requests made, in order; the dev build's remount asks for the first one twice.
+  const distinct = (asked: URL[]) => [...new Set(asked.map((url) => url.search))].map((query) => Object.fromEntries(new URLSearchParams(query)));
+  const onePage: MockPage = { id: "p1", label: "Pg 1", category: "Main page", status: "Ready to review", flagCount: 0, surveyId: "s", reviewPageId: "p1" };
+
+  test("the overview asks for the URL's page, search and status, and shows the server's counts and totals", async ({ page }) => {
+    const asked: URL[] = [];
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/collections/1") return route.fulfill({ json: SERIES });
+      if (url.pathname === "/api/collections/1/items") {
+        asked.push(url);
+        return route.fulfill({
+          json: {
+            items: [
+              { bundle: "b1", name: "216412", pdf: "b1.pdf", loaded: true, job: null, archive: { identifier: "UMA-ITE-1973000200001", title: "Box Hill 00" },
+                counts: { total: 227, reviewable: 220, unassigned: 7, reviewed: 110, ready: 110 } },
+              { bundle: "b2", name: "216413", pdf: "b2.pdf", loaded: true, job: null, archive: null,
+                counts: { total: 4, reviewable: 4, unassigned: 0, reviewed: 0, ready: 4 } },
+            ],
+            page: 2, total: 20, all: 40,
+            totals: { total: 9000, reviewable: 8700, unassigned: 300, reviewed: 1744, ready: 6956 },
+          },
+        });
+      }
+      return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${url.pathname}` } });
+    });
+    await page.goto("/?collection=1&page=3&q=box&status=Reviewed");
+    const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "Box Hill 00", exact: true }) });
+    await expect(row.getByRole("cell").nth(1)).toHaveText("227");
+    await expect(row.getByRole("cell").nth(2)).toHaveText("110");
+    await expect(meter(row)).toContainText("110 / 220 reviewed · 50%");
+    await expect(meter(row)).toContainText("7 pages not in a survey");
+    await expect(meter(bundleRows(page).filter({ has: page.getByRole("link", { name: "216413", exact: true }) }))).toContainText("0 / 4 reviewed · 0%");
+    await expect(page.getByTestId("stat-total-pages")).toHaveText("9,000");
+    await expect(page.getByTestId("stat-reviewed")).toHaveText("1,744");
+    await expect(page.getByTestId("stat-ready-to-review")).toHaveText("6,956");
+    await expect(page.locator("main")).toContainText("Track review progress across 40 items");
+    await expect(page.getByText("Showing 19–20 of 20 items")).toBeVisible();
+    await expect(page.getByText("Page 3 of 3")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+    await expect(page.getByLabel("Search items")).toHaveValue("box");
+    await expect(page.getByLabel("Status", { exact: true })).toHaveValue("Reviewed");
+    expect(distinct(asked)).toEqual([{ page: "2", size: "9", search: "box", status: "Reviewed" }]);
+    await page.getByRole("button", { name: "Previous", exact: true }).click();
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "1", size: "9", search: "box", status: "Reviewed" });
+    await expect(page).toHaveURL(/page=2/);
+  });
+
+  test("paging, searching and filtering each ask the server, which answers one page at a time", async ({ page }) => {
+    const asked: URL[] = [];
+    const items: MockItem[] = Array.from({ length: 20 }, (_, i) => ({ bundle: `b${i}`, name: String(216410 + i), pages: [onePage] }));
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/collections/1") return route.fulfill({ json: SERIES });
+      if (url.pathname === "/api/collections/1/items") asked.push(url);
+      const served = serveItems(items, route.request());
+      return served ? route.fulfill(served) : route.fulfill({ status: 404, json: { detail: `Unexpected request: ${url.pathname}` } });
+    });
+    await page.goto("/?collection=1");
+    await expect(page.getByText("Showing 1–9 of 20 items")).toBeVisible();
+    await expect(bundleRows(page)).toHaveCount(9);
+    expect(distinct(asked)).toEqual([{ page: "0", size: "9" }]);
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "1", size: "9" });
+    await expect(page.getByText("Showing 10–18 of 20 items")).toBeVisible();
+    await expect(page.getByRole("link", { name: "216419", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "216410", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(page.getByText("Showing 19–20 of 20 items")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+    // A search starts again from the first page, and is sent once typing pauses.
+    await page.getByLabel("Search items").pressSequentially("216427");
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "0", size: "9", search: "216427" });
+    await expect(bundleRows(page)).toHaveCount(1);
+    await page.getByLabel("Status", { exact: true }).selectOption("Reviewed");
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "0", size: "9", search: "216427", status: "Reviewed" });
+    await expect(page.getByText("No items match your filters.")).toBeVisible();
+    await page.getByRole("button", { name: "Clear filters" }).click();
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "0", size: "9" });
+    await expect(bundleRows(page)).toHaveCount(9);
+  });
+
+  test("an item's page asks only for that item, and for its partial results when it has a job and isn't loaded", async ({ page }) => {
+    const asked: string[] = [];
+    const job = { id: 7, status: "running", step: "transcribe", donePages: 1, totalPages: 2, error: null };
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      asked.push(url.pathname);
+      if (url.pathname === "/api/collections/1") return route.fulfill({ json: SERIES });
+      if (url.pathname === "/api/jobs/7/transcripts")
+        return route.fulfill({ json: { pages: [{ id: "b_00001", category: "main", status: "Transcribed — not grouped", data: { model: "partial-model" } }] } });
+      const served = serveItems([{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false, job }, { bundle: "c", name: "216425" }], route.request());
+      return served ? route.fulfill(served) : route.fulfill({ status: 404, json: { detail: `Unexpected request: ${url.pathname}` } });
+    });
+    await page.goto("/?collection=1&bundle=216424");
+    await expect(page.getByRole("cell", { name: "partial-model", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Item 216424" })).toBeVisible();
+    expect(new Set(asked)).toEqual(new Set([
+      "/api/collections/1", "/api/collections/1/items/216424", "/api/jobs/7/transcripts",
+      "/api/transcription-models", "/api/connections",
+    ]));
+  });
+
+  test("an item that isn't there says so", async ({ page }) => {
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/collections/1") return route.fulfill({ json: SERIES });
+      const served = serveItems([{ bundle: "b", name: "216424" }], route.request());
+      return served ? route.fulfill(served) : route.fulfill({ status: 404, json: { detail: `Unexpected request: ${url.pathname}` } });
+    });
+    await page.goto("/?collection=1&bundle=nobody");
+    await expect(page.getByRole("alert")).toContainText("No such item.");
+    await expect(bundleRows(page)).toHaveCount(0);
+  });
 });

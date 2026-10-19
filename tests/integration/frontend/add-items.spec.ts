@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
+import { serveItems } from "./items-mock";
 
 type Item = { node: number; title: string; identifier: string; scanned: boolean; added: boolean };
 const item = (node: number, title: string, extra: Partial<Item> = {}): Item =>
@@ -35,10 +36,10 @@ type Mock = {
 
 // The API is intercepted: no requests reach the real backend or the archive.
 async function mock(page: Page, options: Mock = {}) {
-  const calls = { listed: [] as URL[], posted: [] as unknown[], postedAll: [] as unknown[], bundles: 0 };
+  const calls = { listed: [] as URL[], posted: [] as unknown[], postedAll: [] as unknown[], overviews: 0 };
   const onList: Item[] = options.existing ? [LETTERS] : [];
   const refuse = options.refuse ?? {};
-  // The dashboard polls every 5 s; with that off, a request for its list after an add is the add's own refresh.
+  // The dashboard polls every 5 s; with that off, a request for its items after an add is the add's own refresh.
   await page.addInitScript(() => {
     const real = window.setInterval.bind(window);
     window.setInterval = ((handler: TimerHandler, ms?: number, ...args: unknown[]) =>
@@ -57,15 +58,12 @@ async function mock(page: Page, options: Mock = {}) {
           archiveItems: options.archiveItems === undefined ? ALL.length : options.archiveItems,
         },
       });
-    if (path === "/api/progress") return route.fulfill({ json: [] });
-    if (path === "/api/bundles") {
-      calls.bundles++;
-      return route.fulfill({
-        json: onList.map((i) => ({
-          bundle: String(i.node), name: String(i.node), archive: { identifier: i.identifier, title: i.title },
-          pdf: `${i.node}.pdf`, loaded: false, surveys: [], job: null,
-        })),
-      });
+    if (path === "/api/collections/1/items" && request.method() === "GET") {
+      calls.overviews++;
+      return route.fulfill(serveItems(() => onList.map((i) => ({
+        bundle: String(i.node), name: String(i.node), archive: { identifier: i.identifier, title: i.title },
+        pdf: `${i.node}.pdf`, loaded: false,
+      })), request)!);
     }
     if (path === "/api/collections/1/archive-items") {
       calls.listed.push(url);
@@ -108,7 +106,7 @@ const selectAll = (d: Locator) => d.getByRole("checkbox", { name: "Select all on
 const emptyStateButton = (page: Page) => page.getByRole("table").getByRole("button", { name: "Add items", exact: true });
 const chooseInstead = (d: Locator) => d.getByRole("button", { name: "Choose items instead", exact: true });
 const lastParams = (calls: Calls) => Object.fromEntries(calls.listed[calls.listed.length - 1].searchParams);
-const expectRefreshed = (calls: Calls, before: number) => expect.poll(() => calls.bundles).toBeGreaterThan(before);
+const expectRefreshed = (calls: Calls, before: number) => expect.poll(() => calls.overviews).toBeGreaterThan(before);
 // Opens the dialog from the empty state and on to the list of items.
 async function openList(page: Page) {
   await emptyStateButton(page).click();
@@ -217,7 +215,7 @@ test("Add all adds the whole series without listing it, shows progress, then the
   const calls = await mock(page, { gate });
   await emptyStateButton(page).click();
   const d = dialog(page);
-  const before = calls.bundles;
+  const before = calls.overviews;
   await d.getByRole("button", { name: "Add all 4 items", exact: true }).click();
   await expect(d.getByText("Adding items… a long list can take a minute.")).toBeVisible();
   for (const name of ["Cancel", "Adding…", "Choose items instead"])
@@ -384,7 +382,7 @@ test("adding two items posts them, closes the dialog and refreshes the list at o
   const d = await openList(page);
   await d.getByRole("checkbox", { name: DIARY_A.title }).check();
   await d.getByRole("checkbox", { name: DIARY_B.title }).check();
-  const before = calls.bundles;
+  const before = calls.overviews;
   await d.getByRole("button", { name: "Add 2 items", exact: true }).click();
   await expect(d).toHaveCount(0);
   expect(calls.posted).toEqual([{ nodes: [DIARY_A.node, DIARY_B.node] }]);
@@ -401,7 +399,7 @@ test("a refused item is explained, the added one is unchecked and the list refre
   const d = await openList(page);
   await d.getByRole("checkbox", { name: DIARY_A.title }).check();
   await d.getByRole("checkbox", { name: DIARY_B.title }).check();
-  const before = calls.bundles;
+  const before = calls.overviews;
   await d.getByRole("button", { name: "Add 2 items", exact: true }).click();
   await expect(d.getByRole("alert")).toContainText(`${DIARY_B.title}: ${REFUSAL}`);
   await expect(d.getByRole("alert")).not.toContainText(DIARY_A.title);
@@ -603,7 +601,7 @@ for (const [status, detail] of [
     const d = await openList(page);
     await d.getByRole("checkbox", { name: DIARY_A.title }).check();
     await d.getByRole("checkbox", { name: DIARY_B.title }).check();
-    const before = calls.bundles;
+    const before = calls.overviews;
     await d.getByRole("button", { name: "Add 2 items", exact: true }).click();
     await expect(d.getByRole("alert")).toContainText(detail);
     await expect(d).toBeVisible();
@@ -611,6 +609,6 @@ for (const [status, detail] of [
     await expect(d.getByRole("checkbox", { name: DIARY_A.title })).toBeChecked();
     await expect(d.getByRole("checkbox", { name: DIARY_B.title })).toBeChecked();
     await expect(d.getByRole("button", { name: "Add 2 items", exact: true })).toBeEnabled();
-    expect(calls.bundles).toBe(before); // nothing was added, so the dashboard isn't refreshed
+    expect(calls.overviews).toBe(before); // nothing was added, so the dashboard isn't refreshed
   });
 }

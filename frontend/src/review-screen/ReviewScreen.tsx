@@ -2,7 +2,7 @@ import ExportDialog from "../export/ExportDialog";
 import PageActions from "./PageActions";
 // Main review screen: field table on the left, scan viewer on the right.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -14,8 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import ImageViewer from "./ImageViewer";
-import { request } from "./api";
-import { itemTitle, recordWords, type AvailableBundle } from "../progress/backend";
+import { itemTitle, recordWords } from "../progress/backend";
 import type { useReviewSession } from "./useReviewSession";
 import { getPageName, isTextPage } from "./model";
 import type { Flag } from "./model";
@@ -135,20 +134,8 @@ export default function ReviewScreen({
   });
   const groups = [...new Set(visible.map((field) => field.group))];
   const textPage = !!page && isTextPage(page);
-  // The dashboard names a bundle by its /bundles name; the id is accepted too when that is unavailable.
-  const bundleId = survey?.bundleId;
-  const collectionId = survey?.collectionId ?? 1;
-  const [bundleNames, setBundleNames] = useState<Pick<AvailableBundle, "bundle" | "name" | "archive">[]>([]);
-  useEffect(() => {
-    if (!bundleId) return;
-    let active = true;
-    request<Pick<AvailableBundle, "bundle" | "name" | "archive">[]>(`/bundles?collection=${collectionId}`)
-      .then((list) => active && Array.isArray(list) && setBundleNames(list))
-      .catch(() => {});
-    return () => { active = false; };
-  }, [bundleId, collectionId]);
-  const listed = bundleNames.find((b) => b.bundle === bundleId);
-  const bundleLabel = listed?.name || bundleId || "";
+  // The dashboard names an item by its name; the bundle id is accepted too when the survey doesn't say.
+  const bundleLabel = survey?.item?.name || survey?.bundleId || "";
   const words = recordWords(survey?.recordName);
   return (
     <>
@@ -157,7 +144,7 @@ export default function ReviewScreen({
           { label: "Series", href: "/" },
           ...(survey?.collectionId ? [{ label: survey.title, href: `/?collection=${survey.collectionId}` }] : []),
           ...(survey?.bundleId
-            ? [{ label: itemTitle(bundleLabel, listed?.archive), href: `/?collection=${survey.collectionId ?? 1}&bundle=${encodeURIComponent(bundleLabel)}` }]
+            ? [{ label: itemTitle(bundleLabel, survey.item?.archive), href: `/?collection=${survey.collectionId ?? 1}&bundle=${encodeURIComponent(bundleLabel)}` }]
             : []),
           { label: survey ? `${words.One} ${session.surveyId}` : session.surveyId || words.One },
         ]}

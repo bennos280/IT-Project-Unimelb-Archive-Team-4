@@ -1,6 +1,7 @@
 // Tests the export dialog and downloaded JSON with an isolated API.
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { serveItems } from "./items-mock";
 const demo = {
   id: "export-test",
   title: "Export test",
@@ -175,11 +176,8 @@ test("dashboard exports the selected item's ID rather than its display number", 
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
-    if (url.pathname === "/api/progress")
-      return route.fulfill({
-        json: [{ id: "db-bundle-abc", name: "123", pages: [] }],
-      });
-    if (url.pathname === "/api/bundles") return route.fulfill({ json: [] });
+    const served = serveItems([{ bundle: "db-bundle-abc", name: "123" }], route.request());
+    if (served) return route.fulfill(served);
     if (url.pathname === "/api/export/bundles")
       return route.fulfill({ json: [{ id: "db-bundle-abc", name: "123" }] });
     if (url.pathname === "/api/export") {
@@ -298,11 +296,8 @@ for (const selectedBundle of [false, true]) {
       if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
       if (url.pathname === "/api/collections/1")
         return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true } });
-      if (url.pathname === "/api/progress")
-        return route.fulfill({
-          json: [{ id: "pending", name: "123", pages: [] }],
-        });
-      if (url.pathname === "/api/bundles") return route.fulfill({ json: [] });
+      const served = serveItems([{ bundle: "pending", name: "123" }], route.request());
+      if (served) return route.fulfill(served);
       if (url.pathname === "/api/export/bundles")
         return route.fulfill({
           json: [

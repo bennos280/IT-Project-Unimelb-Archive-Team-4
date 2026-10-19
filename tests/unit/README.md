@@ -275,6 +275,17 @@ A series' items listed from the archive (a fake archive here) and added to its l
 |`test_sorting_gives_only_the_series_own_page_types_and_sends_the_rest_to_review`|Sorting's label outside the series' page types becomes review, and is flagged.|
 |`test_an_upload_cant_take_the_number_of_an_item_added_from_the_archive`|An upload can't use the number of an item added from the archive, nor give another number a PDF named as that item's.|
 
+## `test_series_items.py`
+
+A series' dashboard asks for a page of its items at a time, searched, filtered and counted on the server.
+
+|Test|What it checks|
+|---|---|
+|`test_items_come_a_page_at_a_time_in_order_of_their_numbers_with_their_counts_and_the_series`|Items come a page at a time in order of their numbers (2, 9, 10, 100), each with its pages' counts (an item being transcribed, those so far), with how many match and how many there are, the counts of all the series' pages, and a page past the end gives the last.|
+|`test_items_are_found_by_number_title_or_identifier_and_by_status`|Search finds an item by its number, title or identifier, any case; each status filter finds the items the dashboard always showed for it.|
+|`test_an_item_is_given_by_its_number_or_bundle_id_with_its_pages`|One item comes with its pages; an item not loaded has none; an unknown item or series is 404.|
+|`test_a_record_names_its_item_as_the_dashboard_does`|A record's response names its item and its archive title, for the review screen's crumb.|
+
 ## `test_record_name.py`
 
 Each series names its records (the Wilfred Prest Survey's are surveys), and where no page type starts a record each page is one.

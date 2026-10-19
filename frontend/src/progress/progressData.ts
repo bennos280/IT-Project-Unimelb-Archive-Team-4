@@ -83,3 +83,5 @@ export function counts(pages: ProgressPage[]) {
       .length,
   };
 }
+// The page counts of one item, or of a whole series.
+export type Counts = ReturnType<typeof counts>;
