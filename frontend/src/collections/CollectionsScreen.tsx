@@ -12,6 +12,7 @@ import { Progress as ProgressBar } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableOpenArrow, TableRow, TableRowLink } from "@/components/ui/table";
 import { ARCHIVE, backendRequest } from "../progress/backend";
+import { isSetUp } from "../progress/setup";
 
 type Collection = {
   id: number; name: string; archiveSeries: number | null; archiveIdentifier: string | null; archiveTitle: string | null;
@@ -104,7 +105,7 @@ export default function CollectionsScreen() {
       </main>
       {creating && (
         <NewCollectionDialog onClose={() => setCreating(false)}
-          onCreated={(created) => { window.location.href = `/?collection=${created.id}&view=setup`; }} />
+          onCreated={(created) => { window.location.href = `/?collection=${created.id}`; }} />
       )}
     </div>
   );
@@ -134,13 +135,10 @@ function Attention({ collection: c }: { collection: Collection }) {
   );
 }
 
-// How far a collection's review has got; until it can be reviewed, the next step of its setup.
+// How far a collection's review has got; until it's set up, a link to setting it up on its Items page.
 function Progress({ collection: c }: { collection: Collection }) {
-  const setup = (text: string) => <a href={`/?collection=${c.id}&view=setup`} className="relative z-10 underline">{text}</a>;
   const note = (text: string) => <span className="text-muted-foreground">{text}</span>;
-  if (!c.pageTypes) return setup("Next: add its page types");
-  if (!c.templates) return setup("Next: give its page types templates");
-  if (!c.bundles) return note("No items processed yet");
+  if (!isSetUp(c)) return <a href={`/?collection=${c.id}`} className="relative z-10 underline">Next: set up series</a>;
   if (!c.reviewable) return note("No pages to review yet");
   const percent = Math.round((c.reviewed / c.reviewable) * 100);
   return (

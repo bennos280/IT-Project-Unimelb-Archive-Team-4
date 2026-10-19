@@ -256,6 +256,10 @@ The Add items dialog on a series' dashboard, and its empty state, with the API m
 
 The Tasks link on every screen and the Tasks page, with the API mocked: the link's count of waiting and running tasks, kept up to date; the page's table of them first, then recent ones, each with its label (a link to its own page), series, status, progress in items read or pages, when it last changed and, for a failed one, its error; a task's own page with a line of its status, series and times, a card of how far it has got with its time left, finish time and speed, what it has added and skipped and its series' items, a link to its series or item, and its log newest first in words; a finished one with how long it took to its last line and no speed; a failed one's error; a warning when the worker isn't running, without a time left, and none when that's unknown; a waiting one not started; and one that isn't there; an empty list; a failed refresh keeping the last list; and a series' dashboard saying while its items are being added.
 
+## `setup-checklist.spec.ts` — 1 test
+
+Set up series on a series' Items page, with the API mocked: a new series lists the steps of setting it up (add its page types, give each a template, read one item as a sample, and, optionally, say what a record is), each ticked from what the series has, with how many are done, what's missing (the page types with no template) and a link to where to do it; an item read with every page waiting as Unknown isn't a sample, and one being read shows; once set up it points to the sample to check, until another item is read.
+
 ## Import screen browser tests — 5 tests
 
 `import.spec.ts` tests the import screen (`/?view=import`) in a real browser. Uploads are intercepted, so no
