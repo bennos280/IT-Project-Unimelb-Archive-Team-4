@@ -1,11 +1,12 @@
 import * as React from "react"
+import { ChevronRight } from "lucide-react"
 import { cn } from "cn"
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className="relative w-full overflow-x-auto rounded-md border"
     >
       <table
         data-slot="table"
@@ -49,17 +50,38 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   )
 }
 
-function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+// clickable: a row that opens something, through the TableRowLink in it (with a TableOpenArrow at its end)
+function TableRow({ className, clickable, ...props }: React.ComponentProps<"tr"> & { clickable?: boolean }) {
   return (
     <tr
       data-slot="table-row"
       className={cn(
         "border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+        clickable && "relative cursor-pointer hover:bg-muted focus-within:bg-muted",
         className
       )}
       {...props}
     />
   )
+}
+
+// A clickable row's link: it covers the whole row; the row's other links and buttons sit above it ("relative z-10").
+function TableRowLink({ className, ...props }: React.ComponentProps<"a">) {
+  return (
+    <a
+      data-slot="table-row-link"
+      className={cn(
+        "rounded-sm font-medium outline-none after:absolute after:inset-0 hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring/50",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+// The arrow at the end of a clickable row.
+function TableOpenArrow() {
+  return <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground" />
 }
 
 function TableHead({ className, ...props }: React.ComponentProps<"th">) {
@@ -108,6 +130,8 @@ export {
   TableFooter,
   TableHead,
   TableRow,
+  TableRowLink,
+  TableOpenArrow,
   TableCell,
   TableCaption,
 }

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { serveItems } from "./items-mock";
 
-// The Tasks button in the header and the dashboard's banner follow GET /api/jobs. The API is intercepted: nothing reaches a real backend.
+// The Tasks link in the header, the Tasks page and the dashboard's banner follow GET /api/jobs. The API is intercepted: nothing reaches a real backend.
 type Task = {
   id: number; kind: "items" | "bundle" | "page" | "train"; label: string; status: "waiting" | "running" | "done" | "failed";
   step: string | null; done: number; total: number; unit: "items" | "pages"; error: string | null;
@@ -30,6 +30,12 @@ const FAILED = task({
 });
 const EVERYTHING = [ADDING, TRANSCRIBING, QUEUED, READING, FINISHED, FAILED];
 
+// A series as GET /api/collections lists it, with nothing in it yet.
+const series = (id: number, name: string) => ({
+  id, name, recordName: "survey", grouped: true, archiveSeries: null, archiveIdentifier: null, archiveTitle: null, archiveItems: null,
+  bundles: 0, running: 0, failed: 0, pages: 0, reviewable: 0, reviewed: 0, unknownPages: 0, flagged: 0, pageTypes: 0, templates: 0,
+});
+
 type Jobs = Task[] | (() => Task[]) | { status: number; detail: string };
 async function mock(page: Page, jobs: Jobs = []) {
   await page.route("**/api/**", (route) => {
@@ -41,18 +47,17 @@ async function mock(page: Page, jobs: Jobs = []) {
     }
     const served = serveItems([{ bundle: "b", name: "216412", pages: [] }], request);
     if (served) return route.fulfill(served);
-    if (path === "/api/collections") return route.fulfill({ json: [] });
+    if (path === "/api/collections") return route.fulfill({ json: [series(1, "Wilfred Prest Survey"), series(2, "Missing, Wounded and Prisoner Of War Cards")] });
     if (path === "/api/collections/1") return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true, archiveSeries: 499420 } });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
 }
 
-const tasksButton = (page: Page, name: string | RegExp = /^Tasks/) => page.getByRole("banner").getByRole("button", { name });
-const dialog = (page: Page) => page.getByRole("dialog", { name: "Tasks" });
-const rows = (page: Page) => dialog(page).getByRole("listitem");
+const tasksButton = (page: Page) => page.getByRole("banner").locator('a[href="/?view=tasks"]');
+const rows = (page: Page) => page.locator("tbody").getByRole("row");
 const row = (page: Page, label: string) => rows(page).filter({ hasText: label });
 
-test("the Tasks button counts the tasks waiting or running, and shows no count when there are none", async ({ page }) => {
+test("the Tasks link counts the tasks waiting or running, and shows no count when there are none", async ({ page }) => {
   await mock(page, EVERYTHING);
   await page.goto("/");
   await expect(tasksButton(page)).toHaveAccessibleName("Tasks, 4 active");
@@ -64,8 +69,8 @@ test("the Tasks button counts the tasks waiting or running, and shows no count w
   await expect(tasksButton(page)).toHaveText("Tasks");
 });
 
-for (const url of ["/", "/?collection=1", "/?collection=1&bundle=216412", "/?collection=1&view=page-types", "/?view=settings", "/?view=import", "/?survey=216417_1"]) {
-  test(`the Tasks button is in the header of ${url}`, async ({ page }) => {
+for (const url of ["/", "/?collection=1", "/?collection=1&bundle=216412", "/?collection=1&view=page-types", "/?view=settings", "/?view=import", "/?survey=216417_1", "/?view=tasks"]) {
+  test(`the Tasks link is in the header of ${url}`, async ({ page }) => {
     await mock(page, [ADDING]);
     await page.goto(url);
     await expect(tasksButton(page)).toHaveAccessibleName("Tasks, 1 active");
@@ -81,17 +86,20 @@ test("the count follows the server every few seconds", async ({ page }) => {
   await expect(tasksButton(page)).toHaveAccessibleName("Tasks", { timeout: 9000 });
 });
 
-test("the dialog lists the active tasks first, each with its status and progress, then the recent ones", async ({ page }) => {
+test("the Tasks link opens the Tasks page, a table of the active tasks first, then the recent ones", async ({ page }) => {
   await mock(page, EVERYTHING);
   await page.goto("/");
   await tasksButton(page).click();
-  await expect(dialog(page)).toBeVisible();
+  await expect(page).toHaveURL("/?view=tasks");
+  await expect(page.getByRole("heading", { name: "Tasks", level: 1 })).toBeVisible();
+  await expect(page.getByRole("columnheader")).toHaveText(["Task", "Series", "Status", "Progress", "Updated", "Open"]);
   await expect(rows(page)).toHaveText([
     /Adding Missing, Wounded/, /Transcribing Box Hill 00/, /Adding Shipping manifests/, /Reading page 216412_00005 again/,
     /Transcribing Box Hill 01/, /Training page sorting/,
   ]);
 
   const adding = row(page, "Adding Missing, Wounded");
+  await expect(adding.getByRole("cell").nth(1)).toHaveText("Missing, Wounded and Prisoner Of War Cards");
   await expect(adding).toContainText("Running");
   await expect(adding).toContainText("12,400 of 60,772 items");
   await expect(adding.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "12400");
@@ -99,11 +107,11 @@ test("the dialog lists the active tasks first, each with its status and progress
   await expect(adding.getByRole("link", { name: "Adding Missing, Wounded and Prisoner Of War Cards' items" })).toHaveAttribute("href", "/?collection=2");
 
   const transcribing = row(page, "Transcribing Box Hill 00");
+  await expect(transcribing.getByRole("cell").nth(1)).toHaveText("Wilfred Prest Survey");
   await expect(transcribing).toContainText("Transcribing pages · 40 of 227 pages");
   await expect(transcribing.getByRole("link")).toHaveAttribute("href", "/?collection=1&bundle=216412");
 
   const queued = row(page, "Adding Shipping manifests");
-  await expect(queued).toContainText("Waiting");
   await expect(queued).toContainText("Waiting to start");
   await expect(queued.getByRole("progressbar")).toBeVisible();
 
@@ -113,41 +121,41 @@ test("the dialog lists the active tasks first, each with its status and progress
 
   const finished = row(page, "Transcribing Box Hill 01");
   await expect(finished).toContainText("Done");
+  await expect(finished).toContainText("227 of 227 pages");
   await expect(finished.getByRole("progressbar")).toHaveCount(0);
-  await expect(finished.getByRole("link")).toHaveAttribute("href", "/?collection=1&bundle=216413");
 
   const failed = row(page, "Training page sorting");
   await expect(failed).toContainText("Failed");
   await expect(failed.getByText("The archive timed out.")).toHaveClass(/text-destructive/);
+  await expect(failed.getByRole("cell").nth(4)).not.toBeEmpty(); // when it was last updated
 });
 
-test("with no tasks the dialog says so", async ({ page }) => {
+test("with no tasks the Tasks page says so", async ({ page }) => {
   await mock(page, []);
-  await page.goto("/");
-  await tasksButton(page).click();
-  await expect(dialog(page).getByText("No tasks yet.")).toBeVisible();
-  await expect(rows(page)).toHaveCount(0);
+  await page.goto("/?view=tasks");
+  await expect(page.getByText("No tasks yet.")).toBeVisible();
+  await expect(rows(page)).toHaveText(["No tasks yet."]);
 });
 
 test("if the tasks can't be fetched the last list stays, with a note", async ({ page }) => {
-  await mock(page, [ADDING]);
-  await page.goto("/");
-  await expect(tasksButton(page)).toHaveAccessibleName("Tasks, 1 active");
-  await page.unroute("**/api/**");
-  await mock(page, { status: 500, detail: "Jobs unavailable" });
-  await tasksButton(page).click();
-  await expect(dialog(page).getByText("Couldn't refresh the tasks: Jobs unavailable")).toBeVisible();
+  let jobs: Jobs = [ADDING];
+  await mock(page, () => (Array.isArray(jobs) ? jobs : []));
+  await page.goto("/?view=tasks");
   await expect(rows(page)).toHaveText([/Adding Missing, Wounded/]);
-  await page.keyboard.press("Escape");
+  await page.unroute("**/api/**");
+  jobs = { status: 500, detail: "Jobs unavailable" };
+  await mock(page, jobs);
+  await expect(page.getByText("Couldn't refresh the tasks: Jobs unavailable")).toBeVisible({ timeout: 9000 });
+  await expect(rows(page)).toHaveText([/Adding Missing, Wounded/]);
   await expect(tasksButton(page)).toHaveAccessibleName("Tasks, 1 active");
 });
 
-test("if the tasks have never loaded the dialog says only why", async ({ page }) => {
+test("if the tasks have never loaded the Tasks page says only why", async ({ page }) => {
   await mock(page, { status: 500, detail: "Jobs unavailable" });
-  await page.goto("/");
-  await tasksButton(page).click();
-  await expect(dialog(page).getByText("Couldn't refresh the tasks: Jobs unavailable")).toBeVisible();
-  await expect(dialog(page).getByText("No tasks yet.")).toHaveCount(0);
+  await page.goto("/?view=tasks");
+  await expect(page.getByText("Couldn't refresh the tasks: Jobs unavailable")).toBeVisible();
+  await expect(page.getByText("No tasks yet.")).toHaveCount(0);
+  await expect(page.getByRole("table")).toHaveCount(0);
 });
 
 const banner = (page: Page) => page.getByRole("status").filter({ hasText: /items from the archive/ });

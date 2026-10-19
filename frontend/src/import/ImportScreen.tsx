@@ -155,7 +155,6 @@ export default function ImportScreen() {
         {files.length === 0 ? (
           <p className="text-sm text-muted-foreground">No files selected.</p>
         ) : (
-          <div className="rounded-md border">
             <Table className="min-w-[580px] table-fixed">
               <TableHeader>
                 <TableRow>
@@ -229,7 +228,6 @@ export default function ImportScreen() {
                 })}
               </TableBody>
             </Table>
-          </div>
         )}
         <p className="text-sm text-muted-foreground">
           Each file must have an item number before import.

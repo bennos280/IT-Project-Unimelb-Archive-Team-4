@@ -10,7 +10,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Progress as ProgressBar } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableOpenArrow, TableRow, TableRowLink } from "@/components/ui/table";
 import { ARCHIVE, backendRequest } from "../progress/backend";
 
 type Collection = {
@@ -53,7 +53,7 @@ export default function CollectionsScreen() {
           </div>
         }
       />
-      <main className="mx-auto max-w-6xl space-y-6 p-6">
+      <main className="space-y-4 p-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Series</h1>
           <p className="text-sm text-muted-foreground">
@@ -76,17 +76,15 @@ export default function CollectionsScreen() {
                 <TableHead>Items</TableHead>
                 <TableHead>Reviewed</TableHead>
                 <TableHead>Needs attention</TableHead>
+                <TableHead className="w-10"><span className="sr-only">Open</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {collections.map((c) => (
                 // The name's link covers the row; the links in the row sit above it.
-                <TableRow key={c.id} className="relative cursor-pointer hover:bg-muted focus-within:bg-muted">
+                <TableRow key={c.id} clickable>
                   <TableCell>
-                    <a href={`/?collection=${c.id}`}
-                      className="rounded-sm font-medium outline-none after:absolute after:inset-0 hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring/50">
-                      {c.name}
-                    </a>
+                    <TableRowLink href={`/?collection=${c.id}`}>{c.name}</TableRowLink>
                   </TableCell>
                   <TableCell className="max-w-72 whitespace-normal">
                     {c.archiveSeries ? (
@@ -102,6 +100,7 @@ export default function CollectionsScreen() {
                   <TableCell><Items collection={c} /></TableCell>
                   <TableCell><Progress collection={c} /></TableCell>
                   <TableCell><Attention collection={c} /></TableCell>
+                  <TableCell><TableOpenArrow /></TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -66,7 +66,7 @@ export default function PageHistory({ pageId }: { pageId: string }) {
         {history && <>
           <p>Current revision: {history.revision}</p>
           <p className="text-muted-foreground">Snapshots show data before a page type change or retranscription. History is read-only.</p>
-          {!history.events.length ? <p>No history has been recorded for this page yet.</p> : <div className="rounded-md border"><Table className="min-w-[680px] table-auto">
+          {!history.events.length ? <p>No history has been recorded for this page yet.</p> : <Table className="min-w-[680px] table-auto">
             <TableHeader><TableRow><TableHead scope="col">Date and time</TableHead><TableHead scope="col">Reviewer</TableHead><TableHead scope="col">Action</TableHead><TableHead scope="col">Change</TableHead><TableHead scope="col">Details</TableHead></TableRow></TableHeader>
             <TableBody>{history.events.map(event => {
               const isOpen = expanded.includes(event.id);
@@ -81,7 +81,7 @@ export default function PageHistory({ pageId }: { pageId: string }) {
                 {!!event.snapshot?.flags?.length && <><h4 className="font-medium">Previous flags</h4><Table className="table-auto"><TableHeader><TableRow><TableHead>Field</TableHead><TableHead>Flag</TableHead><TableHead>Reason</TableHead></TableRow></TableHeader><TableBody>{event.snapshot.flags.map((flag, i) => <TableRow key={i}><TableCell className={wrap}>{text(flag.field_title)}</TableCell><TableCell className={wrap}>{text(flag.kind)}</TableCell><TableCell className={wrap}>{text(flag.reason)}</TableCell></TableRow>)}</TableBody></Table></>}
               </TableCell></TableRow>}</Fragment>;
             })}</TableBody>
-          </Table></div>}
+          </Table>}
         </>}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Close</Button>

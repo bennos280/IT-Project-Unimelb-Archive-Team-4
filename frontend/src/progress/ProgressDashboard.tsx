@@ -1,7 +1,7 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { ArrowRight, ChevronRight, ExternalLink, LayoutList, ListPlus, Search, Settings, Upload } from "lucide-react";
+import { ArrowRight, ExternalLink, LayoutList, ListPlus, Search, Settings, Upload } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,9 @@ import {
   TableCell,
   TableHead,
   TableHeader,
+  TableOpenArrow,
   TableRow,
+  TableRowLink,
 } from "@/components/ui/table";
 import {
   counts,
@@ -298,8 +300,6 @@ export default function ProgressDashboard() {
   const head = "whitespace-normal px-1.5 text-xs [overflow-wrap:anywhere] sm:px-2 sm:text-sm";
   const num = "text-right tabular-nums";
   // Stretched link: its overlay makes the whole row clickable; controls inside a row sit above it.
-  const rowLink =
-    "rounded-sm font-medium outline-none after:absolute after:inset-0 hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring/50";
   const above = "relative z-10";
   const rowAction = "h-auto min-h-7 w-full flex-wrap px-1 py-1 text-xs sm:px-2.5 sm:text-[0.8rem]";
   return (
@@ -505,7 +505,6 @@ export default function ProgressDashboard() {
               )}
             </div>
             {/* The same table shows bundle summaries or individual page details. */}
-            <div className="rounded-md border">
               <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
@@ -537,17 +536,16 @@ export default function ProgressDashboard() {
                     ? matchingPages.slice(start, start + pageSize).map((p) => (
                         <TableRow
                           key={p.id}
-                          className={openable(p) ? "relative cursor-pointer hover:bg-muted focus-within:bg-muted" : undefined}
+                          clickable={openable(p)}
                         >
                           <TableCell className={cell}>
                             {openable(p) ? (
-                              <a
+                              <TableRowLink
                                 href={reviewLink(p)}
                                 aria-label={`${p.status === "Awaiting transcription" ? "Transcribe" : p.status === "Reviewed" ? "View" : "Review"} ${p.label}`}
-                                className={rowLink}
                               >
                                 {p.label}
-                              </a>
+                              </TableRowLink>
                             ) : (
                               p.label
                             )}
@@ -573,7 +571,7 @@ export default function ProgressDashboard() {
                             {!item.loaded ? (
                               <span>Unavailable at the moment</span>
                             ) : p.surveyId ? (
-                              <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground" />
+                              <TableOpenArrow />
                             ) : (
                               <span className="block text-right text-muted-foreground" title={`This page has no ${words.one} assignment`}>
                                 —
@@ -589,11 +587,10 @@ export default function ProgressDashboard() {
                               ? Math.round((c.reviewed / c.reviewable) * 100)
                               : null;
                           return (
-                            <TableRow key={b.bundle} className="relative cursor-pointer hover:bg-muted focus-within:bg-muted">
+                            <TableRow key={b.bundle} clickable>
                               <TableCell className={cell}>
-                                <a
+                                <TableRowLink
                                   href={`/?collection=${collectionId}&bundle=${encodeURIComponent(b.name)}`}
-                                  className={rowLink}
                                   onClick={(e) => {
                                     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                                     e.preventDefault();
@@ -601,7 +598,7 @@ export default function ProgressDashboard() {
                                   }}
                                 >
                                   {b.archive?.title ?? b.name}
-                                </a>
+                                </TableRowLink>
                                 {b.archive && (
                                   <span className="block text-muted-foreground">
                                     <span className="hidden sm:inline">{b.archive.identifier} · </span>{b.name}
@@ -716,7 +713,7 @@ export default function ProgressDashboard() {
                                     )}
                                   </div>
                                 ) : (
-                                  <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground" />
+                                  <TableOpenArrow />
                                 )}
                               </TableCell>
                             </TableRow>
@@ -759,7 +756,6 @@ export default function ProgressDashboard() {
                   )}
                 </TableBody>
               </Table>
-            </div>
             {/* Show the visible row range and disable navigation at either end. */}
             <footer className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <span>

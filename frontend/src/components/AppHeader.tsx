@@ -1,6 +1,6 @@
 import { Fragment, type MouseEvent, type ReactNode } from "react";
 
-import TasksPanel from "@/components/TasksPanel";
+import TasksButton from "@/components/TasksButton";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -37,7 +37,7 @@ export default function AppHeader({ crumbs, actions }: { crumbs: Crumb[]; action
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {actions}
-        <TasksPanel />
+        <TasksButton />
       </div>
     </header>
   );
