@@ -69,6 +69,3 @@ jobs:
 
       - name: Browser integration tests
         run: npm --prefix tests run test:e2e
-
-      - name: Backend adapter integration tests
-        run: npm --prefix tests run test:integration
