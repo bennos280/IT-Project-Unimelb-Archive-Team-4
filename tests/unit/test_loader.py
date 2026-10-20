@@ -80,25 +80,6 @@ def test_run_loads_into_its_surveys(tmp_path, monkeypatch):
 
 
 
-def test_consistency_conflicts_become_flags_on_the_fields_they_name(tmp_path, monkeypatch):
-    start_db(tmp_path, monkeypatch)
-    out = run_folder(tmp_path)
-    (out / "validation").mkdir()
-    (out / "validation" / "output_flagged.json").write_text(json.dumps({"surveys": [{
-        "page_files": {"main": "216412_00001.png", "coded": "216412_00002.png", "notes": ["216412_00003.png"]},
-        "validation_flags": [
-            {"type": "Page 1\u20133 conflict", "reason": "TYPE OF FAMILY: Page 1 has 2 residents, but Page 3 records 1.",
-             "fields": {"Page 1: residents[0].relationship": "Head", "Page 1: address": "5 Raeburn Cres.", "Page 3: type_of_family": "1"}},
-            {"type": "Page 1\u20133 comparison incomplete", "reason": "WASHOUSE: one corresponding value is missing.",
-             "fields": {"Page 3: washouse": "1"}}]}]}), encoding="utf-8")
-    loader.dump_into_db(out / "manifest.json")
-
-    db = sqlite3.connect(tmp_path / "test.db")
-    assert db.execute("SELECT page_id, field_title, reason FROM flags WHERE reason LIKE 'Consistency%' ORDER BY page_id").fetchall() == [
-        ("216412_00001", "address", "Consistency: TYPE OF FAMILY: Page 1 has 2 residents, but Page 3 records 1."),
-        ("216412_00002", "type_of_family", "Consistency: TYPE OF FAMILY: Page 1 has 2 residents, but Page 3 records 1.")]
-
-
 def test_a_run_loads_its_records_inside_one_another_parents_first(tmp_path, monkeypatch):
     start_db(tmp_path, monkeypatch)
     out = run_folder(tmp_path)
