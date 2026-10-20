@@ -10,20 +10,23 @@ from functools import cache
 import json
 import os
 import re
+import socket
 from pathlib import Path, PurePosixPath
 import sqlite3
+import sys
 import threading
 from backend.db import app_settings, checks, database, grouping, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
 from datetime import datetime, timezone
+from urllib.error import URLError
 from backend.common import ROOT, find_images, settings
 from backend.pipeline.transcribe import areas, providers
 from backend.pipeline.transcribe.transcribe import ALL_PROVIDERS
 
 from backend.api.uploads import archive_sources, upload_bundle
-from backend.api import connections, transcription_options
+from backend.api import connections, local_sorting, transcription_options
 
 app = FastAPI()
 
@@ -31,6 +34,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.include_router(connections.router)
 app.include_router(transcription_options.router)
+app.include_router(local_sorting.router)
 
 #takes the db's write lock now, so another save can't land between a check and the write it guards (freed at commit)
 def write_lock(db):
@@ -1637,11 +1641,13 @@ class PageSortingRequest(BaseModel):
     sorter: Sorter | None = None
     sameAsTranscription: bool = False
 
+_checked, _checking = {}, threading.Lock()  #a passed check of page sorting on this computer, kept while the API runs; one at a time
+
 #how pages are sorted: the method, what a page the model here isn't sure of does, the reading model that sorts (null: the
-#transcription choice), whether PyTorch is here
+#transcription choice), whether PyTorch is here, and a passed check of it, if one has run
 @app.get("/page-sorting")
 def get_page_sorting(db: Session = Depends(get_db)):
-    return {**app_settings.sorting_settings(db), "localAvailable": app_settings.local_sorting_available()}
+    return {**app_settings.sorting_settings(db), "localAvailable": app_settings.local_sorting_available(), "checked": _checked or None}
 
 @app.put("/page-sorting")
 def put_page_sorting(payload: PageSortingRequest, db: Session = Depends(get_db)):
@@ -1678,3 +1684,42 @@ def put_api_key(provider: str, payload: ApiKey):
         raise HTTPException(status_code=400, detail="That doesn't look like a key.")
     providers.save_key(provider, value)
     return get_api_keys()
+
+
+#whether a failure, or what caused it, is a connection or download failing (requests and huggingface_hub errors are matched by name)
+def no_internet(error):
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        names = {c.__name__ for c in type(error).__mro__}
+        if isinstance(error, (URLError, ConnectionError, socket.gaierror, socket.timeout)) or names & {"ConnectionError", "Timeout", "LocalEntryNotFoundError", "OfflineModeIsEnabled"}:
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+#checks page sorting on this computer works, by sorting a blank test page with it (loading PyTorch and the sorting model, which
+#is downloaded the first time); what went wrong in words if it doesn't
+@app.post("/page-sorting/check")
+def check_page_sorting():
+    import platform, tempfile, time
+    if not app_settings.local_sorting_available():
+        intel_mac = sys.platform == "darwin" and platform.machine() != "arm64"
+        return {"ok": False, "detail": "PyTorch isn't available for Intel Macs: sort pages by the reading model." if intel_mac
+                else "PyTorch isn't installed on this computer: install it from Settings, then Page sorting."}
+    from PIL import Image
+    from backend.pipeline.identify.identify import identify_pages
+    with _checking:  #a check asked for while one runs waits for it, and gets its pass
+        if _checked:
+            return dict(_checked)
+        started = time.monotonic()
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                page = Path(folder) / "check.png"
+                Image.new("RGB", (850, 1100), "white").save(page)
+                identify_pages([page])
+        except Exception as error:
+            if no_internet(error):  #the sorting model's first download
+                return {"ok": False, "detail": f"The page sorting model couldn't be loaded; it's downloaded the first time, so check the internet ({error})"[:400]}
+            return {"ok": False, "detail": f"Page sorting on this computer failed: {type(error).__name__}: {error}"[:400]}
+        _checked.update(ok=True, seconds=round(time.monotonic() - started, 1))
+        return dict(_checked)

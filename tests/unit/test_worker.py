@@ -186,6 +186,16 @@ def test_the_retrained_weights_are_only_needed_when_the_model_on_this_computer_r
     assert len(runs) == 1
 
 
+def test_local_sorting_without_pytorch_says_where_to_install_it(db, committed, tmp_path, monkeypatch):
+    sort_pages_by(db, "local")
+    monkeypatch.setattr(app_settings, "local_sorting_available", lambda: False)
+    job = queue(db, tmp_path)
+    runs = []
+    fake_pipeline(monkeypatch, lambda run: runs.append(run))
+    worker.work_once(db)
+    assert "install it from Settings, then Page sorting" in committed(job).error and runs == []
+
+
 def test_an_item_of_the_prest_survey_runs_keeping_its_blank_pages_out(db, tmp_path, monkeypatch):
     queue(db, tmp_path)
     runs = []

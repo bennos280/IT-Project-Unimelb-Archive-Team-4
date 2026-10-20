@@ -81,7 +81,8 @@ def test_a_run_set_to_the_reading_model_sorts_with_it_and_flags_what_it_cant_pla
 
 
 def test_page_sorting_is_by_the_reading_model_until_this_computer_is_chosen(client, monkeypatch):
-    assert client.get("/page-sorting").json() == {"method": "model", "unsure": "review", "sorter": None, "localAvailable": True}  # unsaved, the reading model, as transcription
+    assert client.get("/page-sorting").json() == {"method": "model", "unsure": "review", "sorter": None, "localAvailable": True,
+                                                    "checked": None}  # unsaved, the reading model, as transcription
     assert client.put("/page-sorting", json={"method": "local"}).json()["method"] == "local"
     assert client.get("/page-sorting").json()["method"] == "local"
     assert client.put("/page-sorting", json={"method": "elsewhere"}).status_code == 422
@@ -118,3 +119,21 @@ def test_pages_this_computer_isnt_sure_of_are_asked_of_the_reading_model_when_se
     pipeline.step_identify(run)
     assert [p["label"] for p in run.pages] == ["main", "notes", "notes"]  # unsure, and a type the series hasn't: asked
     assert asked == [(["b_00002.png", "b_00003.png"], {"provider": "gemini", "model": "flash", "effort": "default"})]
+
+
+def test_checks_asked_for_at_once_load_the_sorting_model_once_and_its_pass_is_remembered(client, monkeypatch):
+    import threading
+    from backend.api import main
+    from backend.pipeline.identify import identify
+    monkeypatch.setattr(main, "_checked", {})
+    monkeypatch.setattr(app_settings, "local_sorting_available", lambda: True)
+    loads = []
+    monkeypatch.setattr(identify, "identify_pages", lambda paths: loads.append(paths) or time.sleep(0.3))
+    replies = []
+    asks = [threading.Thread(target=lambda: replies.append(client.post("/page-sorting/check").json())) for _ in range(3)]
+    for a in asks:
+        a.start()
+    for a in asks:
+        a.join()
+    assert len(loads) == 1 and all(r["ok"] for r in replies)
+    assert client.get("/page-sorting").json()["checked"]["ok"] is True

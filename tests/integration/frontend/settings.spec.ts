@@ -20,7 +20,9 @@ type Options = {
   gateTests?: boolean; // hold test replies until calls.release()
   transcriptionOptions?: object; // the body of GET /transcription-options; without it the request fails and the text boxes stay
   sorting?: "local" | "model"; localSorting?: boolean; // page sorting saved (left out: the reading model), whether PyTorch is here
+  sortingCheck?: object; // the body of POST /api/page-sorting/check; left out: it passes
   sortingModels?: object[]; // the body of GET /api/sorting-models
+  sortingInstall?: { installable?: boolean; detail?: string; result?: { ok: boolean; detail?: string } }; // GET /api/page-sorting/install (installable left out: it is); result: how an install started with POST ends
   apiKeys?: object[]; // the body of GET /api/api-keys
 };
 
@@ -36,8 +38,9 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
   };
   const sorting = {
     method: options.sorting ?? "model", unsure: "review", sorter: null as unknown, localAvailable: options.localSorting ?? true,
-    saved: [] as unknown[], active: [] as unknown[], retrains: [] as unknown[],
+    saved: [] as unknown[], checks: 0, active: [] as unknown[], retrains: [] as unknown[], installs: 0,
   };
+  const install = { installable: options.sortingInstall?.installable ?? true, running: false, ok: null as boolean | null, detail: options.sortingInstall?.detail ?? null as string | null, seconds: null as number | null };
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -86,6 +89,22 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
       return route.fulfill({ json: options.transcriptionOptions });
     if (path === "/api/transcription-models")
       return route.fulfill({ json: { configured: defaults, models: [] } });
+    if (path === "/api/page-sorting/install" && request.method() === "POST") {
+      if (request.headers()["content-type"] !== "application/json" || request.postData() !== "{}") // the API requires a JSON body
+        return route.fulfill({ status: 422, json: { detail: "Field required" } });
+      if (!install.installable) return route.fulfill({ status: 400, json: { detail: install.detail } });
+      sorting.installs++;
+      Object.assign(install, { running: true, ok: null, detail: null });
+      return route.fulfill({ status: 202, json: install });
+    }
+    if (path === "/api/page-sorting/install") {
+      if (install.running) { // the first poll finds it finished
+        const result = options.sortingInstall?.result ?? { ok: true };
+        Object.assign(install, { running: false, ok: result.ok, detail: result.detail ?? null, seconds: 40 });
+        if (result.ok) sorting.localAvailable = true;
+      }
+      return route.fulfill({ json: install });
+    }
     if (path === "/api/page-sorting" && request.method() === "PUT") {
       const change = request.postDataJSON();
       sorting.saved.push(change);
@@ -93,7 +112,11 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
     }
     if (path === "/api/page-sorting") {
       const { method, unsure, sorter, localAvailable } = sorting;
-      return route.fulfill({ json: { method, unsure, sorter, localAvailable } });
+      return route.fulfill({ json: { method, unsure, sorter, localAvailable, checked: null } });
+    }
+    if (path === "/api/page-sorting/check") {
+      sorting.checks++;
+      return route.fulfill({ json: options.sortingCheck ?? { ok: true, seconds: 2.5 } });
     }
     if (path === "/api/sorting-models/active") {
       sorting.active.push(request.postDataJSON());
@@ -928,6 +951,29 @@ test("the ready line's status element is on the page before the line appears, an
 
 
 const sortingCard = (page: Page) => page.locator("section#page-sorting");
+const NO_BUILD = "PyTorch has no build for this computer (an Intel Mac).";
+const INSTALL_NOTE = "Downloads PyTorch, about 2 GB. Pages are sorted by the reading model meanwhile.";
+
+test("the reading model sorts pages unless this computer is chosen, which is checked and shows its own settings", async ({ page }) => {
+  const sorting = await mockSorting(page);
+  await page.goto("/?view=settings");
+  const card = sortingCard(page);
+  await expect(card.getByRole("radio", { name: /^By the reading model/ })).toBeChecked();
+  await expect(card.getByLabel("Model that sorts")).toHaveValue("");
+  await expect(card.getByLabel("When it isn't sure")).toHaveCount(0);
+  expect(sorting.checks).toBe(0);
+
+  await card.getByRole("radio", { name: /^On this computer/ }).check();
+  await expect(card.getByText("Ready", { exact: true })).toBeVisible();
+  await expect(card).toContainText("Checked: a test page sorted in 2.5 s.");
+  expect(sorting.saved).toEqual([{ method: "local" }]);
+  expect(sorting.checks).toBe(1);
+  await expect(card.getByLabel("Model that sorts")).toHaveCount(0);
+
+  await card.getByLabel("When it isn't sure").selectOption("Ask the reading model");
+  await expect.poll(() => sorting.saved).toEqual([{ method: "local" }, { unsure: "model" }]);
+  await expect(card.getByLabel("Model that sorts")).toBeVisible(); // the unsure pages go to it
+});
 
 test("a cheaper reading model can sort, at the lowest effort, or the transcription model again", async ({ page }) => {
   const sorting = await mockSorting(page, { transcriptionOptions: OPTIONS });
@@ -940,6 +986,73 @@ test("a cheaper reading model can sort, at the lowest effort, or the transcripti
   await chooser.selectOption("Same as the transcription model");
   await expect.poll(() => sorting.saved.at(-1)).toEqual({ sameAsTranscription: true });
   await expect(chooser).toHaveValue("");
+});
+
+test("without PyTorch, this computer can't be chosen until it's installed, and isn't checked meanwhile", async ({ page }) => {
+  const sorting = await mockSorting(page, { localSorting: false });
+  await page.goto("/?view=settings");
+  const card = sortingCard(page);
+  await expect(card.getByRole("radio", { name: /^By the reading model/ })).toBeChecked();
+  await expect(card.getByRole("radio", { name: /^On this computer/ })).toBeDisabled();
+  await expect(card.getByText("Not installed", { exact: true })).toBeVisible();
+  await expect(card).toContainText(INSTALL_NOTE);
+  await expect(card.getByRole("button", { name: "Install PyTorch" })).toBeVisible();
+  expect(sorting.checks).toBe(0);
+  expect(sorting.installs).toBe(0);
+});
+
+test("installing PyTorch shows progress, then checks page sorting so it ends at Ready", async ({ page }) => {
+  const sorting = await mockSorting(page, { localSorting: false });
+  await page.goto("/?view=settings");
+  const card = sortingCard(page);
+  await card.getByRole("button", { name: "Install PyTorch" }).click();
+  await expect(card.getByText("Installing…", { exact: true })).toBeVisible();
+  await expect(card.getByRole("status").filter({ hasText: "Installing PyTorch" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Install PyTorch" })).toHaveCount(0);
+  await expect(card.getByText("Ready", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(card).toContainText("Checked: a test page sorted in 2.5 s.");
+  await expect(card.getByRole("radio", { name: /^On this computer/ })).toBeEnabled();
+  expect(sorting.installs).toBe(1);
+  expect(sorting.checks).toBe(1);
+});
+
+test("a failed install shows why and can be tried again", async ({ page }) => {
+  const sorting = await mockSorting(page, { localSorting: false, sortingInstall: { result: { ok: false, detail: "No space left on device" } } });
+  await page.goto("/?view=settings");
+  const card = sortingCard(page);
+  await card.getByRole("button", { name: "Install PyTorch" }).click();
+  await expect(card).toContainText("No space left on device", { timeout: 15_000 });
+  await expect(card.getByText("Not installed", { exact: true })).toBeVisible();
+  await card.getByRole("button", { name: "Try again" }).click();
+  await expect.poll(() => sorting.installs).toBe(2);
+  await expect(card.getByRole("button", { name: "Try again" })).toBeVisible({ timeout: 15_000 });
+  expect(sorting.checks).toBe(0);
+});
+
+test("a computer PyTorch can't be installed on says why and offers no install", async ({ page }) => {
+  const sorting = await mockSorting(page, { localSorting: false, sortingInstall: { installable: false, detail: NO_BUILD } });
+  await page.goto("/?view=settings");
+  const card = sortingCard(page);
+  await expect(card.getByRole("radio", { name: /^On this computer/ })).toBeDisabled();
+  await expect(card.getByText("Can't run here")).toBeVisible();
+  await expect(card).toContainText(NO_BUILD);
+  await expect(card.getByRole("button", { name: "Install PyTorch" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Try again" })).toHaveCount(0);
+  expect(sorting.checks).toBe(0);
+});
+
+test("a failing check can be tried again, or the reading model chosen instead", async ({ page }) => {
+  const sorting = await mockSorting(page, { sorting: "local", sortingCheck: { ok: false, detail: "Page sorting on this computer failed: boom" } });
+  await page.goto("/?view=settings");
+  const card = sortingCard(page);
+  await expect(card.getByText("Not working")).toBeVisible();
+  await expect(card).toContainText("Page sorting on this computer failed: boom");
+  const checks = sorting.checks; // one on loading (two in development, where effects run twice)
+  await card.getByRole("button", { name: "Try again" }).click();
+  await expect.poll(() => sorting.checks).toBe(checks + 1);
+  await card.getByRole("button", { name: "Use the reading model instead" }).click();
+  await expect(card.getByRole("radio", { name: /^By the reading model/ })).toBeChecked();
+  expect(sorting.saved).toEqual([{ method: "model" }]);
 });
 
 test("this computer's sorting can use a retrained version that passed its check, and be retrained", async ({ page }) => {

@@ -247,6 +247,7 @@ The pipeline and loader are faked: no model calls. Job state is read through a s
 |`test_an_item_of_another_series_runs_with_that_series_page_types_and_rule`|A job for an item another series lists runs into that series, with its grouping rule, record name and page types only.|
 |`test_a_series_without_the_built_in_types_may_have_blank_pages_whenever_the_reading_model_sorts`|A series with no built-in page types may have blank pages when the reading model sorts or takes what this computer is unsure of, and not otherwise.|
 |`test_the_retrained_weights_are_only_needed_when_the_model_on_this_computer_runs`|The active retrained model's weights file is looked up only when sorting is on this computer: with the reading model a missing file is no matter, and on this computer the job fails saying it is missing.|
+|`test_local_sorting_without_pytorch_says_where_to_install_it`|Sorting on this computer without PyTorch fails the job saying to install it from Settings, then Page sorting, and runs nothing.|
 |`test_an_item_of_the_prest_survey_runs_keeping_its_blank_pages_out`|An item the Wilfred Prest Survey lists runs as its, sorting into its types and dropping blank pages.|
 |`test_an_item_no_series_lists_fails_without_running`|A job for an item no series lists is marked failed ("no series lists this item: add it to one first") and the pipeline is never run.|
 |`test_only_one_worker_runs_at_a_time`|A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.|
@@ -311,6 +312,7 @@ How pages are sorted into page types: on this computer (PyTorch) or by the readi
 |`test_without_pytorch_pages_are_sorted_by_the_reading_model_and_this_computer_cant_be_chosen`|Without PyTorch, pages are sorted by the reading model and choosing this computer is refused with why.|
 |`test_a_cheaper_reading_model_can_sort_and_what_this_computer_isnt_sure_of_can_go_to_it`|A reading model for sorting, apart from the transcription one, and sending what this computer isn't sure of to it, are saved without changing the method; an unknown provider is refused.|
 |`test_pages_this_computer_isnt_sure_of_are_asked_of_the_reading_model_when_set`|With that set, the pages this computer is unsure of, or sorts into a type the series hasn't, are asked of the reading model with the saved choice.|
+|`test_checks_asked_for_at_once_load_the_sorting_model_once_and_its_pass_is_remembered`|Several `POST /page-sorting/check` at once load the sorting model once, and a pass is remembered.|
 
 ## `test_settings_api.py`
 
@@ -322,6 +324,22 @@ What the home page's Save a PrestCribe file ask of the API: `GET /state`.
 |`test_a_setup_only_file_keeps_the_series_and_how_theyre_read_but_no_pages_or_this_computers_choices`|`?content=setup` keeps the series, page types, record levels and people, leaves out bundles, pages, fields and this computer's settings, is named "PrestCribe setup", and leaves what is here as it was.|
 |`test_a_file_can_be_saved_as_only_everything_or_the_setup`|Any other `content` is refused (422).|
 |`test_a_setup_only_file_opened_here_keeps_this_computers_own_choices`|`POST /state` with a setup-only file (no app settings) keeps this computer's own settings, such as page sorting, and takes the rest from the file.|
+|`test_a_check_that_cant_download_the_sorting_model_says_to_check_the_internet` — 5 cases|`POST /page-sorting/check` failing with a URL, connection, name lookup or `requests`-style connection error, or one caused by such an error, says to check the internet.|
+|`test_a_check_that_fails_any_other_way_doesnt_blame_the_internet` — 3 cases|Any other failure (a DLL that won't load, a missing file, a bad value) is "Page sorting on this computer failed: ..." with the error.|
+
+## `test_local_sorting.py`
+
+`GET` and `POST /page-sorting/install`, which installs PyTorch with `uv sync`. `uv` is faked: nothing real is run.
+
+|Test|What it checks|
+|---|---|
+|`test_installable`|Where `uv` is found, the install can be started, with nothing running yet.|
+|`test_not_installable_without_uv`|Without `uv` it is not installable, says why, and `POST` is a 400 that starts nothing.|
+|`test_not_installable_on_intel_mac`|An Intel Mac can't install PyTorch (said, and `POST` is a 400); an Apple chip can.|
+|`test_post_runs_uv_then_reports_ok`|`POST` answers 202 and runs `uv sync` with the local sorting extra, `GET` reports running and then ok with the seconds taken, and import caches are refreshed.|
+|`test_failure_detail_is_the_last_lines`|A failed install is not ok and its detail is the last 20 lines of `uv`'s output.|
+|`test_second_post_while_running_is_409`|A second `POST` while one runs is a 409 and starts nothing.|
+|`test_already_installed_runs_nothing`|With PyTorch already installed, `POST` answers ok without running `uv`.|
 
 ## `test_page_types.py`
 

@@ -162,6 +162,9 @@ def run_bundle(db, job, progress):
     unsure_to_model = sorting_settings["unsure"] == "model"
     active = None
     if sorting == "local":
+        if not app_settings.local_sorting_available():
+            raise SystemExit("sorting pages on this computer needs PyTorch, which isn't installed here: install it from "
+                             "Settings, then Page sorting, or choose the reading model for page sorting")
         active = db.query(models.SortingModel).filter(models.SortingModel.active).first()
         if active and not (ROOT / active.path).is_file():
             raise SystemExit(f"page sorting model {active.model_id}'s file {active.path} is missing: choose another model, or retrain")

@@ -1,5 +1,7 @@
-"""What the home page's Save a PrestCribe file ask of the API: GET and POST /state."""
+"""What the home page's Save a PrestCribe file ask of the API: GET and POST /state, and the page sorting check."""
 import sqlite3
+import socket
+from urllib.error import URLError
 from urllib.parse import unquote
 
 import pytest
@@ -72,3 +74,45 @@ def test_a_setup_only_file_opened_here_keeps_this_computers_own_choices(client, 
     db.expire_all()
     assert [(row.key, row.value) for row in db.query(models.AppSetting)] == [("page_sorting", "model")]
     assert db.query(models.Page).count() == 0  # the rest is the file's
+
+
+@pytest.fixture
+def sorting(client, monkeypatch):
+    """Page sorting is available here and its check fails with the error the test gives."""
+    from backend.pipeline.identify import identify
+    monkeypatch.setattr(main, "_checked", {})
+    monkeypatch.setattr(main.app_settings, "local_sorting_available", lambda: True)
+
+    def fails(error):
+        def identify_pages(paths):
+            raise error
+        monkeypatch.setattr(identify, "identify_pages", identify_pages)
+        return client.post("/page-sorting/check").json()
+
+    return fails
+
+
+class ConnectionError(OSError):  # as requests' is, which isn't Python's
+    pass
+
+
+def chained():
+    try:
+        raise URLError("offline")
+    except URLError as error:
+        try:
+            raise RuntimeError("download failed") from error
+        except RuntimeError as outer:
+            return outer
+
+
+@pytest.mark.parametrize("error", [URLError("offline"), ConnectionResetError("reset"), socket.gaierror("no name"), ConnectionError("no route"), chained()])
+def test_a_check_that_cant_download_the_sorting_model_says_to_check_the_internet(sorting, error):
+    reply = sorting(error)
+    assert reply["ok"] is False and "check the internet" in reply["detail"]
+
+
+@pytest.mark.parametrize("error", [OSError("DLL load failed while importing _C"), FileNotFoundError("model.safetensors"), ValueError("bad")])
+def test_a_check_that_fails_any_other_way_doesnt_blame_the_internet(sorting, error):
+    reply = sorting(error)
+    assert reply["ok"] is False and "check the internet" not in reply["detail"] and reply["detail"].startswith("Page sorting on this computer failed: ")

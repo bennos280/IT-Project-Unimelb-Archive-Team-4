@@ -17,7 +17,7 @@ line again to update: your database, scans and results are kept (in `%LOCALAPPDA
 
 ## Install (Mac)
 
-Needs macOS 14 Sonoma or later. Open **Terminal** (press Cmd+Space, type
+Needs macOS 14 Sonoma or later (on an Intel Mac, pages are sorted by your reading model). Open **Terminal** (press Cmd+Space, type
 "Terminal", press Return), paste this line and press Return:
 
 ```sh
