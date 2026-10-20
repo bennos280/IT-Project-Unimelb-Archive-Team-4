@@ -30,7 +30,7 @@ test("a first visit to any page welcomes on the home page and asks who's working
   const added = await mock(page, []);
   await page.goto("/?view=tasks");
   await expect(welcome(page).getByRole("list", { name: "How it works" }).getByRole("listitem")).toHaveText([
-    "Add a series from the University of Melbourne Archives", "Read the rest, then check each record"]);
+    "Add a series from the University of Melbourne Archives", "Set it up on one sample item", "Read the rest, then check each record"]);
   await expect(page.getByRole("button", { name: /^Working as/ })).toHaveCount(0);
   await expect(who(page).getByRole("button", { name: "Continue" })).toBeDisabled();
   await who(page).getByLabel("Your name").fill(" Lachlan ");

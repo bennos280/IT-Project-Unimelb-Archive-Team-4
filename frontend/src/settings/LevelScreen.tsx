@@ -337,11 +337,22 @@ function LevelForm({ collection, types, index, setup }: { collection: Collection
   );
 }
 
+// A page's scan, small, or a stand-in when it isn't on this computer (the caption beside it names the page).
+function Thumbnail({ page }: { page: string }) {
+  const [missing, setMissing] = useState(false);
+  return missing ? (
+    <span className="flex h-36 w-28 items-center justify-center rounded border bg-muted p-2">No scan here</span>
+  ) : (
+    <img src={`/api/pages/${encodeURIComponent(page)}/thumbnail`} loading="lazy" alt="" onError={() => setMissing(true)}
+      className="h-36 w-28 rounded border bg-muted object-cover object-top" />
+  );
+}
+
 const chip = "inline-flex items-center gap-1.5 rounded-full border px-3 py-1";
 
 // A preview of an item's records: how many there are at the top, how many have problems (pressed: only those) and how many
 // pages are in none; and each record under the one it sits in, named by its level and number, with its pages by their place in
-// the item ("Pg 1–3, 5"), and what grouping would flag about it. Stale: the
+// the item ("Pg 1–3, 5") and as small scans (each opening the whole scan), and what grouping would flag about it. Stale: the
 // settings or the item changed since it was tried.
 function PreviewResult({ preview, levels, bundle, stale }: { preview: Preview; levels: Level[]; bundle: string; stale: boolean }) {
   const [onlyProblems, setOnlyProblems] = useState(false);
@@ -404,6 +415,7 @@ function PreviewResult({ preview, levels, bundle, stale }: { preview: Preview; l
                     {row.pages.map((page) => (
                       <a key={page} href={`/api/pages/${encodeURIComponent(page)}/image`} target="_blank" rel="noopener noreferrer"
                         className="w-28 space-y-1 text-center text-xs text-muted-foreground hover:text-foreground">
+                        <Thumbnail page={page} />
                         <span className="block truncate">{preview.pageTypes[page] ?? "Page"} · Pg {place.get(page)}</span>
                       </a>
                     ))}

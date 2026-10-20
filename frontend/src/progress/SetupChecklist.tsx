@@ -13,10 +13,11 @@ type Step = { title: string; done: boolean; busy?: boolean; optional?: boolean; 
 const list = (words: string[]) => (words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0] ?? "");
 
 // Setting a series up: each step ticked from what the series has, with what's missing and where to do it. At the top of its
-// Items page it opens Setup. Once set up, it points to the item read as a sample, until another is read. It loads again when the
-// page is shown again, and every few seconds while an item is being read.
-export default function SetupChecklist({ collectionId }: {
-  collectionId: number;
+// Items page it opens Setup, where it sits beside a sample item (inSetup; sample: its name, once there is one), its page types
+// and templates set there. Once set up, it points to the item read as a sample, until another is read. It loads again when the
+// page is shown again, when version changes, and every few seconds while an item is being read.
+export default function SetupChecklist({ collectionId, inSetup, sample: chosen, version }: {
+  collectionId: number; inSetup?: boolean; sample?: string; version?: number;
 }) {
   const [found, setFound] = useState<{ series: SeriesCounts; types: PageType[]; read: { id: string; name: string }[] } | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -28,7 +29,7 @@ export default function SetupChecklist({ collectionId }: {
       backendRequest<{ id: string; name: string }[]>(`/export/bundles?collection=${collectionId}`),
     ]).then(([series, types, read]) => { if (current) setFound({ series, types, read }); }).catch(() => {});
     return () => { current = false; };
-  }, [collectionId, attempt]);
+  }, [collectionId, attempt, version]);
   useEffect(() => {
     const again = () => setAttempt((n) => n + 1);
     window.addEventListener("focus", again);
@@ -51,16 +52,16 @@ export default function SetupChecklist({ collectionId }: {
   const sample = found.read[0];
   const steps: Step[] = [
     { title: "Add its page types", done: done.types,
-      detail: done.types ? list(own.map((t) => t.label)) : "The kinds of page in it, like a form or a letter.",
-      action: done.types ? undefined : { label: "Add page types", href: `${setup}&section=page-types` } },
+      detail: done.types ? list(own.map((t) => t.label)) : inSetup ? "Say what kind of page the one shown is." : "The kinds of page in it, like a form or a letter.",
+      action: done.types || inSetup ? undefined : { label: "Add page types", href: `${setup}&section=page-types` } },
     { title: "Give each page type a template", done: done.templates,
       detail: done.templates ? undefined : missing.length ? `${list(missing)} ${missing.length === 1 ? "has" : "have"} none yet.` : "What to read from each kind of page.",
-      action: done.templates ? undefined : { label: "Write templates", href: `${setup}&section=page-types` } },
+      action: done.templates || inSetup ? undefined : { label: "Write templates", href: `${setup}&section=page-types` } },
     { title: "Read one item as a sample", done: done.sample, busy: !done.sample && running > 0,
       detail: done.sample ? (sample ? itemTitle(sample.name) : undefined) : running ? "Reading…"
-        : "Press Transcribe on one of its items below.",
+        : inSetup ? (chosen ? "Transcribe it on its own page." : "Transcribe one of its items.") : "Press Transcribe on one of its items below.",
       action: done.sample && sample ? { label: "Check it", href: `/?series=${collectionId}&item=${encodeURIComponent(sample.name)}` }
-        : undefined },
+        : chosen && !running ? { label: "Open item", href: `/?series=${collectionId}&item=${encodeURIComponent(chosen)}` } : undefined },
     { title: "Say what a record is", done: done.record, optional: true, detail: done.record ? undefined : "Without it, each item is one record.",
       action: done.record ? undefined : { label: "Set levels", href: `${setup}&section=levels` } },
   ];
@@ -83,7 +84,7 @@ export default function SetupChecklist({ collectionId }: {
             </p>
           </div>
         </div>
-        {!ready && <Button size="sm" variant="outline" className="bg-background" asChild><a href={setup}>Open setup</a></Button>}
+        {!inSetup && !ready && <Button size="sm" variant="outline" className="bg-background" asChild><a href={setup}>Open setup</a></Button>}
       </div>
       <ol aria-label="Setup steps" className="divide-y overflow-hidden rounded-md border bg-background">
         {steps.map((s) => (

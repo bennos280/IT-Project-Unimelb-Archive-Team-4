@@ -1,11 +1,13 @@
 """Page scans not on this computer, from the University of Melbourne Archives' website: for the API when a page's scan
 isn't here, and for the pipeline when a bundle's PDF isn't."""
 import html
+import io
 import logging
 import re
 import shutil
 import tempfile
 import time
+from functools import lru_cache
 from http.client import HTTPException
 from urllib.error import HTTPError
 from urllib.parse import urlencode, urljoin
@@ -57,6 +59,40 @@ def fetch_pdf(pdf):
         raise OSError(f"the archive has no PDF of item {number}")
     session, _ = archive_bundle(number)
     archive_download(session, file_id, pdf)
+
+
+#a page's scan as a small JPEG, width pixels wide: drawn from its item's PDF on this computer (page N of the item, the number
+#its id ends in, is the PDF's Nth page), else from its scan here; None if neither is here, so nothing is asked of the archive.
+#keep=False: drawn afresh and not kept, for a large one
+def page_thumbnail(source_pdf, import_path, page_id, width=240, keep=True):
+    try:
+        return (drawn_small if keep else drawn_small.__wrapped__)(source_pdf, import_path, page_id, width)
+    except FileNotFoundError:
+        return None
+
+@lru_cache(maxsize=2048)  #a scan not here raises, so one that arrives later is drawn
+def drawn_small(source_pdf, import_path, page_id, width):
+    number = page_id.rsplit("_", 1)[-1]
+    page_no = int(number) if number.isascii() and number.isdigit() else 0
+    pdf = ROOT / source_pdf
+    if page_no and pdf.is_file():
+        import pymupdf
+        with pymupdf.open(pdf) as doc:
+            if page_no <= doc.page_count:
+                page = doc[page_no - 1]
+                zoom = width / page.rect.width
+                return page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom)).tobytes("jpeg", jpg_quality=80)
+    scan = ROOT / import_path
+    if not scan.is_file() and page_no:
+        scan = ROOT / settings()["OUTPUT"] / "scans" / Path(source_pdf).parent.name / f"{page_no:04d}.jpg"
+    if not scan.is_file():
+        raise FileNotFoundError(scan)
+    from PIL import Image
+    with Image.open(scan) as image:
+        image.thumbnail((width, width * 4))
+        found = io.BytesIO()
+        image.convert("RGB").save(found, "JPEG", quality=80)
+        return found.getvalue()
 
 
 #a page's full scan from the archive, kept in OUTPUT/scans; None while the archive can't send it or hasn't the page

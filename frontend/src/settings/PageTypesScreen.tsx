@@ -13,9 +13,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { me } from "../person";
 import { backendRequest, seriesParam } from "../progress/backend";
+import { isSetUp, type SeriesCounts } from "../progress/setup";
 import ChecksSection from "./ChecksSection";
 import FieldRules from "./FieldRules";
 import { cleanRules, parseTemplate, sameRules, type Rules } from "./rules";
+import SetupGuide from "./SetupGuide";
 import { describe } from "./shapes";
 
 export type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; templateVersion: number | null };
@@ -38,12 +40,13 @@ const SECTIONS = ["levels", "page-types", "checks"];
 
 // A series' Setup tab, in three: its levels of record, its page types (what each is called, the template its pages are read
 // with and its fields' rules), and its checks across fields. The one shown is in the URL (?section=; the old ?view=page-types
-// opens the page types).
+// opens the page types). Opened without one while the series isn't set up, it shows setting it up on a sample instead.
 export default function PageTypesScreen() {
   const params = new URLSearchParams(location.search);
   const collectionId = Number(seriesParam(params)) || 1;
   const [section, setSection] = useState(() => SECTIONS.find((s) => s === params.get("section"))
     ?? (params.get("view") === "page-types" ? "page-types" : "levels"));
+  const [chosen] = useState(() => params.has("section") || params.get("view") === "page-types");
   function show(next: string) {
     const url = new URL(location.href);
     url.searchParams.set("section", next);
@@ -51,7 +54,7 @@ export default function PageTypesScreen() {
     setSection(next);
   }
   const [types, setTypes] = useState<PageType[] | null>(null);
-  const [collection, setCollection] = useState<Collection | null>(null);
+  const [collection, setCollection] = useState<(Collection & SeriesCounts) | null>(null);
   const [loadError, setLoadError] = useState("");
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<PageType | null>(null);
@@ -59,7 +62,7 @@ export default function PageTypesScreen() {
   const load = useCallback(() =>
     Promise.all([
       backendRequest<PageType[]>(`/page-types?collection=${collectionId}`),
-      backendRequest<Collection>(`/collections/${collectionId}`),
+      backendRequest<Collection & SeriesCounts>(`/collections/${collectionId}`),
     ]).then(([t, c]) => {
       setTypes(t);
       setCollection(c);
@@ -86,6 +89,7 @@ export default function PageTypesScreen() {
             </AlertDescription>
           </Alert>
         )}
+        {collection && !chosen && !isSetUp(collection) ? <SetupGuide collectionId={collectionId} /> : (
         <Tabs value={section} onValueChange={show} className="gap-6">
           <TabsList aria-label="Setup">
             <TabsTrigger value="levels">Levels</TabsTrigger>
@@ -134,6 +138,7 @@ export default function PageTypesScreen() {
             {types && <ChecksSection collectionId={collectionId} types={types} />}
           </TabsContent>
         </Tabs>
+        )}
       </main>
       {adding && (
         <AddDialog collectionId={collectionId} onClose={() => setAdding(false)}

@@ -1,5 +1,8 @@
 """A series' levels of record (PUT /collections/{id}/levels): what each is called and what one is made of, in order, which the
 pipeline's group step reads (backend/db/grouping.py); a series with none has each item as one record."""
+import pytest
+
+from backend import scans
 from backend.db import grouping, models
 from tests.unit.test_page_type_settings import setup
 
@@ -178,6 +181,41 @@ def test_levels_tried_on_an_item_read_show_its_records_by_the_numbers_reviewers_
     assert client.post("/collections/1/levels/preview", json={"levels": [survey], "item": "nowhere"}).status_code == 404
     assert client.post("/collections/1/levels/preview", json={"levels": [{"name": "survey #1"}], "item": "b"}).json()["detail"] == (
         "A level's name is a word or two, like survey or letter.")
+
+
+def test_a_page_is_shown_small_from_its_items_pdf_or_its_scan_here_and_never_fetched(client, db, tmp_path, monkeypatch):
+    for asked in ("archive_scan", "archive_bundle", "archive_download"):
+        monkeypatch.setattr(scans, asked, lambda *args, **kwargs: pytest.fail("the archive was asked"))
+    import pymupdf
+    pdf = tmp_path / "t.pdf"
+    with pymupdf.open() as doc:
+        for _ in range(2):
+            doc.new_page(width=600, height=800)
+        doc.save(pdf)
+    add(db, models.Bundle(bundle_id="t", source_pdf=str(pdf), collection_id=1), models.Bundle(bundle_id="u", source_pdf=str(tmp_path / "gone.pdf"), collection_id=1),
+        *[models.Page(page_id=page, bundle_id=bundle, category="main", import_path=str(tmp_path / f"{page}.png"))
+          for page, bundle in (("t_00002", "t"), ("t_00009", "t"), ("u_00001", "u"))])
+    shown = client.get("/pages/t_00002/thumbnail")
+    assert (shown.status_code, shown.headers["content-type"], shown.content[:2]) == (200, "image/jpeg", bytes([0xFF, 0xD8]))
+    from PIL import Image
+    import io
+    assert Image.open(io.BytesIO(shown.content)).size == (240, 320)  # 240 wide, in proportion
+    assert [client.get(f"/pages/{page}/thumbnail").status_code for page in ("t_00009", "u_00001", "nowhere")] == [404] * 3
+    # a folder of scans: each page's own, whatever it's called; one not here yet is drawn once it is
+    Image.new("L", (300, 400)).save(tmp_path / "front.png")
+    add(db, models.Bundle(bundle_id="v", source_pdf=str(tmp_path / "v"), collection_id=1),
+        *[models.Page(page_id=page, bundle_id="v", category="main", import_path=str(tmp_path / f"{scan}.png"))
+          for page, scan in (("v_front", "front"), ("v_00002", "later"))])
+    assert [client.get(f"/pages/{page}/thumbnail").status_code for page in ("v_front", "v_00002")] == [200, 404]
+    Image.new("RGB", (300, 400)).save(tmp_path / "later.png")
+    shown = client.get("/pages/v_00002/thumbnail")
+    assert (shown.status_code, Image.open(io.BytesIO(shown.content)).size) == (200, (240, 320))
+    # else the scan the archive sent before, kept in OUTPUT/scans/<item>/; a page called by no number has none there
+    monkeypatch.setattr(scans, "settings", lambda: {"OUTPUT": str(tmp_path / "out")})
+    (tmp_path / "out" / "scans" / tmp_path.name).mkdir(parents=True)
+    Image.new("RGB", (300, 400)).save(tmp_path / "out" / "scans" / tmp_path.name / "0003.jpg")
+    add(db, *[models.Page(page_id=page, bundle_id="v", category="main", import_path=str(tmp_path / "none.png")) for page in ("v_00003", "v_\u00b2")])
+    assert [client.get(f"/pages/{page}/thumbnail").status_code for page in ("v_00003", "v_\u00b2")] == [200, 404]
 
 
 def test_a_record_with_too_many_or_too_few_of_a_part_or_a_page_type_it_isnt_made_of_is_flagged(client, db):

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
@@ -177,6 +177,15 @@ def page_image(page_id: str, preprocessed: bool = False, db: Session = Depends(g
         scan = cleaned(scan, page_id)
     return FileResponse(scan)
 
+
+#a page's scan, small, for a preview: from its item's PDF or its scan on this computer (never the archive); 404 if neither is here
+@app.get("/pages/{page_id:path}/thumbnail")
+def page_thumbnail(page_id: str, db: Session = Depends(get_db)):
+    page = db.get(models.Page, page_id)
+    image = page and scans.page_thumbnail(db.get(models.Bundle, page.bundle_id).source_pdf, page.import_path, page_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="No scan of this page here.")
+    return Response(image, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
 #returns list of {id, name}
 @app.get("/reviewers")
@@ -1130,6 +1139,79 @@ def get_item(collection_id: int, name: str, db: Session = Depends(get_db)):
     records = db.query(models.Survey.survey_id, models.Survey.parent_id).filter_by(bundle_id=row["bundle"]).order_by(models.Survey.survey_id)
     return {**row, "pages": next((b["pages"] for b in cached_progress(db) if b["id"] == row["bundle"]), []),
             "records": [{"id": record, "parent": parent} for record, parent in records]}
+
+_downloading = threading.Lock()  #ponytail: one item's PDF downloaded at a time; a second ask for it waits, then finds it here
+
+#one of a series' archive items, by its number; 404 if the series doesn't list it
+def series_item(db, collection_id, name):
+    item = db.get(models.ArchiveItem, int(name)) if name.isascii() and name.isdigit() and len(name) < 10 else None
+    if not item or item.collection_id != collection_id:
+        raise HTTPException(status_code=404, detail="This series doesn't list that item.")
+    return item
+
+#where a series' archive item's PDF is, or goes once downloaded (as reading it puts it); 404 if the series doesn't list it
+def item_pdf(db, collection_id, name):
+    item = series_item(db, collection_id, name)
+    pdf = item.pdf
+    if not pdf:
+        raise HTTPException(status_code=404, detail="There's no PDF of that item to get.")
+    return ROOT / settings()["DATA"] / pdf
+
+#how many pages an item has, to look at before it is read (a series set up on a sample): its PDF is downloaded from the
+#archive first if it isn't here, into the place reading it would put it
+@app.get("/collections/{collection_id}/items/{name}/scans")
+def item_scans(collection_id: int, name: str, db: Session = Depends(get_db)):
+    pdf = item_pdf(db, collection_id, name)
+    if not pdf.is_file():
+        with _downloading:
+            if not pdf.is_file():
+                try:
+                    scans.fetch_pdf(pdf)
+                except scans.ARCHIVE_ERRORS as error:
+                    raise HTTPException(status_code=502, detail=f"Couldn't get its scans from the archive ({error}).")
+    import pymupdf
+    with pymupdf.open(pdf) as doc:
+        return {"pages": doc.page_count}
+
+#page n of an item's PDF as a JPEG, 240 pixels wide (kept drawn) or, asked for wider, 1200 (the browser keeps it); 404 until its
+#PDF is here (item_scans)
+@app.get("/collections/{collection_id}/items/{name}/scans/{n}")
+def item_scan(collection_id: int, name: str, n: int, width: int = 240, db: Session = Depends(get_db)):
+    large = width > 240
+    image = n > 0 and scans.page_thumbnail(str(item_pdf(db, collection_id, name)), "", f"{name}_{n}", 1200 if large else 240, keep=not large)
+    if not image:
+        raise HTTPException(status_code=404, detail="No scan of this page here.")
+    return Response(image, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+#the page types said of an item's pages before it is read (setting its series up on it): page number -> page type
+@app.get("/collections/{collection_id}/items/{name}/labels")
+def item_labels(collection_id: int, name: str, db: Session = Depends(get_db)):
+    item = series_item(db, collection_id, name)
+    return {str(label.page): label.page_type for label in db.query(models.SampleLabel).filter_by(node=item.node)}
+
+class SampleLabelRequest(BaseModel):
+    pageType: str | None #None: unsaid
+
+#says which of its series' page types (not its Unknown one) a page of an item is, or unsays it; its labels as item_labels
+@app.put("/collections/{collection_id}/items/{name}/labels/{page}")
+def label_page(collection_id: int, name: str, page: int, payload: SampleLabelRequest, db: Session = Depends(get_db)):
+    write_lock(db)
+    item = series_item(db, collection_id, name)
+    if not 0 < page < 100_000:
+        raise HTTPException(status_code=400, detail="A page is numbered from 1.")
+    page_type = payload.pageType and db.get(models.PageType, payload.pageType)
+    if payload.pageType and (not page_type or page_type.collection_id != collection_id or page_type.unknown):
+        raise HTTPException(status_code=400, detail=f"No page type called {payload.pageType} in this series.")
+    label = db.get(models.SampleLabel, (item.node, page))
+    if not payload.pageType:
+        if label:
+            db.delete(label)
+    elif label:
+        label.page_type = payload.pageType
+    else:
+        db.add(models.SampleLabel(node=item.node, page=page, page_type=payload.pageType))
+    db.commit()
+    return item_labels(collection_id, name, db)
 
 #queues a pipeline run of one PDF; the worker picks it up
 @app.post("/jobs", status_code=202)

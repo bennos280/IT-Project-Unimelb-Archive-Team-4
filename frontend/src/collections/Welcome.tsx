@@ -1,5 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
-import { Library, ListChecks } from "lucide-react";
+import { Library, ListChecks, ScanText } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { createReviewer, getReviewers, type Reviewer } from "../review-screen/ap
 
 const STEPS = [
   { icon: Library, text: "Add a series from the University of Melbourne Archives" },
+  { icon: ScanText, text: "Set it up on one sample item" },
   { icon: ListChecks, text: "Read the rest, then check each record" },
 ];
 
