@@ -316,13 +316,32 @@ How pages are sorted into page types: on this computer (PyTorch) or by the readi
 
 ## `test_settings_api.py`
 
-What the home page's Save a PrestCribe file ask of the API: `GET /state`.
+What the Settings page's Updates card and Open folder buttons and the home page's Save a PrestCribe file ask of the API: `GET /version`, `POST /update`, `POST /folders/{which}/open` and `GET /state`. Nothing is fetched from GitHub, no installer is started, no folder is opened (what would open one is only recorded, under each platform in turn, inside a temporary folder), and the timer that stops this copy after an update is only recorded: the real one would end the test run.
 
 |Test|What it checks|
 |---|---|
+|`test_a_copy_not_installed_from_a_release_has_no_version_and_isnt_updatable`|With no `VERSION` file, the current version is none, the latest release is GitHub's (asked once, with a time limit), and it isn't updatable.|
+|`test_an_installed_copy_is_updatable_only_when_the_latest_release_is_another_version`|The version is read from `VERSION`, trimmed; it is updatable when the latest release differs, not when it is the same.|
+|`test_when_github_cant_be_reached_or_understood_the_error_is_said_and_nothing_is_updatable` — 3 cases|A failed request, a reply with no release, or one that isn't JSON gives no latest release, no notes, "Couldn't reach GitHub to check for updates." and not updatable.|
+|`test_the_latest_releases_notes_are_its_body_trimmed_and_cut_to_5000_characters_or_none` — 8 cases|`notes` is the latest release's body with the space around it trimmed, then cut to 5000 characters; none when the body is missing, null or not text (a number, a list, an object).|
+|`test_the_time_it_was_checked_is_now_in_utc`|`checkedAt` is an ISO time in UTC between just before and just after the request.|
+|`test_the_computer_it_runs_on_is_given_with_whether_pages_can_be_sorted_on_it` — 2 cases|`system` holds `os` (ending in the chip), this Python's version and `pytorch`, whether PyTorch is installed here (true or false).|
+|`test_the_system_is_named_with_its_version_and_chip` — 3 cases|`system_info()` names Windows and Linux by system, release and chip, and a Mac as "macOS" with its macOS version (not the kernel's) and chip.|
+|`test_a_copy_not_installed_from_a_release_cant_be_updated_and_is_told_to_use_git`|`POST /update` on such a copy is a 400 saying to update it with git pull, and starts nothing.|
+|`test_updating_starts_the_installer_in_its_own_process_for_this_folder_then_stops_this_copy`|On an installed copy it answers 202, fetches the installer from the latest release (with a 10 second limit), starts it in its own process (a new console on Windows) for this folder, and sets a one-second timer to stop this copy.|
+|`test_tasks_waiting_or_running_hold_an_update_back_and_nothing_is_started`|With a task waiting or running, `POST /update` is a 409 ("Wait for the tasks to finish before updating.") and starts nothing.|
+|`test_an_installer_that_cant_be_downloaded_is_a_502_and_nothing_is_started`|An installer that can't be fetched is a 502 ("Couldn't download the installer: ...") and starts nothing.|
+|`test_a_folder_with_an_apostrophe_is_escaped_in_the_windows_installer_command_which_waits_for_enter_if_it_fails`|On Windows a folder name with an apostrophe is escaped in the PowerShell command, which prints the failure and waits for Enter.|
+|`test_a_folder_with_an_apostrophe_is_quoted_in_the_installer_command_on_a_mac_or_linux_which_runs_only_a_downloaded_script`|On a Mac or Linux the folder is shell-quoted and the installer is run only once downloaded to a file, never piped as it arrives.|
 |`test_a_saved_file_holds_everything_unless_only_the_setup_is_asked_for`|`GET /state` has every table's rows, named `.prestcribe`; `?content=everything` is the same.|
 |`test_a_setup_only_file_keeps_the_series_and_how_theyre_read_but_no_pages_or_this_computers_choices`|`?content=setup` keeps the series, page types, record levels and people, leaves out bundles, pages, fields and this computer's settings, is named "PrestCribe setup", and leaves what is here as it was.|
 |`test_a_file_can_be_saved_as_only_everything_or_the_setup`|Any other `content` is refused (422).|
+|`test_a_folder_is_made_and_opened_the_way_this_computer_opens_folders` — 6 cases|`POST /folders/data/open` and `/folders/output/open` make the folder (and the ones above it) and answer 204 with nothing; it is opened with `os.startfile` on Windows, `open` on a Mac and `xdg-open` elsewhere, with the folder's full path.|
+|`test_a_folder_already_there_is_opened_as_it_is`|A folder that is there is not made again, what is in it is kept, and it can be opened again.|
+|`test_only_the_data_and_output_folders_can_be_opened` — 3 cases|Any other `which` (`elsewhere`, `DATA`, `scans`) is refused (422): nothing is made or opened.|
+|`test_a_folder_that_cant_be_opened_is_a_500_saying_why` — 3 cases|An `OSError` from `os.startfile` (Windows) or from starting `open` or `xdg-open` is a 500, "The folder couldn't be opened: ..." with the error.|
+|`test_a_folder_that_cant_be_made_is_a_500_and_nothing_is_opened`|A file where the folder should be is a 500 with the same message, and nothing is opened.|
+|`test_the_reason_a_folder_couldnt_be_opened_is_cut_to_300_characters`|The whole message, "The folder couldn't be opened: ..." included, is cut to 300 characters.|
 |`test_a_setup_only_file_opened_here_keeps_this_computers_own_choices`|`POST /state` with a setup-only file (no app settings) keeps this computer's own settings, such as page sorting, and takes the rest from the file.|
 |`test_a_check_that_cant_download_the_sorting_model_says_to_check_the_internet` — 5 cases|`POST /page-sorting/check` failing with a URL, connection, name lookup or `requests`-style connection error, or one caused by such an error, says to check the internet.|
 |`test_a_check_that_fails_any_other_way_doesnt_blame_the_internet` — 3 cases|Any other failure (a DLL that won't load, a missing file, a bad value) is "Page sorting on this computer failed: ..." with the error.|
@@ -359,6 +378,38 @@ Page types added from the review screen, and a page read again as another type.
 | `test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`   | An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).                                                                                                                                                  |
 | `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |
 | `test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`            | If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.                                                                                                                                                                                 |
+
+## `test_suggest_types.py` — 41 test cases
+
+Page types suggested from an item's pages: pages picked, laid on a contact sheet and shown to the chosen model, which proposes page types for the series to add.
+
+|Test|What it checks|
+|---|---|
+|`test_pages_are_spread_evenly_starting_with_the_first`|`pick` spreads the pages evenly over the item, starting with its first.|
+|`test_random_pages_are_in_order_without_repeats_and_the_same_for_the_same_seed`|Random pages come back in page order without repeats, the same for the same seed.|
+|`test_a_range_is_clamped_to_the_item_and_the_pages_are_spread_over_what_is_left_of_it`|A range is clamped to the item and the pages are spread over what is left of it.|
+|`test_an_item_with_no_more_pages_than_asked_for_gives_all_of_them`|An item with no more pages than asked for gives all of them.|
+|`test_no_more_than_30_pages_are_picked_and_at_least_one`|No more than 30 pages are picked, and at least one.|
+|`test_a_contact_sheet_is_one_jpeg_with_a_numbered_tile_for_each_page_in_the_order_given`|A contact sheet is one JPEG with a numbered tile for each page, in the order given.|
+|`test_pages_of_different_shapes_are_each_drawn_as_wide_as_a_tile_in_a_row_as_high_as_the_tallest`|Pages of different shapes are each drawn as wide as a tile, in a row as high as its tallest.|
+|`test_a_very_tall_page_is_shrunk_to_fit_and_each_row_is_as_tall_as_its_own_tallest_tile`|A page far taller than a tile is shrunk to fit (the sheet stays bounded), and each row is as tall as its own tallest tile.|
+|`test_a_contact_sheet_of_one_page_is_that_page_and_its_number`|A sheet of one page is that page and its number.|
+|`test_the_model_is_asked_once_about_a_sheet_of_the_pages_and_its_tiles_are_taken_for_their_page_numbers`|The model is asked once about the sheet, and the tiles it names are taken as their page numbers.|
+|`test_tiles_that_are_not_on_the_sheet_are_ignored_and_a_kind_with_none_left_has_no_pages`|Tiles not on the sheet are ignored, and a kind with none left has no pages.|
+|`test_a_kind_named_again_or_with_no_name_is_dropped_and_names_and_descriptions_are_tidied`|A kind named again or with no name is dropped; names and descriptions are tidied.|
+|`test_an_answer_with_no_kinds_gives_none` — 4 tests|An answer with no kinds (empty, null, an empty list, or another key) gives none.|
+|`test_the_prompt_counts_the_pages_and_names_the_page_types_the_series_has_and_what_the_person_said`|The prompt counts the pages, names the series' page types and carries the person's hint.|
+|`test_a_request_the_model_cant_answer_is_not_caught_here`|`suggest` lets the model's error through.|
+|`test_suggesting_asks_the_chosen_model_once_about_the_picked_pages_and_adds_nothing`|`POST /collections/{id}/page-types/suggest` asks the chosen model once about the picked pages and adds no page type.|
+|`test_the_pages_can_be_picked_at_random_or_from_a_range_and_are_16_unless_asked_otherwise`|Pages are picked at random or from a range, and are 16 unless asked otherwise.|
+|`test_a_range_with_no_pages_in_it_is_400_and_the_model_isnt_asked` — 3 tests|A range starting past the item's end, or ending before it starts, is a 400 saying how many pages the item has, and the model isn't asked.|
+|`test_the_400_for_an_empty_range_counts_a_one_page_item_in_the_singular`|The 400 for an empty range says "1 page" for a one-page item.|
+|`test_suggesting_with_no_transcription_model_chosen_is_refused_before_anything_is_asked`|With no transcription model chosen it is refused with 409 before the model is asked.|
+|`test_a_request_the_endpoint_cant_make_sense_of_is_422` — 7 tests|A count outside 1-30, a hint over 1000 characters, an unknown pick, a range end below 1 or a count that isn't a number is a 422.|
+|`test_a_request_with_no_item_is_422_and_the_most_it_allows_is_30_pages_and_a_1000_character_hint`|No item is a 422; 30 pages and a 1000-character hint are the most allowed.|
+|`test_a_model_that_cant_answer_is_a_502_with_what_it_said`|Any failure (the model's, or drawing the sheet) is a 502 "Page types couldn't be suggested" carrying what was said.|
+|`test_an_item_the_series_doesnt_list_or_has_no_pdf_for_is_404_and_the_model_isnt_asked` — 6 tests|An item the series doesn't list, or has no PDF for, is a 404 and the model isn't asked.|
+|`test_an_items_pdf_not_here_yet_is_downloaded_first_and_an_archive_that_cant_send_it_is_a_502`|An item's PDF not here yet is downloaded first; an archive that can't send it is a 502.|
 
 ## `test_add_items.py`
 

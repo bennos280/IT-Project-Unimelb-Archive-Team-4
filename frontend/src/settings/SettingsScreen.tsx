@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { Check, Circle, CircleAlert, CircleCheck, CircleX, TriangleAlert, type LucideIcon } from "lucide-react";
 
 import AppHeader from "@/components/AppHeader";
@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { backendRequest, providerNames } from "../progress/backend";
 import type { ModelChoice } from "../progress/ModelControls";
 import ApiKeys, { type ApiKey } from "./ApiKeys";
 import PageSorting from "./PageSorting";
+import About from "./About";
 
 const hasKey = (k: ApiKey) => !k.needsKey || k.saved || k.fromEnvironment; // Ollama needs none
 import TranscriptionDefaults from "./TranscriptionDefaults";
@@ -51,14 +53,25 @@ const TEST_NOTE = "Sends one tiny request on your plan.";
 
 // One line when a transcription can start, else what is still needed. saved: the saved choice (null: none; undefined: not loaded); signedIn: provider id -> signed in (null: not loaded).
 // The status element is always there, empty and unseen until the line appears, so screen readers announce it.
-function Checklist({ saved, signedIn }: { saved: ModelChoice | null | undefined; signedIn: Record<string, boolean> | null }) {
+function Checklist({ saved, signedIn, show }: { saved: ModelChoice | null | undefined; signedIn: Record<string, boolean> | null; show: (tab: string) => void }) {
   const loaded = saved !== undefined && signedIn !== null;
+  // A plain click shows the link's tab and section here, keeping unsaved edits; other clicks (new tab, window) follow the href.
+  function follow(e: MouseEvent<HTMLAnchorElement>) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    const { searchParams, hash } = new URL(e.currentTarget.href);
+    show(searchParams.get("tab")!);
+    history.replaceState(null, "", e.currentTarget.href);
+    requestAnimationFrame(() => document.getElementById(hash.slice(1))?.scrollIntoView());
+  }
   const name = saved && (providerNames[saved.provider] ?? saved.provider);
   const signed = loaded && (saved ? Boolean(signedIn[saved.provider]) : Object.values(signedIn).some(Boolean));
   const line = loaded && signed ? saved : null;
   const items = [
-    { done: saved !== null, text: "Choose a transcription model", href: "#transcription-defaults" },
-    { done: signed, text: name ? `Sign in to ${name}` : "Sign in to Claude Code or the Codex CLI", href: "#connections" },
+    { done: saved !== null, text: "Choose a transcription model", action: "Choose model", href: "?view=settings&tab=transcription#transcription-defaults" },
+    { done: signed, text: name ? `Sign in to ${name}, or give it a key` : "Sign in to Claude Code or the Codex CLI, or add an API key",
+      action: "Sign in or add a key",
+      href: `?view=settings&tab=accounts${saved && !["claude", "codex"].includes(saved.provider) ? "#api-keys" : "#connections"}` },
   ];
   return (
     <>
@@ -74,48 +87,41 @@ function Checklist({ saved, signedIn }: { saved: ModelChoice | null | undefined;
         )}
       </div>
       {loaded && !line && (
-        <Card size="sm" role="region" aria-labelledby="ready-heading">
-          <CardContent className="space-y-2">
-            <h2 id="ready-heading" className="text-base font-semibold">Before you can transcribe</h2>
-            <ul className="space-y-1">
-              {items.map(({ done, text, href }) => {
-                const Icon = done ? CircleCheck : Circle;
-                return (
-                  <li key={text} className="flex items-center gap-2">
-                    <Icon aria-hidden="true" className={done ? "size-4 text-green-700 dark:text-green-400" : "size-4 text-muted-foreground"} />
-                    {done ? text : <a href={href} className="underline underline-offset-2">{text}</a>}
-                    <span className="text-muted-foreground">· {done ? "Done" : "Not done"}</span>
-                  </li>
-                );
-              })}
+        <section aria-labelledby="ready-heading"
+          className="flex gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+          <TriangleAlert aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="min-w-0 flex-1 space-y-3">
+            <h2 id="ready-heading" className="font-semibold">Finish setup to start transcribing</h2>
+            <ul className="space-y-2">
+              {items.map(({ done, text, href, action }) => (
+                <li key={text} className="flex flex-wrap items-center gap-2 text-sm">
+                  {done ? <CircleCheck aria-hidden="true" className="size-4 text-green-700 dark:text-green-400" />
+                    : <Circle aria-hidden="true" className="size-4 text-amber-700 dark:text-amber-300" />}
+                  <span className="flex-1">{text}<span className="sr-only">{done ? ": done" : ": to do"}</span></span>
+                  {!done && <Button size="sm" variant="outline" className="bg-background" asChild><a href={href} onClick={follow}>{action}</a></Button>}
+                </li>
+              ))}
             </ul>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       )}
     </>
   );
 }
 
-// Where the scans are read from and the results written: fixed, inside the project, so read-only here.
-function Folders() {
-  const [folders, setFolders] = useState<{ data: string; output: string } | null>(null);
-  useEffect(() => {
-    backendRequest<{ data: string; output: string }>("/folders").then(setFolders).catch(() => setFolders(null));
-  }, []);
-  if (!folders) return null;
-  const path = (value: string) => <code className="rounded bg-muted px-1 py-0.5 font-mono break-all">{value}</code>;
-  return (
-    <footer className="space-y-1 border-t pt-4 text-xs text-muted-foreground">
-      <h2 className="sr-only">Folders</h2>
-      <p>Scans: {path(folders.data)}</p>
-      <p>Results: {path(folders.output)}</p>
-      <p>Inside the project folder.</p>
-    </footer>
-  );
-}
+const TABS = ["transcription", "accounts", "about"];
 
-// Status of the Claude Code and Codex CLIs, and a button that starts their own sign-in in the browser.
+// Settings in tabs, the one shown kept in the URL (?tab=): Transcription (the model, and page sorting), Accounts and API keys, and
+// About (the version and updates, where this copy keeps its files, help); they stay loaded, as the checklist above counts them.
 export default function SettingsScreen() {
+  const [tab, setTab] = useState(() => TABS.find((t) => t === new URLSearchParams(location.search).get("tab")) ?? "transcription");
+  function show(next: string) {
+    const url = new URL(location.href);
+    url.searchParams.set("tab", next);
+    url.hash = "";
+    history.replaceState(null, "", url);
+    setTab(next);
+  }
   const [data, setData] = useState<Connections | null>(null);
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -200,17 +206,26 @@ export default function SettingsScreen() {
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader crumbs={[{ label: "Settings" }]} />
       <TooltipProvider>
-        <main className="mx-auto max-w-6xl space-y-8 p-6">
+        <main className="space-y-8 p-6">
           <div className="flex flex-col gap-3">
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-              <p className="text-sm text-muted-foreground">Transcription model and accounts</p>
+              <p className="text-sm text-muted-foreground">How pages are read, and the accounts that read them</p>
             </div>
-            <Checklist saved={saved} signedIn={data && { claude: data.claude.signedIn, codex: data.codex.signedIn,
+            <Checklist saved={saved} show={show} signedIn={data && { claude: data.claude.signedIn, codex: data.codex.signedIn,
               ...Object.fromEntries(apiKeys.map((k) => [k.provider, hasKey(k)])) }} />
           </div>
+          <Tabs value={tab} onValueChange={show} className="gap-6">
+            <TabsList aria-label="Settings">
+              <TabsTrigger value="transcription">Transcription</TabsTrigger>
+              <TabsTrigger value="accounts">Accounts and API keys</TabsTrigger>
+              <TabsTrigger value="about">About</TabsTrigger>
+            </TabsList>
+            <TabsContent value="transcription" forceMount className="space-y-8 data-[state=inactive]:hidden">
           <TranscriptionDefaults notReady={notReady} onSaved={setSaved} version={keysVersion} />
           <PageSorting />
+            </TabsContent>
+            <TabsContent value="accounts" forceMount className="space-y-8 data-[state=inactive]:hidden">
           <section id="connections" className="space-y-3">
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Accounts</h2>
@@ -331,7 +346,11 @@ export default function SettingsScreen() {
             )}
           </section>
           <ApiKeys onChange={keysChanged} />
-          <Folders />
+            </TabsContent>
+            <TabsContent value="about" forceMount className="space-y-8 data-[state=inactive]:hidden">
+              <About />
+            </TabsContent>
+          </Tabs>
         </main>
       </TooltipProvider>
       <Dialog open={signingOut !== null} onOpenChange={(open) => { if (!open && !busy) setSigningOut(null); }}>

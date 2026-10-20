@@ -4,12 +4,13 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal
 from functools import cache
 import json
 import os
 import re
+import shlex
 import socket
 from pathlib import Path, PurePosixPath
 import sqlite3
@@ -933,6 +934,20 @@ def set_active_sorting_model(payload: ActiveModelRequest, db: Session = Depends(
 def get_folders():
     return {key.lower(): str((ROOT / settings()[key]).resolve()) for key in ("DATA", "OUTPUT")}
 
+#opens the scans' or the results' folder in Explorer or Finder, on the computer PrestCribe runs on
+@app.post("/folders/{which}/open", status_code=204)
+def open_folder(which: Literal["data", "output"]):
+    import subprocess
+    folder = (ROOT / settings()[which.upper()]).resolve()
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        if sys.platform == "win32":
+            os.startfile(folder)
+        else:
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(folder)])
+    except OSError as error:
+        raise HTTPException(status_code=500, detail=f"The folder couldn't be opened: {error}"[:300])
+
 #a transcription's provider, model and effort: the ones given, else the saved choice; 409 when either is still missing
 def chosen_transcription(db, provider, model, effort):
     saved = app_settings.transcription_defaults(db) or {}
@@ -1187,6 +1202,34 @@ def item_scan(collection_id: int, name: str, n: int, width: int = 240, db: Sessi
     if not image:
         raise HTTPException(status_code=404, detail="No scan of this page here.")
     return Response(image, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+class SuggestRequest(BaseModel):
+    item: str #one of the series' items, by number
+    count: int = Field(16, ge=1, le=30) #how many of its pages to show
+    pick: Literal["spread", "random", "range"] = "spread"
+    first: int | None = Field(None, ge=1) #the range, for pick "range"
+    last: int | None = Field(None, ge=1)
+    hint: str = Field("", max_length=1000) #told to the model as is
+
+#page types suggested for a series by the transcription model (Settings), from some of one of its items' pages shown side by
+#side (its PDF is downloaded first if it isn't here, as item_scans does); nothing is added: {pages, types: [{label, description,
+#pages}]}. 409 until a transcription model is chosen; 502 when the model can't answer
+@app.post("/collections/{collection_id}/page-types/suggest")
+def suggest_page_types(collection_id: int, payload: SuggestRequest, db: Session = Depends(get_db)):
+    from backend.pipeline.identify import suggest
+    chosen = chosen_transcription(db, None, None, None)
+    total = item_scans(collection_id, payload.item, db)["pages"]
+    pages = suggest.pick(total, payload.count, payload.pick, payload.first, payload.last)
+    if not pages:  #a range past the item's end, or ending before it starts
+        raise HTTPException(status_code=400, detail=f"That item has {total} page{'' if total == 1 else 's'}: choose pages within them.")
+    known = [t["label"] for t in get_page_types(collection_id, db) if not t["unknown"]]
+    try:
+        types = suggest.suggest(item_pdf(db, collection_id, payload.item), pages, chosen, known, payload.hint)
+    except BaseException as error:  #a failed model call raises SystemExit
+        if isinstance(error, (KeyboardInterrupt, GeneratorExit)):
+            raise
+        raise HTTPException(status_code=502, detail=f"Page types couldn't be suggested: {error}"[:400])
+    return {"pages": pages, "types": types}
 
 #the page types said of an item's pages before it is read (setting its series up on it): page number -> page type
 @app.get("/collections/{collection_id}/items/{name}/labels")
@@ -1723,3 +1766,62 @@ def check_page_sorting():
             return {"ok": False, "detail": f"Page sorting on this computer failed: {type(error).__name__}: {error}"[:400]}
         _checked.update(ok=True, seconds=round(time.monotonic() - started, 1))
         return dict(_checked)
+
+
+#--UPDATES--# an installed copy (install.ps1 or install.sh; its release wrote VERSION) can see the latest release and update to it
+RELEASES = "https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4/releases"
+LATEST = "https://api.github.com/repos/bennos280/IT-Project-Unimelb-Archive-Team-4/releases/latest"
+
+def installed_version():
+    version = ROOT / "VERSION"
+    return version.read_text(encoding="utf-8").strip() if version.is_file() else None
+
+#the computer PrestCribe runs on, for a problem report: its system, Python, and whether pages can be sorted on it
+def system_info():
+    import platform
+    name = f"macOS {platform.mac_ver()[0]}" if sys.platform == "darwin" else f"{platform.system()} {platform.release()}"
+    return {"os": f"{name} ({platform.machine()})", "python": platform.python_version(),
+            "pytorch": app_settings.local_sorting_available()}
+
+#this copy's version (None: not installed from a release, e.g. a git checkout), the latest release's, whether
+#to update, when this was checked, and the computer it runs on
+@app.get("/version")
+def get_version():
+    import urllib.request
+    current, latest, error = installed_version(), None, None
+    try:
+        request = urllib.request.Request(LATEST, headers={"Accept": "application/vnd.github+json", "User-Agent": "PrestCribe"})
+        with urllib.request.urlopen(request, timeout=10) as reply:
+            latest = json.loads(reply.read().decode("utf-8"))["tag_name"]
+    except Exception:
+        error = "Couldn't reach GitHub to check for updates."
+    return {"current": current, "latest": latest, "releases": RELEASES, "error": error,
+            "updatable": bool(current and latest and latest != current),
+            "checkedAt": datetime.now(timezone.utc).isoformat(), "system": system_info()}
+
+#updates an installed copy: the installer is run again in its own window, for this folder, once this copy has stopped (it
+#starts PrestCribe again when it's done); the database, scans and results are kept
+@app.post("/update", status_code=202)
+def update(db: Session = Depends(get_db)):
+    import subprocess, urllib.request
+    if not installed_version():
+        raise HTTPException(status_code=400, detail="This copy wasn't installed from a release: update it with git pull.")
+    if db.query(models.Job).filter(models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="Wait for the tasks to finish before updating.")
+    installer = f"{RELEASES}/latest/download/install.{'ps1' if sys.platform == 'win32' else 'sh'}"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(installer, headers={"User-Agent": "PrestCribe"}), timeout=10):
+            pass
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't download the installer: {error}"[:300])
+    if sys.platform == "win32":
+        folder = re.sub("['‘’‚‛]", lambda quote: quote[0] * 2, str(ROOT))  #PowerShell's single quotes, curly ones too
+        script = (f"try {{ Start-Sleep 5; & ([scriptblock]::Create((irm '{installer}'))) -Folder '{folder}' }} "
+                  f"catch {{ Write-Host ('The update failed: ' + $_); Read-Host 'Press Enter to close this window' }}")
+        subprocess.Popen(["powershell", "-ExecutionPolicy", "ByPass", "-NoProfile", "-Command", script],
+                         creationflags=subprocess.CREATE_NEW_CONSOLE)
+    else:
+        script = f'sleep 5; f=$(mktemp) && curl -LsSf "{installer}" -o "$f" && PRESTCRIBE_HOME={shlex.quote(str(ROOT))} sh "$f"; rm -f "$f"'
+        subprocess.Popen(["sh", "-c", script], start_new_session=True)
+    threading.Timer(1, os._exit, [0]).start()  #this copy stops, so its files can be replaced; the worker stops with it
+    return {"updating": True}
