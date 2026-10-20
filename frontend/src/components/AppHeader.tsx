@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type MouseEvent } from "react";
-import { ChevronsUpDown, Settings } from "lucide-react";
+import { ChevronsUpDown, Settings, UserRound } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 
 import {
@@ -11,13 +11,14 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
+import { keepPerson, storedPerson } from "../person";
 import { backendRequest } from "../progress/backend";
 
 type Crumb = { label: string; href?: string; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void };
 type Series = { id: number; name: string };
 
 // The one top bar: the app's name (home); where you are, as the series (a menu of its Items, the other series, and all
-// of them) and the levels below it, of which a phone shows the last two; and what's for the whole app and Settings.
+// of them) and the levels below it, of which a phone shows the last two; and what's for the whole app, who is working and Settings.
 // A screen's own title and actions sit below it.
 export default function AppHeader({ series, crumbs = [] }: { series?: Series; crumbs?: Crumb[] }) {
   return (
@@ -51,6 +52,7 @@ export default function AppHeader({ series, crumbs = [] }: { series?: Series; cr
         </Breadcrumb>
       )}
       <div className="ml-auto flex items-center gap-2">
+        <PersonMenu />
         <Button asChild variant="outline" size="icon" title="Settings">
           <a href="/?view=settings" aria-label="Settings"><Settings /></a>
         </Button>
@@ -61,6 +63,27 @@ export default function AppHeader({ series, crumbs = [] }: { series?: Series; cr
 
 const menuItem = "flex rounded-sm px-2 py-1.5 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground";
 const menuLabel = "px-2 pt-1.5 pb-1 text-xs text-muted-foreground";
+
+// Who is working, with a way to switch: home's welcome again, then back here. Nothing until someone is.
+function PersonMenu() {
+  const name = storedPerson()?.name;
+  if (!name) return null;
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button variant="ghost" size="sm" className="max-w-40" aria-label={`Working as ${name}`}>
+          <UserRound aria-hidden="true" /><span className="truncate max-sm:sr-only">{name}</span>
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content align="end" sideOffset={4} className="z-50 min-w-48 rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+          <DropdownMenu.Label className={menuLabel}>Working as {name}</DropdownMenu.Label>
+          <DropdownMenu.Item className={menuItem} onSelect={() => { keepPerson(null); location.reload(); }}>Switch person</DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
 
 // The series you're in, as a menu of links: its Items, another series, or all of them.
 function SeriesMenu({ current }: { current: Series }) {

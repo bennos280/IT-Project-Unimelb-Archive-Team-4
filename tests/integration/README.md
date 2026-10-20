@@ -145,19 +145,22 @@ No running backend or database is needed.
 | `test("Flag filter and disclosure show the reason", async ({ page }) => ...)`                        | Flagged fields can be filtered and their explanations expanded.                                 |
 | `test("Zoom and Fit to Page change the image scale", async ({ page }) => ...)`                       | Zoom changes the scale and Fit to Page fits the image inside the viewer.                        |
 | `test("Clicking Address highlights its scan area", async ({ page }) => ...)`                         | Selecting Address displays its named highlight and zooms in.                                    |
-| `test("Cancel discards draft text and reviewer is required", async ({ page, api }) => ...)`          | A reviewer is required, and cancelling leaves the original value unchanged.                     |
+| `test("Clicking an annotation shows the whole card and a note", async ({ page }) => ...)` | An annotation with no mapped scan area shows the whole card with a note saying where it is; zooming by hand hides the note and a mapped field still highlights and zooms. |
+| `test("Clicking an annotation with an area highlights the area and shows the note", async ({ page }) => ...)` | An annotation with an area highlights it, zooms to fit it (between 100% and 200%) and still shows the note; zooming by hand keeps the new zoom and the highlight. |
+| `test("Clicking an annotation with a region highlights the region", async ({ page }) => ...)` | An annotation with its own region (a row of the residents table) highlights that region, not its whole area. |
+| `test("A field's own wide region is highlighted at a lower zoom", async ({ page }) => ...)` | A field's own region is used instead of the shared one, and a wide one zooms less than 200%. |
+| `test("The status line names the person working", async ({ page }) => ...)`                          | The status line says the page is saved as the person chosen on the home page.                   |
+| `test("Cancel discards draft text", async ({ page, api }) => ...)`                                   | Cancelling the editor leaves the original value unchanged.                                      |
 | `test("Apply creates draft; Save persists and reload restores it", async ({ page, api }) => ...)`    | Applying creates a draft; saving stores it in the mock API and refreshing restores it.          |
 | `test("Rejected save displays reason and retains unsaved correction", async ({ page, api }) => ...)` | A rejected save displays the error and preserves the draft.                                     |
 | `test("Review all preserves correction and saves all fields", async ({ page, api }) => ...)`         | Reviewing all fields preserves existing corrections and saves every field.                      |
 | `test("Review all keeps another reviewer's saved review", async ({ page, api }) => ...)`             | A field another reviewer already saved keeps their value and name after reviewing all fields.   |
 | `test("Try again recovers from a failed survey request", async ({ page, api }) => ...)`              | Retrying restores the screen after a failed request.                                            |
-| `test("Add reviewer makes the new reviewer selectable", async ({ page }) => ...)`                    | A newly added reviewer becomes selected.                                                        |
 | `test("Stay here and Escape retain the unsaved review", async ({ page, api }) => ...)`               | Dismissing the navigation warning retains the draft without saving.                             |
 | `test("Save and continue saves before switching pages", async ({ page, api }) => ...)`               | Changes are saved before navigation and remain visible when returning.                          |
 | `test("Discard restores the previous saved correction", async ({ page, api }) => ...)`               | Discarding a draft restores the earlier saved correction without another save.                  |
 | `test("Failed save keeps the current page and unsaved review", async ({ page, api }) => ...)`        | A failed save keeps the warning open, displays the error and preserves the draft.               |
 | `test("Leaving the website warns about unsaved reviews", async ({ page }) => ...)`                   | Leaving with unsaved changes triggers the browser warning.                                      |
-| `test("adds a reviewer inside the field editor without losing the draft", async ({ page }) => ...)`  | Adding a reviewer inside the editor preserves the draft value.                                  |
 
 ## `export.spec.ts` — 8 tests
 

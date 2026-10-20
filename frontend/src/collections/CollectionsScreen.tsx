@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Progress as ProgressBar } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableOpenArrow, TableRow, TableRowLink } from "@/components/ui/table";
 import { backendRequest } from "../progress/backend";
+import type { Reviewer } from "../review-screen/api";
+import Welcome from "./Welcome";
 
 type Collection = {
   id: number; name: string; bundles: number; running: number; failed: number; pages: number; reviewable: number; reviewed: number;
@@ -19,8 +21,9 @@ type Collection = {
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
-// Home: every collection, each a series with its own page types and bundles.
-export default function CollectionsScreen() {
+// Home: every collection, each a series with its own page types and bundles; or, until
+// this browser knows who is working (onChosen), a welcome that asks.
+export default function CollectionsScreen({ onChosen }: { onChosen?: (person: Reviewer) => void }) {
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [creating, setCreating] = useState(false);
@@ -32,6 +35,14 @@ export default function CollectionsScreen() {
   }, []);
   useEffect(load, [load]);
 
+  if (onChosen) {
+    return (
+      <div className="min-h-screen bg-background text-foreground">
+        <AppHeader />
+        <main className="p-6"><Welcome onChosen={onChosen} /></main>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader />

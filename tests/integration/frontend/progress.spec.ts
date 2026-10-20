@@ -76,7 +76,7 @@ test.describe("Progress navigation and layout", () => {
       }
 
       if (path === "/api/reviewers") {
-        return route.fulfill({ json: [] });
+        return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
       }
 
       return route.fulfill({
@@ -95,9 +95,6 @@ test.describe("Progress navigation and layout", () => {
       let persisted = false;
       let saveRequests = 0;
       let savedReviews = {};
-      await page.route("**/api/reviewers", (route) =>
-        route.fulfill({ json: [{ id: 1, name: "Test reviewer" }] }),
-      );
       await page.route("**/api/reviews/216417_1", async (route) => {
         if (route.request().method() === "POST") {
           saveRequests++;
@@ -147,9 +144,6 @@ test.describe("Progress navigation and layout", () => {
       await expect(firstRow).toContainText("5 need checking");
       await firstRow.getByRole("link", { name: "Review Pg 1", exact: true }).click();
       await expect(page.getByRole("heading", { name: "216417/p0 ·" })).toBeVisible();
-      await page
-        .getByRole("combobox", { name: "Reviewer name", exact: true })
-        .selectOption("Test reviewer");
       // Flagged fields must be reviewed individually before saving.
       for (const field of survey.pages[0].fields) {
         await page.getByRole("button", { name: `Edit ${field.label}`, exact: true }).click();
@@ -867,7 +861,7 @@ test.describe("The server pages, searches and filters the overview", () => {
     await expect(page.getByRole("heading", { name: "Item 216424" })).toBeVisible();
     expect(new Set(asked)).toEqual(new Set([
       "/api/collections/1", "/api/collections", "/api/collections/1/items/216424", "/api/jobs/7/transcripts",
-      "/api/transcription-models", "/api/connections",
+      "/api/transcription-models", "/api/connections", "/api/reviewers", // the last, once on load, checks who is working
     ]));
   });
 

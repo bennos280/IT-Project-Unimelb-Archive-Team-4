@@ -63,7 +63,7 @@ test("downloads backend correction instead of an unsaved on-screen edit", async 
     if (url === "/api/export") return route.fulfill({ json: exported });
     if (url.startsWith("/api/survey/")) return route.fulfill({ json: demo });
     if (url === "/api/reviewers")
-      return route.fulfill({ json: [{ id: 1, name: "Reviewer" }] });
+      return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
     return route.fulfill({
       json: {
         reviews: {
@@ -71,7 +71,7 @@ test("downloads backend correction instead of an unsaved on-screen edit", async 
             address: {
               value: "Saved address",
               original: "Old address",
-              reviewer: "Reviewer",
+              reviewer: "Ben",
               reviewerId: 1,
               savedAt: "2026-10-07T00:00:00Z",
             },
@@ -82,9 +82,6 @@ test("downloads backend correction instead of an unsaved on-screen edit", async 
     });
   });
   await page.goto(`/?survey=${demo.id}`);
-  await page
-    .getByLabel("Reviewer name", { exact: true })
-    .selectOption("Reviewer");
   await page.getByRole("button", { name: "Edit Address", exact: true }).click();
   await page
     .getByLabel("Reviewed value", { exact: true })
@@ -110,7 +107,7 @@ test("shows backend export failure and permits retry", async ({ page }) => {
     const url = new URL(route.request().url()).pathname;
     if (url.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
     if (url.startsWith("/api/survey/")) return route.fulfill({ json: demo });
-    if (url === "/api/reviewers") return route.fulfill({ json: [] });
+    if (url === "/api/reviewers") return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
     if (url === "/api/export")
       return fail
         ? route.fulfill({ status: 500, json: { detail: "Export unavailable" } })
@@ -147,7 +144,7 @@ test("downloads a selected item as JSON", async ({ page }) => {
     }
     if (url.pathname.startsWith("/api/survey/"))
       return route.fulfill({ json: demo });
-    if (url.pathname === "/api/reviewers") return route.fulfill({ json: [] });
+    if (url.pathname === "/api/reviewers") return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
     return route.fulfill({ json: { reviews: {}, revisions: {} } });
   });
   await page.goto(`/?survey=${demo.id}`);
@@ -230,7 +227,7 @@ test("review screen exports its current item using the backend item ID", async (
         },
       });
     }
-    if (url.pathname === "/api/reviewers") return route.fulfill({ json: [] });
+    if (url.pathname === "/api/reviewers") return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
     return route.fulfill({ json: { reviews: {}, revisions: {} } });
   });
   await page.goto(`/?survey=${demo.id}`);
@@ -257,11 +254,9 @@ test("warns for unreviewed data and clears the warning for a reviewed selection"
     if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
     if (url.pathname.startsWith("/api/survey/"))
       return route.fulfill({ json: demo });
-    if (
-      url.pathname === "/api/reviewers" ||
-      url.pathname === "/api/export/bundles"
-    )
-      return route.fulfill({ json: [] });
+    if (url.pathname === "/api/reviewers")
+      return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
+    if (url.pathname === "/api/export/bundles") return route.fulfill({ json: [] });
     if (url.pathname === "/api/export") {
       const payload = structuredClone(exported);
       if (url.searchParams.get("survey_id") === demo.id) {
