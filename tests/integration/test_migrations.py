@@ -26,7 +26,9 @@ def url(tmp_path):
     url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
     database.migrate(url)
     with database.make_engine(url).begin() as db:
-        for sql in ["INSERT INTO bundles(bundle_id, source_pdf) VALUES('b', 'b.pdf')",
+        for sql in ["INSERT INTO collections(collection_id, name) VALUES(1, 'c')",
+                    "INSERT INTO page_types(name) VALUES('main')",
+                    "INSERT INTO bundles(bundle_id, source_pdf, collection_id) VALUES('b', 'b.pdf', 1)",
                     "INSERT INTO pages(page_id, import_path, bundle_id, category) VALUES('p', 'p.png', 'b', 'main')",
                     "INSERT INTO fields(page_id, field_title, text_raw) VALUES('p', 'address', '5 Peel St.')",
                     "INSERT INTO edits(edit_text, page_id, field_title) VALUES('6 Peel St.', 'p', 'address')"]:

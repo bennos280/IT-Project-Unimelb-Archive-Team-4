@@ -122,11 +122,17 @@ def test_a_page_transcription_cannot_leave_out_its_choice(client, db, monkeypatc
 
 
 # the worker
+def list_item(db, node):
+    db.add(models.ArchiveItem(node=node, collection_id=1, identifier=f"UMA-{node}", title="t", pdf=f"{node}/{node}.pdf"))
+
+
 def test_a_bundle_job_with_no_choice_runs_with_the_saved_one(db, tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
     app_settings.save_transcription_defaults(db, **APP)
-    db.add(models.Job(pdf=str(tmp_path / "a.pdf")))
-    db.add(models.Job(pdf=str(tmp_path / "b.pdf"), transcription_model="its-own"))
+    list_item(db, 1)
+    list_item(db, 2)
+    db.add(models.Job(pdf=str(tmp_path / "1" / "a.pdf")))
+    db.add(models.Job(pdf=str(tmp_path / "2" / "b.pdf"), transcription_model="its-own"))
     db.commit()
     seen = []
     monkeypatch.setattr(worker.pipeline, "run_steps", lambda run, names: seen.append(run.transcription_config) or run.pages.append({}))
@@ -140,7 +146,8 @@ def test_a_bundle_job_with_no_choice_runs_with_the_saved_one(db, tmp_path, monke
 @pytest.mark.parametrize("fields", [{}, {"transcription_model": "its-own"}])
 def test_a_bundle_job_without_a_full_choice_and_nothing_saved_fails_with_the_message(db, tmp_path, monkeypatch, fields):
     monkeypatch.setattr(worker, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
-    job = models.Job(pdf=str(tmp_path / "a.pdf"), **fields)
+    list_item(db, 1)
+    job = models.Job(pdf=str(tmp_path / "1" / "a.pdf"), **fields)
     db.add(job)
     db.commit()
     monkeypatch.setattr(worker.pipeline, "run_steps", lambda run, names: pytest.fail("the pipeline ran"))

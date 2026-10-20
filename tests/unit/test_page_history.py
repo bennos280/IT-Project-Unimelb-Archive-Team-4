@@ -4,7 +4,7 @@ from backend.db.page_history import snapshot
 
 
 def test_page_history_is_scoped_and_read_only(client, db):
-    db.add(models.Bundle(bundle_id='b', source_pdf='b.pdf')); db.flush()
+    db.add(models.Bundle(bundle_id='b', source_pdf='b.pdf', collection_id=1)); db.flush()
     db.add(models.Reviewer(reviewer_id=1, name='Alex'))
     for identity in ('b/p1', 'b/p2'):
         db.add(models.Page(page_id=identity, bundle_id='b', category='main', import_path='scan.png'))
@@ -29,6 +29,6 @@ def test_page_history_is_scoped_and_read_only(client, db):
 
 
 def test_history_empty(client, db):
-    db.add(models.Bundle(bundle_id='b', source_pdf='b.pdf')); db.flush()
+    db.add(models.Bundle(bundle_id='b', source_pdf='b.pdf', collection_id=1)); db.flush()
     db.add(models.Page(page_id='p', bundle_id='b', category='notes', import_path='scan.png')); db.commit()
     assert client.get('/page-history/p').json()['events'] == []

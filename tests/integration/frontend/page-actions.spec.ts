@@ -59,7 +59,7 @@ test("move keeps page identity and opens its destination; same types are allowed
     if (path.startsWith("/api/reviews/"))
       return json({ reviews: {}, revisions: { "b/p4": 0 } });
     if (path.startsWith("/api/survey/"))
-      return json({ id: moved ? "s2" : "s1", title: "Survey", pages: [card] });
+      return json({ id: moved ? "s2" : "s1", title: "Survey", recordName: "survey", grouped: true, pages: [card] });
     if (path === "/api/page-actions/b/p4")
       return json({
         bundleId: "b",
@@ -177,6 +177,7 @@ for (const changeType of [true, false]) {
         return json({
           id: "s1",
           title: "Survey",
+          recordName: "survey", grouped: true,
           pages: [
             {
               id: "b/p4",
@@ -333,7 +334,7 @@ test("the page's Transcribe dialog prefills nothing and links to Settings when n
     if (path === "/api/reviewers") return json([{ id: 1, name: "Alex" }]);
     if (path.startsWith("/api/reviews/")) return json({ reviews: {}, revisions: {} });
     if (path.startsWith("/api/survey/"))
-      return json({ id: "s1", title: "Survey", pages: [{ id: "b/p4", type: "main", imageUrl: "/scan.svg", fields: [], flags: [] }] });
+      return json({ id: "s1", title: "Survey", recordName: "survey", grouped: true, pages: [{ id: "b/p4", type: "main", imageUrl: "/scan.svg", fields: [], flags: [] }] });
     if (path === "/api/page-actions/b/p4")
       return json({ bundleId: "b", surveyId: "s1", category: "main", revision: 0, hasReviews: false, job: null, surveys: [] });
     if (path === "/api/page-transcription/b/p4") {

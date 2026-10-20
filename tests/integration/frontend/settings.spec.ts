@@ -382,17 +382,17 @@ test("a test the API refuses (another one running) shows the reason", async ({ p
   await expect(claude(page).getByRole("alert")).toHaveText("A test is already running.");
 });
 
-test("the All bundles crumb returns to the dashboard", async ({ page }) => {
+test("the app's name returns to the series list", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
   await page.goto("/?view=settings");
-  await page.getByRole("link", { name: "All bundles" }).click();
-  await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
+  await page.getByRole("link", { name: "PrestCribe" }).click();
+  await expect(page.getByRole("heading", { name: "Series", level: 1 })).toBeVisible();
 });
 
-test("the dashboard Settings button opens the settings page", async ({ page }) => {
+test("the top bar's Settings opens the settings page", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
-  await page.goto("/");
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.goto("/?series=1");
+  await page.getByRole("banner").getByRole("link", { name: "Settings" }).click();
   await expect(page).toHaveURL(/\/\?view=settings$/);
   await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
 });
@@ -520,7 +520,7 @@ test("the page has a Settings heading and subtitle above the sections", async ({
   await expect(page.getByRole("heading", { name: "Accounts", level: 2 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Transcription model", level: 2 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Folders", level: 2 })).toBeVisible();
-  await expect(page.getByRole("link", { name: "All bundles" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "PrestCribe" })).toBeVisible();
 });
 
 test("the Used for transcription tag shows only once a choice is saved, then follows the saved provider", async ({ page }) => {

@@ -151,8 +151,9 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 ## `test_backend_api.py`
 |Test|What it checks|
 |---|---|
-|`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
+|`test_get_survey_not_found`|Returns HTTP 404 ("No such record.") if the requested survey id is not in the database.|
 |`test_get_survey_success`|A seeded survey comes back with its page in it, the page's field and a resident's field (`residents.20.relationship`) with their values, the page's `imageUrl` (`/pages/<page id>/image`) and no flags.|
+|`test_a_surveys_title_is_its_collections_name`|A survey's `title` is the name of the series (collection) it belongs to.|
 |`test_get_reviewers_empty`|Returns an empty list without crashing if there are no reviewers in the database.|
 |`test_create_reviewer_success`|Saves a reviewer and returns its id and name.|
 |`test_create_reviewer_empty_name`|A name of only spaces returns HTTP 400, "Enter a reviewer name."|
@@ -291,7 +292,7 @@ It checks read-only, page-scoped history, archived reviews, moves, empty history
 
 ## `test_uploads.py`
 
-`POST /bundles/upload`: a bundle is one PDF, or a folder of page images that share a bundle number. Duplicates are refused without changing existing files or database records.
+`POST /bundles/upload`: each upload says which series it is for. A bundle is one PDF, or a folder of page images that share a bundle number. Duplicates are refused without changing existing files or database records.
 
 | Test                                                              | What it checks                                                                                                                                                                                          |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -306,6 +307,7 @@ It checks read-only, page-scoped history, archived reviews, moves, empty history
 | `test_a_file_over_the_limit_is_refused_and_leaves_nothing_behind` | A file over the size limit gets a 413, with no bundle folder and no temporary file left.                                                                                                                |
 | `test_names_windows_cannot_store_are_refused` — 6 tests           | Names with `? : | "` or a trailing dot or space are refused with a 400 before anything is saved.                                                                                                        |
 | `test_pdf_names_that_differ_only_by_case_are_the_same_bundle`     | A PDF name that differs from an uploaded, loaded or archive PDF only by case counts as the same bundle; an archive PDF is accepted under its own number whatever the case.                              |
+| `test_an_upload_needs_a_series_and_an_item_number_stays_with_its_first` | An upload for a series that isn't there is refused ("Choose the series these files are for.") and one with no series is 422; the first upload of an item number records its series, and later files for that number under another series are refused (409) without recording another. |
 
 ## `api.test.ts` — 19 tests
 

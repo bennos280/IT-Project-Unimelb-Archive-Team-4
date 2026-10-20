@@ -1,12 +1,52 @@
-from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, ForeignKey, ForeignKeyConstraint, Integer, Numeric, String,
-                        Text, false, func)
+from sqlalchemy import (Boolean, CheckConstraint, Column, DateTime, ForeignKey, ForeignKeyConstraint, Integer, Numeric,
+                        String, Text, UniqueConstraint, false, func)
 from backend.db.database import Base
+
+#a set of documents digitised together, with its own bundles and page types; the Wilfred Prest Survey is collection 1
+class Collection(Base):
+    __tablename__ = "collections"
+    collection_id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, unique=True)
+
+#a level of record between a collection's items and their pages, the top one (position 1) first: what one is called, what one
+#is made of in order (JSON list of parts, each {type: a page type's name, count: one | one_or_more | any | at_most_one, how:
+#starts | follows | matched}: a page of a starting type starts one, the next follow the page before them, and a matched one
+#joins the one showing the same number wherever it was filed), and the field holding that number (None: page order only);
+#a collection with none has each item as one record (backend/db/grouping.py)
+class RecordLevel(Base):
+    __tablename__ = "record_levels"
+    __table_args__ = (UniqueConstraint("collection_id", "position", name="uq_record_levels_position"),
+                      UniqueConstraint("collection_id", "name", name="uq_record_levels_name"))  #named: both start with collection_id
+    level_id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
+    position = Column(Integer, nullable=False)
+    name = Column(String, nullable=False)
+    record_key = Column(String, nullable=True)
+    parts = Column(Text, nullable=False, server_default="[]")
+
+#an item of a collection's archive series, as the archive lists it
+class ArchiveItem(Base):
+    __tablename__ = "archive_items"
+    node = Column(Integer, primary_key=True) #its page on the archive, /nodes/view/<node>, and its bundle number
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
+    identifier = Column(String, nullable=False) #its catalogue identifier, UMA-ITE-...
+    title = Column(String, nullable=False)
+    pdf = Column(String, nullable=True) #where its PDF goes once downloaded: <node>/<node>.pdf, or <node>/<file id>_<name>.pdf when
+                                        #the file was named (the Prest survey's); None: none known
+
+#an item uploaded on the Import screen (its number: its folder in DATA), and the series it was uploaded to
+class UploadedItem(Base):
+    __tablename__ = "uploaded_items"
+    bundle = Column(String, primary_key=True)
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
 
 class Bundle(Base):
     __tablename__ = "bundles"
     bundle_id = Column(String, primary_key=True)
     source_pdf = Column(String, nullable=False)
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
 
+#a record: its pages point at it
 class Survey(Base):
     __tablename__ = "surveys"
     survey_id = Column(String, primary_key=True)

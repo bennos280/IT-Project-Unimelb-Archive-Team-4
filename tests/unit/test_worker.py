@@ -20,7 +20,10 @@ def committed(sessions):
     return read
 
 
-def queue(db, tmp_path, status="waiting"):
+def queue(db, tmp_path, status="waiting", series=1):
+    """A job for tmp/216441/a.pdf, an item the given series lists (None: no series does)."""
+    if series:
+        db.add(models.ArchiveItem(node=216441, collection_id=series, identifier="UMA-ITE-216441", title="A file", pdf="216441/a.pdf"))
     job = models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), status=status, transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")
     db.add(job)
     db.commit()

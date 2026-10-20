@@ -67,7 +67,7 @@ export function useReviewSession() {
       })
       .catch((e) => {
         if (controller.signal.aborted) return;
-        setError(`Could not load survey: ${e.message}`);
+        setError(`Could not load this record: ${e.message}`);
       });
     return () => controller.abort();
   }, [surveyId, attempt]);

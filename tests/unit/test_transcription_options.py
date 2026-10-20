@@ -95,7 +95,7 @@ def fakes(monkeypatch, tmp_path):
 
 def add_pages(db, rows):
     if not db.get(models.Bundle, "b"):
-        db.add(models.Bundle(bundle_id="b", source_pdf="b.pdf"))
+        db.add(models.Bundle(bundle_id="b", source_pdf="b.pdf", collection_id=1))
         db.flush()
     start = db.query(models.Page).count()
     for i, (provider, model) in enumerate(rows, start):

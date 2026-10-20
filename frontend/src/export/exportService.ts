@@ -6,15 +6,15 @@ export async function loadSurveyExport(
   surveyId: string,
 ): Promise<SurveyExport> {
   const id = surveyId.trim();
-  if (!id) throw new Error("Enter a survey ID.");
+  if (!id) throw new Error("Enter a record ID.");
   return request<SurveyExport>(`/export?survey_id=${encodeURIComponent(id)}`);
 }
 
-export function loadExportBundles(): Promise<Array<{ id: string; name: string }>> {
-  return request("/export/bundles");
+export function loadExportBundles(collectionId?: number): Promise<Array<{ id: string; name: string }>> {
+  return request(collectionId ? `/export/bundles?collection=${collectionId}` : "/export/bundles");
 }
 export function loadBundleExport(bundleId: string): Promise<SurveyExport> {
   const id = bundleId.trim();
-  if (!id) throw new Error("Choose a bundle.");
+  if (!id) throw new Error("Choose an item.");
   return request(`/export?bundle_id=${encodeURIComponent(id)}`);
 }

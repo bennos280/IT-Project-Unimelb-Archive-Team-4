@@ -1,9 +1,9 @@
 """A finished pipeline run (output/<bundle>/manifest.json) into the database: uv run python -m backend.db.loader"""
 import json
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from backend.db import database
+from backend.db import database, models
 from backend.common import ROOT, settings
 from backend.pipeline.transcribe import areas
 
@@ -22,8 +22,8 @@ def dump_into_db(manifest_path):
 
     transcripts = data.get("transcripts") or {}
     with database.engine.begin() as con:
-        if not con.exec_driver_sql("INSERT OR IGNORE INTO bundles(bundle_id, source_pdf) VALUES(?, ?)",
-                                   (bundle_id, stored_path(data["input"]))).rowcount:
+        if not con.exec_driver_sql("INSERT OR IGNORE INTO bundles(bundle_id, source_pdf, collection_id) VALUES(?, ?, ?)",
+                                   (bundle_id, stored_path(data["input"]), series(con, data))).rowcount:
             print(f"{bundle_id} is already in the database.")
             return
         page_types = {name for (name,) in con.exec_driver_sql("SELECT name FROM page_types")}
@@ -140,6 +140,26 @@ def insert_check_flags(check_p, con):
 def version_id(con, kind, sha):
     return sha and con.exec_driver_sql("SELECT MIN(version_id) FROM instruction_versions WHERE kind = ? AND sha256 = ?",
                                        (kind, sha)).scalar()
+
+#the series an item belongs to, by its number (its PDF's folder, or its folder of page images) in {item number: series};
+#None: no series lists it
+def series_of(owners, path):
+    path = PurePosixPath(str(path).replace("\\", "/"))
+    return owners.get(path.parent.name if path.suffix.lower() == ".pdf" else path.name)
+
+#{item number: series} for every item a series lists: its archive items, and the items uploaded to it
+def archive_owners(db):
+    return {**{str(node): series for node, series in db.query(models.ArchiveItem.node, models.ArchiveItem.collection_id)},
+            **{bundle: series for bundle, series in db.query(models.UploadedItem.bundle, models.UploadedItem.collection_id)}}
+
+#the series a run's item is loaded into: the one it was run for, else the one that lists it; a ValueError if none does
+def series(con, data):
+    owners = dict(con.exec_driver_sql("SELECT CAST(node AS TEXT), collection_id FROM archive_items"
+                                      " UNION ALL SELECT bundle, collection_id FROM uploaded_items").fetchall())
+    found = series_of(owners, data["input"])
+    if found is None:
+        raise ValueError(f"No series lists {data['input']}: add it to one from the app first.")
+    return found
 
 #relative to the repo with /, so the db works on any checkout
 def stored_path(path):

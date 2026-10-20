@@ -2,6 +2,8 @@
 import json
 import sqlite3
 
+import pytest
+
 from backend.db import database, loader
 
 
@@ -21,7 +23,7 @@ def run_folder(tmp_path):
     for stem, answer in transcripts.items():
         (out / "transcribe" / f"{stem}.json").write_text(json.dumps({**answer, **meta}), encoding="utf-8")
     pages = [("216412_00001", "main", "216412-3"), ("216412_00002", "coded", "216412-3"), ("216412_00003", "notes", None)]
-    manifest = {"input": "216412.pdf", "pages": [
+    manifest = {"input": "216412/216412.pdf", "pages": [
         {"file": f"{stem}.png", "path": str(out / "pages" / f"{stem}.png"), "label": label,
          "transcript": f"transcribe\\{stem}.json", "survey": survey} for stem, label, survey in pages]
         + [{"file": "216412_00004.png", "path": str(out / "pages" / "216412_00004.png"), "label": "blank", "survey": "216412-3"},
@@ -34,10 +36,22 @@ def run_folder(tmp_path):
     return out
 
 
-def test_run_loads_into_its_surveys(tmp_path, monkeypatch):
+def start_db(tmp_path, monkeypatch):
+    """A new database holding the Prest series (its page types) listing item 216412, as the app is set up."""
     url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
     database.migrate(url)
+    with database.make_engine(url).begin() as con:
+        con.exec_driver_sql("INSERT INTO collections (collection_id, name) VALUES (1, 'Wilfred Prest Survey')")
+        for name in ("main", "notes", "coded", "other"):
+            con.exec_driver_sql("INSERT INTO page_types (name) VALUES (?)", (name,))
+        con.exec_driver_sql("INSERT INTO archive_items (node, collection_id, identifier, title, pdf) VALUES"
+                            " (216412, 1, 'UMA-ITE-216412', 'Item 216412', '216412/216412.pdf')")
     monkeypatch.setattr(database, "engine", database.make_engine(url))
+    return url
+
+
+def test_run_loads_into_its_surveys(tmp_path, monkeypatch):
+    start_db(tmp_path, monkeypatch)
     manifest = run_folder(tmp_path) / "manifest.json"
     loader.dump_into_db(manifest)
     loader.dump_into_db(manifest)  # a bundle already in the db is left as it is
@@ -62,18 +76,17 @@ def test_run_loads_into_its_surveys(tmp_path, monkeypatch):
         "washouse": "In separate laundry", "weekly_rent": None}
 
 
+
 def test_consistency_conflicts_become_flags_on_the_fields_they_name(tmp_path, monkeypatch):
-    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
-    database.migrate(url)
-    monkeypatch.setattr(database, "engine", database.make_engine(url))
+    start_db(tmp_path, monkeypatch)
     out = run_folder(tmp_path)
     (out / "validation").mkdir()
     (out / "validation" / "output_flagged.json").write_text(json.dumps({"surveys": [{
         "page_files": {"main": "216412_00001.png", "coded": "216412_00002.png", "notes": ["216412_00003.png"]},
         "validation_flags": [
-            {"type": "Page 1–3 conflict", "reason": "TYPE OF FAMILY: Page 1 has 2 residents, but Page 3 records 1.",
+            {"type": "Page 1\u20133 conflict", "reason": "TYPE OF FAMILY: Page 1 has 2 residents, but Page 3 records 1.",
              "fields": {"Page 1: residents[0].relationship": "Head", "Page 1: address": "5 Raeburn Cres.", "Page 3: type_of_family": "1"}},
-            {"type": "Page 1–3 comparison incomplete", "reason": "WASHOUSE: one corresponding value is missing.",
+            {"type": "Page 1\u20133 comparison incomplete", "reason": "WASHOUSE: one corresponding value is missing.",
              "fields": {"Page 3: washouse": "1"}}]}]}), encoding="utf-8")
     loader.dump_into_db(out / "manifest.json")
 
@@ -86,11 +99,12 @@ def test_consistency_conflicts_become_flags_on_the_fields_they_name(tmp_path, mo
 def test_each_page_records_the_prompt_and_template_versions_that_read_it(tmp_path, monkeypatch):
     from backend.db.instructions import sha256
     from backend.pipeline.transcribe.transcribe import read_texts
-    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
-    database.migrate(url)  # version 1 of the prompt and each template: today's files
-    monkeypatch.setattr(database, "engine", database.make_engine(url))
+    start_db(tmp_path, monkeypatch)
     out = run_folder(tmp_path)
     texts = read_texts()
+    with database.engine.begin() as con:  # version 1 of the prompt and each template
+        for kind in ("prompt", "main", "coded"):
+            con.exec_driver_sql("INSERT INTO instruction_versions(kind, body, sha256) VALUES(?, ?, ?)", (kind, texts[kind], sha256(texts[kind])))
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     manifest["transcripts"] = {  # what each page was read with, as the pipeline records it
         "216412_00001.png": {"request": {"prompt": sha256(texts["prompt"]), "template": sha256(texts["main"])}},
@@ -106,9 +120,7 @@ def test_each_page_records_the_prompt_and_template_versions_that_read_it(tmp_pat
 
 
 def test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other(tmp_path, monkeypatch):
-    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
-    database.migrate(url)
-    monkeypatch.setattr(database, "engine", database.make_engine(url))
+    start_db(tmp_path, monkeypatch)
     out = run_folder(tmp_path)
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     manifest["pages"][2]["label"] = "followup"  # read with a template, but no such page type here
@@ -119,9 +131,7 @@ def test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other(tmp_path, monk
 
 
 def test_an_annotation_is_stored_with_its_area_when_the_page_type_has_it(tmp_path, monkeypatch):
-    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
-    database.migrate(url)
-    monkeypatch.setattr(database, "engine", database.make_engine(url))
+    start_db(tmp_path, monkeypatch)
     out = run_folder(tmp_path)
     for stem, annotations in (("216412_00001", [{"raw": "R", "location": "right margin", "area": "right_margin"},
                                                 {"raw": "/", "location": "by the kitchen", "area": "middle_column"},  # a coded card's area
@@ -135,3 +145,21 @@ def test_an_annotation_is_stored_with_its_area_when_the_page_type_has_it(tmp_pat
     assert db.execute("SELECT page_id, annotation_no, text_raw, area FROM annotations ORDER BY page_id, annotation_no").fetchall() == [
         ("216412_00001", 0, "R", "right_margin"), ("216412_00001", 1, "/", None), ("216412_00001", 2, "x", None),
         ("216412_00001", 3, "old", None), ("216412_00002", 0, "9", "bottom_left")]
+
+
+def test_a_run_no_series_lists_is_refused_by_name(tmp_path, monkeypatch):
+    start_db(tmp_path, monkeypatch)
+    with sqlite3.connect(tmp_path / "test.db") as con:
+        con.execute("DELETE FROM archive_items")
+    with pytest.raises(ValueError, match="No series lists 216412/216412.pdf: add it to one from the app first."):
+        loader.dump_into_db(run_folder(tmp_path) / "manifest.json")
+    assert sqlite3.connect(tmp_path / "test.db").execute("SELECT COUNT(*) FROM bundles").fetchone() == (0,)
+
+
+def test_a_run_of_an_item_uploaded_to_a_series_loads_into_it(tmp_path, monkeypatch):
+    start_db(tmp_path, monkeypatch)
+    with sqlite3.connect(tmp_path / "test.db") as con:
+        con.execute("DELETE FROM archive_items")
+        con.execute("INSERT INTO uploaded_items (bundle, collection_id) VALUES ('216412', 1)")
+    loader.dump_into_db(run_folder(tmp_path) / "manifest.json")
+    assert sqlite3.connect(tmp_path / "test.db").execute("SELECT collection_id FROM bundles").fetchall() == [(1,)]

@@ -2,7 +2,7 @@ import ExportDialog from "../export/ExportDialog";
 import PageActions from "./PageActions";
 // Main review screen: field table on the left, scan viewer on the right.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import ImageViewer from "./ImageViewer";
-import { request } from "./api";
+import { itemTitle, recordWords } from "../progress/backend";
 import type { useReviewSession } from "./useReviewSession";
 import { getPageName, isTextPage } from "./model";
 import type { Flag } from "./model";
@@ -134,34 +134,27 @@ export default function ReviewScreen({
   });
   const groups = [...new Set(visible.map((field) => field.group))];
   const textPage = !!page && isTextPage(page.type);
-  // The dashboard names a bundle by its /bundles name; the id is accepted too when that is unavailable.
-  const bundleId = survey?.bundleId;
-  const [bundleNames, setBundleNames] = useState<{ bundle: string; name: string }[]>([]);
-  useEffect(() => {
-    if (!bundleId) return;
-    let active = true;
-    request<{ bundle: string; name: string }[]>("/bundles")
-      .then((list) => active && Array.isArray(list) && setBundleNames(list))
-      .catch(() => {});
-    return () => { active = false; };
-  }, [bundleId]);
-  const bundleLabel = bundleNames.find((b) => b.bundle === bundleId)?.name || bundleId || "";
+  // The dashboard names an item by its name; the bundle id is accepted too when the survey doesn't say.
+  const bundleLabel = survey?.item?.name || survey?.bundleId || "";
+  const words = recordWords(survey?.recordName);
+  // A record that is its whole item is named by the item, with no step between them.
+  const items = survey?.collectionId ? [{ label: "Items", href: `/?series=${survey.collectionId}` }] : [];
+  const itemLink = `/?series=${survey?.collectionId ?? 1}&item=${encodeURIComponent(bundleLabel)}`;
   return (
     <>
       <AppHeader
-        crumbs={[
-          { label: "All bundles", href: "/" },
-          ...(survey?.bundleId
-            ? [{ label: `Bundle ${bundleLabel}`, href: `/?bundle=${encodeURIComponent(bundleLabel)}` }]
-            : []),
-          { label: `Survey ${session.surveyId}`.trim() },
+        series={survey?.collectionId ? { id: survey.collectionId, name: survey.title } : undefined}
+        crumbs={survey?.wholeItem ? [...items, { label: itemTitle(bundleLabel) }] : [
+          ...items,
+          ...(survey?.bundleId ? [{ label: itemTitle(bundleLabel), href: itemLink }] : []),
+          { label: survey ? `${words.One} ${session.surveyId}` : session.surveyId || words.One },
         ]}
       />
       <main>
-        <h1 className="sr-only">Review survey card</h1>
+        <h1 className="sr-only">Review {words.one}</h1>
         {!session.surveyId ? (
           <div className="p-8 text-center text-muted-foreground" role="status">
-            Select a survey to review.
+            Select {words.a} to review.
           </div>
         ) : error ? (
           <Alert variant="destructive" className="m-6 w-auto">
@@ -182,10 +175,10 @@ export default function ReviewScreen({
             role="status"
           >
             <Spinner aria-hidden="true" />
-            Loading survey and source images…
+            Loading pages and source images…
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:h-[calc(100dvh-5.6rem)] md:grid-cols-[46%_54%]">
+          <div className="grid grid-cols-1 md:h-[calc(100dvh-3.5rem)] md:grid-cols-[46%_54%]">
             <section className="flex h-[560px] min-w-0 flex-col overflow-hidden border-b px-4 pt-4 md:h-auto md:border-r md:border-b-0 md:px-6">
               <div
                 className="flex flex-wrap items-center gap-2"
@@ -522,7 +515,7 @@ export default function ReviewScreen({
                   </h2>
                   <nav
                     className="flex items-center gap-3 text-sm"
-                    aria-label="Survey pages"
+                    aria-label={`${words.One} pages`}
                   >
                     <Button
                       variant="outline"
@@ -552,6 +545,8 @@ export default function ReviewScreen({
                   <ExportDialog
                     surveyId={survey.id}
                     initialBundleId={survey.bundleId}
+                    collectionId={survey.collectionId}
+                    recordName={survey.recordName}
                     hasDrafts={Object.values(session.reviews).some((fields) =>
                       Object.values(fields).some((review) => !review.savedAt),
                     )}

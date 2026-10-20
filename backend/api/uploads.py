@@ -19,23 +19,28 @@ MAX_BYTES = 500 * 1024 * 1024
 log = logging.getLogger("uploads")
 
 
+def archive_sources(db):
+    """The archive's PDFs this app knows, as <item number>/<file id>_<name>.pdf: the Prest survey's and those added to a series."""
+    return [pdf for (pdf,) in db.query(models.ArchiveItem.pdf).filter(models.ArchiveItem.pdf.is_not(None))]
+
+
 def check_bundle_number(db, data, bundle, filename):
     """A bundle number cannot be reused for a different uploaded source; more page images may join an image bundle."""
     for existing in db.query(models.Bundle):
         number = Path(existing.source_pdf.replace("\\", "/")).parent.name
         if number == bundle or existing.bundle_id == bundle:
-            raise HTTPException(409, f"Bundle number {bundle} is already in use. Choose a different bundle number.")
+            raise HTTPException(409, f"Item number {bundle} is already in use. Choose a different item number.")
     folder = data / bundle
     if folder.exists():
         kinds = [path.suffix.lower() for path in folder.iterdir()] if folder.is_dir() else [None]
         image = Path(filename).suffix.lower() in IMAGES
         if kinds and not (image and all(kind in IMAGES for kind in kinds)):
-            raise HTTPException(409, f"Bundle number {bundle} already has uploaded files. Choose a different bundle number.")
-    for source in scans.ARCHIVE_PDFS:
+            raise HTTPException(409, f"Item number {bundle} already has uploaded files. Choose a different item number.")
+    for source in archive_sources(db):
         path = Path(source)
         # Allow downloading the exact registered source, not a new bundle with its number.
         if path.parent.name == bundle and path.name.casefold() != filename.casefold():
-            raise HTTPException(409, f"Bundle number {bundle} belongs to an archive PDF. Choose a different bundle number.")
+            raise HTTPException(409, f"Item number {bundle} belongs to an archive PDF. Choose a different item number.")
 
 
 def check_pdf_identity(db, data, filename, bundle):
@@ -44,20 +49,25 @@ def check_pdf_identity(db, data, filename, bundle):
     existing = next((b for b in db.query(models.Bundle) if b.bundle_id.casefold() == stem), None)
     if existing:
         number = Path(existing.source_pdf.replace("\\", "/")).parent.name
-        raise HTTPException(409, f"This PDF is already loaded in bundle {number}. It has not been uploaded.")
+        raise HTTPException(409, f"This PDF is already loaded in item {number}. It has not been uploaded.")
     for path in data.rglob("*"):
         if path.is_file() and path.suffix.lower() == ".pdf" and path.stem.casefold() == stem:
-            raise HTTPException(409, f"This PDF already exists in bundle {path.parent.name}. It has not been uploaded.")
-    for source in scans.ARCHIVE_PDFS:
+            raise HTTPException(409, f"This PDF already exists in item {path.parent.name}. It has not been uploaded.")
+    for source in archive_sources(db):
         path = Path(source)
         if path.stem.casefold() == stem and path.parent.name != bundle:
-            raise HTTPException(409, f"This PDF belongs to archive bundle {path.parent.name}. Use that bundle number.")
+            raise HTTPException(409, f"This PDF belongs to archive item {path.parent.name}. Use that item number.")
 
 
-async def upload_bundle(request: Request, bundle: str, filename: str, db):
-    """Stream one file to a temporary path, validate it, then publish without overwrite."""
+async def upload_bundle(request: Request, bundle: str, filename: str, collection: int, db):
+    """Stream one file to a temporary path, validate it, then publish without overwrite; the item is the series' (collection)."""
     if not re.fullmatch(r"[0-9]{1,30}", bundle):
-        raise HTTPException(400, "Bundle number must contain 1–30 digits.")
+        raise HTTPException(400, "Item number must contain 1–30 digits.")
+    if not db.get(models.Collection, collection):
+        raise HTTPException(400, "Choose the series these files are for.")
+    owner = db.get(models.UploadedItem, bundle)
+    if owner and owner.collection_id != collection:
+        raise HTTPException(409, f"Item number {bundle} was uploaded to another series. Choose a different item number.")
     # Characters Windows can't store in a name; it also drops a trailing dot or space.
     if not filename or len(filename) > 200 or re.search(r'[<>:"/\\|?*\x00-\x1f]', filename) or filename[-1] in ". ":
         raise HTTPException(400, "Invalid filename.")
@@ -69,7 +79,7 @@ async def upload_bundle(request: Request, bundle: str, filename: str, db):
         check_pdf_identity(db, data, filename, bundle)
     folder = data / bundle
     if folder.is_symlink():
-        raise HTTPException(400, "Invalid bundle directory.")
+        raise HTTPException(400, "Invalid item directory.")
     check_bundle_number(db, data, bundle, filename)
     # Page IDs are page image names, so an image is named after its bundle to keep them unique.
     stem = Path(filename).stem if suffix == ".pdf" else f"{bundle}_{Path(filename).stem}"
@@ -109,8 +119,11 @@ async def upload_bundle(request: Request, bundle: str, filename: str, db):
                     check_pdf_identity(db, data, filename, bundle)
                 folder.mkdir(parents=True, exist_ok=True)
                 os.link(temporary, destination)
+                if not owner:
+                    db.add(models.UploadedItem(bundle=bundle, collection_id=collection))
+                    db.commit()
         except FileExistsError:
-            raise HTTPException(409, "A file with this name already exists in this bundle. Rename it before uploading.")
+            raise HTTPException(409, "A file with this name already exists in this item. Rename it before uploading.")
         return {"filename": destination.name, "bundle": bundle, "size": size}
     finally:
         if temporary is not None:

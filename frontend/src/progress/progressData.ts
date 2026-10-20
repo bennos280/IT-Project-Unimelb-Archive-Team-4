@@ -69,7 +69,7 @@ export function bundleFromSurvey(
   };
 }
 // Total includes every status; only the two review states contribute to the other counters.
-// Ready excludes pages without extracted fields and fully reviewed pages.
+// Ready excludes pages without extracted fields and fully reviewed pages. Records: how many the pages make up.
 export function counts(pages: ProgressPage[]) {
   const reviewable = pages.filter((page) => page.surveyId != null);
 
@@ -81,5 +81,8 @@ export function counts(pages: ProgressPage[]) {
     reviewed: reviewable.filter((page) => page.status === "Reviewed").length,
     ready: reviewable.filter((page) => page.status === "Ready to review")
       .length,
+    records: new Set(reviewable.map((page) => page.surveyId)).size,
   };
 }
+// The page counts of one item, or of a whole series.
+export type Counts = ReturnType<typeof counts>;
