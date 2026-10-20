@@ -550,6 +550,89 @@ def get_archive_series(node: int):
         raise HTTPException(status_code=404, detail="The archive has no page with that number.")
     return series
 
+#a series' items on the archive, a page of 24 at a time, each saying whether it has scans and whether a series lists it already
+@app.get("/collections/{collection_id}/archive-items")
+def list_archive_items(collection_id: int, page: int = 1, search: str = "", db: Session = Depends(get_db)):
+    c = linked_collection(db, collection_id)
+    try:
+        listing = scans.archive_listing(scans.listing_link(c.archive_series), max(page, 1), search.strip()[:200])
+    except scans.ARCHIVE_ERRORS as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't reach the archive ({error}).")
+    added = {node for (node,) in db.query(models.ArchiveItem.node)}
+    return {**listing, "items": [{**item, "added": item["node"] in added} for item in listing["items"]]}
+
+class NewItems(BaseModel):
+    nodes: list[int]
+
+#adds up to 25 of a series' archive items to its list, each checked on the archive first to be an item of this series; an item
+#another series lists already, or that the archive doesn't show, is said why instead. Its PDF is looked up when it is run.
+@app.post("/collections/{collection_id}/items")
+def add_items(collection_id: int, payload: NewItems, db: Session = Depends(get_db)):
+    c = linked_collection(db, collection_id)
+    nodes = list(dict.fromkeys(payload.nodes))
+    if not 1 <= len(nodes) <= 25:
+        raise HTTPException(status_code=400, detail="Add between 1 and 25 items at a time.")
+    if not all(0 < node < 2**31 for node in nodes):
+        raise HTTPException(status_code=400, detail="An item's number is a whole number from 1.")
+    try:  #the series' identifier, as linked or else as the archive has it, to check each item's against
+        series = c.archive_identifier or (scans.archive_series(c.archive_series) or {}).get("identifier")
+    except scans.ARCHIVE_ERRORS as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't reach the archive ({error}).")
+    if not series:
+        raise HTTPException(status_code=400, detail="The archive shows no identifier for this series to check items against.")
+    listed = {node for (node,) in db.query(models.ArchiveItem.node).filter(models.ArchiveItem.node.in_(nodes))}
+    rows, added, refused = [], [], []
+    for node in nodes:
+        if node in listed:
+            refused.append({"node": node, "reason": "A series lists it already."})
+            continue
+        try:
+            item = scans.archive_item(node)
+        except scans.ARCHIVE_ERRORS as error:
+            refused.append({"node": node, "reason": f"Couldn't reach the archive ({error})."})
+            continue
+        reason = ("The archive has no item with that number." if item is None else
+                  "It belongs to another series on the archive." if not item["series"].startswith(f"[{series}]") else None)
+        if reason:
+            refused.append({"node": node, "reason": reason})
+        else:
+            rows.append(models.ArchiveItem(node=node, collection_id=collection_id, identifier=item["identifier"], title=item["title"],
+                                           pdf=f"{node}/{node}.pdf"))
+            added.append({"node": node, "title": item["title"]})
+    write_lock(db)
+    db.add_all(rows)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A series listed one of these items while they were being checked. Try again.")
+    return {"added": added, "refused": refused}
+
+class AllItems(BaseModel):
+    search: str = ""
+
+#queues the worker to add every item of a series' list on the archive (the whole list, or a search's results) that can be
+#downloaded and that no series lists yet, trusting the archive's list for which series they are in (worker.add_items)
+@app.post("/collections/{collection_id}/items/all", status_code=202)
+def add_all_items(collection_id: int, payload: AllItems, db: Session = Depends(get_db)):
+    linked_collection(db, collection_id)
+    write_lock(db)
+    if db.query(models.Job).filter(models.Job.kind == "items", models.Job.collection_id == collection_id,
+                                   models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="This series is already adding items.")
+    job = models.Job(kind="items", collection_id=collection_id, search=payload.search.strip()[:200] or None)
+    db.add(job)
+    db.commit()
+    return job_json(job)
+
+def linked_collection(db, collection_id):
+    c = db.get(models.Collection, collection_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="No such series.")
+    if not c.archive_series:
+        raise HTTPException(status_code=400, detail="This series isn't linked to the archive.")
+    return c
+
 #reads a page again as another page type, replacing what was read off it: queued for the worker, or for other done now (an
 #empty page to type into). A page with saved reviews keeps its type, as reading it again would lose them.
 @app.put("/pages/{page_id:path}/type")
@@ -691,7 +774,39 @@ def runnables(db):
 def job_json(job):
     return {"id": job.job_id, "kind": job.kind, "pdf": job.pdf, "pageId": job.page_id, "pageType": job.page_type,
             "status": job.status, "step": job.step,
-            "donePages": job.done_pages, "totalPages": job.total_pages, "error": job.error,
+            "donePages": job.done_pages, "totalPages": job.total_pages, "error": job.error, "collectionId": job.collection_id,
+            "search": job.search, "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
+
+#the worker's tasks, newest first: each waiting or running one, then the 20 latest done or failed
+@app.get("/jobs")
+def list_jobs(db: Session = Depends(get_db)):
+    active = db.query(models.Job).filter(models.Job.status.in_(("waiting", "running"))).order_by(models.Job.job_id.desc()).all()
+    recent = (db.query(models.Job).filter(models.Job.status.in_(("done", "failed"))).order_by(models.Job.job_id.desc())
+              .limit(20).all())
+    owners, names = loader.archive_owners(db), dict(db.query(models.Collection.collection_id, models.Collection.name))
+    return [task_json(db, job, owners, names) for job in active + recent]
+
+#a task: what it is (label), its series, how far it has got, in items or pages
+def task_json(db, job, owners, names):
+    series, unit = None, "pages"
+    if job.kind == "items":
+        series, unit = job.collection_id, "items"
+        label = f"Adding items to {names.get(series, 'a series')}" + (f' matching "{job.search}"' if job.search else "")
+    elif job.kind == "bundle":
+        path = PurePosixPath((job.pdf or "").replace("\\", "/"))
+        number = path.parent.name if path.parent.name.isdigit() else path.stem
+        series = loader.series_of(owners, job.pdf or "")
+        item = db.get(models.ArchiveItem, int(number)) if number.isascii() and number.isdigit() and len(number) < 19 else None
+        label = f"Transcribing {item.title if item else f'item {number}'}"
+    elif job.kind == "page":
+        page = db.get(models.Page, job.page_id)
+        label = f"Reading page {job.page_id} again"
+        if page:
+            series = db.get(models.Bundle, page.bundle_id).collection_id
+    else:
+        label = "Training page sorting"
+    return {"id": job.job_id, "kind": job.kind, "label": label, "status": job.status, "step": job.step, "done": job.done_pages,
+            "total": job.total_pages, "unit": unit, "error": job.error, "collectionId": series, "series": names.get(series),
             "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
 
 #a series' items, loaded or not, in order of their PDFs: bundle id, name (the bundle number: the PDF's folder), stored PDF,

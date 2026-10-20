@@ -1,7 +1,7 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { ArrowRight, ExternalLink, Search } from "lucide-react";
+import { ArrowRight, ExternalLink, ListPlus, Search } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import SeriesHeader from "@/components/SeriesHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -29,9 +29,11 @@ import {
   type PageStatus,
 } from "./progressData";
 import { ARCHIVE, backendRequest, itemParam, itemTitle, jobStages, providerNames, recordWords, seriesParam, type AvailableBundle } from "./backend";
+import { useTasks } from "./tasks";
 import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
 import type { ModelData } from "./ModelControls";
 import JobErrorDialog from "./JobErrorDialog";
+import AddItemsDialog from "./AddItemsDialog";
 // One row of the overview: an item, its processing job and its page counts.
 type Row = AvailableBundle & { counts: Counts };
 // A page of the series' items, as the server filters and pages them; totals cover every page of the series, and most is the
@@ -73,6 +75,10 @@ export default function ProgressDashboard() {
       .catch(() => {});
   }, [collectionId]);
   const words = recordWords(series.recordName);
+  const canAdd = typeof series.archiveSeries === "number";
+  // The series' items being added in the background, if any.
+  const { tasks } = useTasks();
+  const addingItems = tasks?.find((t) => t.kind === "items" && t.collectionId === collectionId && (t.status === "waiting" || t.status === "running"));
   // A status as shown: in the series' words, and without grouping where its pages don't group.
   const statusLabel = (s: string) =>
     s === "Not in a survey" ? `Not in ${words.a}` : s === "Transcribed — not grouped" && !series.grouped ? "Transcribed" : s;
@@ -113,6 +119,7 @@ export default function ProgressDashboard() {
     message: string;
   } | null>(null);
   const [jobError, setJobError] = useState("");
+  const [adding, setAdding] = useState(false);
   const [transcribing, setTranscribing] = useState<AvailableBundle | null>(
     null,
   );
@@ -314,9 +321,14 @@ export default function ProgressDashboard() {
           ["Review progress", recordsColumn ? "w-[20%]" : "w-[24%]"],
           ["Actions", "w-[18%]", "sr-only"],
         ];
-  // What can be done here: export.
+  // What can be done here: export, add items from the archive (a linked series), import scans (the Prest survey for now).
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
+      {canAdd && (
+        <Button type="button" onClick={() => setAdding(true)}>
+          <ListPlus /> Add items
+        </Button>
+      )}
       <ExportDialog
         surveyId={item?.pages.find((page) => page.surveyId)?.surveyId ?? ""}
         initialBundleId={item?.loaded ? item.bundle : undefined}
@@ -324,6 +336,7 @@ export default function ProgressDashboard() {
         collectionId={collectionId}
         recordName={series.recordName}
         hasDrafts={false}
+        variant={canAdd ? "outline" : "default"}
       />
     </div>
   );
@@ -381,6 +394,17 @@ export default function ProgressDashboard() {
                 ? `${providerNames[setup.configured.provider] ?? setup.configured.provider} isn't signed in, so transcription won't work yet.`
                 : "Transcription isn't set up yet. Choose a model in Settings to start transcribing."}
               <Button asChild variant="link" size="sm" className="h-auto p-0"><a href="/?view=settings">Open Settings</a></Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        {addingItems && (
+          <Alert role="status">
+            <AlertDescription className="text-foreground">
+              {addingItems.status === "waiting"
+                ? "Waiting to add items from the archive."
+                : addingItems.total > 0
+                  ? `Adding items from the archive: ${addingItems.done.toLocaleString()} of ${addingItems.total.toLocaleString()}.`
+                  : "Adding items from the archive…"}
             </AlertDescription>
           </Alert>
         )}
@@ -700,6 +724,18 @@ export default function ProgressDashboard() {
                         {noItems ? (
                           <div className="flex flex-col items-center gap-3 p-6 text-center whitespace-normal">
                             <p className="font-medium">No items yet.</p>
+                            {series.archiveSeries !== undefined && (
+                              <p className="text-muted-foreground">
+                                {canAdd
+                                  ? "Add items from the archive to start. Set up the series' page types first, so its pages can be read."
+                                  : "This series isn't linked to the archive, so it has no items to add."}
+                              </p>
+                            )}
+                            {canAdd && (
+                              <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+                                <ListPlus /> Add items
+                              </Button>
+                            )}
                           </div>
                         ) : (
                           <div className="flex flex-wrap items-center justify-center gap-3 p-6 text-center whitespace-normal">
@@ -751,6 +787,15 @@ export default function ProgressDashboard() {
           </>
         )}
       </main>
+      {adding && (
+        <AddItemsDialog
+          collectionId={collectionId}
+          seriesTitle={series.name || "this series"}
+          archiveItems={series.archiveItems}
+          onClose={() => setAdding(false)}
+          onAdded={() => setAttempt((n) => n + 1)}
+        />
+      )}
       {errorDetails && (
         <JobErrorDialog
           {...errorDetails}

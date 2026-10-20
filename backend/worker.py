@@ -9,6 +9,7 @@ from pathlib import Path
 
 from filelock import FileLock, Timeout
 from sqlalchemy import func
+from sqlalchemy.dialects.sqlite import insert
 
 from backend import scans
 from backend.db import app_settings, database, instructions, loader, models
@@ -61,7 +62,7 @@ def work_once(db):
         db.commit()
 
     try:
-        {"bundle": run_bundle, "page": read_page_again, "train": train_sorting}[job.kind](db, job, progress)
+        {"bundle": run_bundle, "page": read_page_again, "train": train_sorting, "items": add_items}[job.kind](db, job, progress)
     except KeyboardInterrupt:
         log.warning("job %s stopped during %s", job.job_id, job.step)
         fail(db, job, "the worker was stopped during this job; run it again")
@@ -74,6 +75,61 @@ def work_once(db):
     db.commit()
     log.info("job %s done", job.job_id)
     return True
+
+PAUSE = 1  #seconds between requests to the archive
+LISTED_MAX = 10_000  #the most the archive shows of one list
+
+#a series' items added to its list from the archive (all of them, or a search's), 24 at a time: each downloadable one no series
+#lists yet, saved and logged as it goes. A list the archive can't show whole is gone through a unit (box) at a time.
+def add_items(db, job, progress):
+    series = db.get(models.Collection, job.collection_id)
+    search = job.search or ""
+
+    def read(link, page, words=search):  #a page of a list; the archive is asked again twice, a while later, before giving up
+        for attempt in range(3):
+            time.sleep(PAUSE if attempt == 0 else PAUSE * 30)
+            try:
+                return scans.archive_listing(link, page, words)
+            except scans.ARCHIVE_ERRORS:
+                if attempt == 2:
+                    raise
+
+    def pages(link, words=search, first=None):  #every page of a list
+        listing, page = first or read(link, 1, words), 1
+        while True:
+            yield listing
+            if page >= listing["pages"]:
+                return
+            page += 1
+            listing = read(link, page, words)
+
+    progress("adding", 0, 0)
+    link = scans.listing_link(series.archive_series)
+    first = read(link, 1)
+    units = []
+    if first["total"] < LISTED_MAX:
+        lists, total = [pages(link, first=first)], first["total"]
+    else:
+        boxes = scans.listing_link(series.archive_series, "Units in this series")
+        units = [unit["node"] for listing in pages(boxes, words="") for unit in listing["items"]]
+        lists = (pages(scans.listing_link(unit, "Items in this unit")) for unit in units)
+        total = first["total"] if search else series.archive_items or first["total"]
+    listed = {node for (node,) in db.query(models.ArchiveItem.node)}
+    seen = added = 0
+    for box, listing_pages in enumerate(lists, 1):
+        for listing in listing_pages:
+            new = [i for i in listing["items"] if i["scanned"] and i["node"] not in listed]
+            inserted = 0  #not those a series listed meanwhile
+            if new:
+                inserted = len(db.execute(insert(models.ArchiveItem).on_conflict_do_nothing().returning(models.ArchiveItem.node), [
+                    {"node": i["node"], "collection_id": series.collection_id, "identifier": i["identifier"], "title": i["title"],
+                     "pdf": f"{i['node']}/{i['node']}.pdf"} for i in new]).all())
+                listed.update(i["node"] for i in new)
+            seen, added = seen + len(listing["items"]), added + inserted
+            progress("adding", seen, max(total, seen))
+            log.info("job %s: %s%s read, %s added", job.job_id, f"box {box:,} of {len(units):,}: " if units else "", f"{seen:,}", f"{added:,}")
+    log.info("job %s: %s read, %s added, %s skipped (listed already, Reading Room only or not scanned)", job.job_id, f"{seen:,}",
+             f"{added:,}", f"{seen - added:,}")
 
 def run_bundle(db, job, progress):
     pdf = ROOT / job.pdf

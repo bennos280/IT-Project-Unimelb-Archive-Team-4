@@ -168,6 +168,9 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [addItems, setAddItems] = useState(true);
+  // The series exists but its items didn't come with it; Continue goes on to the series.
+  const [stranded, setStranded] = useState<{ created: Collection; detail: string } | null>(null);
   const node = nodeOf(address);
 
   // Looks the series up once typing stops; a lookup for an earlier number is ignored.
@@ -200,6 +203,14 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
       setError(message(e, "Could not create the series."));
       setBusy(false);
       return;
+    }
+    if (addItems) {
+      try {
+        await backendRequest<unknown>(`/collections/${created.id}/items/all`, json("POST", { search: "" }));
+      } catch (e) {
+        setStranded({ created, detail: message(e, "Could not add the items.") });
+        return;
+      }
     }
     onCreated(created);
   }
@@ -260,11 +271,25 @@ function NewCollectionDialog({ onClose, onCreated }: { onClose: () => void; onCr
             <FieldLabel htmlFor={`${id}-name`}>Name</FieldLabel>
             <Input id={`${id}-name`} value={name} onChange={(e) => { setName(e.target.value); named.current = true; }} />
           </Field>
+          <Field>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" className="size-4 accent-primary" checked={addItems} disabled={busy}
+                onChange={(e) => setAddItems(e.target.checked)} />
+              Add all its items
+            </label>
+          </Field>
         </FieldGroup>
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+        {stranded && (
+          <Alert variant="destructive">
+            <AlertDescription>The series was created, but its items weren't added: {stranded.detail.replace(/\.$/, "")}. Add them from the series' page.</AlertDescription>
+          </Alert>
+        )}
         <DialogFooter>
-          <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button disabled={busy || node === null || !name.trim()} onClick={create}>Create series</Button>
+          {stranded ? <Button onClick={() => onCreated(stranded.created)}>Continue</Button> : <>
+            <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
+            <Button disabled={busy || node === null || !name.trim()} onClick={create}>Create series</Button>
+          </>}
         </DialogFooter>
       </DialogContent>
     </Dialog>
