@@ -94,7 +94,6 @@ export default function CollectionsScreen({ onChosen }: { onChosen?: (person: Re
             </TableHeader>
             <TableBody>
               {collections.map((c) => (
-                // The name's link covers the row; the links in the row sit above it.
                 <TableRow key={c.id} clickable>
                   <TableCell>
                     <TableRowLink href={`/?collection=${c.id}`}>{c.name}</TableRowLink>
@@ -103,7 +102,7 @@ export default function CollectionsScreen({ onChosen }: { onChosen?: (person: Re
                     {c.archiveSeries ? (
                       <div className="flex flex-col">
                         <a href={`${ARCHIVE}/nodes/view/${c.archiveSeries}`} target="_blank" rel="noopener noreferrer"
-                          className="relative z-10 inline-flex w-fit items-center gap-1 hover:underline">
+                          className="inline-flex w-fit items-center gap-1 hover:underline">
                           {c.archiveIdentifier ?? `Series ${c.archiveSeries}`} <ExternalLink aria-hidden="true" className="size-3.5" />
                         </a>
                         {c.archiveTitle && <span className="text-muted-foreground">{c.archiveTitle}</span>}
@@ -156,7 +155,7 @@ function Attention({ collection: c }: { collection: Collection }) {
 // How far a collection's review has got; until it's set up, a link to setting it up on its Items page.
 function Progress({ collection: c }: { collection: Collection }) {
   const note = (text: string) => <span className="text-muted-foreground">{text}</span>;
-  if (!isSetUp(c)) return <a href={`/?collection=${c.id}`} className="relative z-10 underline">Next: set up series</a>;
+  if (!isSetUp(c)) return <a href={`/?collection=${c.id}`} className="underline">Next: set up series</a>;
   if (!c.reviewable) return note("No pages to review yet");
   const percent = Math.round((c.reviewed / c.reviewable) * 100);
   return (

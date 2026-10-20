@@ -58,8 +58,8 @@ def run_install(uv):
             tail.append(line.rstrip())
         ok = proc.wait() == 0
         detail = None if ok else "\n".join(tail) or "uv failed."
-    except OSError:
-        ok, detail = False, "Could not run uv."
+    except Exception as error:
+        ok, detail = False, f"Could not run uv: {error}"
     if ok:
         importlib.invalidate_caches()  #so torch is found in this process without a restart
     with _lock:

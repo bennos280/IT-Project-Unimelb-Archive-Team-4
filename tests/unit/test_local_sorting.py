@@ -90,6 +90,16 @@ def test_post_runs_uv_then_reports_ok(client, monkeypatch):
     assert args[0] == "/bin/uv" and args[1] == "sync" and ["--extra", "local-sorting"] == args[4:6] and "--inexact" in args
 
 
+def test_an_install_that_cant_run_finishes_failed_and_can_be_tried_again(client, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("no such file")
+    monkeypatch.setattr(local_sorting.subprocess, "Popen", broken)
+    client.post(URL, json={})
+    body = finished(client)
+    assert body["ok"] is False and "no such file" in body["detail"]
+    assert client.post(URL, json={}).status_code == 202
+
+
 def test_failure_detail_is_the_last_lines(client):
     FakePopen.code, FakePopen.lines = 1, [f"line {i}\n" for i in range(30)]
     client.post(URL, json={})

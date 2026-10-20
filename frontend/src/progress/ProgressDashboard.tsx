@@ -351,8 +351,6 @@ export default function ProgressDashboard() {
   const cell = "whitespace-normal px-1.5 sm:px-2 [overflow-wrap:anywhere]";
   const head = "whitespace-normal px-1.5 text-xs [overflow-wrap:anywhere] sm:px-2 sm:text-sm";
   const num = "text-right tabular-nums";
-  // Stretched link: its overlay makes the whole row clickable; controls inside a row sit above it.
-  const above = "relative z-10";
   const rowAction = "h-auto min-h-7 w-full flex-wrap px-1 py-1 text-xs sm:px-2.5 sm:text-[0.8rem]";
   // The table's columns: heading, width and, for a number, its alignment (sr-only: a heading only screen readers read).
   const columns: (readonly [string, string, string?])[] = byRecord
@@ -777,7 +775,7 @@ export default function ProgressDashboard() {
                                         <Button
                                           variant="outline"
                                           size="sm"
-                                          className={`${rowAction} ${above}`}
+                                          className={rowAction}
                                           disabled={starting !== null}
                                           onClick={() => {
                                             setJobError("");
@@ -801,7 +799,7 @@ export default function ProgressDashboard() {
                                             <Button
                                               variant="link"
                                               size="sm"
-                                              className={`h-auto p-0 text-xs text-destructive underline ${above}`}
+                                              className="h-auto p-0 text-xs text-destructive underline"
                                               onClick={() =>
                                                 setErrorDetails({
                                                   item: itemTitle(b.name, b.archive),

@@ -80,9 +80,12 @@ export default function PageSorting() {
   async function startInstall() {
     setError("");
     try {
-      setInstall(await backendRequest<Install>("/page-sorting/install", { method: "POST" }));
+      setInstall(await backendRequest<Install>("/page-sorting/install", json("POST", {})));
     } catch (e) {
-      setInstall((i) => ({ ...(i ?? NO_INSTALL), installable: true, running: false, ok: false, detail: message(e, "Could not start the install.") }));
+      // one already running (another click or tab) is followed, not shown as a failure
+      const now = await backendRequest<Install>("/page-sorting/install").catch(() => null);
+      setInstall(now?.running ? now
+        : (i) => ({ ...(i ?? NO_INSTALL), installable: true, running: false, ok: false, detail: message(e, "Could not start the install.") }));
     }
   }
 
@@ -188,7 +191,7 @@ export default function PageSorting() {
               : check === "checking" ? <Badge variant="secondary">Checking…</Badge>
               : check?.ok ? <Badge variant="outline">Ready</Badge>
               : failed ? <Badge variant="destructive">Not working</Badge> : null}>
-            <p role="status" className={!notice ? "sr-only" : bad ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>{notice}</p>
+            <p role="status" className={!notice ? "sr-only" : bad ? "text-sm whitespace-pre-line text-destructive" : "text-sm text-muted-foreground"}>{notice}</p>
             {installable && (
               <div>
                 <Button type="button" variant="outline" size="sm" onClick={startInstall}>{installFailed ? "Try again" : "Install PyTorch"}</Button>

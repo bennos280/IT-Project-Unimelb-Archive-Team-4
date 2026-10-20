@@ -1720,7 +1720,7 @@ def check_page_sorting():
     if not app_settings.local_sorting_available():
         intel_mac = sys.platform == "darwin" and platform.machine() != "arm64"
         return {"ok": False, "detail": "PyTorch isn't available for Intel Macs: sort pages by the reading model." if intel_mac
-                else "PyTorch isn't installed on this computer: run the installer again to add it."}
+                else "PyTorch isn't installed on this computer: install it from Settings, then Page sorting."}
     from PIL import Image
     from backend.pipeline.identify.identify import identify_pages
     with _checking:  #a check asked for while one runs waits for it, and gets its pass
@@ -1789,7 +1789,7 @@ def update(db: Session = Depends(get_db)):
     except Exception as error:
         raise HTTPException(status_code=502, detail=f"Couldn't download the installer: {error}"[:300])
     if sys.platform == "win32":
-        folder = str(ROOT).replace("'", "''")
+        folder = re.sub("['‘’‚‛]", lambda quote: quote[0] * 2, str(ROOT))  #PowerShell's single quotes, curly ones too
         script = (f"try {{ Start-Sleep 5; & ([scriptblock]::Create((irm '{installer}'))) -Folder '{folder}' }} "
                   f"catch {{ Write-Host ('The update failed: ' + $_); Read-Host 'Press Enter to close this window' }}")
         subprocess.Popen(["powershell", "-ExecutionPolicy", "ByPass", "-NoProfile", "-Command", script],

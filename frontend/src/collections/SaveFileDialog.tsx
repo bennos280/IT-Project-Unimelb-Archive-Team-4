@@ -31,7 +31,7 @@ export default function SaveFileDialog({ onClose }: { onClose: () => void }) {
       link.href = url;
       link.download = name;
       link.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000); // Safari cancels a download whose URL is revoked before it starts
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "The file couldn't be saved.");

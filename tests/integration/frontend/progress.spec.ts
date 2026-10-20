@@ -568,10 +568,7 @@ test.describe("Progress and transcription states", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
     await expect(page).toHaveURL(/\/\?collection=1$/);
-    // The row link's overlay covers the Total pages cell, so click its centre with the mouse.
-    const box = await row.getByRole("cell").nth(1).boundingBox();
-    expect(box).not.toBeNull();
-    await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await row.getByRole("cell").nth(1).click();
     await expect(page.getByRole("heading", { name: "Item 216424" })).toBeVisible();
     await expect(page).toHaveURL(/\/\?collection=1&bundle=216424$/);
   });

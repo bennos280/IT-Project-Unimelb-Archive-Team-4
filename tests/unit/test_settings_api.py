@@ -190,16 +190,17 @@ def test_an_installer_that_cant_be_downloaded_is_a_502_and_nothing_is_started(cl
     assert stops["processes"] == [] and stops["timers"] == []
 
 
-def test_a_folder_with_an_apostrophe_is_escaped_in_the_windows_installer_command_which_waits_for_enter_if_it_fails(client, root, stops, github, monkeypatch):
+@pytest.mark.parametrize("quote", ["'", "‘", "’", "‚", "‛"])  # PowerShell ends a single-quoted string at each
+def test_a_folder_with_an_apostrophe_is_escaped_in_the_windows_installer_command_which_waits_for_enter_if_it_fails(client, root, stops, github, monkeypatch, quote):
     monkeypatch.setattr(main.sys, "platform", "win32")
     monkeypatch.setattr(subprocess, "CREATE_NEW_CONSOLE", 16, raising=False)  # only on Windows
-    folder = root / "Ben's copy"
+    folder = root / f"Ben{quote}s copy"
     monkeypatch.setattr(main, "ROOT", folder)
     folder.mkdir()
     (folder / "VERSION").write_text("v0.1.0\n", encoding="utf-8")
     assert client.post("/update").status_code == 202
     [(args, kwargs)] = stops["processes"]
-    assert f"-Folder '{str(folder).replace(chr(39), chr(39) * 2)}'" in args[-1]
+    assert f"-Folder '{str(folder).replace(quote, quote * 2)}'" in args[-1]
     assert args[-1].startswith("try {") and "catch {" in args[-1] and "Read-Host" in args[-1]
 
 

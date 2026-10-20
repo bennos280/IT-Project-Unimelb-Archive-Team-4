@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from backend import worker
-from backend.db import models
+from backend.db import app_settings, models
 from backend.pipeline.identify import identify
 from backend.pipeline.identify.identify import Score
 from backend.pipeline.identify.classifier import LABELS, REVIEW, Model
@@ -109,9 +109,11 @@ def test_a_bundle_job_sorts_with_the_active_model(db, tmp_path, monkeypatch):
     (tmp_path / "model-1.npz").write_bytes(b"weights")
     db.add_all([models.SortingModel(path=str(tmp_path / "model-1.npz"), page_types="main", pages=1, answered=1, wrong=0,
                                     passed=True, active=True), models.ArchiveItem(node=216441, collection_id=1, identifier="UMA-ITE-216441", title="A file"),
-                models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")])
+                models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), transcription_provider="claude", transcription_model="sonnet", transcription_effort="low"),
+                models.AppSetting(key=app_settings.SORTING, value="local")])
     db.commit()
     used = []
+    monkeypatch.setattr(app_settings, "local_sorting_available", lambda: True)
     monkeypatch.setattr(worker, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})
     monkeypatch.setattr(worker.pipeline, "run_steps", lambda run, names: used.append(run.sorting_model) or run.pages.append({"file": "a"}))
     monkeypatch.setattr(worker.loader, "dump_into_db", lambda manifest: None)

@@ -41,7 +41,7 @@ test.describe("series table", () => {
 
   for (const [index, name] of [[0, "first"], [1, "middle"], [2, "last"]] as const) {
     test(`a click on the ${name} row's plain cell opens that series`, async ({ page }) => {
-      await plainCell(page, index).click({ force: true });
+      await plainCell(page, index).click();
       await expect(page).toHaveURL(`/?collection=${index + 1}`);
     });
   }
@@ -78,7 +78,7 @@ test.describe("items table", () => {
 
   for (const [index, name] of [[0, "A"], [1, "B"], [2, "C"]] as const) {
     test(`a click on item ${name}'s plain cell opens item ${name}`, async ({ page }) => {
-      await plainCell(page, index).click({ force: true });
+      await plainCell(page, index).click();
       await expect(page).toHaveURL(`/?collection=1&bundle=${name}`);
     });
   }
@@ -105,8 +105,8 @@ test.describe("an item's record table", () => {
 
   for (const [index, id] of [[0, "a"], [1, "b"], [2, "c"]] as const) {
     test(`a click on record ${id}'s plain cell opens record ${id}`, async ({ page }) => {
-      await plainCell(page, index).click({ force: true });
-      await expect(page).toHaveURL(new RegExp(`^[^?]*\?survey=R-${id}&`));
+      await plainCell(page, index).click();
+      await expect(page).toHaveURL(new RegExp(`[?]survey=R-${id}&`));
     });
   }
 

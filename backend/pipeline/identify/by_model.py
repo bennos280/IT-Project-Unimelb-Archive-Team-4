@@ -30,14 +30,18 @@ def sort_pages(paths, types, choice, progress=lambda done, total: None):
     answers, failures = [None] * len(paths), {}
     with ThreadPoolExecutor(READERS) as pool:
         asked = {pool.submit(sort, path): i for i, path in enumerate(paths)}
-        for done, request in enumerate(as_completed(asked), 1):
-            i = asked[request]
-            try:
-                answers[i] = request.result()
-            except BaseException as error:  # a failed model call raises SystemExit
-                failures[i] = error
-                answers[i] = page(paths[i], REVIEW)
-            progress(done, len(paths))
+        try:
+            for done, request in enumerate(as_completed(asked), 1):
+                i = asked[request]
+                try:
+                    answers[i] = request.result()
+                except BaseException as error:  # a failed model call raises SystemExit
+                    failures[i] = error
+                    answers[i] = page(paths[i], REVIEW)
+                progress(done, len(paths))
+        except BaseException:  # stopped, or reporting failed: don't pay for the asks still queued
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
     if paths and len(failures) == len(paths):
         raise failures[min(failures)]
     return answers

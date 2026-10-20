@@ -58,7 +58,9 @@ function TableRow({ className, clickable, onClick, ...props }: React.ComponentPr
   function open(event: React.MouseEvent<HTMLTableRowElement>) {
     onClick?.(event)
     if (event.defaultPrevented || (event.target as Element).closest(INTERACTIVE) || window.getSelection()?.toString()) return
-    event.currentTarget.querySelector<HTMLAnchorElement>("a[data-slot=table-row-link]")?.click()
+    const { ctrlKey, metaKey, shiftKey, altKey } = event  // so ctrl/cmd-click still opens a new tab
+    event.currentTarget.querySelector("a[data-slot=table-row-link]")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey, metaKey, shiftKey, altKey }))
   }
   return (
     <tr

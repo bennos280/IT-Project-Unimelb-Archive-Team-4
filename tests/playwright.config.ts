@@ -28,7 +28,7 @@ export default defineConfig({
     {
       // Safari's engine: only the specs that depend on its layout.
       name: "webkit",
-      testMatch: "{row-links,zz-probe}.spec.ts",
+      testMatch: "row-links.spec.ts",
       use: {
         ...devices["Desktop Safari"],
         viewport: { width: 1440, height: 1000 },

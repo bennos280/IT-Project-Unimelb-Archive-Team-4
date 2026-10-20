@@ -113,6 +113,8 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
     if (path === "/api/transcription-models")
       return route.fulfill({ json: { configured: defaults, models: [] } });
     if (path === "/api/page-sorting/install" && request.method() === "POST") {
+      if (request.headers()["content-type"] !== "application/json" || request.postData() !== "{}") // the API requires a JSON body
+        return route.fulfill({ status: 422, json: { detail: "Field required" } });
       if (!install.installable) return route.fulfill({ status: 400, json: { detail: install.detail } });
       sorting.installs++;
       Object.assign(install, { running: true, ok: null, detail: null });

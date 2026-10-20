@@ -90,7 +90,7 @@ test("a series not set up yet links to setting it up, and one with no identifier
 test("clicking anywhere on a series' row opens it", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
-  // A plain cell, clicked where a person would: the name's link covers the row.
+  // A plain cell, clicked where a person would.
   const box = (await page.getByRole("row").filter({ hasText: "Wilfred Prest Survey" }).getByRole("cell", { name: /26 of 45 processed/ }).boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page).toHaveURL("/?collection=1");
