@@ -1,10 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel
+from typing import Literal
 from functools import cache
 import json
 import os
@@ -120,7 +121,8 @@ def page_flags(db, p, fields_list):
                       "reason": OTHER_PAGE + (OTHER_PAGE_GROUPED.format(page_record_name(db, p)) if grouped else OTHER_PAGE_ALONE)})
     return flags
 
-#a survey's pages in scan order, with fields, flags and scan URL, and whether it is its whole item (all the item's pages)
+#a survey's pages in scan order, with fields, flags and scan URL, whether it is its whole item (all the item's pages), the
+#record it sits in (None: at the top), and the records it sits inside, top first, each with its level's name
 @app.get("/survey/{survey_id}")
 def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     survey = db.get(models.Survey, survey_id)
@@ -148,7 +150,19 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
             "item": {"name": name, "archive": {"identifier": item.identifier, "title": item.title} if item else None},
             "recordName": grouping.record_name(db, collection.collection_id, survey_id), "grouped": grouping.grouped(db, collection.collection_id),
             "wholeItem": db.query(models.Page).filter_by(bundle_id=bundle.bundle_id).count() == len(pages_list),
-            "pages":pages_list}
+            "parentId": survey.parent_id, "ancestors": ancestors(db, collection.collection_id, survey.parent_id), "pages":pages_list}
+
+#a record and the records it sits inside, top first, each its id, its level's name and the record it sits in, but not one
+#holding just one record and no pages of its own (the item's page opens past it); [] for none
+def ancestors(db, collection_id, survey_id):
+    found = []
+    while survey_id is not None:
+        held = (db.query(models.Survey).filter_by(parent_id=survey_id).count(), db.query(models.Page).filter_by(survey_id=survey_id).count())
+        parent = db.get(models.Survey, survey_id).parent_id
+        if held != (1, 0):
+            found.insert(0, {"id": survey_id, "name": grouping.record_name(db, collection_id, survey_id), "parent": parent})
+        survey_id = parent
+    return found
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
 #and black and white (the scan itself if that fails)
@@ -359,6 +373,26 @@ class CollectionSettings(BaseModel):
     archiveTitle: str | None = None
     archiveItems: int | None = None
 
+#a level of record: what one is called, the page types that start one and those that join the one showing the same number,
+#and the field holding that number (None or "": page order only)
+#one part of what a level's record is made of: a page type, how many of it one has, and how its pages are found: one starts it,
+#the next follow the page before them, or are matched by number wherever they were filed
+class LevelPart(BaseModel):
+    type: str
+    count: Literal["one", "one_or_more", "any", "at_most_one"] = "one"
+    how: Literal["starts", "follows", "matched"] = "follows"
+
+class LevelSettings(BaseModel):
+    name: str
+    parts: list[LevelPart] = []
+    key: str | None = None
+
+class LevelsSettings(BaseModel):
+    levels: list[LevelSettings]
+
+class LevelsPreview(LevelsSettings):
+    item: str #the bundle id of an item already read
+
 class NewCollection(BaseModel):
     name: str
     archiveSeries: str
@@ -420,7 +454,7 @@ def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
     return page_type_json(db.get(models.PageType, name), {})
 
-#changes a page type's label
+#changes a page type's label (how its pages group is its collection's levels')
 @app.patch("/page-types/{name}")
 def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends(get_db)):
     write_lock(db)
@@ -449,7 +483,7 @@ def bundle_jobs(db, collection_id):
 
 #a collection, and with db how far along it is: bundles loaded (processed), being processed or failed; pages, those in a survey
 #(reviewable) and reviewed; what needs a person (pages of its Unknown type, open flags); and whether its pages group into records (a type starts one of
-#its top level); and what one record is called
+#its top level); with its levels of record, top first, and what one record is called
 def collection_json(c, db=None):
     found = {}
     if db is not None:
@@ -464,7 +498,7 @@ def collection_json(c, db=None):
                  "flagged": sum(p["flagCount"] for p in pages),
                  "grouped": grouping.grouped(db, c.collection_id)}
     levels = grouping.levels(object_session(c), c.collection_id)
-    return {"id": c.collection_id, "name": c.name,
+    return {"id": c.collection_id, "name": c.name, "levels": [grouping.level_json(level) for level in levels],
             "recordName": levels[-1].name if levels else "record", "archiveSeries": c.archive_series,
             "archiveIdentifier": c.archive_identifier, "archiveTitle": c.archive_title, "archiveItems": c.archive_items, **found}
 
@@ -538,6 +572,89 @@ def update_collection(collection_id: int, payload: CollectionSettings, db: Sessi
         db.rollback()
         raise HTTPException(status_code=409, detail=f"There is already a series called {name}.")
     return collection_json(c, db)
+
+LEVEL_NAME = re.compile(r"[a-z]+(['-][a-z]+)*( [a-z]+(['-][a-z]+)*)?")
+
+#why a level can't be saved, or None: its name (a word or two, lower case, after names), what one is made of (the collection's
+#own read page types, each once, the first and only the first starting one), and its number field, which matching pages by
+#number needs and which is read from its page types
+def level_problem(level, name, names, types):
+    roles, a = [part.type for part in level.parts], grouping.a_record(name)
+    key = (level.key or "").strip()
+    return ("A level's name is a word or two, like survey or letter." if not (len(name) <= 40 and LEVEL_NAME.fullmatch(name)) else
+            f"There is already a level called {name}." if name in names else
+            "A level's page types must be this series' own." if any(t not in types for t in roles) else
+            f"Unknown pages aren't read, so {a} can't be made of them." if any(types[t].unknown for t in roles) else
+            f"Each page type is in {a} once." if len(set(roles)) < len(roles) else
+            f"The first page type starts {a}, and only it." if any((p.how == "starts") != (i == 0) for i, p in enumerate(level.parts)) else
+            "A field name is lower-case letters, digits and _, starting with a letter." if key and not instructions.KEY.fullmatch(key) else
+            f"Pages are matched to {a} by its number field: set one first." if any(p.how == "matched" for p in level.parts) and not key else
+            f"{a.capitalize()}'s number is read from its page types: add one first, or choose no number field." if key and not level.parts else None)
+
+#a collection's levels of record as they would be stored, top first, unsaved; refused with the first problem (level_problem),
+#and a level's number field must be a field of its own (not a list or group) in the templates of the page types that start one
+#or are matched to it
+def checked_levels(db, collection_id, levels):
+    if not db.get(models.Collection, collection_id):
+        raise HTTPException(status_code=404, detail="No such series.")
+    types = {t.name: t for t in db.query(models.PageType).filter_by(collection_id=collection_id)}
+    templates, rows = instructions.newest(db), []
+    for position, level in enumerate(levels, start=1):
+        name, key = " ".join(level.name.lower().split()), (level.key or "").strip() or None
+        if problem := level_problem(level, name, {row.name for row in rows}, types):
+            raise HTTPException(status_code=400, detail=problem)
+        missing = sorted(types[p.type].label for p in level.parts if p.how != "follows" and key and p.type in templates
+                         and not isinstance(json.loads(templates[p.type].body).get(key, []), str | None))
+        if missing:
+            raise HTTPException(status_code=400, detail=f"These page types' templates don't have '{key}': {', '.join(missing)}.")
+        rows.append(models.RecordLevel(collection_id=collection_id, position=position, name=name, record_key=key,
+                                       parts=json.dumps([part.model_dump() for part in level.parts])))
+    return rows
+
+#a collection's levels of record, top first, in place of the ones it had. Items read from now on group by them
+@app.put("/collections/{collection_id}/levels")
+def put_levels(collection_id: int, payload: LevelsSettings, db: Session = Depends(get_db)):
+    write_lock(db)
+    rows = checked_levels(db, collection_id, payload.levels)
+    db.query(models.RecordLevel).filter_by(collection_id=collection_id).delete()
+    db.add_all(rows)
+    db.commit()
+    return collection_json(db.get(models.Collection, collection_id), db)
+
+#how one of a collection's items already read would group by these levels, saving nothing: the records grouping would make,
+#parents first, each its id, the record it sits in and its pages; the pages in none; each page's type; and the problems
+#grouping would flag, each on a page, with the record it's about (none: pages in no record) and what it is.
+#It reads the item's page types and its pages' number fields as reviewers last saved them, as the group step does a run's; a
+#page waiting to be read again as another type has none yet
+@app.post("/collections/{collection_id}/levels/preview")
+def preview_levels(collection_id: int, payload: LevelsPreview, db: Session = Depends(get_db)):
+    from backend.pipeline.run import Run, step_group
+    rows = checked_levels(db, collection_id, payload.levels)
+    bundle = db.get(models.Bundle, payload.item)
+    if not bundle or bundle.collection_id != collection_id:
+        raise HTTPException(status_code=404, detail="No such item read in this series.")
+    ids = [page_id for (page_id,) in db.query(models.Page.page_id).filter_by(bundle_id=bundle.bundle_id).order_by(models.Page.page_id)]
+    unread = {page_id for (page_id,) in db.query(models.Page.page_id).filter_by(bundle_id=bundle.bundle_id, needs_transcription=True)}
+    keys, values = {row.record_key for row in rows if row.record_key}, {}
+    for page_id, key, text in db.query(models.Field.page_id, models.Field.field_title, models.Field.text_raw).filter(
+            models.Field.page_id.in_(ids), models.Field.field_title.in_(keys)):
+        values.setdefault(page_id, {})[key] = text
+    for edit in db.query(models.Edit).filter(models.Edit.page_id.in_(ids), models.Edit.field_title.in_(keys)).order_by(models.Edit.edit_id):
+        values.setdefault(edit.page_id, {})[edit.field_title] = edit.edit_text
+    categories = dict(db.query(models.Page.page_id, models.Page.category).filter_by(bundle_id=bundle.bundle_id))
+    types = db.query(models.PageType).filter_by(collection_id=collection_id).all()
+    labels = {t.name: t.label for t in types}
+    run = Run(Path(f"{bundle.bundle_id}.pdf"), Path(bundle.bundle_id), grouping={
+        "levels": [grouping.level_json(row) for row in rows],
+        "labels": labels, "unknown": [t.name for t in types if t.unknown]})
+    run.pages = [{"file": f"{page_id}.png", "label": categories[page_id], "values": {} if page_id in unread else values.get(page_id, {}),
+                  "id": page_id} for page_id in ids]
+    step_group(run)
+    problems = [{"page": entry["file"].removesuffix(".png"), "record": entry.get("record"),
+                 "reason": entry["reason"].split(": ", 1)[-1] if entry.get("record") else entry["reason"]} for entry in run.review]
+    return {"records": [{**record, "pages": [p["id"] for p in run.pages if p["survey"] == record["id"]]} for record in run.records],
+            "loose": [p["id"] for p in run.pages if p["survey"] is None],
+            "pageTypes": {page_id: labels.get(category, category) for page_id, category in categories.items()}, "problems": problems}
 
 #a series on the archive, to check before a collection links to it
 @app.get("/archive-series/{node}")
@@ -881,6 +998,11 @@ def page_counts(pages):
             "ready": sum(p["status"] == "Ready to review" for p in reviewable),
             "records": len({p["surveyId"] for p in reviewable})}
 
+#an item's record when it is the whole item, all its pages; the dashboard opens it straight away. None: it has none or several
+def whole_record(pages):
+    records = {p.get("surveyId") for p in pages}
+    return records.pop() if len(records) == 1 and None not in records else None
+
 #each of a series' items' pages: a loaded one's as /progress gives them, one being transcribed its finished ones so far
 def items_pages(db, collection, rows):
     loaded = {b["id"]: b["pages"] for b in cached_progress(db) if b["collectionId"] == collection}
@@ -915,20 +1037,23 @@ def list_items(collection_id: int, page: int = 0, size: int = 9, search: str = "
                            (1, 0, [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", row["name"])]))
     matching = sorted((row for row in rows if item_matches(row, pages[row["bundle"]], search, status)), key=natural)
     page = min(max(page, 0), max(len(matching) - 1, 0) // size)
-    return {"items": [{**row, "counts": page_counts(pages[row["bundle"]])}
+    return {"items": [{**row, "counts": page_counts(pages[row["bundle"]]), "record": whole_record(pages[row["bundle"]]) if row["loaded"] else None}
                       for row in matching[page * size:(page + 1) * size]],
             "page": page, "total": len(matching), "all": len(rows),
             "totals": page_counts([p for row in rows for p in pages[row["bundle"]]]),
             "most": {"pages": max((len(p) for p in pages.values()), default=0),
                      "records": max((page_counts(p)["records"] for p in pages.values()), default=0)}}
 
-#one of a series' items, by its number or bundle id, with its pages as /progress gives them (none until it's loaded)
+#one of a series' items, by its number or bundle id, with its pages as /progress gives them (none until it's loaded) and its
+#records, each with the record it sits in (None: at the top)
 @app.get("/collections/{collection_id}/items/{name}")
 def get_item(collection_id: int, name: str, db: Session = Depends(get_db)):
     row = next((row for row in series_items(db, collection_id) if name in (row["name"], row["bundle"])), None)
     if row is None:
         raise HTTPException(status_code=404, detail="No such item.")
-    return {**row, "pages": next((b["pages"] for b in cached_progress(db) if b["id"] == row["bundle"]), [])}
+    records = db.query(models.Survey.survey_id, models.Survey.parent_id).filter_by(bundle_id=row["bundle"]).order_by(models.Survey.survey_id)
+    return {**row, "pages": next((b["pages"] for b in cached_progress(db) if b["id"] == row["bundle"]), []),
+            "records": [{"id": record, "parent": parent} for record, parent in records]}
 
 #queues a pipeline run of one PDF; the worker picks it up
 @app.post("/jobs", status_code=202)
@@ -1088,6 +1213,7 @@ def export_survey(survey_id: str, request: Request, db: Session):
         })
     return {"surveys": [{
         "surveyId": survey_id,
+        "parentId": survey["parentId"],
         "status": "Reviewed" if pages and all(
             page["status"] == "Reviewed" for page in pages
         ) else "ToBeReviewed",
@@ -1116,7 +1242,10 @@ def download_export(request: Request, survey_id: str | None = None, bundle_id: s
     if not db.get(models.Bundle, bundle_id):
         raise HTTPException(status_code=404, detail="Item not found.")
     surveys = []
-    for (sid,) in db.query(models.Survey.survey_id).filter_by(bundle_id=bundle_id).order_by(models.Survey.survey_id):
+    #a record holding only records, no pages of its own, has nothing to export; theirs name it as their parent
+    parents = db.query(models.Survey.parent_id).filter(models.Survey.parent_id.is_not(None))
+    for (sid,) in (db.query(models.Survey.survey_id).filter_by(bundle_id=bundle_id).order_by(models.Survey.survey_id)
+                   .filter(or_(models.Survey.survey_id.in_(db.query(models.Page.survey_id)), models.Survey.survey_id.not_in(parents)))):
         surveys.extend(export_survey(sid, request, db)["surveys"])
     # Unassigned pages have no saved survey reviews, but remain in the download.
     unassigned = []

@@ -38,13 +38,15 @@ def run_folder(tmp_path):
 
 
 def start_db(tmp_path, monkeypatch):
-    """A new database holding the Prest series (its page types) listing item 216412, as the app is set up."""
+    """A new database holding the Prest series (its page types and record level) listing item 216412, as the app is set up."""
     url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
     database.migrate(url)
     with database.make_engine(url).begin() as con:
         con.exec_driver_sql("INSERT INTO collections (collection_id, name) VALUES (1, 'Wilfred Prest Survey')")
         for name in ("main", "notes", "coded", "other"):
             con.exec_driver_sql("INSERT INTO page_types (name, label, collection_id, unknown) VALUES (?, ?, 1, ?)", (name, name, name == "other"))
+        con.exec_driver_sql("INSERT INTO record_levels (collection_id, position, name, record_key, parts) VALUES"
+                            " (1, 1, 'survey', 'number_of_dwelling', '[]')")
         con.exec_driver_sql("INSERT INTO archive_items (node, collection_id, identifier, title, pdf) VALUES"
                             " (216412, 1, 'UMA-ITE-216412', 'Item 216412', '216412/216412.pdf')")
     monkeypatch.setattr(database, "engine", database.make_engine(url))
@@ -95,6 +97,38 @@ def test_consistency_conflicts_become_flags_on_the_fields_they_name(tmp_path, mo
     assert db.execute("SELECT page_id, field_title, reason FROM flags WHERE reason LIKE 'Consistency%' ORDER BY page_id").fetchall() == [
         ("216412_00001", "address", "Consistency: TYPE OF FAMILY: Page 1 has 2 residents, but Page 3 records 1."),
         ("216412_00002", "type_of_family", "Consistency: TYPE OF FAMILY: Page 1 has 2 residents, but Page 3 records 1.")]
+
+
+def test_a_run_loads_its_records_inside_one_another_parents_first(tmp_path, monkeypatch):
+    start_db(tmp_path, monkeypatch)
+    out = run_folder(tmp_path)
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    manifest["records"] = [{"id": "216412-3", "parent": None}, {"id": "216412-3-n1", "parent": "216412-3"}]
+    manifest["pages"][1]["survey"] = "216412-3-n1"  # the coded card in a record inside the survey
+    (out / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (out / "review.json").write_text(json.dumps([{"file": "216412_00002.png", "step": "group", "reason": "card 216412-3-n1: no 'washouse'",
+                                                  "field": "washouse"}]), encoding="utf-8")
+    loader.dump_into_db(out / "manifest.json")
+    db = sqlite3.connect(tmp_path / "test.db")
+    assert db.execute("SELECT survey_id, parent_id FROM surveys ORDER BY survey_id").fetchall() == [
+        ("216412-3", None), ("216412-3-n1", "216412-3")]
+    assert db.execute("SELECT page_id, survey_id FROM pages WHERE page_id IN ('216412_00001', '216412_00002') ORDER BY page_id").fetchall() == [
+        ("216412_00001", "216412-3"), ("216412_00002", "216412-3-n1")]
+    assert db.execute("SELECT page_id, field_title FROM flags").fetchall() == [("216412_00002", "washouse")]  # the field it's about
+
+def test_a_run_loads_into_the_series_its_manifest_names_reading_nothing_into_a_type_that_series_lacks(tmp_path, monkeypatch):
+    start_db(tmp_path, monkeypatch)
+    with sqlite3.connect(tmp_path / "test.db") as con:
+        con.execute("INSERT INTO collections (collection_id, name) VALUES (2, 'Letters')")
+        con.execute("INSERT INTO page_types (name, label, collection_id, unknown) VALUES ('unknown_2', 'Unknown', 2, 1)")
+    manifest = run_folder(tmp_path) / "manifest.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest.write_text(json.dumps({**data, "collection": 2}), encoding="utf-8")
+    loader.dump_into_db(manifest)
+    db = sqlite3.connect(tmp_path / "test.db")
+    assert db.execute("SELECT bundle_id, collection_id FROM bundles").fetchall() == [("216412", 2)]
+    assert {category for (category,) in db.execute("SELECT category FROM pages")} == {"unknown_2"}
+    assert db.execute("SELECT DISTINCT field_title FROM fields").fetchall() == [("text",)]  # an empty one each, to type into
 
 
 def test_each_page_records_the_prompt_and_template_versions_that_read_it(tmp_path, monkeypatch):

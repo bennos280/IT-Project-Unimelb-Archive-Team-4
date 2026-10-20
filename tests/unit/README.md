@@ -173,11 +173,20 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_survey_flags_grouping_problems_unreadable_text_and_other_pages`|A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.|
 
 ## `test_loader.py`
+Each test starts from a new database made by the migration, holding the Prest series (its page types, its survey level) and an item 216412 it lists with its PDF, as the app is set up.
+
 |Test|What it checks|
 |---|---|
 |`test_each_page_records_the_prompt_and_template_versions_that_read_it`|A page whose manifest entry has the hashes of a stored prompt and template version is stored with those versions; a hash no version has, or a page that wasn't read, leaves them empty.|
 |`test_consistency_conflicts_become_flags_on_the_fields_they_name`|A conflict in the run's consistency check (validation/output_flagged.json) becomes an `inconsistency` flag ("Consistency: ...") on each field it names that the page has, on the main form and the coded card; a resident's field, which isn't a page field, is skipped, and a "comparison incomplete" result makes no flag.|
+|`test_a_run_loads_its_records_inside_one_another_parents_first`|The records a run's grouping made are loaded with the record each sits in, each page into its own, and a grouping problem flagged on the field it names.|
+|`test_a_run_loads_into_the_series_its_manifest_names_reading_nothing_into_a_type_that_series_lacks`|A run whose manifest names series 2 loads its item into series 2, and a page labelled with a type series 2 doesn't have is stored as its Unknown type with no fields read into it.|
 |`test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`|A page read as a page type the db has no record of is stored as `other`, not refused.|
+|`test_a_page_sorting_was_unsure_about_is_stored_as_the_collections_unknown_type`|A page sorting sent to review is stored as its series' Unknown page type, whatever that is called.|
+|`test_a_collection_has_at_most_one_unknown_type_and_without_one_the_bundle_is_refused_by_name`|A series can't have a second Unknown page type (UNIQUE); with none, loading is refused with a message naming the item and the page, and nothing is loaded.|
+|`test_an_annotation_is_stored_with_its_area_when_the_page_type_has_it`|An annotation is stored with its area only when the page's type has that area (right margin on a main form, bottom left on a coded card); another type's area, a blank area and a transcript from before areas store none.|
+|`test_a_run_no_series_lists_is_refused_by_name`|A run of an item no series lists is refused with "No series lists <pdf>: add it to one from the app first." and nothing is loaded.|
+|`test_a_run_of_an_item_uploaded_to_a_series_loads_into_it`|A run of an item that was uploaded to a series (no series lists it from the archive) loads into that series.|
 |`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field, and an older model label listing every model Claude Code used (`claude-haiku-4-5-20251001+claude-opus-5-5`) is stored as the one the run asked for in its manifest (`opus`).|
 
 ## `test_schema.py`
@@ -260,6 +269,38 @@ Page types added from the review screen, and a page read again as another type.
 | `test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`   | An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).                                                                                                                                                  |
 | `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |
 | `test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`            | If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.                                                                                                                                                                                 |
+
+## `test_series_items.py`
+
+A series' dashboard asks for a page of its items at a time, searched, filtered and counted on the server.
+
+|Test|What it checks|
+|---|---|
+|`test_items_come_a_page_at_a_time_in_order_of_their_numbers_with_their_counts_and_the_series`|Items come a page at a time in order of their numbers (2, 9, 10, 100), each with its pages' counts and records (an item being transcribed, those so far), with how many match and how many there are, the counts of all the series' pages, the most pages and records any item has, and a page past the end gives the last.|
+|`test_items_are_found_by_number_title_or_identifier_and_by_status`|Search finds an item by its number, title or identifier, any case; each status filter finds the items the dashboard always showed for it.|
+|`test_an_item_is_given_by_its_number_or_bundle_id_with_its_pages`|One item comes with its pages; an item not loaded has none; an unknown item or series is 404.|
+|`test_a_record_names_its_item_as_the_dashboard_does`|A record's response names its item and its archive title, for the review screen's crumb.|
+|`test_an_item_gives_its_records_and_a_record_the_ones_it_sits_inside_top_first`|An item comes with its records, each with the one it sits in, and a record with the records it sits inside, top first, each named by its level (not one holding just it and no pages, which the item's page opens past), itself named by its own.|
+|`test_an_item_that_is_one_record_gives_it_so_the_dashboard_opens_it_straight_away`|An item's row gives its record only once all its pages are in it (a page in none, or another item: none), and the record then says it is its whole item.|
+
+## `test_record_levels.py`
+
+A series' levels of record (`PUT /collections/{id}/levels`), each with its name and what one is made of, in order, which the
+pipeline's group step reads; a series with none has each item as one record.
+
+|Test|What it checks|
+|---|---|
+|`test_prest_has_one_level_its_surveys_and_a_new_series_none`|The Prest survey has one level, its surveys (main pages start one, coded cards join by `number_of_dwelling`), and is grouped; a new series has none, its records are called "record", and each item is one.|
+|`test_a_level_is_named_in_lower_case_and_made_of_its_series_page_types_in_order`|A level's name is stored in lower case with single spaces and what one is made of in order; a bad name, another series' or an Unknown page type, a page type twice, a first one that doesn't start one or a later one that does, one matched by number with no number field, a number field with no page types to read it from, a bad field name, or a number field missing from a type's template (or a list or group of fields there) is refused with the reason, and nothing refused is saved.|
+|`test_the_number_field_must_stay_in_the_templates_of_the_page_types_that_group_by_it`|A template that drops a level's number field is refused while a type of that level groups by it, and saved once the level groups by page order.|
+|`test_with_no_levels_each_item_is_one_record_and_with_one_its_page_types_start_them`|A record of a series with no levels is a "record" with its free text under "Record details" and an Unknown page just to be checked; with a level its type starts, the series is grouped and its records take the level's name; with none again each item is one record.|
+|`test_an_unknown_page_grouped_with_others_is_flagged_as_part_of_their_survey`|An Unknown page in a Prest survey with other pages is flagged as in that survey because it follows the survey's first page, with its free text under "Survey details".|
+|`test_a_record_with_too_many_or_too_few_of_a_part_or_a_page_type_it_isnt_made_of_is_flagged`|Grouping flags a record with more of a part than it may have (at most one notes page, exactly one coded card), fewer (no coded card, or no notes page where there must be at least one), or a page type it isn't made of, but not an Unknown page, which is flagged as unread.|
+|`test_a_level_isnt_flagged_for_the_page_types_of_the_levels_below_and_its_problems_are_its_own`|A box holding surveys isn't flagged for their coded cards, which it isn't made of, and what it lacks is said of the box, though its first page is also its first survey's.|
+|`test_levels_tried_on_an_item_read_show_its_records_by_the_numbers_reviewers_saved_and_save_nothing`|`POST /collections/{id}/levels/preview` groups an item already read by levels not yet saved, from its page types and the numbers reviewers last saved (a corrected coded card joins its survey without a flag), with each record's pages, each page's type and each problem on a page with the record it's about; nested too, a box made of notes not flagged for its surveys' pages; saving nothing; an unknown item is 404 and a bad level refused as saving would.|
+|`test_levels_nest_top_first_and_a_page_type_can_need_a_number_field_for_each_level_it_groups`|A series' levels are saved top first, the bottom one naming its records; a page type grouping in several levels needs each one's number field; two levels can't share a name, and a refused save keeps the levels there were.|
+|`test_a_record_inside_another_says_so_is_named_by_its_level_and_its_export_keeps_it`|A record inside another gives its parent (none at the top) and is called by its own level's name (folder, letter), on its own and in its item's export; a record holding only records isn't exported; a record goes when the record it sits in goes.|
+|`test_an_unknown_page_of_an_item_that_is_one_record_isnt_said_to_follow_its_first_page`|In a series with no levels, an Unknown page sharing the item's record with others is just to be checked, not said to follow the record's first page.|
 
 ## `test_sorting_models.py`
 

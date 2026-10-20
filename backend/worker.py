@@ -13,7 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.dialects.sqlite import insert
 
 from backend import scans
-from backend.db import app_settings, database, instructions, loader, models
+from backend.db import app_settings, database, grouping, instructions, loader, models
 from backend.pipeline import run as pipeline
 from backend.common import ROOT, settings
 
@@ -149,11 +149,15 @@ def add_items(db, job, progress):
 def run_bundle(db, job, progress):
     pdf = ROOT / job.pdf
     out = ROOT / settings()["OUTPUT"] / pdf.stem
+    series = loader.series_of(loader.archive_owners(db), job.pdf)
+    if series is None:
+        raise SystemExit("no series lists this item: add it to one first")
     active = db.query(models.SortingModel).filter(models.SortingModel.active).first()
     if active and not (ROOT / active.path).is_file():
         raise SystemExit(f"page sorting model {active.model_id}'s file {active.path} is missing: choose another model, or retrain")
     run = pipeline.Run(pdf, out, progress=progress, texts=instructions.texts(db), #the newest versions, as the job starts
-                       sorting_model=ROOT / active.path if active else None)
+                       sorting_model=ROOT / active.path if active else None, grouping=grouping.rule(db, series),
+                       collection=series)
     run.transcription_config = {field.upper(): value for field, value in transcription_choice(db, job).items()}
     pipeline.run_steps(run, pipeline.FULL)
     if not run.pages:

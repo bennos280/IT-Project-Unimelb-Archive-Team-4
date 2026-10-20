@@ -357,3 +357,25 @@ test("the page's Transcribe dialog prefills nothing and links to Settings when n
   await expect(dialog).not.toBeVisible();
   expect(sent).toEqual([{ reviewerId: 1, revision: 0, model: "sonnet", provider: "claude", effort: "low" }]);
 });
+
+test("in a series whose pages don't group, a page can't move to another record and the screen uses the series' word", async ({ page }) => {
+  await page.route("**/scan.svg", (r) =>
+    r.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="500"/>' }));
+  await page.route("**/api/**", async (r) => {
+    const path = decodeURIComponent(new URL(r.request().url()).pathname);
+    const json = (body: unknown) => r.fulfill({ json: body });
+    if (path === "/api/reviewers") return json([{ id: 1, name: "Ben" }]);
+    if (path.startsWith("/api/reviews/")) return json({ reviews: {}, revisions: {} });
+    if (path.startsWith("/api/survey/"))
+      return json({ id: "b_00004", title: "Letters", recordName: "letter", grouped: false,
+                    pages: [{ id: "b_00004", type: "letter", imageUrl: "/scan.svg", fields: [], flags: [] }] });
+    if (path === "/api/page-actions/b_00004")
+      return json({ bundleId: "b", surveyId: "b_00004", category: "letter", revision: 0, hasReviews: false, job: null, surveys: [] });
+    return r.fulfill({ status: 404, json: { detail: path } });
+  });
+  await page.goto("/?survey=b_00004&page=b_00004");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Letter b_00004");
+  await page.getByRole("button", { name: "Page actions", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Change page type", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Move to another/ })).toHaveCount(0);
+});

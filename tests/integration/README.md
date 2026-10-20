@@ -60,6 +60,7 @@ if a live transcription model is ever called; everything else runs for real.
 | `test_transcription_reuse_requires_matching_inputs_and_result`                     | Cache invalidation: a changed image, label, model, effort, prompt, template, deleted result or edited result each force the right number of re-calls.                                                                   |
 | `test_the_command_line_transcribes_with_the_saved_choice_and_exits_without_one` | `--transcribe` reads the provider, model and effort saved on the Settings page; with none saved it exits with "Choose a transcription model on the Settings page first.", and without `--transcribe` no model is needed. |
 | `test_a_choice_with_a_blank_part_takes_that_part_from_the_saved_one` | A blank part of a given choice is filled from the saved choice, never overwritten by the blank. |
+| `test_the_command_line_skips_an_input_no_series_lists` | With no series listing a PDF, `run.main([])` returns 0, prints "skipped <name>: no series lists it; add it to one from the app first" and writes no output folder for it. |
 | `test_legacy_completed_manifest_still_skips_input`                                 | An older manifest format still counts as complete.                                                                                                                                                                      |
 | `test_failed_json_publication_keeps_previous_progress`                             | A failed atomic write leaves the old manifest byte-identical and drops no temp files.                                                                                                                                   |
 | `test_a_job_reads_each_page_with_its_texts_and_skips_a_page_type_with_no_template` | Given a job's texts (the db's newest prompt and templates), `step_transcribe` reads each page with them, skips a page type they have no template for, and records the prompt's hash for reuse.                          |
@@ -83,6 +84,12 @@ Pages → surveys (`step_group`), from stored transcriptions: no model calls.
 | Test                                              | What it checks                                                                                                                                                                                                                             |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `test_cards_join_the_main_form_with_their_number` | On a made-up bundle, each coded card joins the main form with its dwelling number (before or after it, or misfiled far away), second main sheets and flats (24A, 24B) stay separate surveys, and unreadable or reused numbers are flagged. |
+| `test_the_rule_not_the_page_type_names_decides` | Prest's pages with every page type renamed and the number in another field group into the same surveys, with the same problems, as Prest's own; the pages before the first starting page are flagged as belonging to no `return`. |
+| `test_without_a_number_field_pages_follow_the_page_that_starts_their_survey` | With no number field, every page (blank ones too) follows the page that starts its survey, and nothing is flagged. |
+| `test_with_no_page_type_that_starts_a_survey_each_page_is_one` | With a level no page type starts, each page is its own survey and a blank page is in none. |
+| `test_where_each_item_is_one_record_its_pages_are_one_whatever_their_types` | In a series whose items are each one record, every page but a blank one is in the item's record, named after the item, whatever its type and number, with nothing flagged. |
+| `test_a_level_groups_the_pages_of_each_record_of_the_level_above` | With two levels (folders of letters) each folder's letters are made from its own pages, named `<folder>-n<place>` (or `<folder>-<number>` with a number field), a folder's pages before its first letter stay in it unflagged, a letter's problem is flagged on its own number field, and the records are listed parents first. |
+| `test_a_level_below_sees_its_records_pages_in_scan_order_with_cards_matched_by_number_in_place` | A survey's coded card, matched to it by number, stays where it was scanned for the level below, so it stays in the survey rather than joining a section after it. |
 | `test_real_bundles_group_like_ash`                | 19 real bundles (`group/`, Opus 5.5 transcriptions + Ash's hand grouping of 589 surveys): at least `BASELINE` surveys match Ash exactly, and every one that does not is flagged for a human.                                               |
 
 ## `test_scans.py`
@@ -226,7 +233,7 @@ Survey consistency check run over a pipeline manifest (`validate_manifest`) with
 | `test_explicit_margin_codes_compare` | An industry-of-head code '0802' matches coded '802', and a coded '803' is flagged as an INDUSTRY OF HEAD CODE conflict. |
 | `test_nonpersonal_metadata_not_resident` | A resident row holding only a stray annotation, with no relationship, age or earning status, is not counted as a resident and gives no flags. |
 
-## `progress.spec.ts` — 21 tests (US9: track progress)
+## `progress.spec.ts` — 43 tests (US9: track progress)
 
 Located in `tests/integration/frontend/progress.spec.ts`. Run only these tests from the project folder:
 
@@ -236,10 +243,25 @@ npm --prefix tests run test:e2e -- progress.spec.ts
 
 | Test                                                                     | What it checks                                                                                                                                                                    |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `searches bundles and clears an empty result`                            | Bundle search finds a match; an unmatched search shows an empty state; Clear filters restores the list.                                                                           |
-| `disables pagination for one bundle and filters by status`               | Next is disabled for a single bundle, and Reviewed/Ready to review filters return the expected results.                                                                           |
-| `opens bundle pages with matching review targets`                        | Opening a bundle shows its pages and the correct survey/page review link; Back returns to all bundles.                                                                            |
-| `Import opens the import screen` | The Import button opens the import screen. |
+| `searches items and clears an empty result`                              | Item search finds a match; an unmatched search shows an empty state; Clear filters restores the list.                                                                             |
+| `disables pagination for one item and filters by status`                 | Next is disabled for a single item, and Reviewed/Ready to review filters return the expected results.                                                                             |
+| `opens item pages with matching review targets`                          | Opening an item shows its pages and the correct survey/page review link.                                                                                                          |
+| `an item that is one record opens it from the items list, which has no Total pages column when no item has more than one page` | A loaded item whose pages are all one record links straight to it, and with no item of more than one page or record the list has neither column. |
+| `an item of several records lists them, with their pages a switch away` | With an item of several records the list has a Records column; the item lists its records (each named by its number, with its pages, flags and status, linking to its first page), searched and filtered as records, with a Records / Pages switch to its pages that stays in the URL across reload and Back. |
+| `an item lists its top level, each record opening the level below, past a level with only one thing in it` | In a series of folders of letters, an item lists its folders (pages, flags and status counted over everything in each; one a move emptied left out), a folder opens its letters in-app (named by place when they have no numbers) with its own pages a click away, crumbs and heading naming it, its Pages switch listing only its pages; a folder holding one letter and nothing of its own opens that letter; the item's crumb comes back with Back intact. |
+| `an item's pages in no record are a click away from its records, as with a status only pages have` | A record is as far along as its least far page and opens at it (Transcribe, for a page awaiting transcription); an item's records list says how many of its pages are in no record, and Show pages lists them all; a status only pages have (as an older link may ask) lists the pages. |
+| `an archive item is listed by its title over its identifier and number, found by any of them, and its page links to the archive` | An item on the archive is listed by its title, with its identifier and number under it and one link per row; search finds it by title (any case), identifier or number; its page is headed and crumbed by the title and links the identifier to its archive page. |
+| `the Transcribe and error dialogs and the progress bar name an archive item by its title` | The Transcribe and Transcription error dialogs, and the row's progress bar label, use the item's title instead of its number. |
+| `with no transcription model saved, the dialog prefills nothing, links to Settings and still starts a run with the model picked there` | With no model saved the Transcribe dialog says so and links to Settings, starts with provider, model and effort empty and Start disabled, and starts the run with the choice made there. |
+| `with a transcription model saved, the dialog prefills it and shows no notice` | With a model saved the dialog starts on its provider, model and effort and shows no notice. |
+| `unassigned pages do not prevent 100% review progress` | Pages in no survey are left out of an item's review progress, which can reach 100% and says how many pages are not in a survey. |
+| `a page without a survey is not clickable but explains itself` | A page in no survey has no link, a dash with a tooltip saying why, and a plain cursor; a page in a survey keeps its View link. |
+| `an item with only unassigned pages has no review percentage` | An item whose pages are all in no survey shows "No reviewable pages" and how many are not in a survey, with no percentage or progress bar. |
+| `the overview asks for the URL's page, search and status, and shows the server's counts and totals` | The list is a page of items the server searched, filtered and counted: the dashboard asks for the URL's page, search and status and shows the server's counts and totals. |
+| `paging, searching and filtering each ask the server, which answers one page at a time` | Next, a search, a status and Clear filters each ask the server again, which answers nine items at a time. |
+| `an item's page asks only for that item, and for its partial results when it has a job and isn't loaded` | An item's page asks for that item only, and for its partial results when it has a job but isn't loaded. |
+| `an item that isn't there says so` | An unknown item shows the server's "No such item." in an alert and no rows. |
+| `a series whose pages don't group offers no grouping status` | For a series whose pages don't group into records, the Status filter has no "Not in a ..." option. |
 | `Pg 1/2/3 opens its matching US7 page` — 3 tests                         | Each page's Review link opens the matching page in the review screen.                                                                                                             |
 | `page table keeps actions visible at 936/640/375px` — 3 tests            | Flags and review actions remain visible without horizontal table overflow at desktop, tablet and phone widths.                                                                    |
 | `untouched item prompts Transcribe and shows no reviewable pages`        | An item without pages or a job shows No reviewable pages, the not-started message and an enabled Transcribe button beside the filters.                                            |
@@ -262,11 +284,11 @@ Related backend coverage lives in `tests/unit/test_progress.py` (5 tests): model
 
 ### US7 → US9 review round trip — 3 browser tests
 
-`review round trip: saved/unsaved/failed save updates progress only after persistence` opens a page from US9, reviews all fields in US7, and returns through Back to all bundles. An accepted save updates the reviewed count, ready count, percentage, page status, flags and View action, including after refresh. Unsaved drafts and rejected saves leave progress unchanged. These tests use a stateful mock API; they verify the screen-to-screen flow, not real database persistence.
+`review round trip: saved/unsaved/failed save updates progress only after persistence` opens an item that is one record from US9, at its first page, reviews all fields in US7, and returns through Back to All items. An accepted save updates the reviewed count, ready count, percentage, page status, flags and View action, including after refresh. Unsaved drafts and rejected saves leave progress unchanged. These tests use a stateful mock API; they verify the screen-to-screen flow, not real database persistence.
 
-## `page-actions.spec.ts` — 3 tests
+## `page-actions.spec.ts` — 5 tests
 
-Checks same-bundle moves, immediate type changes without queuing, persistence of the transcription prompt after refresh, and separate transcription with or without a preceding type change. Also checks editable model selection and the model table.
+Checks same-item moves, immediate type changes without queuing, persistence of the transcription prompt after refresh, and separate transcription with or without a preceding type change. Also checks editable model selection and the model table, and that in a series whose pages don't group a page can't be moved to another record and the screen uses the series' own word for one.
 
 ## Import screen browser tests — 5 tests
 

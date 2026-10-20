@@ -94,3 +94,24 @@ test.describe("items table", () => {
     await expect(page).toHaveURL("/?series=1");
   });
 });
+
+test.describe("an item's record table", () => {
+  const items: MockItem[] = [{ bundle: "R", name: "R", pages: ["a", "b", "c"].flatMap((id) => survey("R", id)) }];
+  test.beforeEach(async ({ page }) => {
+    await mock(page, items);
+    await page.goto("/?series=1&item=R");
+    await expect(rows(page)).toHaveCount(3);
+  });
+
+  for (const [index, id] of [[0, "a"], [1, "b"], [2, "c"]] as const) {
+    test(`a click on record ${id}'s plain cell opens record ${id}`, async ({ page }) => {
+      await plainCell(page, index).click();
+      await expect(page).toHaveURL(new RegExp(`[?]survey=R-${id}&`));
+    });
+  }
+
+  test("a click on the link text opens that record", async ({ page }) => {
+    await rows(page).nth(1).getByRole("link").click();
+    await expect(page).toHaveURL(/\?survey=R-b&/);
+  });
+});

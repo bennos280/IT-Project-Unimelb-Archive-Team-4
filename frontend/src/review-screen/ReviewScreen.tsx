@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import ImageViewer from "./ImageViewer";
-import { itemTitle, recordWords } from "../progress/backend";
+import { itemTitle, recordNumber, recordWords } from "../progress/backend";
 import type { useReviewSession } from "./useReviewSession";
 import { getPageName, isTextPage } from "./model";
 import type { Flag } from "./model";
@@ -129,9 +129,11 @@ export default function ReviewScreen({
   // The dashboard names an item by its name; the bundle id is accepted too when the survey doesn't say.
   const bundleLabel = survey?.item?.name || survey?.bundleId || "";
   const words = recordWords(survey?.recordName);
-  // A record that is its whole item is named by the item, with no step between them.
+  // A record that is its whole item is named by the item, with no step between them; one inside others follows them, each
+  // named by its level and its number within the one above, and opening its records on the item's page.
   const items = survey?.collectionId ? [{ label: "Items", href: `/?series=${survey.collectionId}` }] : [];
   const itemLink = `/?series=${survey?.collectionId ?? 1}&item=${encodeURIComponent(bundleLabel)}`;
+  const outer = survey?.ancestors ?? [];
   return (
     <>
       <AppHeader
@@ -139,7 +141,9 @@ export default function ReviewScreen({
         crumbs={survey?.wholeItem ? [...items, { label: itemTitle(bundleLabel, survey.item?.archive) }] : [
           ...items,
           ...(survey?.bundleId ? [{ label: itemTitle(bundleLabel, survey.item?.archive), href: itemLink }] : []),
-          { label: survey ? `${words.One} ${session.surveyId}` : session.surveyId || words.One },
+          ...outer.map((a) => ({ label: `${recordWords(a.name).One} ${recordNumber(a.id, a.parent ?? survey?.bundleId)}`,
+            href: `${itemLink}&record=${encodeURIComponent(a.id)}` })),
+          { label: survey ? `${words.One} ${recordNumber(session.surveyId, survey.parentId ?? survey.bundleId)}` : session.surveyId || words.One },
         ]}
       />
       <main>
@@ -505,7 +509,7 @@ export default function ReviewScreen({
                   <h2 className="mb-1 text-base font-semibold">
                     Transcript Review
                   </h2>
-                  <nav
+                  {survey.pages.length > 1 && <nav
                     className="flex items-center gap-3 text-sm"
                     aria-label={`${words.One} pages`}
                   >
@@ -530,7 +534,7 @@ export default function ReviewScreen({
                     >
                       <ChevronRight />
                     </Button>
-                  </nav>
+                  </nav>}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center" ref={setTranscribeToolbar} />

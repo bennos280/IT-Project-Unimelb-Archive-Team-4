@@ -50,11 +50,13 @@ class Bundle(Base):
     source_pdf = Column(String, nullable=False)
     collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
 
-#a record: its pages point at it
+#a record: its pages point at it, and one of a level below the top sits in its parent, a record of the level above (a folder's
+#letter in the folder); None: at the top, inside its item
 class Survey(Base):
     __tablename__ = "surveys"
     survey_id = Column(String, primary_key=True)
     bundle_id = Column(String, ForeignKey("bundles.bundle_id", ondelete="CASCADE"), nullable=False)
+    parent_id = Column(String, ForeignKey("surveys.survey_id", ondelete="CASCADE"), nullable=True)
 
 #the kinds of page; the four built in (main, notes, coded, other) can't be removed, others are added from the review screen.
 #name: the id that pages, jobs and templates use, unique across collections; label: what people see, unique within a collection

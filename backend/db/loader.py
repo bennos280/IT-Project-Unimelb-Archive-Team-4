@@ -29,6 +29,9 @@ def dump_into_db(manifest_path):
         types = con.exec_driver_sql("SELECT name, unknown FROM page_types WHERE collection_id ="
                                     " (SELECT collection_id FROM bundles WHERE bundle_id = ?)", (bundle_id,)).fetchall()
         page_types, unknown = {name for name, _ in types}, next((name for name, is_unknown in types if is_unknown), None)
+        for record in data.get("records", []):  #parents first; an older run's records are its pages' surveys, all at the top
+            con.exec_driver_sql("INSERT OR IGNORE INTO surveys(survey_id, bundle_id, parent_id) VALUES(?, ?, ?)",
+                                (record["id"], bundle_id, record["parent"]))
         for p in data["pages"]:
             if p.get("path") is None or p.get("label") in (None, "blank"):
                 continue
@@ -39,7 +42,9 @@ def dump_into_db(manifest_path):
                 raise ValueError(f"Bundle {bundle_id}'s collection has no Unknown page type to store {p['file']} as.")
             insert_page(Path(p["file"]).stem, page, stored_path(p["path"]), category,
                         p.get("survey"), bundle_id, con, transcripts.get(p["file"], {}).get("request") if page else None)
-        insert_flags(run_folder / "review.json", con)
+        keys = [key for (key,) in con.exec_driver_sql("SELECT record_key FROM record_levels WHERE record_key IS NOT NULL AND"
+                                                     " collection_id = (SELECT collection_id FROM bundles WHERE bundle_id = ?)", (bundle_id,))]
+        insert_flags(run_folder / "review.json", con, keys)
         insert_check_flags(run_folder / "validation" / "output_flagged.json", con)
 
 
@@ -109,16 +114,18 @@ def decode(title, raw):
                 meaning = text
     return meaning
 
-#grouping problems become flags, on the page's dwelling number if it has one
-def insert_flags(review_p, con):
+#grouping problems become flags, on the field a problem is about (its level's number field) if the page has it, else on any of
+#its collection's levels' number fields it has
+def insert_flags(review_p, con, keys):
     if not review_p.is_file():
         return
     for entry in json.loads(review_p.read_text(encoding="utf-8")):
         if entry.get("step") != "group":
             continue
         page_id = Path(entry["file"]).stem
-        field = con.exec_driver_sql("""SELECT field_title FROM fields WHERE page_id = ?
-            ORDER BY field_title != 'number_of_dwelling', rowid LIMIT 1""", (page_id,)).fetchone()
+        field = con.exec_driver_sql(f"""SELECT field_title FROM fields WHERE page_id = ?
+            ORDER BY field_title IS NOT ?, field_title NOT IN ({', '.join('?' * len(keys))}), rowid LIMIT 1""",
+                                    (page_id, entry.get("field"), *keys)).fetchone()
         if field is not None: #a blank page isn't in the db
             con.exec_driver_sql("""INSERT INTO flags(page_id, field_title, kind, reason)
                 VALUES(?, ?, 'inconsistency', ?)""", (page_id, field[0], "Grouping: " + entry["reason"].split(": ", 1)[-1]))
@@ -158,6 +165,8 @@ def archive_owners(db):
 
 #the series a run's item is loaded into: the one it was run for, else the one that lists it; a ValueError if none does
 def series(con, data):
+    if data.get("collection"):
+        return data["collection"]
     owners = dict(con.exec_driver_sql("SELECT CAST(node AS TEXT), collection_id FROM archive_items"
                                       " UNION ALL SELECT bundle, collection_id FROM uploaded_items").fetchall())
     found = series_of(owners, data["input"])

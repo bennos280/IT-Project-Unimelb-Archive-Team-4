@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
+import { Box, File, Layers, Plus } from "lucide-react";
 
 import AppHeader from "@/components/AppHeader";
 import SeriesHeader from "@/components/SeriesHeader";
@@ -12,26 +13,34 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { me } from "../person";
 import { backendRequest, seriesParam } from "../progress/backend";
+import { describe } from "./shapes";
 
 export type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; templateVersion: number | null };
+// One part of what a level's record is made of: a page type, how many of it one has, and how its pages are found (one starts
+// it, the next follow the page before them, or are matched by number wherever they were filed).
+export type Part = { type: string; count: "one" | "one_or_more" | "any" | "at_most_one"; how: "starts" | "follows" | "matched" };
+// A level of record between an item and its pages: what one is called, what one is made of in order, and the field holding its
+// number (null: page order only).
+export type Level = { name: string; parts: Part[]; key: string | null };
 export type Collection = {
-  id: number; name: string; recordName: string; grouped: boolean; archiveIdentifier?: string | null;
+  id: number; name: string; levels: Level[]; recordName: string; grouped: boolean; archiveIdentifier?: string | null;
   archiveSeries?: number | null;
 };
 type Version = { id: number; body: string; reviewer: string | null; note: string | null; createdAt: string };
 
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
-const SECTIONS = ["page-types"];
+const start = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+const SECTIONS = ["levels", "page-types"];
 
-// A series' Setup tab: its page types (what each is called, the template its pages are read
+// A series' Setup tab: its levels of record, its page types (what each is called, the template its pages are read
 // with). The one shown is in the URL (?section=; the old ?view=page-types
 // opens the page types).
 export default function PageTypesScreen() {
   const params = new URLSearchParams(location.search);
   const collectionId = Number(seriesParam(params)) || 1;
   const [section, setSection] = useState(() => SECTIONS.find((s) => s === params.get("section"))
-    ?? "page-types");
+    ?? (params.get("view") === "page-types" ? "page-types" : "levels"));
   function show(next: string) {
     const url = new URL(location.href);
     url.searchParams.set("section", next);
@@ -55,7 +64,7 @@ export default function PageTypesScreen() {
     }).catch((e) => setLoadError(message(e, "Could not load the page types."))), [collectionId]);
   useEffect(() => {
     void load();
-    // Shown again by Back, it loads again.
+    // Shown again by Back, it loads again: a level saved meanwhile shows.
     const restored = (e: PageTransitionEvent) => { if (e.persisted) void load(); };
     window.addEventListener("pageshow", restored);
     return () => window.removeEventListener("pageshow", restored);
@@ -76,8 +85,12 @@ export default function PageTypesScreen() {
         )}
         <Tabs value={section} onValueChange={show} className="gap-6">
           <TabsList aria-label="Setup">
+            <TabsTrigger value="levels">Levels</TabsTrigger>
             <TabsTrigger value="page-types">Page types</TabsTrigger>
           </TabsList>
+          <TabsContent value="levels">
+            {collection && types && <Levels collection={collection} types={types} />}
+          </TabsContent>
           <TabsContent value="page-types">
             {types && (
               <section className="space-y-3">
@@ -124,6 +137,50 @@ export default function PageTypesScreen() {
           onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
       )}
     </div>
+  );
+}
+
+// One rung of the levels' ladder, indented under the one above.
+function Rung({ depth, icon, name, how, fixed, children }: {
+  depth: number; icon: ReactNode; name: string; how: string; fixed?: boolean; children?: ReactNode;
+}) {
+  return (
+    <li className={`flex items-center gap-3 rounded-md border px-3 py-2 text-sm ${fixed ? "bg-muted/50 text-muted-foreground" : ""}`}
+      style={{ marginLeft: `${depth * 1.5}rem` }}>
+      <span aria-hidden="true" className="[&_svg]:size-4">{icon}</span>
+      <span className={`min-w-20 font-medium ${fixed ? "" : "text-foreground"}`}>{name}</span>
+      <span className="flex-1 text-muted-foreground">{how}</span>
+      {children}
+    </li>
+  );
+}
+
+// The series' levels of record between an item and its pages, top first, as a ladder from Item to Page, each opening its own
+// page; with none, each item is one record. A level added goes inside the bottom one.
+function Levels({ collection, types }: { collection: Collection; types: PageType[] }) {
+  const levels = collection.levels;
+  const levelLink = (place: number | "new") => `/?series=${collection.id}&view=setup&level=${place}`;
+  const label = (name: string) => types.find((t) => t.name === name)?.label ?? name;
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight">Levels</h2>
+        <p className="text-sm text-muted-foreground">
+          How an item's pages group into records for review, each level inside the one above. Changes apply to items read from now on.
+        </p>
+      </div>
+      <ol aria-label="Levels" className="max-w-2xl space-y-1.5">
+        <Rung depth={0} icon={<Box />} name="Item" how="From the archive" fixed />
+        {levels.map((level, i) => (
+          <Rung key={level.name} depth={i + 1} icon={<Layers />} name={start(level.name)} how={describe(level, label)}>
+            <Button variant="outline" size="sm" asChild><a href={levelLink(i + 1)} aria-label={`Edit ${level.name}`}>Edit</a></Button>
+          </Rung>
+        ))}
+        <Rung depth={levels.length + 1} icon={<File />} name="Page" how="From the scan" fixed />
+      </ol>
+      {!levels.length && <p className="text-sm text-muted-foreground">No levels: each item is one record.</p>}
+      <Button variant="outline" asChild><a href={levelLink("new")}><Plus /> Add level</a></Button>
+    </section>
   );
 }
 

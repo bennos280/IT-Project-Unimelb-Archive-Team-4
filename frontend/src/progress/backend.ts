@@ -39,6 +39,10 @@ export function recordWords(one = "record") {
 }
 // An item's name on screen: its title on the archive, else its number.
 export const itemTitle = (name: string, archive?: ArchiveItem | null) => archive?.title ?? `Item ${name}`;
+// A record's id without that of the item or record it sits in at the start ("216412-24A" of item 216412: "24A"), and one with
+// no number of its own by its place ("f-n2" of record f: "#2", not to be taken for a number 2), as the item lists it.
+export const recordNumber = (id: string, within = "") =>
+  ((within && id.startsWith(within) && id.slice(within.length).replace(/^[-_]/, "")) || id).replace(/^n(?=\d+$)/, "#");
 // An item as the series' items list gives it, with its current processing job.
 // loaded means it has been imported into the database; job can be absent; archive is null when it isn't one of the series' archive items.
 export type AvailableBundle = {
