@@ -38,6 +38,13 @@ class ArchiveItem(Base):
     pdf = Column(String, nullable=True) #where its PDF goes once downloaded: <node>/<node>.pdf, or <node>/<file id>_<name>.pdf when
                                         #the file was named (the Prest survey's); None: none known
 
+#which of its series' page types a page of an item not yet read is, as said while setting the series up on it (a sample)
+class SampleLabel(Base):
+    __tablename__ = "sample_labels"
+    node = Column(Integer, ForeignKey("archive_items.node"), primary_key=True)
+    page = Column(Integer, primary_key=True) #its page in its PDF, from 1
+    page_type = Column(String, ForeignKey("page_types.name"), nullable=False)
+
 #an item uploaded on the Import screen (its number: its folder in DATA), and the series it was uploaded to
 class UploadedItem(Base):
     __tablename__ = "uploaded_items"

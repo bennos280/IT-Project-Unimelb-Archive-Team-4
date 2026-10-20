@@ -8,6 +8,7 @@ type Level = { name: string; parts: Part[]; key: string | null };
 const MAIN_PART = { type: "main", count: "one_or_more", how: "starts" };
 const NOTES_PART = { type: "notes", count: "any", how: "follows" };
 const CODED_PART = { type: "coded", count: "one", how: "matched" };
+const PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="; // a PNG, one pixel
 type Version = { id: number; body: string; rules: object; reviewer: string | null; note: string | null; createdAt: string };
 type CheckVersion = { id: number; number: number; checks: object[]; reviewer: string | null; note: string | null; createdAt: string };
 const type = (name: string, label: string, over: Partial<PageType> = {}): PageType => ({
@@ -24,6 +25,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
   ];
   const collection = {
     id: 1, name: "Wilfred Prest Survey", levels: [{ name: "survey", parts, key: recordKey }] as Level[],
+    pageTypes: 3, templates: 3, pages: 2, unknownPages: 0, bundles: 1, running: 0,
     get recordName() { return this.levels.at(-1)?.name ?? "record"; },
     get grouped() { return Boolean(this.levels[0]?.parts.length); },
   };
@@ -48,6 +50,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
     if (path === "/api/reviewers") return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
     if (path === "/api/collections/1" && method === "GET") return route.fulfill({ json: collection });
     if (path === "/api/export/bundles") return route.fulfill({ json: [{ id: "b1", name: "216412" }] });
+    if (path === "/api/pages/b1_00002/thumbnail") return route.fulfill({ contentType: "image/png", body: Buffer.from(PIXEL, "base64") }); // others aren't here
     if (path === "/api/collections/1/levels/preview" && method === "POST") {
       calls.tried.push(request.postDataJSON());
       return route.fulfill({ json: { records: [{ id: "b1-3", parent: null, pages: ["b1_00002", "b1_00003"] },
@@ -510,9 +513,13 @@ test("a level's settings are tried on an item already read before they're saved,
   await expect(records.locator("p:first-child")).toHaveText(["Not in a survey · Pg 1", "Survey 3 · Pg 2–3", "Survey 7 · Pg 4–5"]);
   await expect(preview.getByRole("list", { name: "Records" })).toHaveCSS("display", "grid"); // side by side where there's room: none sits in another
   await expect(records.nth(2)).toContainText("expected one Coded page, found 2");
+  // each page as a small scan, named by its type and place, opening the whole scan; one not on this computer says so
   const scans = records.nth(1).getByRole("link");
   await expect(scans.first()).toHaveAccessibleName("Main page · Pg 2");
   await expect(scans.first()).toHaveAttribute("href", "/api/pages/b1_00002/image");
+  await expect(scans.first().locator("img")).toHaveAttribute("src", "/api/pages/b1_00002/thumbnail");
+  await expect(scans.last()).toContainText("No scan here");
+  await expect(scans.last().locator("img")).toHaveCount(0);
   await problems.click();
   await expect(records.locator("p:first-child")).toHaveText(["Survey 7 · Pg 4–5"]);
   await preview.getByRole("button", { name: "Show all surveys" }).click();

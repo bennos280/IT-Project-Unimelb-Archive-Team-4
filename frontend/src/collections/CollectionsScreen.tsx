@@ -12,13 +12,14 @@ import { Progress as ProgressBar } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableOpenArrow, TableRow, TableRowLink } from "@/components/ui/table";
 import { ARCHIVE, backendRequest } from "../progress/backend";
+import { isSetUp } from "../progress/setup";
 import type { Reviewer } from "../review-screen/api";
 import Welcome from "./Welcome";
 
 type Collection = {
   id: number; name: string; archiveSeries: number | null; archiveIdentifier: string | null; archiveTitle: string | null;
   archiveItems: number | null; bundles: number; running: number; failed: number; pages: number; reviewable: number; reviewed: number;
-  unknownPages: number; flagged: number;
+  unknownPages: number; flagged: number; pageTypes: number; templates: number;
 };
 type Series = { id: number; title: string; identifier: string; date: string; access: string; items: number | null; url: string };
 type Lookup = { node: number; series?: Series; error?: string };
@@ -146,9 +147,10 @@ function Attention({ collection: c }: { collection: Collection }) {
   );
 }
 
-// How far a collection's review has got.
+// How far a collection's review has got; until it's set up, a link to setting it up on its Items page.
 function Progress({ collection: c }: { collection: Collection }) {
   const note = (text: string) => <span className="text-muted-foreground">{text}</span>;
+  if (!isSetUp(c)) return <a href={`/?series=${c.id}`} className="underline">Next: set up series</a>;
   if (!c.reviewable) return note("No pages to review yet");
   const percent = Math.round((c.reviewed / c.reviewable) * 100);
   return (

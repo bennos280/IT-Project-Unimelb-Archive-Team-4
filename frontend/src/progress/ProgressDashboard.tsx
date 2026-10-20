@@ -38,6 +38,7 @@ import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
 import type { ModelData } from "./ModelControls";
 import JobErrorDialog from "./JobErrorDialog";
 import AddItemsDialog from "./AddItemsDialog";
+import SetupChecklist from "./SetupChecklist";
 // One row of the overview: an item, its processing job, its page counts and, when it is one record, that record.
 type Row = AvailableBundle & { counts: Counts; record?: string | null };
 // A page of the series' items, as the server filters and pages them; totals cover every page of the series, and most is the
@@ -419,6 +420,7 @@ export default function ProgressDashboard() {
         ) : (
           <>
             <SeriesHeader series={{ id: collectionId, ...series }} tab="items" actions={actions} />
+            <SetupChecklist collectionId={collectionId} />
             <div>
               <h2 className="text-xl font-semibold tracking-tight">All items</h2>
               <p className="text-sm text-muted-foreground">
