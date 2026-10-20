@@ -19,6 +19,8 @@ type Options = {
   testStatus?: number;
   gateTests?: boolean; // hold test replies until calls.release()
   transcriptionOptions?: object; // the body of GET /transcription-options; without it the request fails and the text boxes stay
+  sorting?: "local" | "model"; localSorting?: boolean; // page sorting saved (left out: the reading model), whether PyTorch is here
+  sortingModels?: object[]; // the body of GET /api/sorting-models
   apiKeys?: object[]; // the body of GET /api/api-keys
 };
 
@@ -31,6 +33,10 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
     get: 0, apiKeys, post: [] as string[], delete: [] as string[], loginBody: [] as unknown[],
     put: [] as unknown[], deletes: 0, logout: [] as string[], logoutBody: [] as unknown[], tests: [] as string[], testBody: [] as unknown[],
     release: () => release(),
+  };
+  const sorting = {
+    method: options.sorting ?? "model", unsure: "review", sorter: null as unknown, localAvailable: options.localSorting ?? true,
+    saved: [] as unknown[], active: [] as unknown[], retrains: [] as unknown[],
   };
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -80,11 +86,34 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
       return route.fulfill({ json: options.transcriptionOptions });
     if (path === "/api/transcription-models")
       return route.fulfill({ json: { configured: defaults, models: [] } });
+    if (path === "/api/page-sorting" && request.method() === "PUT") {
+      const change = request.postDataJSON();
+      sorting.saved.push(change);
+      Object.assign(sorting, change.sameAsTranscription ? { sorter: null } : change);
+    }
+    if (path === "/api/page-sorting") {
+      const { method, unsure, sorter, localAvailable } = sorting;
+      return route.fulfill({ json: { method, unsure, sorter, localAvailable } });
+    }
+    if (path === "/api/sorting-models/active") {
+      sorting.active.push(request.postDataJSON());
+      return route.fulfill({ json: { active: request.postDataJSON().modelId } });
+    }
+    if (path === "/api/sorting-models" && request.method() === "POST") {
+      sorting.retrains.push(request.postDataJSON());
+      return route.fulfill({ status: 202, json: {} });
+    }
+    if (path === "/api/sorting-models") return route.fulfill({ json: options.sortingModels ?? [] });
     if (path === "/api/api-keys") return route.fulfill({ json: apiKeys });
     if (path === "/api/progress" || path === "/api/bundles") return route.fulfill({ json: [] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
-  return calls;
+  return Object.assign(calls, { sorting });
+}
+
+// The Settings page with both accounts signed in, and page sorting as options says: what was saved for it.
+async function mockSorting(page: Page, options: Options = {}) {
+  return (await mockApi(page, { claude: ready(), codex: ready({ method: "chatgpt" }) }, options)).sorting;
 }
 
 const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -895,4 +924,36 @@ test("the ready line's status element is on the page before the line appears, an
   await expect(live).toHaveText("Ready to transcribe · sonnet · low on Claude Code");
   await expect(live).not.toHaveClass(/sr-only/);
   expect(await node!.evaluate((el) => el.isConnected)).toBe(true);
+});
+
+
+const sortingCard = (page: Page) => page.locator("section#page-sorting");
+
+test("a cheaper reading model can sort, at the lowest effort, or the transcription model again", async ({ page }) => {
+  const sorting = await mockSorting(page, { transcriptionOptions: OPTIONS });
+  await page.goto("/?view=settings");
+  const chooser = sortingCard(page).getByLabel("Model that sorts");
+  await chooser.selectOption({ label: "sonnet (latest)" });
+  await expect.poll(() => sorting.saved).toEqual([{ sorter: { provider: "claude", model: "sonnet", effort: "low" } }]);
+  await chooser.selectOption({ label: "GPT B" }); // offers only high
+  await expect.poll(() => sorting.saved.at(-1)).toEqual({ sorter: { provider: "codex", model: "gpt-b", effort: "high" } });
+  await chooser.selectOption("Same as the transcription model");
+  await expect.poll(() => sorting.saved.at(-1)).toEqual({ sameAsTranscription: true });
+  await expect(chooser).toHaveValue("");
+});
+
+test("this computer's sorting can use a retrained version that passed its check, and be retrained", async ({ page }) => {
+  const sorting = await mockSorting(page, { sorting: "local", sortingModels: [
+    { id: 4, passed: false, active: false, createdAt: "2026-10-02T00:00:00Z", pages: 130 },
+    { id: 3, passed: true, active: false, createdAt: "2026-10-01T00:00:00Z", pages: 120 },
+  ] });
+  await page.goto("/?view=settings");
+  const card = sortingCard(page);
+  const version = card.getByLabel("Trained version");
+  await expect(version.locator("option")).toHaveCount(2); // the failed one isn't offered
+  await version.selectOption({ index: 1 });
+  await expect.poll(() => sorting.active).toEqual([{ modelId: 3, reviewerId: 1 }]);
+  await card.getByRole("button", { name: "Retrain on reviewed pages" }).click();
+  await expect(card).toContainText("Waiting for the worker");
+  expect(sorting.retrains).toEqual([{ reviewerId: 1 }]);
 });

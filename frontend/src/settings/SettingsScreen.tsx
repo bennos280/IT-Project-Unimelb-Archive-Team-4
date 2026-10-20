@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { backendRequest, providerNames } from "../progress/backend";
 import type { ModelChoice } from "../progress/ModelControls";
 import ApiKeys, { type ApiKey } from "./ApiKeys";
+import PageSorting from "./PageSorting";
 
 const hasKey = (k: ApiKey) => !k.needsKey || k.saved || k.fromEnvironment; // Ollama needs none
 import TranscriptionDefaults from "./TranscriptionDefaults";
@@ -209,6 +210,7 @@ export default function SettingsScreen() {
               ...Object.fromEntries(apiKeys.map((k) => [k.provider, hasKey(k)])) }} />
           </div>
           <TranscriptionDefaults notReady={notReady} onSaved={setSaved} version={keysVersion} />
+          <PageSorting />
           <section id="connections" className="space-y-3">
             <div>
               <h2 className="text-xl font-semibold tracking-tight">Accounts</h2>

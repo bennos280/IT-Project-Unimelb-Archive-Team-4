@@ -38,6 +38,11 @@ class Run:
     grouping: dict | None = None                         # how pages group into records (backend.db.grouping.rule); None: one each
     records: list[dict] = field(default_factory=list)    # every record grouping made, parents first: its id and its parent's
     collection: int | None = None                        # the series the item is loaded into; None: the one that lists it
+    page_types: set[str] | None = None                   # the labels the series has; sorting's others are review. None: any
+    sorting: str = "local"                               # sorting pages: "local", the model on this computer, or "model", the reading model
+    page_type_labels: dict[str, str] | None = None       # the series' page types by name, as the reading model is told them
+    sorter: dict[str, str] | None = None                 # the reading model that sorts ({provider, model, effort}); None: transcription's
+    unsure_to_model: bool = False                        # a page the model on this computer isn't sure of goes to the reading model
     progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
 
     def flag(self, page: dict, step: str, reason: str, field: str | None = None, record: str | None = None) -> None:
@@ -150,13 +155,28 @@ def step_split(run: Run) -> None:
 
 def step_identify(run: Run) -> None:
     """Each page -> label main / notes / coded / blank (or a page type sorting was retrained on), or review when the
-    model isn't sure."""
-    from backend.pipeline.identify.identify import identify_pages
+    model isn't sure or the label isn't one of the series' page types (run.page_types). Sorted by the model on this computer,
+    or, run.sorting "model", by the reading model (the transcription choice) told the series' page types."""
     images = find_images(run.images or run.input)
     run.pages = [{"file": p.name, "path": str(p)} for p in images]
-    for page, r in zip(run.pages, identify_pages(images, run.sorting_model)):
-        page.update(label=r["label"], confidence=r["confidence"], distance=r["distance"])
-        if r["label"] == REVIEW:
+    def by_model(paths):
+        from backend.pipeline.identify.by_model import sort_pages
+        chosen = run.sorter or {f: value for f, value in (run.transcription_config or transcription_config()).items()}
+        sorter = run.sorter or {f: chosen[f.upper()] for f in ("provider", "model", "effort")}
+        return sort_pages(paths, run.page_type_labels or {}, sorter, lambda done, total: run.progress("identify", done, total))
+    if run.sorting == "model":
+        sorted_pages = by_model(images)
+    else:
+        from backend.pipeline.identify.identify import identify_pages
+        sorted_pages = identify_pages(images, run.sorting_model)
+        unsure = [i for i, r in enumerate(sorted_pages) if r["label"] == REVIEW or (run.page_types is not None and r["label"] not in run.page_types)]
+        if run.unsure_to_model and unsure:  # the pages it isn't sure of, asked of the reading model
+            for i, r in zip(unsure, by_model([images[i] for i in unsure])):
+                sorted_pages[i] = r
+    for page, r in zip(run.pages, sorted_pages):
+        label = r["label"] if run.page_types is None or r["label"] in run.page_types else REVIEW
+        page.update(label=label, confidence=r["confidence"], distance=r["distance"])
+        if label == REVIEW:
             run.flag(page, "identify", "unlike any known page type; check highest distance first")
 
 def transcription_config(chosen: dict | None = None) -> dict:

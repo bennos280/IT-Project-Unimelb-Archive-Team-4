@@ -1624,6 +1624,38 @@ async def open_state(request: Request, db: Session = Depends(get_db)):
     return {"opened": True}
 
 
+#--PAGE SORTING--# how pages are sorted into page types: on this computer (PyTorch, where installed) or by the reading model
+class Sorter(BaseModel):
+    provider: str
+    model: str
+    effort: str
+
+#each field left out stays as it is; sorter null: the transcription choice sorts again
+class PageSortingRequest(BaseModel):
+    method: Literal["local", "model"] | None = None
+    unsure: Literal["review", "model"] | None = None
+    sorter: Sorter | None = None
+    sameAsTranscription: bool = False
+
+#how pages are sorted: the method, what a page the model here isn't sure of does, the reading model that sorts (null: the
+#transcription choice), whether PyTorch is here
+@app.get("/page-sorting")
+def get_page_sorting(db: Session = Depends(get_db)):
+    return {**app_settings.sorting_settings(db), "localAvailable": app_settings.local_sorting_available()}
+
+@app.put("/page-sorting")
+def put_page_sorting(payload: PageSortingRequest, db: Session = Depends(get_db)):
+    if payload.method == "local" and not app_settings.local_sorting_available():
+        raise HTTPException(status_code=400, detail="PyTorch isn't installed on this computer, so pages can't be sorted here.")
+    if payload.sorter:
+        check_transcription(payload.sorter.provider, payload.sorter.model, payload.sorter.effort)
+    write_lock(db)
+    if payload.method:
+        app_settings.save_page_sorting(db, payload.method)
+    app_settings.save_sorting_settings(db, unsure=payload.unsure,
+                                       sorter=None if payload.sameAsTranscription else payload.sorter.model_dump() if payload.sorter else False)
+    return get_page_sorting(db)
+
 
 #--API KEYS--# for transcribing through an AI company's API (backend/pipeline/transcribe/providers.py): kept on this computer,
 #never in the database, and never sent back; each provider says whether it has one, and where to get one

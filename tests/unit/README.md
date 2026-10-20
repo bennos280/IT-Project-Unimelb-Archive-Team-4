@@ -244,6 +244,10 @@ The pipeline and loader are faked: no model calls. Job state is read through a s
 |`test_pdf_with_no_pages_fails_instead_of_loading_nothing`|A PDF with no pages fails with a reason instead of ending done with nothing loaded.|
 |`test_stopping_the_worker_marks_its_job_failed`|Ctrl+C during a job marks it failed, so it doesn't show as running forever.|
 |`test_job_cut_off_by_a_stopped_worker_can_be_run_again`|A job still marked running when the worker starts (killed or crashed) is marked failed, so it can be run again.|
+|`test_an_item_of_another_series_runs_with_that_series_page_types_and_rule`|A job for an item another series lists runs into that series, with its grouping rule, record name and page types only.|
+|`test_a_series_without_the_built_in_types_may_have_blank_pages_whenever_the_reading_model_sorts`|A series with no built-in page types may have blank pages when the reading model sorts or takes what this computer is unsure of, and not otherwise.|
+|`test_the_retrained_weights_are_only_needed_when_the_model_on_this_computer_runs`|The active retrained model's weights file is looked up only when sorting is on this computer: with the reading model a missing file is no matter, and on this computer the job fails saying it is missing.|
+|`test_an_item_of_the_prest_survey_runs_keeping_its_blank_pages_out`|An item the Wilfred Prest Survey lists runs as its, sorting into its types and dropping blank pages.|
 |`test_an_item_no_series_lists_fails_without_running`|A job for an item no series lists is marked failed ("no series lists this item: add it to one first") and the pipeline is never run.|
 |`test_only_one_worker_runs_at_a_time`|A second worker exits while one is running (two would run a bundle into the same output folder), and can start once the first has stopped.|
 
@@ -293,6 +297,32 @@ A series' checks across fields (`backend/db/checks.py`): saved as versions, and 
 | `test_the_prest_surveys_children_living_and_dead_add_up_to_the_total` | Living plus dead children must be the total. |
 | `test_names_and_codes_are_checked_when_saved` | A names check needs one field each side; as is values or codes. |
 
+## `test_page_sorting.py`
+
+How pages are sorted into page types: on this computer (PyTorch) or by the reading model, as the Settings page says.
+
+|Test|What it checks|
+|---|---|
+|`test_the_reading_model_names_each_pages_type_or_says_blank_and_anything_else_waits_for_review`|The reading model is shown each page with the series' page types by name and label, blank and unsure; a name of one of them (in any case) or blank is the page's label, anything else waits for review; progress is told each page.|
+|`test_a_run_set_to_the_reading_model_sorts_with_it_and_flags_what_it_cant_place`|A run set to sort by the reading model asks it with the series' page types and the transcription choice, and flags a page it can't place for review.|
+|`test_pages_are_asked_of_the_reading_model_at_once_and_come_back_in_order`|Pages are asked of the reading model several at a time (up to `READERS`), come back in page order, and progress is told after each page.|
+|`test_a_page_whose_request_fails_waits_for_review_unless_every_request_fails`|A page whose request fails waits for review with no confidence; if every request fails, the first error is raised.|
+|`test_page_sorting_is_by_the_reading_model_until_this_computer_is_chosen`|Unsaved, pages are sorted by the reading model; this computer can be chosen and is kept; any other choice is refused.|
+|`test_without_pytorch_pages_are_sorted_by_the_reading_model_and_this_computer_cant_be_chosen`|Without PyTorch, pages are sorted by the reading model and choosing this computer is refused with why.|
+|`test_a_cheaper_reading_model_can_sort_and_what_this_computer_isnt_sure_of_can_go_to_it`|A reading model for sorting, apart from the transcription one, and sending what this computer isn't sure of to it, are saved without changing the method; an unknown provider is refused.|
+|`test_pages_this_computer_isnt_sure_of_are_asked_of_the_reading_model_when_set`|With that set, the pages this computer is unsure of, or sorts into a type the series hasn't, are asked of the reading model with the saved choice.|
+
+## `test_settings_api.py`
+
+What the home page's Save a PrestCribe file ask of the API: `GET /state`.
+
+|Test|What it checks|
+|---|---|
+|`test_a_saved_file_holds_everything_unless_only_the_setup_is_asked_for`|`GET /state` has every table's rows, named `.prestcribe`; `?content=everything` is the same.|
+|`test_a_setup_only_file_keeps_the_series_and_how_theyre_read_but_no_pages_or_this_computers_choices`|`?content=setup` keeps the series, page types, record levels and people, leaves out bundles, pages, fields and this computer's settings, is named "PrestCribe setup", and leaves what is here as it was.|
+|`test_a_file_can_be_saved_as_only_everything_or_the_setup`|Any other `content` is refused (422).|
+|`test_a_setup_only_file_opened_here_keeps_this_computers_own_choices`|`POST /state` with a setup-only file (no app settings) keeps this computer's own settings, such as page sorting, and takes the rest from the file.|
+
 ## `test_page_types.py`
 
 Page types added from the review screen, and a page read again as another type.
@@ -332,6 +362,7 @@ A series' items listed from the archive (a fake archive here) and added to its l
 |`test_a_run_saves_the_series_it_is_loaded_into`|A run's manifest names the series its item is loaded into.|
 |`test_an_added_items_pdf_is_its_newest_original_looked_up_when_it_is_downloaded`|An added item's PDF is its newest original, found on its download page when it is downloaded; an item with none says so.|
 |`test_a_page_takes_only_a_page_type_of_its_own_series`|Changing a page's type to another series' type is refused.|
+|`test_sorting_gives_only_the_series_own_page_types_and_sends_the_rest_to_review`|Sorting's label outside the series' page types becomes review, and is flagged.|
 |`test_an_upload_cant_take_the_number_of_an_item_added_from_the_archive`|An upload can't use the number of an item added from the archive, nor give another number a PDF named as that item's.|
 |`test_an_items_pages_can_be_seen_before_it_is_read_its_pdf_downloaded_once_to_where_reading_it_looks`|An item's count of pages and each page as a scan can be had before it is read, its PDF downloaded from the archive once into the place reading it looks, the item still listed once and unread; a page it hasn't, another series' item, and one the archive has no PDF of are refused (404, 404, 502).|
 |`test_an_item_of_the_archives_known_pdfs_is_seen_from_its_pdf_there`|An item whose archive PDF is recorded (`ArchiveItem.pdf`) is downloaded as that PDF and seen from it; a page asked for wider than the large size comes at that size.|
@@ -383,7 +414,7 @@ Page sorting retrained from the review screen; page fingerprints are made up, so
 | `test_a_retraining_that_fails_its_check_is_not_kept`                             | Settled pages a model can't tell from main forms fail the check, and no model is written.                                                                                                                                                                                              |
 | `test_the_worker_trains_on_settled_pages_and_uses_a_model_that_passes`           | A training job uses the pages reviewers settled (not other or unchecked pages, nor a new type with fewer than 10), records the model with its reviewer and a note of what was left out, and makes it the only active one.                                                              |
 | `test_a_model_that_fails_its_check_is_recorded_but_not_used`                     | A model that fails is recorded with its check, but not kept or used.                                                                                                                                                                                                                   |
-| `test_a_bundle_job_sorts_with_the_active_model`                                  | A bundle job sorts pages with the active model's weights; if that file is gone, the job fails saying so.                                                                                                                                                                               |
+| `test_a_bundle_job_sorts_with_the_active_model`                                  | With sorting on this computer, a bundle job sorts pages with the active model's weights; if that file is gone, the job fails saying so.                                                                                                                                                                               |
 | `test_sorting_models_are_trained_listed_and_chosen_through_the_api`              | `POST /sorting-models` queues one training (409 while waiting; 400 for an unknown reviewer); the list is newest first; `PUT /sorting-models/active` refuses an unknown (404) or failed (400) model, makes a passed one the only active one, and `null` goes back to the shipped model. |
 |`test_moves_do_not_make_unreviewed_pages_training_examples` — 2 tests|Repeated moves increase revisions and reject stale requests without making an unreviewed page eligible for sorting training. A previously reviewed page stays eligible after moving.|
 

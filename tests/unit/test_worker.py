@@ -2,7 +2,7 @@
 import logging
 import pytest
 
-from backend.db import models
+from backend.db import app_settings, models
 from backend import worker
 
 
@@ -126,6 +126,73 @@ def test_only_one_worker_runs_at_a_time(tmp_path, monkeypatch):
         worker.only_worker()
     lock.release()
     worker.only_worker().release()  # free again once the first worker has stopped
+
+
+def test_an_item_of_another_series_runs_with_that_series_page_types_and_rule(db, tmp_path, monkeypatch):
+    db.add(models.Collection(collection_id=2, name="Letters"))
+    db.flush()
+    db.add_all([models.PageType(name="unknown_2", label="Unknown", collection_id=2, unknown=True),
+                models.PageType(name="docket", label="Docket", collection_id=2),
+                models.RecordLevel(collection_id=2, position=1, name="letter", parts='[{"type": "docket", "count": "one", "how": "starts"}]'),
+                models.ArchiveItem(node=216441, collection_id=2, identifier="UMA-IT-1", title="A file")])
+    db.commit()
+    queue(db, tmp_path, series=None)  # tmp/216441/a.pdf: an item series 2 lists
+    runs = []
+    fake_pipeline(monkeypatch, lambda run: runs.append(run) or run.pages.append({"file": "a_00001.png"}))
+    worker.work_once(db)
+    [run] = runs
+    assert (run.collection, run.page_types, run.grouping["levels"]) == (
+        2, {"docket", "blank"}, [{"name": "letter", "parts": [{"type": "docket", "count": "one", "how": "starts"}], "key": None,
+                         "starts": ["docket"], "matched": []}])
+
+
+def sort_pages_by(db, method, unsure="review"):
+    db.add_all([models.AppSetting(key=app_settings.SORTING, value=method), models.AppSetting(key=app_settings.UNSURE, value=unsure)])
+    db.commit()
+
+
+def test_a_series_without_the_built_in_types_may_have_blank_pages_whenever_the_reading_model_sorts(db, tmp_path, monkeypatch):
+    db.add(models.Collection(collection_id=2, name="Letters"))
+    db.flush()
+    db.add_all([models.PageType(name="docket", label="Docket", collection_id=2),
+                models.ArchiveItem(node=216441, collection_id=2, identifier="UMA-IT-1", title="A file")])
+    sort_pages_by(db, "local", unsure="model")
+    monkeypatch.setattr(app_settings, "local_sorting_available", lambda: True)
+    queue(db, tmp_path, series=None)
+    runs = []
+    fake_pipeline(monkeypatch, lambda run: runs.append(run) or run.pages.append({"file": "a_00001.png"}))
+    worker.work_once(db)
+    for setting in db.query(models.AppSetting).filter_by(key=app_settings.UNSURE):
+        setting.value = "review"
+    db.commit()
+    queue(db, tmp_path, series=None)
+    worker.work_once(db)
+    assert [run.page_types for run in runs] == [{"docket", "blank"}, {"docket"}]
+
+
+def test_the_retrained_weights_are_only_needed_when_the_model_on_this_computer_runs(db, tmp_path, committed, monkeypatch):
+    db.add(models.SortingModel(path=str(tmp_path / "gone.npz"), page_types="main", pages=1, answered=1, wrong=0, passed=True, active=True))
+    sort_pages_by(db, "model")
+    job = queue(db, tmp_path)
+    runs = []
+    fake_pipeline(monkeypatch, lambda run: runs.append(run) or run.pages.append({"file": "a_00001.png"}))
+    worker.work_once(db)
+    assert (committed(job).status, [run.sorting_model for run in runs]) == ("done", [None])
+    monkeypatch.setattr(app_settings, "local_sorting_available", lambda: True)
+    db.query(models.AppSetting).filter_by(key=app_settings.SORTING).one().value = "local"
+    job = queue(db, tmp_path, series=None)
+    worker.work_once(db)
+    assert committed(job).status == "failed" and "file" in committed(job).error and "is missing" in committed(job).error
+    assert len(runs) == 1
+
+
+def test_an_item_of_the_prest_survey_runs_keeping_its_blank_pages_out(db, tmp_path, monkeypatch):
+    queue(db, tmp_path)
+    runs = []
+    fake_pipeline(monkeypatch, lambda run: runs.append(run) or run.pages.append({"file": "a_00001.png"}))
+    worker.work_once(db)
+    [run] = runs
+    assert run.collection == 1 and {"main", "coded", "notes", "blank"} <= run.page_types and "other" not in run.page_types
 
 
 def test_an_item_no_series_lists_fails_without_running(db, committed, tmp_path, monkeypatch):

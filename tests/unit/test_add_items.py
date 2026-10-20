@@ -251,6 +251,19 @@ def test_a_page_takes_only_a_page_type_of_its_own_series(client, db):
     assert (refused.status_code, refused.json()["detail"]) == (400, "No page type called docket in this page's series.")
 
 
+def test_sorting_gives_only_the_series_own_page_types_and_sends_the_rest_to_review(tmp_path, monkeypatch):
+    from backend.pipeline import run as pipeline
+    from backend.pipeline.identify import identify
+    for n in (1, 2):
+        (tmp_path / f"b_{n:05d}.png").write_bytes(b"")
+    monkeypatch.setattr(identify, "identify_pages", lambda images, model: [
+        {"label": "main", "confidence": 1.0, "distance": 0.0}, {"label": "docket", "confidence": 1.0, "distance": 0.0}])
+    run = pipeline.Run(tmp_path, tmp_path / "out", page_types={"docket"})
+    pipeline.step_identify(run)
+    assert [p["label"] for p in run.pages] == ["review", "docket"]
+    assert [r["file"] for r in run.review] == ["b_00001.png"]
+
+
 def test_an_upload_cant_take_the_number_of_an_item_added_from_the_archive(client, db, tmp_path, monkeypatch):
     from backend.api import uploads
     monkeypatch.setattr(uploads, "settings", lambda: {"DATA": str(tmp_path)})

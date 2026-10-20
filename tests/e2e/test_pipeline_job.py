@@ -10,7 +10,7 @@ from backend.db import models, database
 from backend.api import main
 from backend import worker
 from backend.pipeline import run
-from backend.pipeline.identify import identify
+from backend.pipeline.identify import by_model, identify
 from backend.pipeline.transcribe import transcribe as transcription
 
 # a bundle of two surveys: each a main form and its coded card, numbered 7 and 9 in pencil
@@ -31,6 +31,9 @@ def setup(tmp_path, monkeypatch):
         monkeypatch.setattr(module, "settings", lambda: config)
     monkeypatch.setattr(identify, "identify_pages",
                         lambda images, weights=None: [{"label": label, "confidence": 1.0, "distance": 0.0} for label, _ in PAGES])
+    monkeypatch.setattr(by_model, "sort_pages",  # pages are sorted by the reading model unless this computer is chosen
+                        lambda paths, types, choice, progress: [{"path": path, "label": label, "confidence": 1.0, "distance": 0.0}
+                                                                for path, (label, _) in zip(paths, PAGES)])
 
     def transcribe(image, kind, **options):
         number = PAGES[int(image.stem[-5:]) - 1][1]
