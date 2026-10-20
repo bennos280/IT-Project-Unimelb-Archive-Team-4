@@ -25,6 +25,7 @@ survey = "backend.pipeline.run:main"
 app = "backend.serve:main"
 api = "backend.serve:api"
 worker = "backend.worker:main"
+prestcribe = "backend.serve:installed"
 
 [build-system]
 requires = ["setuptools>=70"]

@@ -229,7 +229,7 @@ The `uv run app` and `uv run api` commands (`backend/serve.py`), with the progra
 | `test_the_api_stopping_by_itself_stops_the_worker`              | It starts uvicorn on `backend.api.main:app` and `backend.worker`; when the API stops by itself (e.g. port 8000 in use), the worker is stopped too.         |
 | `test_ctrl_c_waits_for_both_to_stop_themselves`                 | After Ctrl+C it waits for the API and the worker to stop themselves, and doesn't kill the worker, so a running job is marked failed and resumes next time. |
 | `test_api_runs_just_the_api_restarting_on_backend_code_changes` | `uv run api` runs only the API, reloading when files under `backend/` change.                                                                              |
-| `test_every_command_points_at_a_function`                       | Each command in `pyproject.toml` (`survey`, `app`, `api`, `worker`) names a function that exists, so a typo there fails here.                              |
+| `test_every_command_points_at_a_function`                       | Each command in `pyproject.toml` (`survey`, `app`, `api`, `worker`, `prestcribe`) names a function that exists, so a typo there fails here.                              |
 
 ## `test_worker.py`
 The pipeline and loader are faked: no model calls. Job state is read through a second connection, as the API sees it.

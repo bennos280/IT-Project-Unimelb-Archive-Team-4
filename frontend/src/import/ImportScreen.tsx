@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { backendRequest } from "../progress/backend";
 
-// Opens a PrestCribe file in place of everything here: a series' setup (like the Prest survey's) or
+// Opens a PrestCribe file in place of everything here: a series' setup (like the Prest survey's, from the release page) or
 // work saved from Export on another computer. What was here is kept as a backup (POST /state).
 export default function ImportScreen() {
   const [file, setFile] = useState<File | null>(null);

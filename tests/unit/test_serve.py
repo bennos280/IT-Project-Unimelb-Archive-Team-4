@@ -64,7 +64,7 @@ def test_api_runs_just_the_api_restarting_on_backend_code_changes(monkeypatch, m
 
 def test_every_command_points_at_a_function():
     scripts = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["scripts"]
-    assert set(scripts) == {"survey", "app", "api", "worker"}
+    assert set(scripts) == {"survey", "app", "api", "worker", "prestcribe"}
     for target in scripts.values():
         module, function = target.split(":")
         assert callable(getattr(importlib.import_module(module), function)), target
