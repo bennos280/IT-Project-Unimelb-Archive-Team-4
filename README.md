@@ -1,8 +1,7 @@
-# Prest survey digitisation (Team 4)
+# PrestCribe
 
-1940s University of Melbourne social survey scans -> data. Each PDF page is labelled
-(main / notes / coded / blank, or **review** when the model isn't sure) and, optionally,
-transcribed to JSON by a vision model. Pages a human must check land in `review.json`.
+Turns scanned records from the University of Melbourne Archives into checked, searchable data: add a series, set it up on one
+sample item, read the rest, then check each record.
 
 ## Setup
 
