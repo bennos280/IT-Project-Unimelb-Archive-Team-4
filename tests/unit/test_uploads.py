@@ -123,7 +123,7 @@ def test_pdf_names_that_differ_only_by_case_are_the_same_bundle(client, db, stor
 def test_an_upload_needs_a_series_and_an_item_number_stays_with_its_first(client, db, storage, pdf):
     assert send(client, pdf, "910", collection=99).json()["detail"] == "Choose the series these files are for."
     assert client.post("/bundles/upload", params={"bundle": "910", "filename": "A.pdf"}, content=pdf).status_code == 422
-    db.add(models.Collection(collection_id=2, name="Ships"))
+    db.add(models.Collection(collection_id=2, name="Ships", archive_series=7))
     db.commit()
     assert send(client, pdf, "910").status_code == 201
     assert db.get(models.UploadedItem, "910").collection_id == 1

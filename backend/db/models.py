@@ -7,6 +7,10 @@ class Collection(Base):
     __tablename__ = "collections"
     collection_id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
+    archive_series = Column(Integer, nullable=True) #its series on archives.library.unimelb.edu.au: /nodes/view/<archive_series>
+    archive_identifier = Column(String, nullable=True) #the series' catalogue identifier (UMA-SR-...), title and number of
+    archive_title = Column(String, nullable=True) #items, as the archive showed them when the series was linked
+    archive_items = Column(Integer, nullable=True)
 
 #a level of record between a collection's items and their pages, the top one (position 1) first: what one is called, what one
 #is made of in order (JSON list of parts, each {type: a page type's name, count: one | one_or_more | any | at_most_one, how:

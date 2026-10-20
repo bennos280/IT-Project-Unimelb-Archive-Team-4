@@ -11,20 +11,21 @@ const pages = ["main", "notes"].map((type, index) => ({
   fields: [{ id: "address", label: "Address", group: "Address", value: "Sample value" }],
   flags: [],
 }));
-const COLLECTION = { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", recordName: "survey", grouped: true,
-  pageTypes: 3, templates: 3, pages: 2, unknownPages: 0, bundles: 1, running: 0 };
-const DIARIES = { ...COLLECTION, id: 2, name: "Strathfieldsaye Estate Diaries" };
+const COLLECTION = { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", recordName: "survey", grouped: true, archiveSeries: 499420,
+  archiveIdentifier: "UMA-SR-000000842", pageTypes: 3, templates: 3, pages: 2, unknownPages: 0, bundles: 1, running: 0 };
+const DIARIES = { ...COLLECTION, id: 2, name: "Strathfieldsaye Estate Diaries", archiveSeries: 524173, archiveIdentifier: "UMA-SR-000001769" };
 
-// noItemInfo leaves the item's name out of the survey, as an older server would. The item holds a second
+// noItemInfo leaves the item's name and archive title out of the survey, as an older server would. The item holds a second
 // survey (one more page), so it isn't one record; whole makes the survey say it is its whole item.
-async function mockApi(page: Page, { noItemInfo = false, whole = false } = {}) {
+async function mockApi(page: Page, { noItemInfo = false, archive = false, whole = false } = {}) {
+  const archiveItem = archive ? { identifier: "UMA-ITE-1973000200006", title: "Brunswick 02 - Part 3" } : null;
   await page.route("**/test-scan.svg", (route) =>
     route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"/>' }),
   );
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
     const served = serveItems([{
-      bundle: "pdf-216417", name: "216417", pdf: "216417/pdf-216417.pdf",
+      bundle: "pdf-216417", name: "216417", pdf: "216417/pdf-216417.pdf", archive: archiveItem,
       pages: [...pages, { id: "216417/p2", type: "main" }].map((p, i) => ({
         id: p.id, label: `Pg ${i + 1}`, category: p.type, status: "Ready to review", flagCount: 0,
         surveyId: i < pages.length ? "216417_1" : "216417_2", reviewPageId: p.id,
@@ -35,7 +36,7 @@ async function mockApi(page: Page, { noItemInfo = false, whole = false } = {}) {
       return route.fulfill({ json: {
         id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", recordName: "survey", grouped: true, pages,
         wholeItem: whole,
-        ...(noItemInfo ? {} : { item: { name: "216417" } }),
+        ...(noItemInfo ? {} : { item: { name: "216417", archive: archiveItem } }),
       } });
     if (path === "/api/reviews/216417_1") return route.fulfill({ json: { reviews: {}, revisions: {} } });
     if (path === "/api/reviewers") return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
@@ -75,6 +76,7 @@ test("a series' items name it in the series menu and its heading, with its Items
   await page.keyboard.press("Escape");
   await expect(crumbs(page)).toHaveCount(0);
   await expect(page.locator("h1")).toHaveText("Wilfred Prest Survey");
+  await expect(page.getByRole("link", { name: "UMA-SR-000000842" })).toHaveAttribute("href", "https://archives.library.unimelb.edu.au/nodes/view/499420");
   await expect(tabs(page)).toHaveText(["Items", "Setup"]);
   await expect(tabs(page).first()).toHaveAttribute("aria-current", "page");
   await expect(tabs(page).last()).toHaveAttribute("href", "/?series=1&view=setup");
@@ -169,6 +171,24 @@ test("a record that is its whole item is named by the item, with no step between
   await expect(itemsCrumb(page)).toHaveAttribute("href", "/?series=1");
 });
 
+
+test("an item on the archive is named by its title in the review screen's crumbs and on its own page", async ({ page }) => {
+  await mockApi(page, { archive: true });
+  await page.goto("/?survey=216417_1&page=216417%2Fp0");
+  await expect(crumbs(page)).toHaveText(["Items", "Brunswick 02 - Part 3", "Survey 216417_1"]);
+  await trail(page).getByRole("link", { name: "Brunswick 02 - Part 3" }).click();
+  await expect(page).toHaveURL("/?series=1&item=216417");
+  await expect(current(page)).toHaveText("Brunswick 02 - Part 3");
+});
+
+test("the review screen names its item from the survey and asks for no list of items", async ({ page }) => {
+  await mockApi(page, { archive: true });
+  const asked: string[] = [];
+  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
+  await page.goto("/?survey=216417_1&page=216417%2Fp0");
+  await expect(crumbs(page)).toHaveText(["Items", "Brunswick 02 - Part 3", "Survey 216417_1"]);
+  expect(asked.filter((path) => /^\/api\/(bundles|progress|collections\/\d+\/items)/.test(path))).toEqual([]);
+});
 
 test("the review screen's Items crumb opens the series' items", async ({ page }) => {
   await mockApi(page);

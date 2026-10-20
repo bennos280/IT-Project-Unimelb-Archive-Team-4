@@ -87,12 +87,17 @@ Pages → surveys (`step_group`), from stored transcriptions: no model calls.
 
 ## `test_scans.py`
 
-The archive's real download page for Box Hill 00 (bundle 216412), saved as `archive/download_216412.html`, so the
-code that reads it is checked against the archive's own markup, not only the tests' stand-in.
+Real archive pages saved in `archive/` (Box Hill 00's download page; the Strathfieldsaye Estate Diaries' series page, list of
+items and a search of it; a search of the Red Cross cards; a card's page; a diary's download page), so the code that reads
+them is checked against the archive's own markup, not only the tests' stand-in.
 
 | Test                                                             | What it checks                                                                                                                                             |
 | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_the_archives_real_download_page_gives_every_page_its_file` | Reading the real page finds all 227 pages in order, each with its file id (page 1 → 423448, page 227 → 425881).                                            |
+| `test_a_series_real_list_of_items_is_read_with_which_can_be_downloaded` | The diaries' page links to their list; reading it gives all 18 items with title, identifier and number, and the one with no scans can't be downloaded. |
+| `test_a_real_search_result_keeps_the_fields_its_matches_are_highlighted_in` | In a search's results, an identifier the archive highlighted part of is read whole. |
+| `test_a_real_reading_room_card_is_listed_as_not_downloadable` | A card for the Reading Room only ("Access restrictions apply") is listed as not downloadable. |
+| `test_a_real_items_page_names_its_series_and_its_download_page_its_original_pdf` | A card's page gives its title, identifier and series; a diary's download page gives its original PDF's file id. |
 | `test_no_test_reaches_the_internet`                              | A plain `urllib` request to the archive fails during tests: `tests/conftest.py` blocks every internet lookup but this computer's own.                      |
 | `test_a_scan_the_archive_cant_send_is_logged_with_the_reason`    | A page scan the archive can't send comes back as none and logs one warning naming the bundle, the page and the error, and when the archive is asked again. |
 

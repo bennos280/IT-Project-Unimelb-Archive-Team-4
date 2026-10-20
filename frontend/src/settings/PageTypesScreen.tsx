@@ -15,7 +15,8 @@ import { backendRequest, seriesParam } from "../progress/backend";
 
 export type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; templateVersion: number | null };
 export type Collection = {
-  id: number; name: string; recordName: string; grouped: boolean;
+  id: number; name: string; recordName: string; grouped: boolean; archiveIdentifier?: string | null;
+  archiveSeries?: number | null;
 };
 type Version = { id: number; body: string; reviewer: string | null; note: string | null; createdAt: string };
 
@@ -64,7 +65,8 @@ export default function PageTypesScreen() {
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader series={{ id: collectionId, name: collection?.name ?? "" }} />
       <main className="space-y-8 p-6">
-        <SeriesHeader series={{ id: collectionId, name: collection?.name ?? "" }} tab="setup" />
+        <SeriesHeader series={{ id: collectionId, name: collection?.name ?? "", archiveIdentifier: collection?.archiveIdentifier,
+          archiveSeries: collection?.archiveSeries }} tab="setup" />
         {loadError && (
           <Alert variant="destructive">
             <AlertDescription className="flex flex-wrap items-center gap-2">

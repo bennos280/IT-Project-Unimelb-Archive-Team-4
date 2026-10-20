@@ -339,6 +339,7 @@ test.describe("Progress and transcription states", () => {
       status?: string;
       partial?: boolean;
       count?: number;
+      archive?: boolean;
     } = {},
   ) {
     const loaded = options.loaded ?? false;
@@ -355,6 +356,7 @@ test.describe("Progress and transcription states", () => {
       : null;
     const items: MockItem[] = [{
       bundle: "b", name: "216424", pdf: "b.pdf", loaded, job,
+      archive: options.archive ? { identifier: "UMA-ITE-1973000200013", title: "Collingwood 07" } : null,
       pages: loaded ? Array.from({ length: options.count ?? 2 }, (_, i) =>
         ({ ...readyPage(i + 1) })) : [],
     }];
@@ -386,8 +388,42 @@ test.describe("Progress and transcription states", () => {
   }
 
   async function openBundle(page: Page) {
-    await page.getByRole("link", { name: "216424", exact: true }).click();
+    await page.goto("/?series=1&item=216424");
   }
+
+  test("an archive item is listed by its title over its identifier and number, found by any of them, and its page links to the archive", async ({
+    page,
+  }) => {
+    await mock(page, { loaded: true, archive: true });
+    const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "Collingwood 07", exact: true }) });
+    await expect(row).toContainText("UMA-ITE-1973000200013 · 216424");
+    await expect(row.getByRole("link")).toHaveCount(1);
+    for (const [query, found] of [["collingwood", 1], ["UMA-ITE-1973000200013", 1], ["216424", 1], ["brighton", 0]] as const) {
+      await page.getByLabel("Search items").fill(query);
+      await expect(row).toHaveCount(found);
+    }
+    await page.getByLabel("Search items").fill("");
+    await openBundle(page);
+    await expect(page.getByRole("heading", { name: "Collingwood 07", level: 1 })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator('[aria-current="page"]')).toHaveText("Collingwood 07");
+    const archive = page.getByRole("link", { name: "UMA-ITE-1973000200013" });
+    await expect(archive).toHaveAttribute("href", "https://archives.library.unimelb.edu.au/nodes/view/216424");
+    await expect(archive).toHaveAttribute("target", "_blank");
+    await expect(page.locator("main")).toContainText("UMA-ITE-1973000200013 · 216424 · 2 pages ready to review");
+  });
+
+  test("the Transcribe and error dialogs and the progress bar name an archive item by its title", async ({ page }) => {
+    await mock(page, { status: "failed", archive: true });
+    const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "Collingwood 07", exact: true }) });
+    await row.getByRole("button", { name: "Retry transcription", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Transcribe scans" })).toHaveAccessibleDescription("Collingwood 07");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await row.getByRole("button", { name: "more details here" }).click();
+    await expect(page.getByRole("dialog", { name: "Transcription error" })).toHaveAccessibleDescription("Collingwood 07");
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await mock(page, { loaded: true, archive: true });
+    await expect(page.getByRole("progressbar", { name: "Collingwood 07 review progress" })).toBeVisible();
+  });
 
   test("a series whose pages don't group offers no grouping status", async ({ page }) => {
     await mock(page, { loaded: true });
@@ -809,6 +845,50 @@ test.describe("The server pages, searches and filters the overview", () => {
   // The different requests made, in order; the dev build's remount asks for the first one twice.
   const distinct = (asked: URL[]) => [...new Set(asked.map((url) => url.search))].map((query) => Object.fromEntries(new URLSearchParams(query)));
   const onePage: MockPage = { id: "p1", label: "Pg 1", category: "Main page", status: "Ready to review", flagCount: 0, surveyId: "s", reviewPageId: "p1" };
+
+  test("the overview asks for the URL's page, search and status, and shows the server's counts and totals", async ({ page }) => {
+    const asked: URL[] = [];
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/collections/1") return route.fulfill({ json: SERIES });
+      if (url.pathname === "/api/collections/1/items") {
+        asked.push(url);
+        return route.fulfill({
+          json: {
+            items: [
+              { bundle: "b1", name: "216412", pdf: "b1.pdf", loaded: true, job: null, archive: { identifier: "UMA-ITE-1973000200001", title: "Box Hill 00" },
+                counts: { total: 227, reviewable: 220, unassigned: 7, reviewed: 110, ready: 110 } },
+              { bundle: "b2", name: "216413", pdf: "b2.pdf", loaded: true, job: null, archive: null,
+                counts: { total: 4, reviewable: 4, unassigned: 0, reviewed: 0, ready: 4 } },
+            ],
+            page: 2, total: 20, all: 40,
+            totals: { total: 9000, reviewable: 8700, unassigned: 300, reviewed: 1744, ready: 6956 },
+          },
+        });
+      }
+      return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${url.pathname}` } });
+    });
+    await page.goto("/?series=1&page=3&q=box&status=Reviewed");
+    const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "Box Hill 00", exact: true }) });
+    await expect(row.getByRole("cell").nth(1)).toHaveText("227");
+    await expect(row.getByRole("cell").nth(2)).toHaveText("110");
+    await expect(meter(row)).toContainText("110 / 220 reviewed · 50%");
+    await expect(meter(row)).toContainText("7 pages not in a survey");
+    await expect(meter(bundleRows(page).filter({ has: page.getByRole("link", { name: "216413", exact: true }) }))).toContainText("0 / 4 reviewed · 0%");
+    await expect(page.getByTestId("stat-total-pages")).toHaveText("9,000");
+    await expect(page.getByTestId("stat-reviewed")).toHaveText("1,744");
+    await expect(page.getByTestId("stat-ready-to-review")).toHaveText("6,956");
+    await expect(page.locator("main")).toContainText("Track review progress across 40 items");
+    await expect(page.getByText("Showing 19–20 of 20 items")).toBeVisible();
+    await expect(page.getByText("Page 3 of 3")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+    await expect(page.getByLabel("Search items")).toHaveValue("box");
+    await expect(page.getByLabel("Status", { exact: true })).toHaveValue("Reviewed");
+    expect(distinct(asked)).toEqual([{ page: "2", size: "9", search: "box", status: "Reviewed" }]);
+    await page.getByRole("button", { name: "Previous", exact: true }).click();
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "1", size: "9", search: "box", status: "Reviewed" });
+    await expect(page).toHaveURL(/page=2/);
+  });
 
   test("paging, searching and filtering each ask the server, which answers one page at a time", async ({ page }) => {
     const asked: URL[] = [];

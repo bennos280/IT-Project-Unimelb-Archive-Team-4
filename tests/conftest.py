@@ -5,6 +5,7 @@ import io
 import socket
 from email.message import Message
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlparse
 from urllib.request import HTTPCookieProcessor
 from urllib.response import addinfourl
 
@@ -33,7 +34,6 @@ def offline(monkeypatch):
     lookup = socket.getaddrinfo
     monkeypatch.setattr(scans, "build_opener", unreachable)
     monkeypatch.setattr(socket, "getaddrinfo", this_computer_only)
-    monkeypatch.setattr(scans, "ARCHIVE_PDFS", [])
     monkeypatch.setattr(scans, "failed", {})
 
 
@@ -50,7 +50,7 @@ class FakeArchive:
     sends a file only to one that keeps cookies and has opened a download page. A file id in cut_short breaks off halfway."""
 
     def __init__(self):
-        self.pages, self.files, self.requests, self.cut_short = {}, {}, [], set()
+        self.pages, self.files, self.requests, self.cut_short, self.views, self.listings = {}, {}, [], set(), {}, {}
 
     def add(self, bundle, pages, pdf=None):
         """A bundle's download page listing its pages ({page number: (file id, bytes)}) and its PDF ((file id, bytes))."""
@@ -71,6 +71,12 @@ class FakeArchive:
                 kind, _, key = path.rpartition("/")
                 if not any(name == "User-Agent" for name, _ in self.addheaders):
                     raise HTTPError(url, 403, "Forbidden", Message(), None)
+                if path.startswith("/nodes/browse?"):  #a list: by its filter and node, else by its node
+                    query = parse_qs(urlparse(path).query)
+                    listing = archive.listings.get(f"{query.get('filter', [''])[0]}:{query['bid'][0]}", archive.listings.get(query["bid"][0], ""))
+                    return response(listing.encode(), "text/html")
+                if kind == "/nodes/view" and key in archive.views:
+                    return response(archive.views[key].encode(), "text/html")
                 if kind == "/nodes/download" and key in archive.pages:
                     opened.append(key)
                     return response(archive.pages[key].encode(), "text/html")

@@ -10,7 +10,7 @@ import { keepPerson } from "../person";
 import { createReviewer, getReviewers, type Reviewer } from "../review-screen/api";
 
 const STEPS = [
-  { icon: Library, text: "Add a series" },
+  { icon: Library, text: "Add a series from the University of Melbourne Archives" },
   { icon: ListChecks, text: "Read the rest, then check each record" },
 ];
 

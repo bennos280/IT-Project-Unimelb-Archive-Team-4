@@ -1,7 +1,7 @@
 import ExportDialog from "../export/ExportDialog";
 // Bundle overview and page list
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { ArrowRight, Search } from "lucide-react";
+import { ArrowRight, ExternalLink, Search } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import SeriesHeader from "@/components/SeriesHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -28,7 +28,7 @@ import {
   type ProgressPage,
   type PageStatus,
 } from "./progressData";
-import { backendRequest, itemParam, itemTitle, jobStages, providerNames, recordWords, seriesParam, type AvailableBundle } from "./backend";
+import { ARCHIVE, backendRequest, itemParam, itemTitle, jobStages, providerNames, recordWords, seriesParam, type AvailableBundle } from "./backend";
 import TranscriptionDialog, { type ModelChoice } from "./TranscriptionDialog";
 import type { ModelData } from "./ModelControls";
 import JobErrorDialog from "./JobErrorDialog";
@@ -65,10 +65,11 @@ export default function ProgressDashboard() {
   // The series whose items these are (/?series=<id>).
   const collectionId = Number(seriesParam(new URLSearchParams(location.search))) || 1;
   // Until the series loads it has no name, its records are "records" and they group, so nothing flickers away.
-  const [series, setSeries] = useState<{ name: string; recordName: string; grouped: boolean }>({ name: "", recordName: "record", grouped: true });
+  // archiveSeries is the series' node on the archive: undefined until it loads, null when none is linked. archiveItems is how many items it had when linked.
+  const [series, setSeries] = useState<{ name: string; recordName: string; grouped: boolean; archiveSeries?: number | null; archiveItems: number | null; archiveIdentifier?: string | null }>({ name: "", recordName: "record", grouped: true, archiveItems: null });
   useEffect(() => {
-    backendRequest<{ name: string; recordName: string; grouped: boolean }>(`/collections/${collectionId}`)
-      .then(({ name, recordName, grouped }) => setSeries({ name, recordName, grouped }))
+    backendRequest<{ name: string; recordName: string; grouped: boolean; archiveSeries?: number | null; archiveItems?: number | null; archiveIdentifier?: string | null }>(`/collections/${collectionId}`)
+      .then(({ name, recordName, grouped, archiveSeries, archiveItems, archiveIdentifier }) => setSeries({ name, recordName, grouped, archiveSeries: archiveSeries ?? null, archiveItems: archiveItems ?? null, archiveIdentifier }))
       .catch(() => {});
   }, [collectionId]);
   const words = recordWords(series.recordName);
@@ -330,15 +331,24 @@ export default function ProgressDashboard() {
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader series={{ id: collectionId, name: series.name }}
         crumbs={item ? [{ label: "Items", href: `/?series=${collectionId}`, onClick: backToOverview },
-          { label: itemTitle(item.name) }] : []} />
+          { label: itemTitle(item.name, item.archive) }] : []} />
       <main className="space-y-4 p-6">
         {item || bundleName ? (
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">
-                {item ? itemTitle(item.name) : itemTitle(bundleName!)}
+                {item ? itemTitle(item.name, item.archive) : itemTitle(bundleName!)}
               </h1>
               <p className="text-sm text-muted-foreground">
+                {item?.archive && (
+                  <>
+                    <a href={`${ARCHIVE}/nodes/view/${item.name}`} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 hover:underline">
+                      {item.archive.identifier} <ExternalLink aria-hidden="true" className="size-3.5" />
+                    </a>
+                    {` · ${item.name} · `}
+                  </>
+                )}
                 {item ? `${totals.ready} pages ready to review` : ""}
               </p>
             </div>
@@ -426,7 +436,7 @@ export default function ProgressDashboard() {
                   aria-label={item ? "Search pages" : "Search items"}
                   placeholder={
                     item ? "Search page number…"
-                      : "Search item number…"
+                      : overview?.items.some((b) => b.archive) ? "Search title, identifier or number…" : "Search item number…"
                   }
                   value={query}
                   onChange={(e) => show({ query: e.target.value, pageNumber: 0 }, true)}
@@ -560,8 +570,13 @@ export default function ProgressDashboard() {
                                     openBundle(b.name);
                                   }}
                                 >
-                                  {b.name}
+                                  {b.archive?.title ?? b.name}
                                 </TableRowLink>
+                                {b.archive && (
+                                  <span className="block text-muted-foreground">
+                                    <span className="hidden sm:inline">{b.archive.identifier} · </span>{b.name}
+                                  </span>
+                                )}
                               </TableCell>
                               {recordsColumn && <TableCell className={`${cell} ${num}`}>{c.records}</TableCell>}
                               {pagesColumn && <TableCell className={`${cell} ${num}`}>{c.total}</TableCell>}
@@ -583,7 +598,7 @@ export default function ProgressDashboard() {
                                   {c.reviewable > 0 && (
                                     <Progress
                                       className="h-2"
-                                      aria-label={`${itemTitle(b.name)} review progress`}
+                                      aria-label={`${itemTitle(b.name, b.archive)} review progress`}
                                       value={(c.reviewed / c.reviewable) * 100}
                                       max={c.reviewable}
                                       aria-valuenow={c.reviewed}
@@ -658,7 +673,7 @@ export default function ProgressDashboard() {
                                               className={`h-auto p-0 text-xs text-destructive underline ${above}`}
                                               onClick={() =>
                                                 setErrorDetails({
-                                                  item: itemTitle(b.name),
+                                                  item: itemTitle(b.name, b.archive),
                                                   message:
                                                     b.job!.error!,
                                                 })

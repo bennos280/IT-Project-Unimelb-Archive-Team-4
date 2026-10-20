@@ -195,6 +195,7 @@ The test db is built from `backend/db/models.py` with foreign keys checked, as i
 |Test|What it checks|
 |---|---|
 |`test_bundles_list_each_pdf_whether_it_is_loaded_and_its_surveys`|`GET /bundles` lists every PDF under `DATA` by its bundle number, with whether it is loaded, its survey ids in scan order (by each survey's first page) and its latest job.|
+|`test_a_pdf_is_listed_under_the_series_whose_archive_item_it_is_with_its_identifier_and_title`|`GET /bundles` lists a PDF not loaded yet under the series whose archive item its number is, with that item's identifier and title; `?collection=` lists another series' PDFs.|
 |`test_started_job_waits_for_the_worker`|`POST /jobs` queues a waiting job (202), with its last update time in UTC, that `GET /bundles` and `GET /jobs/<id>` report (an unknown id is 404), and refuses a second one for the same PDF while it waits.|
 |`test_pdfs_inside_the_repo_are_named_relative_to_it`|With `DATA` inside the repo (the usual setup), PDFs and jobs use a forward-slash path relative to the repo, so the db works on any checkout.|
 |`test_jobs_only_for_unloaded_pdfs_in_data`|A PDF outside `DATA` is refused (404), and a bundle already loaded is refused (409) so its reviews can't be lost.|

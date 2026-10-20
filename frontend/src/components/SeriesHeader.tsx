@@ -1,9 +1,12 @@
 import type { ReactNode } from "react";
+import { ExternalLink } from "lucide-react";
 import { cn } from "cn";
 
-export type SeriesSummary = { id: number; name: string };
+import { ARCHIVE } from "../progress/backend";
 
-// A series' own heading on its screens: its name, its actions, and its tabs: Items (its dashboard) and
+export type SeriesSummary = { id: number; name: string; archiveIdentifier?: string | null; archiveSeries?: number | null };
+
+// A series' own heading on its screens: its name, where it is on the archive, its actions, and its tabs: Items (its dashboard) and
 // Setup (how its pages are read and checked).
 export default function SeriesHeader({ series, tab, actions }: { series: SeriesSummary; tab: "items" | "setup"; actions?: ReactNode }) {
   const tabs = [["items", "Items", `/?series=${series.id}`], ["setup", "Setup", `/?series=${series.id}&view=setup`]] as const;
@@ -12,6 +15,16 @@ export default function SeriesHeader({ series, tab, actions }: { series: SeriesS
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">{series.name || "Series"}</h1>
+          {series.archiveIdentifier && (
+            <p className="text-sm text-muted-foreground">
+              {series.archiveSeries ? (
+                <a href={`${ARCHIVE}/nodes/view/${series.archiveSeries}`} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 hover:underline">
+                  {series.archiveIdentifier} <ExternalLink aria-hidden="true" className="size-3.5" />
+                </a>
+              ) : series.archiveIdentifier}
+            </p>
+          )}
         </div>
         {actions}
       </div>

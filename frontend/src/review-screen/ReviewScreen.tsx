@@ -136,9 +136,9 @@ export default function ReviewScreen({
     <>
       <AppHeader
         series={survey?.collectionId ? { id: survey.collectionId, name: survey.title } : undefined}
-        crumbs={survey?.wholeItem ? [...items, { label: itemTitle(bundleLabel) }] : [
+        crumbs={survey?.wholeItem ? [...items, { label: itemTitle(bundleLabel, survey.item?.archive) }] : [
           ...items,
-          ...(survey?.bundleId ? [{ label: itemTitle(bundleLabel), href: itemLink }] : []),
+          ...(survey?.bundleId ? [{ label: itemTitle(bundleLabel, survey.item?.archive), href: itemLink }] : []),
           { label: survey ? `${words.One} ${session.surveyId}` : session.surveyId || words.One },
         ]}
       />

@@ -15,7 +15,9 @@ def sessions(tmp_path):
     engine = make_engine(f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
     models.Base.metadata.create_all(engine)
     with engine.begin() as con:  #as migrations 001, 007-012, 021 and 023 add them
-        con.execute(models.Collection.__table__.insert(), [{"collection_id": 1, "name": "Wilfred Prest Survey"}])
+        con.execute(models.Collection.__table__.insert(), [{"collection_id": 1, "name": "Wilfred Prest Survey",
+                                                                "archive_series": 499420, "archive_identifier": "UMA-SR-000000842",
+                                                                "archive_title": "University of Melbourne Social Survey forms", "archive_items": 45}])
         con.execute(models.PageType.__table__.insert(), [
             {"name": name, "label": label, "built_in": True, "unknown": name == "other", "collection_id": 1}
             for name, label in (("main", "Main page"), ("notes", "Notes page"), ("coded", "Coded page"), ("other", "Unknown"))])

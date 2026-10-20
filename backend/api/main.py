@@ -143,8 +143,9 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     collection = db.get(models.Collection, bundle.collection_id)
     number = PurePosixPath(bundle.source_pdf.replace("\\", "/")).parent.name
     name = number if number.isdigit() else bundle.bundle_id  #as the dashboard names it
+    item = db.get(models.ArchiveItem, int(name)) if name.isascii() and name.isdigit() and len(name) < 19 else None
     return {"id":survey_id, "bundleId":survey.bundle_id, "collectionId":collection.collection_id, "title":collection.name,
-            "item": {"name": name},
+            "item": {"name": name, "archive": {"identifier": item.identifier, "title": item.title} if item else None},
             "recordName": grouping.record_name(db, collection.collection_id, survey_id), "grouped": grouping.grouped(db, collection.collection_id),
             "wholeItem": db.query(models.Page).filter_by(bundle_id=bundle.bundle_id).count() == len(pages_list),
             "pages":pages_list}
@@ -353,9 +354,17 @@ class PageTypeSettings(BaseModel):
 
 class CollectionSettings(BaseModel):
     name: str | None = None
+    archiveSeries: str | None = None #its series' address on the archive, or the number at its end
+    archiveIdentifier: str | None = None #and the series' identifier, title and items from /archive-series, with archiveSeries
+    archiveTitle: str | None = None
+    archiveItems: int | None = None
 
 class NewCollection(BaseModel):
     name: str
+    archiveSeries: str
+    archiveIdentifier: str | None = None #the series' identifier, title and items from /archive-series; None: not looked up
+    archiveTitle: str | None = None
+    archiveItems: int | None = None
 
 class PageTypeChange(BaseModel):
     pageType: str
@@ -456,7 +465,18 @@ def collection_json(c, db=None):
                  "grouped": grouping.grouped(db, c.collection_id)}
     levels = grouping.levels(object_session(c), c.collection_id)
     return {"id": c.collection_id, "name": c.name,
-            "recordName": levels[-1].name if levels else "record", **found}
+            "recordName": levels[-1].name if levels else "record", "archiveSeries": c.archive_series,
+            "archiveIdentifier": c.archive_identifier, "archiveTitle": c.archive_title, "archiveItems": c.archive_items, **found}
+
+def series_text(text):
+    return (text or "").strip()[:300] or None
+
+#a series' node id on archives.library.unimelb.edu.au, from its address (.../nodes/view/499420) or the number itself; None: neither
+def series_node(text):
+    found = re.fullmatch(r"\s*(?:https?://archives\.library\.unimelb\.edu\.au/nodes/view/)?([1-9]\d{0,8})/?\s*", text or "")
+    return int(found.group(1)) if found else None
+
+SERIES_HELP = "Paste the series' address from archives.library.unimelb.edu.au (.../nodes/view/<number>), or just its number."
 
 #every collection, with how many bundles and pages it has
 #every series with its counts; brief: each one's id and name only (the header's series switcher), without counting
@@ -465,14 +485,17 @@ def get_collections(brief: bool = False, db: Session = Depends(get_db)):
     found = db.query(models.Collection).order_by(models.Collection.collection_id)
     return [{"id": c.collection_id, "name": c.name} for c in found] if brief else [collection_json(c, db) for c in found]
 
-#a new collection, starts with its Unknown page type
+#a new collection, linked to its series on the archive, starts with its Unknown page type
 @app.post("/collections", status_code=201)
 def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
-    name = payload.name.strip()
+    name, node = payload.name.strip(), series_node(payload.archiveSeries)
     if not name:
         raise HTTPException(status_code=400, detail="A series needs a name.")
+    if node is None:
+        raise HTTPException(status_code=400, detail=SERIES_HELP)
     write_lock(db)
-    collection = models.Collection(name=name)
+    collection = models.Collection(name=name, archive_series=node, archive_identifier=series_text(payload.archiveIdentifier),
+                                   archive_title=series_text(payload.archiveTitle), archive_items=payload.archiveItems)
     db.add(collection)
     try:
         db.flush()
@@ -490,7 +513,7 @@ def get_collection(collection_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No such series.")
     return collection_json(c, db)
 
-#renames a collection; a field left out of the request stays as it is
+#renames a collection or relinks its series; a field left out of the request stays as it is
 @app.patch("/collections/{collection_id}")
 def update_collection(collection_id: int, payload: CollectionSettings, db: Session = Depends(get_db)):
     write_lock(db)
@@ -502,6 +525,12 @@ def update_collection(collection_id: int, payload: CollectionSettings, db: Sessi
         if not (payload.name or "").strip():
             raise HTTPException(status_code=400, detail="A series needs a name.")
         c.name = payload.name.strip()
+    if "archiveSeries" in given:
+        if series_node(payload.archiveSeries) is None:
+            raise HTTPException(status_code=400, detail=SERIES_HELP)
+        c.archive_series = series_node(payload.archiveSeries)
+        c.archive_identifier, c.archive_title = series_text(payload.archiveIdentifier), series_text(payload.archiveTitle)
+        c.archive_items = payload.archiveItems
     name = c.name
     try:
         db.commit()
@@ -509,6 +538,17 @@ def update_collection(collection_id: int, payload: CollectionSettings, db: Sessi
         db.rollback()
         raise HTTPException(status_code=409, detail=f"There is already a series called {name}.")
     return collection_json(c, db)
+
+#a series on the archive, to check before a collection links to it
+@app.get("/archive-series/{node}")
+def get_archive_series(node: int):
+    try:
+        series = scans.archive_series(node)
+    except scans.ARCHIVE_ERRORS as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't reach the archive ({error}).")
+    if series is None:
+        raise HTTPException(status_code=404, detail="The archive has no page with that number.")
+    return series
 
 #reads a page again as another page type, replacing what was read off it: queued for the worker, or for other done now (an
 #empty page to type into). A page with saved reviews keeps its type, as reading it again would lose them.
@@ -655,9 +695,11 @@ def job_json(job):
             "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
 
 #a series' items, loaded or not, in order of their PDFs: bundle id, name (the bundle number: the PDF's folder), stored PDF,
-#whether it's loaded, and latest job
+#archive (its identifier and title when that number is one of the series' archive items), whether it's loaded, and latest job
 #ponytail: made afresh each request (about 0.5 s for 60,000 items); keep it per db data_version, as cached_progress does, if slower
 def series_items(db, collection):
+    items = {str(node): {"identifier": identifier, "title": title} for node, identifier, title in
+             db.query(models.ArchiveItem.node, models.ArchiveItem.identifier, models.ArchiveItem.title).filter_by(collection_id=collection)}
     owners = loader.archive_owners(db)
     loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id).filter_by(collection_id=collection)}
     elsewhere = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id).filter(models.Bundle.collection_id != collection)}
@@ -667,7 +709,7 @@ def series_items(db, collection):
         if bundle in elsewhere or (bundle not in loaded and owners.get(folder) != collection):
             continue
         job = latest.get(stored)
-        rows.append({"pdf": stored, "bundle": bundle, "name": name, "loaded": bundle in loaded,
+        rows.append({"pdf": stored, "bundle": bundle, "name": name, "archive": items.get(name), "loaded": bundle in loaded,
                      "job": job_json(job) if job else None})
     return rows
 
@@ -698,9 +740,9 @@ def items_pages(db, collection, rows):
             partial_pages(db, db.get(models.Job, row["job"]["id"])) if row["job"] and row["job"]["kind"] == "bundle" else []
             for row in rows}
 
-#whether an item shows under the dashboard's search (its number or bundle id) and status
+#whether an item shows under the dashboard's search (its number, bundle id, title or identifier) and status
 def item_matches(row, pages, search, status):
-    if search not in " ".join([row["name"], row["bundle"]]).lower():
+    if search not in " ".join([row["name"], row["bundle"], *(row["archive"] or {}).values()]).lower():
         return False
     if status == "All" or (status == "Awaiting transcription" and not row["loaded"]):
         return True

@@ -38,6 +38,19 @@ def test_bundles_list_each_pdf_whether_it_is_loaded_and_its_surveys(client, db, 
         ("216441", "a", False, [], None), ("216444", "b", True, ["b-9", "b-7"], None)]  # surveys in scan order
 
 
+def test_a_pdf_is_listed_under_the_series_whose_archive_item_it_is_with_its_identifier_and_title(client, db, data):
+    db.add(models.Collection(collection_id=2, name="Ships"))
+    db.flush()
+    first, second = db.get(models.ArchiveItem, 216441), db.get(models.ArchiveItem, 216444)
+    first.identifier, first.title = "UMA-ITE-1973000200030", "Oakleigh 19"
+    second.collection_id, second.identifier, second.title = 2, "UMA-ITE-1", "Another series' item"
+    db.commit()
+    assert [(b["name"], b["archive"]) for b in client.get("/bundles").json()] == [
+        ("216441", {"identifier": "UMA-ITE-1973000200030", "title": "Oakleigh 19"})]
+    assert [(b["name"], b["archive"]) for b in client.get("/bundles?collection=2").json()] == [
+        ("216444", {"identifier": "UMA-ITE-1", "title": "Another series' item"})]
+
+
 def test_started_job_waits_for_the_worker(client, data):
     pdf = stored_path(data / "216441" / "a.pdf")
     response = client.post("/jobs", json={"pdf": pdf})

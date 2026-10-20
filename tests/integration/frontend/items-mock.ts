@@ -7,7 +7,7 @@ export type MockPage = {
   surveyId?: string | null; reviewPageId?: string; model?: string | null;
 };
 export type MockItem = {
-  bundle: string; name: string; pdf?: string;
+  bundle: string; name: string; pdf?: string; archive?: { identifier: string; title: string } | null;
   loaded?: boolean; job?: unknown; pages?: MockPage[];
 };
 type Reply = { status?: number; json: unknown };
@@ -26,7 +26,7 @@ export function tally(pages: MockPage[]) {
 }
 
 const row = (item: MockItem) => ({
-  bundle: item.bundle, name: item.name, pdf: item.pdf ?? `${item.name}.pdf`,
+  bundle: item.bundle, name: item.name, pdf: item.pdf ?? `${item.name}.pdf`, archive: item.archive ?? null,
   loaded: item.loaded ?? true, job: item.job ?? null,
 });
 
@@ -59,7 +59,7 @@ export function serveItems(items: MockItem[] | (() => MockItem[]), request: Requ
   const status = url.searchParams.get("status") ?? "All";
   const size = Number(url.searchParams.get("size")) || 9;
   const matching = all.filter((item) =>
-    [item.name, item.bundle].join(" ").toLowerCase().includes(search) &&
+    [item.name, item.bundle, item.archive?.title, item.archive?.identifier].join(" ").toLowerCase().includes(search) &&
     hasStatus(item, status));
   const page = Math.min(Math.max(0, Number(url.searchParams.get("page")) || 0), Math.max(0, Math.ceil(matching.length / size) - 1));
   return {
