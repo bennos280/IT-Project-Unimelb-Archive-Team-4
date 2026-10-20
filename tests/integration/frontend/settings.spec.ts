@@ -12,6 +12,7 @@ type Defaults = { provider: string; model: string; effort: string };
 const SAVED: Defaults = { provider: "claude", model: "claude-saved-model", effort: "high" };
 const APP: Defaults = { provider: "codex", model: "gpt-app-model", effort: "medium" };
 const FOLDERS = { data: "C:\\projects\\survey\\data", output: "C:\\projects\\survey\\output" };
+const ACCOUNTS = "/?view=settings&tab=accounts"; // the other tabs are hidden until opened: Accounts and API keys
 type Options = {
   defaults?: Defaults | null; // the saved choice; null: nothing saved yet; left out: SAVED
   saveError?: string; // a 400 for PUT /transcription-defaults
@@ -128,7 +129,10 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
     }
     if (path === "/api/sorting-models") return route.fulfill({ json: options.sortingModels ?? [] });
     if (path === "/api/api-keys") return route.fulfill({ json: apiKeys });
-    if (path === "/api/progress" || path === "/api/bundles") return route.fulfill({ json: [] });
+    if (path === "/api/collections/1/items")
+      return route.fulfill({ json: { items: [], page: 0, total: 0, all: 0, totals: { total: 0, reviewable: 0, unassigned: 0, reviewed: 0, ready: 0 } } });
+    if (path === "/api/collections")
+      return route.fulfill({ json: [{ id: 1, name: "Wilfred Prest Survey", archiveSeries: 499420, bundles: 0, pages: 0 }] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
   return Object.assign(calls, { sorting });
@@ -151,6 +155,9 @@ const OPTIONS = {
 
 const claude = (page: Page) => page.getByRole("group", { name: "Claude Code" });
 const codex = (page: Page) => page.getByRole("group", { name: "Codex CLI" });
+const TABS = ["Transcription", "Accounts and API keys"];
+const tab = (page: Page, name: string) => page.getByRole("tab", { name, exact: true });
+const panel = (page: Page, name: string) => page.getByRole("tabpanel", { name, exact: true });
 
 test("each state shows its badge and actions, and no email or organisation", async ({ page }) => {
   const state: State = {
@@ -158,7 +165,7 @@ test("each state shows its badge and actions, and no email or organisation", asy
     codex: conn({ installed: false }),
   };
   await mockApi(page, state);
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
   await expect(page.getByText("Uses your own Claude or ChatGPT subscription on this computer. Usage counts against it.")).toBeVisible();
   await expect(claude(page)).toContainText("Ready");
@@ -186,7 +193,7 @@ test("each state shows its badge and actions, and no email or organisation", asy
 
 test("a failed status check is shown with a way to check again", async ({ page }) => {
   await mockApi(page, { claude: conn({ error: "The sign-in status check failed." }), codex: ready({ method: "chatgpt" }) });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(claude(page)).toContainText("Status check failed");
   await expect(claude(page).getByRole("button", { name: "Check again" })).toBeVisible();
   await expect(codex(page)).toContainText("Ready");
@@ -196,7 +203,7 @@ test("signing in sends a JSON POST, polls while waiting, and switches to Ready",
   await page.clock.install();
   const state: State = { claude: conn(), codex: ready({ method: "chatgpt" }) };
   const calls = await mockApi(page, state);
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await claude(page).getByRole("button", { name: "Open Claude Code sign-in" }).click();
   await expect(claude(page).getByText("Finish signing in in the browser window that opened.")).toBeVisible();
   await expect(claude(page).getByRole("button", { name: "Cancel" })).toBeVisible();
@@ -222,7 +229,7 @@ test("signing in sends a JSON POST, polls while waiting, and switches to Ready",
 test("no polling while nothing is signing in, and a window focus reloads", async ({ page }) => {
   await page.clock.install();
   const calls = await mockApi(page, { claude: conn(), codex: conn() });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(claude(page)).toContainText("Not signed in");
   const loaded = calls.get;
   await page.clock.runFor(10000);
@@ -234,7 +241,7 @@ test("no polling while nothing is signing in, and a window focus reloads", async
 
 test("Cancel sends a DELETE and returns to the sign-in button", async ({ page }) => {
   const calls = await mockApi(page, { claude: conn({ login: { running: true, exitCode: null } }), codex: conn() });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await claude(page).getByRole("button", { name: "Cancel" }).click();
   await expect(claude(page).getByRole("button", { name: "Open Claude Code sign-in" })).toBeVisible();
   expect(calls.delete).toEqual(["claude"]);
@@ -243,7 +250,7 @@ test("Cancel sends a DELETE and returns to the sign-in button", async ({ page })
 
 test("a sign-in that ended with an error while still signed out shows an alert", async ({ page }) => {
   await mockApi(page, { claude: conn(), codex: conn({ login: { running: false, exitCode: 1 } }) });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(codex(page).getByRole("alert")).toHaveText("Sign-in didn't finish. Try again, or run codex login in a terminal.");
   await expect(codex(page).getByRole("button", { name: "Open Codex sign-in" })).toBeVisible();
   await expect(claude(page).getByRole("alert")).toHaveCount(0);
@@ -256,7 +263,7 @@ test("nothing is chosen until the team saves a choice: it says so and has no Res
   const calls = await mockApi(page, { claude: ready(), codex: conn() }, { defaults: null });
   await page.goto("/?view=settings");
   await expect(page.getByRole("heading", { name: "Transcription model" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Before you can transcribe" })).toBeVisible();
+  await expect(banner(page).getByRole("heading", { name: "Finish setup to start transcribing" })).toBeVisible();
   await expect(page.getByText("Ready to transcribe")).toHaveCount(0);
   await expect(field(page, "Provider")).toHaveValue("");
   await expect(field(page, "Model")).toHaveValue("");
@@ -272,7 +279,7 @@ test("the saved choice is shown with the section note and the ready line", async
   await page.goto("/?view=settings");
   await expect(page.getByText("Used for new transcriptions. Shared with the team.")).toBeVisible();
   await expect(readyLine(page)).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Before you can transcribe" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Finish setup to start transcribing" })).toHaveCount(0);
   await expect(field(page, "Provider")).toHaveValue("claude");
   await expect(field(page, "Model")).toHaveValue("claude-saved-model");
   await expect(field(page, "Effort")).toHaveValue("high");
@@ -351,7 +358,7 @@ test("choosing a provider that isn't ready warns", async ({ page }) => {
 
 test("a signed-in card shows plan and version, then buttons and the usage link", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: ready({ method: "chatgpt", plan: null, version: "0.12.3" }) });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(claude(page).locator("[data-slot=card-description]")).toHaveText("Max plan · 2.1.288");
   await expect(codex(page).locator("[data-slot=card-description]")).toHaveText("ChatGPT plan · 0.12.3");
   await expect(claude(page).getByRole("button")).toHaveText(["Test connection", "Sign out"]);
@@ -366,7 +373,7 @@ test("a signed-in card shows plan and version, then buttons and the usage link",
 
 test("no usage link for an API key or when not signed in, and no buttons unless signed in", async ({ page }) => {
   await mockApi(page, { claude: conn({ version: "2.1.288" }), codex: ready({ method: "api_key", plan: null }) });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(claude(page)).toContainText("Not signed in");
   await expect(claude(page).locator("[data-slot=card-description]")).toHaveText("2.1.288");
   await expect(claude(page).getByRole("link", { name: "Check usage" })).toHaveCount(0);
@@ -378,14 +385,14 @@ test("no usage link for an API key or when not signed in, and no buttons unless 
 test("an old Claude Code version is flagged", async ({ page }) => {
   const warning = "Claude Code 2.1.200 is older than 2.1.280, which transcription needs. Update it with: claude update";
   await mockApi(page, { claude: ready({ version: "2.1.200", warnings: [warning] }), codex: conn({ installed: false }) });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(claude(page).getByRole("alert")).toHaveText(warning);
   await expect(claude(page).locator("[data-slot=card-description]")).toHaveText("Max plan · 2.1.200");
 });
 
 test("Sign out asks first, and Cancel sends nothing", async ({ page }) => {
   const calls = await mockApi(page, { claude: ready(), codex: conn() });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await claude(page).getByRole("button", { name: "Sign out" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Sign out of Claude Code?" })).toBeVisible();
@@ -398,7 +405,7 @@ test("Sign out asks first, and Cancel sends nothing", async ({ page }) => {
 
 test("confirming Sign out sends a JSON POST and the card goes back to not signed in", async ({ page }) => {
   const calls = await mockApi(page, { claude: ready(), codex: conn() });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await claude(page).getByRole("button", { name: "Sign out" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -410,7 +417,7 @@ test("confirming Sign out sends a JSON POST and the card goes back to not signed
 
 test("Test connection shows a spinner, then the time and model", async ({ page }) => {
   const calls = await mockApi(page, { claude: ready(), codex: conn() }, { gateTests: true });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await claude(page).getByRole("button", { name: "Test connection" }).click();
   await expect(claude(page).getByText("Waiting for a reply…")).toBeVisible();
   await expect(claude(page).getByRole("button", { name: "Test connection" })).toBeDisabled();
@@ -424,7 +431,7 @@ test("Test connection shows a spinner, then the time and model", async ({ page }
 test("a failed test shows the message in an alert", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() },
     { testReply: { ok: false, seconds: 1.4, model: "haiku", message: "Not logged in. Please run /login" } });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await claude(page).getByRole("button", { name: "Test connection" }).click();
   await expect(claude(page).getByRole("alert")).toHaveText("Not logged in. Please run /login");
   await expect(claude(page).getByText(/^Works/)).toHaveCount(0);
@@ -432,7 +439,7 @@ test("a failed test shows the message in an alert", async ({ page }) => {
 
 test("a test the API refuses (another one running) shows the reason", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() }, { testStatus: 409, testReply: { detail: "A test is already running." } });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await claude(page).getByRole("button", { name: "Test connection" }).click();
   await expect(claude(page).getByRole("alert")).toHaveText("A test is already running.");
 });
@@ -449,7 +456,8 @@ test("the top bar's Settings opens the settings page", async ({ page }) => {
   await page.goto("/?series=1");
   await page.getByRole("banner").getByRole("link", { name: "Settings" }).click();
   await expect(page).toHaveURL(/\/\?view=settings$/);
-  await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+  await expect(tab(page, "Transcription")).toHaveAttribute("aria-selected", "true");
 });
 
 const optionTexts = (page: Page, label: string) => field(page, label).locator("option").allTextContents();
@@ -566,22 +574,64 @@ const NOTE = "Sends one tiny request on your plan.";
 const usedTag = (scope: Page | ReturnType<typeof claude>) => scope.getByText("Used for transcription", { exact: true });
 const cardLine = (card: ReturnType<typeof claude>) => card.locator("[data-slot=card-description]");
 
-test("the page has a Settings heading and subtitle above the sections", async ({ page }) => {
+test("the page has a Settings heading and subtitle above the tabs, and each tab has its sections' headings", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
   await page.goto("/?view=settings");
   await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
   await expect(page.locator("h1")).toHaveCount(1);
-  await expect(page.getByText("Transcription model and accounts", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Accounts", level: 2 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Transcription model", level: 2 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Folders", level: 2 })).toBeVisible();
+  await expect(page.getByText("How pages are read, and the accounts that read them", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "PrestCribe" })).toBeVisible();
+  const headings = [["Transcription", ["Transcription model", "Page sorting"]], ["Accounts and API keys", ["Accounts", "API keys"]]] as const;
+  for (const [name, titles] of headings) {
+    await tab(page, name).click();
+    for (const title of titles) await expect(panel(page, name).getByRole("heading", { name: title, level: 2 })).toBeVisible();
+  }
+});
+
+test("Settings has tabs, Transcription first, and the other tabs' sections stay on the page, hidden", async ({ page }) => {
+  await mockApi(page, { claude: ready(), codex: conn() });
+  await page.goto("/?view=settings");
+  await expect(page.getByRole("tablist", { name: "Settings" }).getByRole("tab")).toHaveText(TABS);
+  await expect(tab(page, "Transcription")).toHaveAttribute("aria-selected", "true");
+  for (const id of ["transcription-defaults", "page-sorting"]) await expect(page.locator(`section#${id}`)).toBeVisible();
+  for (const id of ["connections", "api-keys"]) {
+    await expect(page.locator(`section#${id}`)).toHaveCount(1);
+    await expect(page.locator(`section#${id}`)).toBeHidden();
+  }
+});
+
+test("a tab opens from ?tab=, clicking one shows it and puts it in the URL, and an unknown tab is Transcription", async ({ page }) => {
+  await mockApi(page, { claude: ready(), codex: conn() });
+  await page.goto(ACCOUNTS);
+  await expect(tab(page, "Accounts and API keys")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("section#connections")).toBeVisible();
+  await expect(page.locator("section#transcription-defaults")).toBeHidden();
+
+  await tab(page, "Transcription").click();
+  await expect(page).toHaveURL(/\/\?view=settings&tab=transcription$/);
+  await expect(page.locator("section#transcription-defaults")).toBeVisible();
+
+  await page.goto("/?view=settings&tab=nonsense");
+  await expect(tab(page, "Transcription")).toHaveAttribute("aria-selected", "true");
+});
+
+test("switching tabs loads nothing again and keeps what was typed", async ({ page }) => {
+  const calls = await mockApi(page, { claude: ready(), codex: conn() });
+  await page.goto("/?view=settings");
+  await expect(page.locator("section#connections")).toContainText("Ready"); // the Accounts tab is loaded while it is hidden
+  const loaded = calls.get;
+  await field(page, "Model").fill("typed-model");
+  await tab(page, "Accounts and API keys").click();
+  await expect(claude(page).getByRole("button", { name: "Test connection" })).toBeVisible();
+  await tab(page, "Transcription").click();
+  await expect(field(page, "Model")).toHaveValue("typed-model");
+  expect(calls.get).toBe(loaded);
 });
 
 test("the Used for transcription tag shows only once a choice is saved, then follows the saved provider", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: ready({ method: "chatgpt" }) }, { defaults: null });
   await page.goto("/?view=settings");
-  await expect(page.getByRole("heading", { name: "Before you can transcribe" })).toBeVisible();
+  await expect(banner(page)).toBeVisible();
   await expect(usedTag(page)).toHaveCount(0);
 
   await field(page, "Provider").selectOption("codex"); // an unsaved edit doesn't show the tag
@@ -591,14 +641,20 @@ test("the Used for transcription tag shows only once a choice is saved, then fol
   await page.getByRole("button", { name: "Save defaults" }).click();
   await expect(page.getByText("Saved ✓")).toBeVisible();
   await expect(usedTag(page)).toHaveCount(1);
+  await tab(page, "Accounts and API keys").click();
   await expect(usedTag(codex(page))).toBeVisible();
   await expect(usedTag(claude(page))).toHaveCount(0);
 
+  await tab(page, "Transcription").click();
   await field(page, "Provider").selectOption("claude"); // an unsaved edit doesn't move it
+  await tab(page, "Accounts and API keys").click();
   await expect(usedTag(codex(page))).toBeVisible();
+  await tab(page, "Transcription").click();
   await field(page, "Model").fill("claude-saved-model");
   await field(page, "Effort").fill("high");
   await page.getByRole("button", { name: "Save defaults" }).click();
+  await expect(page.getByText("Saved ✓")).toBeVisible();
+  await tab(page, "Accounts and API keys").click();
   await expect(usedTag(page)).toHaveCount(1);
   await expect(usedTag(claude(page))).toBeVisible();
   await expect(usedTag(codex(page))).toHaveCount(0);
@@ -606,7 +662,7 @@ test("the Used for transcription tag shows only once a choice is saved, then fol
 
 test("the Used for transcription tag is on the saved provider's card from the start", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: ready({ method: "chatgpt" }) });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(usedTag(page)).toHaveCount(1);
   await expect(usedTag(claude(page))).toBeVisible();
   await expect(usedTag(codex(page))).toHaveCount(0);
@@ -626,7 +682,7 @@ test("the folders are shown read-only with their note", async ({ page }) => {
 test("the line under each title is the plan and the version, leaving out what is unknown", async ({ page }) => {
   const state: State = { claude: ready(), codex: ready({ method: "chatgpt", plan: null, version: "0.163.0" }) };
   await mockApi(page, state);
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(cardLine(claude(page))).toHaveText("Max plan · 2.1.288");
   await expect(cardLine(codex(page))).toHaveText("ChatGPT plan · 0.163.0");
 
@@ -645,7 +701,7 @@ test("the line under each title is the plan and the version, leaving out what is
 
 test("Sign out is red, apart from the other buttons, and still asks before sending anything", async ({ page }) => {
   const calls = await mockApi(page, { claude: ready(), codex: conn() });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   const signOut = claude(page).getByRole("button", { name: "Sign out" });
   await expect(signOut).toHaveClass(/text-destructive/);
   const testButton = (await claude(page).getByRole("button", { name: "Test connection" }).boundingBox())!;
@@ -661,7 +717,7 @@ test("Sign out is red, apart from the other buttons, and still asks before sendi
 test("every badge keeps its text and has an icon that screen readers skip", async ({ page }) => {
   const state: State = { claude: ready(), codex: ready({ method: "api_key", plan: null }) };
   await mockApi(page, state);
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   const badge = (card: ReturnType<typeof claude>) => card.locator("[data-slot=badge]").filter({ hasNotText: "Used for transcription" });
   const states: [State["claude"], State["codex"], string, string][] = [
     [ready(), ready({ method: "api_key", plan: null }), "Ready", "Signed in with an API key"],
@@ -682,7 +738,7 @@ test("every badge keeps its text and has an icon that screen readers skip", asyn
 
 test("Test connection explains itself in a tooltip on hover and on keyboard focus, and the note appears nowhere else", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: ready({ method: "chatgpt" }) });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   const button = claude(page).getByRole("button", { name: "Test connection" });
   const tip = page.locator("[data-slot=tooltip-content]");
   await expect(button).toHaveAccessibleDescription(NOTE); // also while the tooltip is closed
@@ -750,6 +806,7 @@ test("the defaults are one row across the page on a wide screen and stack on a p
   expect(effort.x).toBeLessThan(save.x);
   expect(model.width).toBeGreaterThan(provider.width);
   const card = (await defaultsCard(page).boundingBox())!;
+  expect(card.width).toBeGreaterThan(1300); // the page is the window's full width
   expect(save.x + save.width).toBeGreaterThan(card.x + card.width - 40); // the row spans the card
 
   await page.setViewportSize({ width: 375, height: 800 });
@@ -760,7 +817,7 @@ test("the defaults are one row across the page on a wide screen and stack on a p
 
 test("the tag stays on the saved provider's card when that provider isn't installed", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn({ installed: false }) }, { defaults: APP });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(usedTag(page)).toHaveCount(1);
   await expect(usedTag(codex(page))).toBeVisible();
 });
@@ -777,121 +834,169 @@ test("Save stays disabled for a name that differs only by spaces", async ({ page
   await expect(save).toBeDisabled(); // a change, but nothing to save
 });
 
-const checklist = (page: Page) => page.getByRole("region", { name: /transcribe$/ });
-const checklistItems = (page: Page) => checklist(page).getByRole("listitem");
+const banner = (page: Page) => page.getByRole("region", { name: "Finish setup to start transcribing" });
+const bannerItems = (page: Page) => banner(page).getByRole("listitem");
 const readyLine = (page: Page) => page.getByRole("status").filter({ hasText: "Ready to transcribe" });
+const CHOOSE = "?view=settings&tab=transcription#transcription-defaults";
+const SIGN_IN = "Sign in or add a key";
 
-test("checklist: nothing chosen and nobody signed in lists both steps with links", async ({ page }) => {
+test("banner: nothing chosen and nobody signed in lists both steps to do, each with a link to where it is done", async ({ page }) => {
   await mockApi(page, { claude: conn(), codex: conn() }, { defaults: null });
   await page.goto("/?view=settings");
-  await expect(checklist(page).getByRole("heading", { name: "Before you can transcribe" })).toBeVisible();
-  await expect(checklist(page).getByText("New transcriptions use")).toHaveCount(0);
-  await expect(checklistItems(page)).toHaveCount(2);
-  const [choose, signIn] = [checklistItems(page).nth(0), checklistItems(page).nth(1)];
-  await expect(choose).toContainText("Not done");
-  await expect(choose.getByRole("link", { name: "Choose a transcription model" })).toHaveAttribute("href", "#transcription-defaults");
-  await expect(signIn).toContainText("Not done");
-  await expect(signIn.getByRole("link", { name: "Sign in to Claude Code or the Codex CLI" })).toHaveAttribute("href", "#connections");
+  await expect(banner(page).getByRole("heading", { name: "Finish setup to start transcribing", level: 2 })).toBeVisible();
+  await expect(banner(page).getByText("New transcriptions use")).toHaveCount(0);
+  await expect(bannerItems(page)).toHaveCount(2);
+  const [choose, signIn] = [bannerItems(page).nth(0), bannerItems(page).nth(1)];
+  await expect(choose).toContainText("Choose a transcription model: to do");
+  await expect(choose.getByRole("link", { name: "Choose model" })).toHaveAttribute("href", CHOOSE);
+  await expect(signIn).toContainText("Sign in to Claude Code or the Codex CLI, or add an API key: to do");
+  await expect(signIn.getByRole("link", { name: SIGN_IN })).toHaveAttribute("href", "?view=settings&tab=accounts#connections");
   for (const item of [choose, signIn]) {
     await expect(item.locator("svg")).toHaveAttribute("aria-hidden", "true");
     await expect(item.locator("svg.lucide-circle")).toHaveCount(1);
   }
   await expect(page.locator("section#transcription-defaults")).toHaveCount(1);
   await expect(page.locator("section#connections")).toHaveCount(1);
+  await expect(page.locator("section#api-keys")).toHaveCount(1);
+  await expect(page.getByText("Ready to transcribe")).toHaveCount(0);
 });
 
-test("checklist: either provider signed in is enough while no model is chosen", async ({ page }) => {
+test("banner: its links open the tab and section they name", async ({ page }) => {
+  await mockApi(page, { claude: conn(), codex: conn() }, { defaults: null });
+  await page.goto("/?view=settings");
+  await field(page, "Model").fill("typed-model"); // unsaved: a link must not reload the page
+  await bannerItems(page).nth(1).getByRole("link", { name: SIGN_IN }).click();
+  await expect(page).toHaveURL(/\/\?view=settings&tab=accounts#connections$/);
+  await expect(tab(page, "Accounts and API keys")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("section#connections")).toBeVisible();
+  await expect(page.locator("section#connections")).toBeInViewport();
+  await expect(banner(page)).toBeVisible(); // the banner is above the tabs, whichever is open
+
+  await bannerItems(page).nth(0).getByRole("link", { name: "Choose model" }).click();
+  await expect(page).toHaveURL(/\/\?view=settings&tab=transcription#transcription-defaults$/);
+  await expect(tab(page, "Transcription")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("section#transcription-defaults")).toBeVisible();
+  await expect(field(page, "Model")).toHaveValue("typed-model");
+});
+
+test("banner: either provider signed in is enough while no model is chosen", async ({ page }) => {
   await mockApi(page, { claude: conn(), codex: ready({ method: "chatgpt" }) }, { defaults: null });
   await page.goto("/?view=settings");
-  await expect(checklist(page).getByRole("heading", { name: "Before you can transcribe" })).toBeVisible();
-  await expect(checklistItems(page).nth(0)).toContainText("Not done");
-  await expect(checklistItems(page).nth(1)).toContainText("Done");
-  await expect(checklistItems(page).nth(1).getByRole("link")).toHaveCount(0);
-  await expect(checklistItems(page).nth(1).locator("svg.lucide-circle-check")).toHaveAttribute("aria-hidden", "true");
+  await expect(banner(page)).toBeVisible();
+  await expect(bannerItems(page).nth(0)).toContainText("Choose a transcription model: to do");
+  await expect(bannerItems(page).nth(1)).toContainText("Sign in to Claude Code or the Codex CLI, or add an API key: done");
+  await expect(bannerItems(page).nth(1).getByRole("link")).toHaveCount(0);
+  await expect(bannerItems(page).nth(1).locator("svg.lucide-circle-check")).toHaveAttribute("aria-hidden", "true");
 });
 
-test("checklist: a chosen model whose provider isn't signed in links to Accounts", async ({ page }) => {
+test("banner: a chosen model whose provider isn't signed in links to Accounts", async ({ page }) => {
   await mockApi(page, { claude: conn(), codex: ready({ method: "chatgpt" }) }); // saved: claude
   await page.goto("/?view=settings");
-  await expect(checklist(page).getByRole("heading", { name: "Before you can transcribe" })).toBeVisible();
-  await expect(checklistItems(page).nth(0)).toContainText("Done");
-  await expect(checklistItems(page).nth(0).getByRole("link")).toHaveCount(0);
-  await expect(checklistItems(page).nth(1)).toContainText("Not done");
-  await expect(checklistItems(page).nth(1).getByRole("link", { name: "Sign in to Claude Code" })).toHaveAttribute("href", "#connections");
-  await expect(checklist(page).getByText("New transcriptions use")).toHaveCount(0);
+  await expect(banner(page)).toBeVisible();
+  await expect(bannerItems(page).nth(0)).toContainText("Choose a transcription model: done");
+  await expect(bannerItems(page).nth(0).getByRole("link")).toHaveCount(0);
+  await expect(bannerItems(page).nth(1)).toContainText("Sign in to Claude Code, or give it a key: to do");
+  await expect(bannerItems(page).nth(1).getByRole("link", { name: SIGN_IN })).toHaveAttribute("href", "?view=settings&tab=accounts#connections");
+  await expect(banner(page).getByText("New transcriptions use")).toHaveCount(0);
 });
 
-test("checklist: a chosen provider that isn't installed counts as not signed in", async ({ page }) => {
+test("banner: a chosen provider that isn't installed counts as not signed in", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn({ installed: false }) }, { defaults: { provider: "codex", model: "gpt-app-model", effort: "medium" } });
   await page.goto("/?view=settings");
-  await expect(checklist(page).getByRole("heading", { name: "Before you can transcribe" })).toBeVisible();
-  await expect(checklistItems(page).nth(0)).toContainText("Done");
-  await expect(checklistItems(page).nth(1)).toContainText("Not done");
-  await expect(checklistItems(page).nth(1).getByRole("link", { name: "Sign in to Codex CLI" })).toHaveAttribute("href", "#connections");
+  await expect(banner(page)).toBeVisible();
+  await expect(bannerItems(page).nth(0)).toContainText("Choose a transcription model: done");
+  await expect(bannerItems(page).nth(1)).toContainText("Sign in to Codex CLI, or give it a key: to do");
+  await expect(bannerItems(page).nth(1).getByRole("link", { name: SIGN_IN })).toHaveAttribute("href", "?view=settings&tab=accounts#connections");
 });
 
-test("checklist: all done is one status line with the model, effort and provider, and no card", async ({ page }) => {
+test("banner: a chosen API provider links to API keys, and its saved key makes it ready", async ({ page }) => {
+  const calls = await mockApi(page, { claude: conn(), codex: conn() }, { defaults: { provider: "openai", model: "gpt-x", effort: "medium" } });
+  await page.goto("/?view=settings");
+  await expect(bannerItems(page).nth(1)).toContainText("Sign in to OpenAI API, or give it a key: to do");
+  await expect(bannerItems(page).nth(1).getByRole("link", { name: SIGN_IN })).toHaveAttribute("href", "?view=settings&tab=accounts#api-keys");
+
+  calls.apiKeys.push({ provider: "openai", label: "OpenAI API", keysUrl: "https://platform.openai.com/api-keys", needsKey: true, saved: true, fromEnvironment: false });
+  await page.reload();
+  await expect(readyLine(page)).toHaveText("Ready to transcribe · gpt-x · medium on OpenAI API");
+  await expect(banner(page)).toHaveCount(0);
+});
+
+test("banner: all done is one status line with the model, effort and provider, and no banner", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
   await page.goto("/?view=settings");
   await expect(readyLine(page)).toHaveText("Ready to transcribe · claude-saved-model · high on Claude Code");
   await expect(readyLine(page).getByText("Ready to transcribe", { exact: true })).toHaveClass(/font-medium/);
   await expect(readyLine(page).locator("svg.lucide-circle-check")).toHaveAttribute("aria-hidden", "true");
-  await expect(checklist(page)).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: /transcribe$/ })).toHaveCount(0);
-  await expect(page.getByText("Not done")).toHaveCount(0);
+  await expect(banner(page)).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Finish setup to start transcribing" })).toHaveCount(0);
+  await expect(page.getByText(": to do")).toHaveCount(0);
   const line = (await readyLine(page).boundingBox())!;
   const h1 = (await page.getByRole("heading", { name: "Settings", level: 1 }).boundingBox())!;
-  const model = (await page.getByRole("heading", { name: "Transcription model" }).boundingBox())!;
+  const tabs = (await page.getByRole("tablist", { name: "Settings" }).boundingBox())!;
   expect(line.y).toBeGreaterThan(h1.y);
-  expect(line.y + line.height).toBeLessThan(model.y);
+  expect(line.y + line.height).toBeLessThan(tabs.y);
 });
 
-test("checklist: updates after saving a choice, without reloading", async ({ page }) => {
+test("banner: updates after saving a choice, without reloading", async ({ page }) => {
   const calls = await mockApi(page, { claude: ready(), codex: conn() }, { defaults: null });
   await page.goto("/?view=settings");
-  await expect(checklist(page).getByRole("heading", { name: "Before you can transcribe" })).toBeVisible();
+  await expect(banner(page)).toBeVisible();
   const loaded = calls.get;
 
   await field(page, "Provider").selectOption("claude");
   await field(page, "Model").fill("sonnet");
   await field(page, "Effort").fill("low");
-  await expect(checklist(page).getByRole("heading", { name: "Before you can transcribe" })).toBeVisible(); // unsaved edits change nothing
+  await expect(banner(page)).toBeVisible(); // unsaved edits change nothing
   await page.getByRole("button", { name: "Save defaults" }).click();
   await expect(readyLine(page)).toHaveText("Ready to transcribe · sonnet · low on Claude Code");
-  await expect(checklist(page)).toHaveCount(0);
+  await expect(banner(page)).toHaveCount(0);
 
   await field(page, "Provider").selectOption("codex");
   await field(page, "Model").fill("gpt-app-model");
   await field(page, "Effort").fill("medium");
   await page.getByRole("button", { name: "Save defaults" }).click();
-  await expect(checklist(page).getByRole("heading", { name: "Before you can transcribe" })).toBeVisible();
-  await expect(checklistItems(page).nth(1).getByRole("link", { name: "Sign in to Codex CLI" })).toHaveAttribute("href", "#connections");
+  await expect(banner(page)).toBeVisible();
+  await expect(bannerItems(page).nth(1)).toContainText("Sign in to Codex CLI, or give it a key: to do");
+  await expect(bannerItems(page).nth(1).getByRole("link", { name: SIGN_IN })).toHaveAttribute("href", "?view=settings&tab=accounts#connections");
   expect(calls.get).toBe(loaded);
 });
 
-test("checklist: updates when a sign-in finishes", async ({ page }) => {
+test("banner: updates when a sign-in finishes", async ({ page }) => {
   await page.clock.install();
   const state: State = { claude: conn(), codex: conn() };
   await mockApi(page, state);
-  await page.goto("/?view=settings");
-  await expect(checklist(page).getByRole("heading", { name: "Before you can transcribe" })).toBeVisible();
+  await page.goto(ACCOUNTS);
+  await expect(banner(page)).toBeVisible();
   await claude(page).getByRole("button", { name: "Open Claude Code sign-in" }).click();
   await expect(claude(page).getByText("Finish signing in in the browser window that opened.")).toBeVisible();
   state.claude = ready({ login: { running: false, exitCode: 0 } });
   await page.clock.runFor(2000);
   await expect(readyLine(page)).toContainText("Ready to transcribe");
-  await expect(checklist(page)).toHaveCount(0);
+  await expect(banner(page)).toHaveCount(0);
 });
 
-test("sections run Transcription model, Accounts, then the folders footer", async ({ page }) => {
-  await mockApi(page, { claude: ready(), codex: conn() });
+test("settings run the banner, the tabs, then each tab's sections in order", async ({ page }) => {
+  await mockApi(page, { claude: conn(), codex: conn() }, { defaults: null }); // the banner is showing
   await page.goto("/?view=settings");
-  const tops = [];
-  for (const h of [page.getByRole("heading", { name: "Transcription model", level: 2 }), page.getByRole("heading", { name: "Accounts", level: 2 }), page.getByRole("heading", { name: "Folders", level: 2 })])
-    tops.push((await h.evaluate((el) => el.closest("section, footer")!.getBoundingClientRect().top)));
-  expect(tops[0]).toBeLessThan(tops[1]);
-  expect(tops[1]).toBeLessThan(tops[2]);
-  await expect(page.locator("footer", { has: page.getByRole("heading", { name: "Folders", level: 2 }) })).toBeVisible();
+  const top = (locator: ReturnType<Page["locator"]>) => locator.evaluate((el) => el.getBoundingClientRect().top);
+  const tablist = page.getByRole("tablist", { name: "Settings" });
+  const h1Top = await top(page.getByRole("heading", { name: "Settings", level: 1 }));
+  const bannerTop = await top(banner(page));
+  const tabsTop = await top(tablist);
+  expect(h1Top).toBeLessThan(bannerTop);
+  expect(bannerTop).toBeLessThan(tabsTop);
+  const sections: [string, string[]][] = [["Transcription", ["transcription-defaults", "page-sorting"]],
+    ["Accounts and API keys", ["connections", "api-keys"]]];
+  for (const [name, ids] of sections) {
+    await tab(page, name).click();
+    await expect.poll(() => panel(page, name).locator(":scope > section").evaluateAll((all) => all.map((el) => el.id))).toEqual(ids);
+    let before = tabsTop;
+    for (const id of ids) {
+      const now = await top(page.locator(`section#${id}`));
+      expect(now).toBeGreaterThan(before);
+      before = now;
+    }
+  }
 });
 
 test("the model row leaves no empty line under it until there is a message", async ({ page }) => {
@@ -922,7 +1027,7 @@ test("the model row leaves no empty line under it until there is a message", asy
 test("on a phone the ready line, the sections and the folders footer stack without sideways scroll", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: ready({ method: "chatgpt" }) });
   await page.setViewportSize({ width: 375, height: 800 });
-  await page.goto("/?view=settings");
+  await page.goto(ACCOUNTS);
   await expect(readyLine(page)).toBeVisible();
   await expect(page.locator("footer").getByRole("heading", { name: "Folders" })).toBeAttached();
   await expect(page.locator("footer code")).toHaveCount(2);
@@ -934,7 +1039,7 @@ test("on a phone the ready line, the sections and the folders footer stack witho
 test("the ready line's status element is on the page before the line appears, and stays the same element", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() }, { defaults: null });
   await page.goto("/?view=settings");
-  await expect(checklist(page)).toBeVisible();
+  await expect(banner(page)).toBeVisible();
   const live = page.getByRole("heading", { name: "Settings", level: 1 }).locator("xpath=../following-sibling::*[@role='status']");
   await expect(live).toHaveCount(1);
   await expect(live).toHaveText("");
