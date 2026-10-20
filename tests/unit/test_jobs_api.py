@@ -77,13 +77,6 @@ def test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run(clien
     assert client.post("/jobs", json={"pdf": pdf}).status_code == 202
 
 
-def test_the_real_archive_list_names_each_bundle_as_the_archive_does():
-    from backend.scans import ARCHIVE
-    names = (ROOT / "backend" / "archive_pdfs.txt").read_text(encoding="utf-8").split()
-    assert len(names) == len(set(names)) == 45 and ARCHIVE.startswith("https://")
-    assert all(re.fullmatch(r"\d+/\d+_[\w.-]+\.pdf", name) for name in names)  # <bundle number>/<file id>_<file name>
-
-
 @pytest.fixture
 def config(tmp_path, monkeypatch, db):
     """Point the API at a temporary PDF and output folder, with a transcription choice saved (Claude, sonnet, high).

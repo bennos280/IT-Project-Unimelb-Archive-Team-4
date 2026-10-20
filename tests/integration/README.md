@@ -98,17 +98,19 @@ code that reads it is checked against the archive's own markup, not only the tes
 
 ## `test_migrations.py`
 
-| Test                                                                    | What it checks                                                                                                                                                                                                                                                                                                                       |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `test_migrations_match_the_models`                                      | The migrations in `backend/db/migrations/` build the same tables and columns as `backend/db/models.py` (Alembic's check). Fails if `models.py` changes a table or column without a migration. It does not compare CHECK constraints or server defaults, and the unit tests build their db from `models.py`, not from the migrations. |
-| `test_a_table_change_keeps_the_edits_on_it_and_backs_the_db_up_first`   | A later migration that rebuilds `fields` (how SQLite changes a column) keeps the reviewers' edits on it, and the db is copied to `<name>-backup-<revision>.db` before it runs.                                                                                                                                                       |
-| `test_a_migration_that_breaks_a_link_is_undone`                         | A later migration that leaves rows pointing at nothing (deletes a bundle its pages belong to) stops with an error, and the db is left as it was before it.                                                                                                                                                                           |
-| `test_version_1_of_the_prompt_and_templates_is_the_files_byte_for_byte` | Migration 001 stores `prompt.txt` and each template as version 1 byte for byte, with the files' hashes, so transcripts already made from the files are reused, not read (and paid for) again.                                                                                                                                        |
+The database is `backend/db/prestcribe.db`, made by one migration, `backend/db/migrations/versions/001_prestcribe.py`: the tables in `backend/db/models.py` and nothing in them. A series is added in the app or opened from a PrestCribe file.
+
+| Test | What it checks |
+| ---- | -------------- |
+| `test_migrations_match_the_models` | The migration in `backend/db/migrations/` builds the same tables and columns as `backend/db/models.py` (Alembic's check). Fails if `models.py` changes a table or column without a migration. It does not compare CHECK constraints or server defaults, and the unit tests build their db from `models.py`, not from the migrations. |
+| `test_a_fresh_db_is_at_revision_001_with_every_table_of_the_models_and_no_rows` | A db made by the migration is at revision `001`, has every table of the models and no rows in any of them. |
+| `test_a_table_change_keeps_the_edits_on_it_and_backs_the_db_up_first` | A later migration that rebuilds `fields` (how SQLite changes a column) keeps the reviewers' edits on it, and the db is copied to `<name>-backup-<revision>.db` before it runs. |
+| `test_a_migration_that_breaks_a_link_is_undone` | A later migration that leaves rows pointing at nothing (deletes a bundle its pages belong to) stops with an error, and the db is left as it was before it. |
 
 ## `check_review_integration.mjs` / `check_review_integration.py` — 15 test
 
 Tests the real frontend review adapter against the FastAPI backend using a
-temporary copy of `backend/db/wilfprestsurvey.db`. The source database stays
+temporary copy of `backend/db/prestcribe.db`. The source database stays
 unchanged. Results appear in the terminal, and the temporary copy is deleted
 afterwards.V
 

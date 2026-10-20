@@ -32,7 +32,7 @@ transcribed to JSON by a vision model. Pages a human must check land in `review.
 | `uv run survey x.pdf`                                            | Process one PDF or a folder of page images; `--transcribe` also transcribes and groups pages into surveys by dwelling number (paid: needs the `claude` CLI (Claude Code 2.1.280+) signed in, or OpenAI's `codex` CLI chosen on the Settings page)                                                             |
 | `uv run pytest`                                                  | Run all tests (see `tests/README.md` for more info) scored                                                                                                      |
 | `uv run survey train`                                            | Refit identification after adding pages under `tests/identify/pages/<label>/` (foreign forms: `other/`)                                                                                                        |
-| `uv run python -m backend.db.loader` | Load finished runs in `OUTPUT` into the database (`backend/db/wilfprestsurvey.db`), creating or upgrading it first |
+| `uv run python -m backend.db.loader` | Load finished runs in `OUTPUT` into the database (`backend/db/prestcribe.db`), creating or upgrading it first |
 | `uv run app` | Start the API (every endpoint is listed, and can be tried, at http://127.0.0.1:8000/docs) and the worker that runs the jobs queued with `POST /jobs`; Ctrl+C stops both |
 | `uv run api` / `uv run worker` | Just one of the two (the API restarts when you save code) |
 | `uv run alembic revision --autogenerate -m "what changed"` | After changing the tables in `backend/db/models.py`; a database upgrades itself on its next load, backed up first |

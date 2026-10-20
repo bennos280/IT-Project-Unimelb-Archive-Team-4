@@ -95,6 +95,7 @@ unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generat
 | `test_run_cli_turns_a_hang_into_a_readable_exit`                    | Converts a CLI timeout into a readable exit message instead of exposing a raw `TimeoutExpired` traceback.                                                                                                                              |
 | `test_run_cli_explains_a_missing_cli_instead_of_crashing`           | Converts a missing Claude/Codex executable into a clear "CLI not found" message.                                                                                                                                                       |
 | `test_run_cli_passes_capture_and_timeout_settings_through`          | Verifies subprocess output capture, timeout, replacement-character decoding, working directory, and command arguments are passed correctly.                                                                                            |
+| `test_cli_runs_with_stdin_closed` | The CLI is started with its standard input closed (`subprocess.DEVNULL`), so it never waits for input. |
 | `test_run_claude_returns_the_structured_output`                     | Parses a successful Claude response and returns the structured answer.                                                                                                                                                                 |
 | `test_run_claude_builds_the_command_with_the_image_path_and_schema` | Builds the Claude command with the image path, selected model and effort, Read as the only tool, none of the user's MCP servers, `--safe-mode` (none of their CLAUDE.md, plugins, hooks, skills or memory), and JSON schema arguments. |
 | `test_run_claude_exits_when_the_reply_is_not_json`                  | Rejects non-JSON CLI output and exits with a useful message containing the raw response.                                                                                                                                               |
@@ -122,15 +123,20 @@ The transcription choice saved on the Settings page (no default), and everything
 | Test | What it checks |
 | --- | --- |
 | `test_nothing_saved_is_none_and_so_is_part_of_a_choice` | The saved choice is `None` until all three of provider, model and effort are saved. |
+| `test_saving_again_replaces_and_leaves_other_settings` | Saving a choice again replaces the earlier one and leaves other saved settings alone. |
 | `test_nothing_is_configured_until_a_choice_is_saved` | `GET /transcription-models` gives `configured: null` until then. |
 | `test_put_saves_all_three_trimmed_and_returns_the_choice` / `test_there_is_no_reset` | `PUT /transcription-defaults` saves and returns exactly provider, model and effort; `DELETE` no longer exists. |
 | `test_folders_are_the_data_and_output_folders_inside_the_project` | `GET /folders` gives the absolute `data` and `output` folders under the project. |
+| `test_put_and_post_jobs_reject_the_same_values_with_the_same_message` — 10 cases | A blank, multi-word, option-like, too long or odd model, an unknown provider, or a blank, multi-word, option-like or too long effort is refused with the same 400 and message by `PUT /transcription-defaults` and `POST /jobs`; nothing is saved or queued. |
+| `test_put_needs_all_three_fields` | `PUT /transcription-defaults` without all of provider, model and effort is 422 and saves nothing. |
+| `test_put_rejects_a_body_that_is_not_json` | A `PUT` whose body isn't JSON is 422. |
 | `test_a_job_without_a_full_choice_and_nothing_saved_is_refused` | `POST /jobs` without a full choice and nothing saved is 409 "Choose a transcription model on the Settings page first." and queues nothing. |
 | `test_a_job_with_an_explicit_choice_works_with_nothing_saved` | An explicit choice in the payload needs nothing saved. |
 | `test_a_job_started_without_a_choice_uses_the_saved_one` / `test_a_job_with_part_of_a_choice_takes_the_rest_from_the_saved_one` | The saved choice fills whatever the payload leaves out. |
 | `test_a_page_transcription_cannot_leave_out_its_choice` | `POST /page-transcription` requires provider, model and effort (422). |
 | `test_a_bundle_job_with_no_choice_runs_with_the_saved_one` | The worker gives the pipeline the job's own fields, else the saved choice. |
 | `test_a_bundle_job_without_a_full_choice_and_nothing_saved_fails_with_the_message` / `test_a_page_job_with_no_choice_and_nothing_saved_fails_with_the_message` | A job with a missing field and nothing saved is marked failed with the message, and no model or pipeline runs. |
+| `test_a_page_job_with_no_choice_reads_with_the_saved_one` / `test_a_page_job_with_a_choice_keeps_it` | A page job with no choice reads the page with the saved one; a page job with its own choice keeps it whatever is saved. |
 
 ## `test_identify_fingerprint.py`
 

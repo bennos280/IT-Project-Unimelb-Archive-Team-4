@@ -1,4 +1,4 @@
-"""Alembic runs the migrations in versions/ through this, on backend/db/wilfprestsurvey.db unless given another url."""
+"""Alembic runs the migrations in versions/ through this, on backend/db/prestcribe.db unless given another url."""
 from pathlib import Path
 
 from alembic import context
