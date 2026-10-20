@@ -103,7 +103,7 @@ class Flag(Base):
     __tablename__ = "flags"
     __table_args__ = (
         ForeignKeyConstraint(["page_id", "field_title"], ["fields.page_id", "fields.field_title"], ondelete="CASCADE"),
-        CheckConstraint("kind IN ('inconsistency', 'gibberish', 'uncertain', 'invalid')", name="kind"),
+        CheckConstraint("kind IN ('inconsistency', 'gibberish', 'uncertain', 'invalid', 'check')", name="kind"),
     )
     flag_id = Column(Integer, primary_key=True, autoincrement=True)
     page_id = Column(String, nullable=False)
@@ -143,12 +143,22 @@ class InstructionVersion(Base):
     note = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=True, server_default=func.now()) #UTC
 
+#every saved version of a series' checks across fields (backend/db/checks.py), as a JSON list; the newest is used
+class CheckVersion(Base):
+    __tablename__ = "check_versions"
+    version_id = Column(Integer, primary_key=True, autoincrement=True)
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=False)
+    body = Column(Text, nullable=False)
+    reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=True, server_default=func.now()) #UTC
+
 #work queued by the API for backend/worker.py, oldest first: a bundle's pipeline run, one page read again as a page type,
-#training page sorting, adding a series' items
+#training page sorting, adding a series' items, or checking a series' pages again
 class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (CheckConstraint("status IN ('waiting', 'running', 'done', 'failed')", name="status"),
-                      CheckConstraint("kind IN ('bundle', 'page', 'train', 'items')", name="kind"))
+                      CheckConstraint("kind IN ('bundle', 'page', 'train', 'items', 'check')", name="kind"))
     job_id = Column(Integer, primary_key=True, autoincrement=True)
     base_revision = Column(Integer, nullable=True)
     transcription_model = Column(String, nullable=True)
@@ -158,8 +168,8 @@ class Job(Base):
     pdf = Column(String, nullable=True) #a bundle job's PDF
     page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), nullable=True) #a page job's page...
     page_type = Column(String, ForeignKey("page_types.name"), nullable=True) #...and the type to read it as
-    reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #who asked for a page or training job
-    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=True) #an items job's series...
+    reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True) #who asked for a page, training or check job
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=True) #a check job's series; an items job's...
     search = Column(String, nullable=True) #...and the search whose results it adds; None: all its items
     status = Column(String, nullable=False, default="waiting", server_default="waiting")
     step = Column(String, nullable=True) #step the worker is on
@@ -200,6 +210,7 @@ class Edit(Base):
                         " + (annotation_no IS NOT NULL) = 1 AND (resident_field_title IS NULL) = (resident_no IS NULL)"
                         " AND (child_residence IS NULL) = (child_no IS NULL)",
                         name="exclusivity"),
+        Index("ix_edits_page_field", "page_id", "field_title"),  #a field's newest edit, for the checks (backend/db/checks.py)
     )
     edit_id = Column(Integer, primary_key=True, autoincrement=True)
     edit_text = Column(Text, nullable=True)

@@ -9,12 +9,13 @@ const MAIN_PART = { type: "main", count: "one_or_more", how: "starts" };
 const NOTES_PART = { type: "notes", count: "any", how: "follows" };
 const CODED_PART = { type: "coded", count: "one", how: "matched" };
 type Version = { id: number; body: string; rules: object; reviewer: string | null; note: string | null; createdAt: string };
+type CheckVersion = { id: number; number: number; checks: object[]; reviewer: string | null; note: string | null; createdAt: string };
 const type = (name: string, label: string, over: Partial<PageType> = {}): PageType => ({
   name, label, builtIn: true, unknown: false, templateVersion: null, ...over,
 });
 
 async function mockApi(page: Page, recordKey: string | null = "number_of_dwelling",
-  parts: Part[] = [MAIN_PART, NOTES_PART, CODED_PART]) {
+  checkVersions: CheckVersion[] = [], parts: Part[] = [MAIN_PART, NOTES_PART, CODED_PART]) {
   const types = [
     type("coded", "Coded page", { templateVersion: 8 }),
     type("main", "Main page", { templateVersion: 7 }),
@@ -36,6 +37,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
   };
   const calls = {
     patchType: [] as unknown[], putLevels: [] as unknown[], tried: [] as unknown[], addType: [] as unknown[], saveTemplate: [] as unknown[],
+    saveChecks: [] as { checks: object[]; basedOn: number | null; reviewerId: number; note: string | null }[], checkAgain: 0,
   };
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -75,6 +77,18 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
       return route.fulfill({ json: t });
     }
     if (path === "/api/instructions" && method === "GET") return route.fulfill({ json: Object.fromEntries(Object.entries(versions).map(([k, v]) => [k, v[0]])) });
+    if (path === "/api/collections/1/checks" && method === "GET") return route.fulfill({ json: checkVersions });
+    if (path === "/api/collections/1/checks" && method === "POST") {
+      const body = request.postDataJSON();
+      calls.saveChecks.push(body);
+      checkVersions.unshift({ id: 100 + checkVersions.length, number: checkVersions.length + 1, checks: body.checks, reviewer: "Ben",
+        note: body.note, createdAt: "2026-10-19T05:00:00+00:00" });
+      return route.fulfill({ status: 201, json: checkVersions[0] });
+    }
+    if (path === "/api/collections/1/check" && method === "POST") {
+      calls.checkAgain += 1;
+      return route.fulfill({ status: 202, json: { id: 55, kind: "check" } });
+    }
     if (named?.[1] === "instructions" && method === "GET")
       return versions[named[2]] ? route.fulfill({ json: versions[named[2]] }) : route.fulfill({ status: 404, json: { detail: "None." } });
     if (named?.[1] === "instructions" && method === "POST") {
@@ -171,7 +185,7 @@ test("a series' levels are a ladder from Item to Page, and its page types are li
   await expect(page.getByRole("navigation", { name: "Series" }).getByRole("link", { name: "Setup" })).toHaveAttribute("aria-current", "page");
   await expect(ladder(page)).toHaveText([/^Item\s*From the archive$/, /^Survey\s*Starts at each Main page · Coded page matched by number\s*Edit$/,
     /^Page\s*From the scan$/]);
-  await expect(page.getByRole("tablist", { name: "Setup" }).getByRole("tab")).toHaveText(["Levels", "Page types"]);
+  await expect(page.getByRole("tablist", { name: "Setup" }).getByRole("tab")).toHaveText(["Levels", "Page types", "Checks"]);
   await expect(page.getByRole("tab", { name: "Levels" })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: "Page types" }).click();
   await expect(page).toHaveURL("/?series=1&view=setup&section=page-types");
@@ -350,7 +364,7 @@ test("a level's shape fills in what one is made of: a run of pages from one, eac
 });
 
 test("a level opened and saved unchanged keeps its parts, and parts chosen by hand stay while another shape is tried", async ({ page }) => {
-  const calls = await mockApi(page, "number_of_dwelling", [MAIN_PART, CODED_PART]); // no notes page in a survey
+  const calls = await mockApi(page, "number_of_dwelling", undefined, [MAIN_PART, CODED_PART]); // no notes page in a survey
   await page.goto("/?series=1&view=setup&level=1");
   await expect(page.getByLabel("Surveys start at a page, with pages matched by number")).toBeChecked();
   await expect(page.getByText("Includes one or more Main pages and exactly one Coded page.")).toBeVisible();
@@ -373,6 +387,112 @@ test("the Unknown type has no template, and says where its pages wait", async ({
   const unknown = page.getByRole("dialog", { name: "Edit Unknown" });
   await expect(unknown.getByText("Pages sorting couldn't place wait here, unread, until a reviewer picks their type. They have no template.")).toBeVisible();
   await expect(unknown.getByLabel("Template")).toHaveCount(0);
+});
+
+// The Checks section: a series' checks across fields (backend/db/checks.py).
+const checksSection = (page: Page) => page.locator("section").filter({ has: page.getByRole("heading", { name: "Checks", exact: true }) });
+const DWELLING = { id: "dw", kind: "compare", left: ["main.number_of_dwelling"], op: "=", right: ["coded.number_of_dwelling"] };
+const NOTES = { id: "nt", kind: "if", message: "Notes but no address", if: "notes.text", is: "filled", then: "main.address", must: "filled" };
+
+test("a check is built from the series' fields, read back in words, and the checks saved together as a version", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?series=1&view=setup&section=checks");
+  const section = checksSection(page);
+  await expect(section.locator("tbody tr")).toHaveText(["No checks yet."]);
+  await section.getByRole("button", { name: "Add check" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add check" });
+  await dialog.getByLabel("Compare field 1").selectOption("main.number_of_dwelling");
+  await expect(dialog.getByRole("button", { name: "Done" })).toBeDisabled(); // nothing to compare it with yet
+  await dialog.getByLabel("With field 1").selectOption("coded.number_of_dwelling");
+  await expect(dialog.getByText("Main page › number_of_dwelling = Coded page › number_of_dwelling")).toBeVisible();
+  await dialog.getByRole("button", { name: "Done" }).click();
+
+  await section.getByRole("button", { name: "Add check" }).click();
+  const second = page.getByRole("dialog", { name: "Add check" });
+  await second.getByLabel("Kind").selectOption("if");
+  await second.getByLabel("If field").selectOption("notes.text");
+  await second.getByLabel("Then field").selectOption("main.address");
+  await second.getByLabel("Flag says").fill("Notes but no address");
+  await second.getByRole("button", { name: "Done" }).click();
+  await expect(section.locator("tbody tr td:first-child")).toHaveText([
+    "Main page › number_of_dwelling = Coded page › number_of_dwelling",
+    "If Notes page › text is filled, then Main page › address must be filled"]);
+  await expect(section.locator("tbody tr").last()).toContainText("Notes but no address");
+
+  await section.getByLabel("Note", { exact: true }).fill("dwelling and notes");
+  await section.getByRole("button", { name: "Save checks" }).click();
+  await expect(section.getByRole("button", { name: "Save checks" })).toHaveCount(0);
+  expect(calls.saveChecks).toEqual([{ basedOn: null, reviewerId: 1, note: "dwelling and notes", checks: [
+    { ...DWELLING, id: expect.any(String) }, { ...NOTES, id: expect.any(String) }] }]);
+  await expect(section.getByText("History (1 version)")).toBeVisible();
+});
+
+test("a check can be sums against a value, switched off, edited and removed, and an older version brought back", async ({ page }) => {
+  const calls = await mockApi(page, undefined, [
+    { id: 102, number: 2, checks: [DWELLING, NOTES], reviewer: "Ben", note: "notes", createdAt: "2026-10-19T04:00:00+00:00" },
+    { id: 101, number: 1, checks: [DWELLING], reviewer: "Ben", note: null, createdAt: "2026-10-18T04:00:00+00:00" }]);
+  await page.goto("/?series=1&view=setup&section=checks");
+  const section = checksSection(page);
+  const dwelling = "Main page › number_of_dwelling = Coded page › number_of_dwelling";
+  await section.getByLabel(`${dwelling} on`).uncheck();
+  await expect(section.getByRole("button", { name: "Save checks" })).toBeVisible();
+  await section.getByRole("button", { name: "Discard" }).click();
+  await expect(section.getByLabel(`${dwelling} on`)).toBeChecked();
+
+  await section.getByRole("button", { name: `Edit ${dwelling}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit check" });
+  await dialog.getByRole("button", { name: "Add a Compare field to sum" }).click();
+  await dialog.getByLabel("Compare field 2", { exact: true }).selectOption("main.address");
+  await dialog.getByLabel("Comparison").selectOption("<=");
+  await dialog.getByLabel("With", { exact: true }).selectOption("value");
+  await dialog.getByLabel("Value").fill("11");
+  await dialog.getByRole("button", { name: "Done" }).click();
+  const summed = "Main page › number_of_dwelling + Main page › address ≤ 11";
+  await expect(section.locator("tbody tr td:first-child").first()).toHaveText(summed);
+  await section.getByRole("button", { name: /^Remove If Notes page/ }).click();
+  await section.getByRole("button", { name: "Save checks" }).click();
+  await expect(section.getByRole("button", { name: "Save checks" })).toHaveCount(0);
+  expect(calls.saveChecks.at(-1)).toEqual({ basedOn: 102, reviewerId: 1, note: null, checks: [
+    { id: "dw", kind: "compare", left: ["main.number_of_dwelling", "main.address"], op: "<=", value: "11" }] });
+
+  await section.getByText("History (3 versions)").click();
+  await section.getByRole("button", { name: "Use checks version 1" }).click();
+  await expect(section.locator("tbody tr td:first-child").first()).toHaveText(dwelling);
+  await section.getByRole("button", { name: "Save checks" }).click();
+  await expect.poll(() => calls.saveChecks.at(-1)?.checks).toEqual([DWELLING]);
+});
+
+test("Check again checks the series' pages as a task, linked to it", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?series=1&view=setup&section=checks");
+  await checksSection(page).getByRole("button", { name: "Check again" }).click();
+  await expect(checksSection(page).getByRole("link", { name: "see the task" })).toHaveAttribute("href", "/?view=tasks&task=55");
+  expect(calls.checkAgain).toBe(1);
+});
+
+test("a check can compare as codes, or say a field names another's code", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/?series=1&view=setup&section=checks");
+  const section = checksSection(page);
+  await section.getByRole("button", { name: "Add check" }).click();
+  let dialog = page.getByRole("dialog", { name: "Add check" });
+  await dialog.getByLabel("Compare field 1").selectOption("main.number_of_dwelling");
+  await dialog.getByLabel("With field 1").selectOption("coded.number_of_dwelling");
+  await dialog.getByLabel("Compare as").selectOption("codes");
+  await expect(dialog.getByText("Main page › number_of_dwelling = Coded page › number_of_dwelling (as codes)")).toBeVisible();
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await section.getByRole("button", { name: "Add check" }).click();
+  dialog = page.getByRole("dialog", { name: "Add check" });
+  await dialog.getByLabel("Compare field 1").selectOption("main.address");
+  await dialog.getByLabel("Comparison").selectOption("names");
+  await expect(dialog.getByLabel("Compare as")).toHaveCount(0);
+  await dialog.getByLabel("With field 1").selectOption("coded.number_of_dwelling");
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await section.getByRole("button", { name: "Save checks" }).click();
+  await expect(section.getByRole("button", { name: "Save checks" })).toHaveCount(0);
+  expect(calls.saveChecks.at(-1)?.checks).toEqual([
+    { id: expect.any(String), kind: "compare", left: ["main.number_of_dwelling"], op: "=", right: ["coded.number_of_dwelling"], as: "codes" },
+    { id: expect.any(String), kind: "compare", left: ["main.address"], op: "names", right: ["coded.number_of_dwelling"] }]);
 });
 
 test("a level's settings are tried on an item already read before they're saved, and a change fades the old try", async ({ page }) => {

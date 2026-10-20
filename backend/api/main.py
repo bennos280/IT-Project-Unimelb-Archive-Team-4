@@ -362,6 +362,70 @@ def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depen
     return version_json(version, {reviewer.reviewer_id: reviewer.name})
 
 
+#--A SERIES' CHECKS--# (backend/db/checks.py: rules across its fields, saved as versions; the newest is used)
+class ChecksRequest(BaseModel):
+    checks: list
+    basedOn: int | None #the version the edit started from (None: the series' first); refused if a newer one was saved since
+    reviewerId: int
+    note: str | None = None
+
+def check_version_json(v, number, names):
+    return {"id": v.version_id, "number": number, "checks": json.loads(v.body), "reviewer": names.get(v.reviewer_id), "note": v.note,
+            "createdAt": v.created_at.replace(tzinfo=timezone.utc).isoformat() if v.created_at else ""}
+
+#each of a series' page types -> the fields of its newest template, which its checks may name
+def series_fields(db, collection_id):
+    newest = instructions.newest(db)
+    return {t.name: set(checks.fields(json.loads(newest[t.name].body)))
+            for t in db.query(models.PageType).filter_by(collection_id=collection_id) if t.name in newest}
+
+def series_check_versions(db, collection_id):
+    if not db.get(models.Collection, collection_id):
+        raise HTTPException(status_code=404, detail=f"There's no series {collection_id}.")
+    return (db.query(models.CheckVersion).filter_by(collection_id=collection_id)
+            .order_by(models.CheckVersion.version_id.desc()).all())
+
+#every version of a series' checks, newest first, numbered from 1
+@app.get("/collections/{collection_id}/checks")
+def get_series_checks(collection_id: int, db: Session = Depends(get_db)):
+    versions = series_check_versions(db, collection_id)
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    return [check_version_json(v, len(versions) - n, names) for n, v in enumerate(versions)]
+
+#saves a new version of a series' checks, used from the next check on (an older one brought back is saved as the newest)
+@app.post("/collections/{collection_id}/checks", status_code=201)
+def save_series_checks(collection_id: int, payload: ChecksRequest, db: Session = Depends(get_db)):
+    write_lock(db)
+    versions = series_check_versions(db, collection_id)
+    reviewer = db.get(models.Reviewer, payload.reviewerId)
+    if reviewer is None:
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    if payload.basedOn != (versions[0].version_id if versions else None):
+        raise HTTPException(status_code=409, detail="Someone saved newer checks: reload them and make your change again.")
+    if payload.checks == (json.loads(versions[0].body) if versions else []):
+        raise HTTPException(status_code=400, detail="Nothing changed.")
+    if found := checks.check_problems(payload.checks, series_fields(db, collection_id)):
+        raise HTTPException(status_code=400, detail=found)
+    version = models.CheckVersion(collection_id=collection_id, body=json.dumps(payload.checks), reviewer_id=reviewer.reviewer_id,
+                                  note=payload.note)
+    db.add(version)
+    db.commit()
+    return check_version_json(version, len(versions) + 1, {reviewer.reviewer_id: reviewer.name})
+
+#queues the worker to check every page of a series again against its page types' rules and its checks
+@app.post("/collections/{collection_id}/check", status_code=202)
+def check_series_again(collection_id: int, db: Session = Depends(get_db)):
+    write_lock(db)
+    series_check_versions(db, collection_id)
+    if db.query(models.Job).filter(models.Job.kind == "check", models.Job.collection_id == collection_id,
+                                   models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="This series is already being checked.")
+    job = models.Job(kind="check", collection_id=collection_id)
+    db.add(job)
+    db.commit()
+    return job_json(job)
+
+
 #--PAGE TYPES--# (the four built in, and any added here; a page type's pages are read with its template)
 class PageTypeRequest(BaseModel):
     reviewerId: int
@@ -959,6 +1023,9 @@ def task_json(db, job, owners, names):
         if page:
             series = db.get(models.Bundle, page.bundle_id).collection_id
             href = f"/?survey={page.survey_id}&page={page.page_id}" if page.survey_id else f"/?series={series}"
+    elif job.kind == "check":
+        series, href = job.collection_id, f"/?series={job.collection_id}"
+        label = f"Checking {names.get(series, 'a series')}"
     else:
         label = "Training page sorting"
     return {"id": job.job_id, "kind": job.kind, "label": label, "status": job.status, "step": job.step, "done": job.done_pages,
@@ -1305,10 +1372,13 @@ def move_page(page_id: str, payload: MovePageRequest, db: Session = Depends(get_
         raise HTTPException(409, "Wait for this page's transcription to finish before moving it.")
     db.add(models.PageMove(page_id=page_id, from_survey=page.survey_id, to_survey=target.survey_id,
                            reviewer_id=payload.reviewerId, reason=payload.reason.strip()))
+    left = [p for (p,) in db.query(models.Page.page_id).filter(models.Page.survey_id == page.survey_id, models.Page.page_id != page_id)]
     page.survey_id = target.survey_id
     if page.checked_revision == (page.revision_no or 0):
         page.checked_revision = (page.revision_no or 0) + 1
     page.revision_no = (page.revision_no or 0) + 1
+    db.flush()
+    checks.check_pages(db.connection(), [page_id, *left[:1]])  #its new record, and the one it left (a page of it brings the rest)
     db.commit()
     return {"surveyId": page.survey_id, "pageId": page_id}
 

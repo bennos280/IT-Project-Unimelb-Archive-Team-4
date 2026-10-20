@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { me } from "../person";
 import { backendRequest, seriesParam } from "../progress/backend";
+import ChecksSection from "./ChecksSection";
 import FieldRules from "./FieldRules";
 import { cleanRules, parseTemplate, sameRules, type Rules } from "./rules";
 import { describe } from "./shapes";
@@ -33,10 +34,10 @@ type Version = { id: number; body: string; rules: Rules; reviewer: string | null
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 const start = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
-const SECTIONS = ["levels", "page-types"];
+const SECTIONS = ["levels", "page-types", "checks"];
 
-// A series' Setup tab: its levels of record, its page types (what each is called, the template its pages are read
-// with and its fields' rules). The one shown is in the URL (?section=; the old ?view=page-types
+// A series' Setup tab, in three: its levels of record, its page types (what each is called, the template its pages are read
+// with and its fields' rules), and its checks across fields. The one shown is in the URL (?section=; the old ?view=page-types
 // opens the page types).
 export default function PageTypesScreen() {
   const params = new URLSearchParams(location.search);
@@ -89,6 +90,7 @@ export default function PageTypesScreen() {
           <TabsList aria-label="Setup">
             <TabsTrigger value="levels">Levels</TabsTrigger>
             <TabsTrigger value="page-types">Page types</TabsTrigger>
+            <TabsTrigger value="checks">Checks</TabsTrigger>
           </TabsList>
           <TabsContent value="levels">
             {collection && types && <Levels collection={collection} types={types} />}
@@ -127,6 +129,9 @@ export default function PageTypesScreen() {
                 </Table>
               </section>
             )}
+          </TabsContent>
+          <TabsContent value="checks">
+            {types && <ChecksSection collectionId={collectionId} types={types} />}
           </TabsContent>
         </Tabs>
       </main>
