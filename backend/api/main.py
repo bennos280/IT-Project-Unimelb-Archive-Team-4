@@ -1564,3 +1564,60 @@ def get_page_history(page_id: str, db: Session = Depends(get_db)):
               changes=[{"field": field, "previous": previous, "saved": edit.edit_text}])
     events.sort(key=lambda item: (item["time"] or "", item["id"]), reverse=True)
     return {"pageId": page_id, "revision": page.revision_no, "events": events}
+
+
+#--A PRESTCRIBE FILE--# everything this copy of PrestCribe has (series, their setup, transcriptions, reviews, people), to open in
+#another; the scans aren't in it: the other gets them from the archive as it needs them, or they're imported again
+#what a setup-only PrestCribe file leaves out: every page and what was read off it, the records and items read, tasks, and this
+#computer's own choices (its transcription model, page sorting and sorting models)
+NOT_SETUP = ("edits", "flags", "annotations", "resident_fields", "residents", "other_children", "fields", "page_moves",
+             "page_versions", "pages", "surveys", "bundles", "jobs", "sorting_models", "app_settings")
+
+@app.get("/state")
+def save_state(content: Literal["everything", "setup"] = "everything", db: Session = Depends(get_db)):
+    import shutil, tempfile
+    from starlette.background import BackgroundTask
+    folder = tempfile.mkdtemp()
+    copy = Path(folder) / "state.db"
+    with sqlite3.connect(copy) as out:
+        db.connection().connection.driver_connection.backup(out)
+        if content == "setup":  #the series and how they're read, to start reading again from scratch
+            out.execute("PRAGMA foreign_keys = OFF")
+            for table in NOT_SETUP:
+                out.execute(f'DELETE FROM "{table}"')
+            out.commit()
+            out.execute("VACUUM")
+    out.close()
+    name = f"PrestCribe {'setup ' if content == 'setup' else ''}{datetime.now():%Y-%m-%d}.prestcribe"
+    return FileResponse(copy, filename=name, media_type="application/octet-stream",
+                        background=BackgroundTask(shutil.rmtree, folder, ignore_errors=True))
+
+#opens a PrestCribe file (GET /state) in place of everything here, once nothing is being read; what was here is kept first as
+#backend/db/prestcribe-backup-<when>.db, and an older file is brought up to date
+@app.post("/state")
+async def open_state(request: Request, db: Session = Depends(get_db)):
+    import tempfile
+    if db.query(models.Job).filter(models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="Wait for the tasks waiting or running to finish (Tasks, top right), then open it.")
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "state.db"
+        path.write_bytes(await request.body())
+        found = sqlite3.connect(path)
+        try:
+            tables = {name for (name,) in found.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        except sqlite3.DatabaseError:
+            tables = set()
+        if not {"alembic_version", "collections", "page_types", "pages"} <= tables:
+            found.close()
+            raise HTTPException(status_code=400, detail="That isn't a PrestCribe file.")
+        live = db.connection().connection.driver_connection
+        with sqlite3.connect(ROOT / "backend" / "db" / f"prestcribe-backup-{datetime.now():%Y%m%d-%H%M%S}.db") as kept:
+            live.backup(kept)
+        kept.close()
+        if "app_settings" in tables and not found.execute("SELECT 1 FROM app_settings LIMIT 1").fetchone():  #a setup-only file: this computer's own choices stay
+            found.executemany("INSERT INTO app_settings (key, value) VALUES (?, ?)", live.execute("SELECT key, value FROM app_settings").fetchall())
+            found.commit()
+        found.backup(live)
+        found.close()
+    database.migrate(f"sqlite:///{db.get_bind().url.database}")
+    return {"opened": True}

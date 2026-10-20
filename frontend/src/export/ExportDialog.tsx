@@ -407,6 +407,12 @@ export default function ExportDialog({
               </Alert>
             )}
 
+            <p className="text-sm text-muted-foreground">
+              Moving to another computer?{" "}
+              <a className="text-primary underline-offset-4 hover:underline" href="/api/state" download>Save a PrestCribe file</a> of
+              everything here, to open on another computer.
+            </p>
+
             {/* Dialog actions. */}
             <DialogFooter className="sm:justify-between">
               <Button

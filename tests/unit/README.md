@@ -208,8 +208,17 @@ The test db is built from `backend/db/models.py` with foreign keys checked, as i
 |`test_started_job_waits_for_the_worker`|`POST /jobs` queues a waiting job (202), with its last update time in UTC, that `GET /bundles` and `GET /jobs/<id>` report (an unknown id is 404), and refuses a second one for the same PDF while it waits.|
 |`test_pdfs_inside_the_repo_are_named_relative_to_it`|With `DATA` inside the repo (the usual setup), PDFs and jobs use a forward-slash path relative to the repo, so the db works on any checkout.|
 |`test_jobs_only_for_unloaded_pdfs_in_data`|A PDF outside `DATA` is refused (404), and a bundle already loaded is refused (409) so its reviews can't be lost.|
-|`test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run`|`GET /bundles` also lists each of the archive's bundles (`backend/archive_pdfs.txt`, faked here) whose PDF isn't in `DATA`, as `DATA/<bundle number>/<its PDF>`, and a job can be queued for it; a PDF already here is listed once.|
-|`test_the_real_archive_list_names_each_bundle_as_the_archive_does`|`backend/archive_pdfs.txt` lists the 45 bundles once each, as `<bundle number>/<file id>_<file name>.pdf`.|
+|`test_the_archives_bundles_whose_pdf_is_not_here_are_listed_and_can_run`|`GET /bundles` also lists each archive item a series lists with a PDF (`ArchiveItem.pdf`) that isn't in `DATA`, as `DATA/<bundle number>/<its PDF>`, and a job can be queued for it; a PDF already here is listed once.|
+|`test_the_prest_setup_names_each_archive_pdf_as_the_archive_does`|The Prest survey's setup file (`setups/wilfred-prest-survey.prestcribe`) lists the 45 archive PDFs once each, as `<bundle number>/<file id>_<file name>.pdf`.|
+|`test_job_persists_model_choices_and_defaults` — 4 cases|`POST /jobs` saves the model, provider and effort given (trimmed), and the saved choice for any left out or null, on a waiting job a second connection (the worker's) can read.|
+|`test_invalid_model_settings_do_not_queue_a_job` — 6 cases|An empty, multi-word, option-like or 201-character model, an unknown provider or a blank effort is refused (400) and queues nothing, so a valid retry for the same PDF works.|
+|`test_model_list_includes_configuration_without_history`|`GET /transcription-models` gives the saved choice and no models when no page has been transcribed.|
+|`test_model_history_groups_versions_and_averages_available_runtimes`|The model history keeps template versions apart and averages the runtimes there are (pages with none still count); pages with no recorded model are left out.|
+|`test_transcripts_require_an_existing_job`|`GET /jobs/{id}/transcripts` for an unknown job is 404.|
+|`test_transcripts_reject_jobs_without_a_bundle` — 3 cases|A page job, a training job and a bundle job with no PDF are refused (400).|
+|`test_transcripts_before_output_exists_are_empty`|A queued job whose output isn't there yet gives no pages, not an error.|
+|`test_partial_transcripts_show_sorted_pages_and_only_verified_data`|A running job's pages come in page order with their progress (transcribed, not required, awaiting transcription, needing identification); only a page whose saved result matches its checksum has its data.|
+|`test_unusable_transcripts_are_not_exposed` — 5 cases|A transcript that is missing, changed since it was saved, not JSON, named outside the transcript folder or from an unfinished manifest entry is left out.|
 
 ## `test_serve.py`
 
@@ -261,6 +270,7 @@ A page type's field rules (`backend/db/checks.py`): saved with its template vers
 | `test_rules_that_dont_fit_the_template_or_make_no_sense_are_refused` | 17 cases: a rule on a field the template lacks, on a group, or in a list (residents); an unknown type or key; required not true or false; a range that isn't numbers or dates, or runs backwards, or on a type with no range; a list with no values; a pattern missing, invalid, not text, repeating a repeat (which can take forever), or not matching its example; a range that isn't a number or a date. |
 | `test_sensible_rules_pass` | Rules of each kind that fit the template pass. |
 | `test_a_templates_rules_are_saved_with_it_changed_alone_and_refused_when_they_dont_fit` | `POST /instructions/main` saves rules with the template, and rules changed alone are a new version; rules for a field the template lacks are refused (400); versions list their rules (version 1 none); the prompt takes none. |
+| `test_a_loaded_items_values_that_break_their_rules_are_flagged_and_a_new_check_replaces_the_last` | Loading an item checks its pages against their types' newest rules and flags what breaks them; checking again replaces those flags and leaves other kinds of flag alone. |
 | `test_a_page_read_again_is_checked_against_its_types_rules` | A page the worker reads again is checked against its type's newest rules. |
 
 ## `test_series_checks.py`
@@ -278,6 +288,8 @@ A series' checks across fields (`backend/db/checks.py`): saved as versions, and 
 | `test_a_page_waiting_to_be_read_again_isnt_checked_and_its_last_flags_go` | A page waiting to be read again isn't checked, its flags go, and its record's checks across page types wait for it. |
 | `test_a_page_moved_to_another_record_is_checked_there_and_the_record_it_left_again` | Moving a page re-checks its new record and the one it left. |
 | `test_a_page_changed_to_another_type_is_checked_against_that_types_rules` | Changing a page's type re-checks it: the old type's rule flags go. |
+| `test_the_prest_surveys_checks_flag_what_its_validation_did` | 14 cases: Prest's checks, as its setup file (`setups/wilfred-prest-survey.prestcribe`) has them, with values as transcribed: dwelling numbers alike but for case, spaces and leading zeros (24A, 24 a), a missing letter or a stray full stop flagged, a value marked unsure (10/, 45(1)) not compared; industry and occupation codes compared as codes, digits only (013.3, 17?, 4309m can't be told); a municipality named by its code, a suburb not a council can't be told. |
+| `test_the_prest_surveys_children_living_and_dead_add_up_to_the_total` | Living plus dead children must be the total. |
 | `test_names_and_codes_are_checked_when_saved` | A names check needs one field each side; as is values or codes. |
 
 ## `test_page_types.py`
