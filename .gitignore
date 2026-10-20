@@ -30,3 +30,5 @@ backend/worker.lock
 backend/db/prestcribe.db
 backend/db/prestcribe-backup-*.db
 backend/db/wilfprestsurvey*.db
+# an installed copy's version, written into its release
+VERSION

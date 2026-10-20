@@ -10,20 +10,24 @@ from functools import cache
 import json
 import os
 import re
+import shlex
+import socket
 from pathlib import Path, PurePosixPath
 import sqlite3
+import sys
 import threading
 from backend.db import app_settings, checks, database, grouping, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
 from datetime import datetime, timezone
+from urllib.error import URLError
 from backend.common import ROOT, find_images, settings
 from backend.pipeline.transcribe import areas, providers
 from backend.pipeline.transcribe.transcribe import ALL_PROVIDERS
 
 from backend.api.uploads import archive_sources, upload_bundle
-from backend.api import connections, transcription_options
+from backend.api import connections, local_sorting, transcription_options
 
 app = FastAPI()
 
@@ -31,6 +35,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.include_router(connections.router)
 app.include_router(transcription_options.router)
+app.include_router(local_sorting.router)
 
 #takes the db's write lock now, so another save can't land between a check and the write it guards (freed at commit)
 def write_lock(db):
@@ -929,6 +934,20 @@ def set_active_sorting_model(payload: ActiveModelRequest, db: Session = Depends(
 def get_folders():
     return {key.lower(): str((ROOT / settings()[key]).resolve()) for key in ("DATA", "OUTPUT")}
 
+#opens the scans' or the results' folder in Explorer or Finder, on the computer PrestCribe runs on
+@app.post("/folders/{which}/open", status_code=204)
+def open_folder(which: Literal["data", "output"]):
+    import subprocess
+    folder = (ROOT / settings()[which.upper()]).resolve()
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        if sys.platform == "win32":
+            os.startfile(folder)
+        else:
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(folder)])
+    except OSError as error:
+        raise HTTPException(status_code=500, detail=f"The folder couldn't be opened: {error}"[:300])
+
 #a transcription's provider, model and effort: the ones given, else the saved choice; 409 when either is still missing
 def chosen_transcription(db, provider, model, effort):
     saved = app_settings.transcription_defaults(db) or {}
@@ -1569,16 +1588,28 @@ def get_page_history(page_id: str, db: Session = Depends(get_db)):
 
 #--A PRESTCRIBE FILE--# everything this copy of PrestCribe has (series, their setup, transcriptions, reviews, people), to open in
 #another; the scans aren't in it: the other gets them from the archive as it needs them, or they're imported again
+#what a setup-only PrestCribe file leaves out: every page and what was read off it, the records and items read, tasks, and this
+#computer's own choices (its transcription model, page sorting and sorting models)
+NOT_SETUP = ("edits", "flags", "annotations", "resident_fields", "residents", "other_children", "fields", "page_moves",
+             "page_versions", "pages", "surveys", "bundles", "jobs", "sorting_models", "app_settings")
+
 @app.get("/state")
-def save_state(db: Session = Depends(get_db)):
+def save_state(content: Literal["everything", "setup"] = "everything", db: Session = Depends(get_db)):
     import shutil, tempfile
     from starlette.background import BackgroundTask
     folder = tempfile.mkdtemp()
     copy = Path(folder) / "state.db"
     with sqlite3.connect(copy) as out:
         db.connection().connection.driver_connection.backup(out)
+        if content == "setup":  #the series and how they're read, to start reading again from scratch
+            out.execute("PRAGMA foreign_keys = OFF")
+            for table in NOT_SETUP:
+                out.execute(f'DELETE FROM "{table}"')
+            out.commit()
+            out.execute("VACUUM")
     out.close()
-    return FileResponse(copy, filename=f"PrestCribe {datetime.now():%Y-%m-%d}.prestcribe", media_type="application/octet-stream",
+    name = f"PrestCribe {'setup ' if content == 'setup' else ''}{datetime.now():%Y-%m-%d}.prestcribe"
+    return FileResponse(copy, filename=name, media_type="application/octet-stream",
                         background=BackgroundTask(shutil.rmtree, folder, ignore_errors=True))
 
 #opens a PrestCribe file (GET /state) in place of everything here, once nothing is being read; what was here is kept first as
@@ -1603,10 +1634,48 @@ async def open_state(request: Request, db: Session = Depends(get_db)):
         with sqlite3.connect(ROOT / "backend" / "db" / f"prestcribe-backup-{datetime.now():%Y%m%d-%H%M%S}.db") as kept:
             live.backup(kept)
         kept.close()
+        if "app_settings" in tables and not found.execute("SELECT 1 FROM app_settings LIMIT 1").fetchone():  #a setup-only file: this computer's own choices stay
+            found.executemany("INSERT INTO app_settings (key, value) VALUES (?, ?)", live.execute("SELECT key, value FROM app_settings").fetchall())
+            found.commit()
         found.backup(live)
         found.close()
     database.migrate(f"sqlite:///{db.get_bind().url.database}")
     return {"opened": True}
+
+
+#--PAGE SORTING--# how pages are sorted into page types: on this computer (PyTorch, where installed) or by the reading model
+class Sorter(BaseModel):
+    provider: str
+    model: str
+    effort: str
+
+#each field left out stays as it is; sorter null: the transcription choice sorts again
+class PageSortingRequest(BaseModel):
+    method: Literal["local", "model"] | None = None
+    unsure: Literal["review", "model"] | None = None
+    sorter: Sorter | None = None
+    sameAsTranscription: bool = False
+
+_checked, _checking = {}, threading.Lock()  #a passed check of page sorting on this computer, kept while the API runs; one at a time
+
+#how pages are sorted: the method, what a page the model here isn't sure of does, the reading model that sorts (null: the
+#transcription choice), whether PyTorch is here, and a passed check of it, if one has run
+@app.get("/page-sorting")
+def get_page_sorting(db: Session = Depends(get_db)):
+    return {**app_settings.sorting_settings(db), "localAvailable": app_settings.local_sorting_available(), "checked": _checked or None}
+
+@app.put("/page-sorting")
+def put_page_sorting(payload: PageSortingRequest, db: Session = Depends(get_db)):
+    if payload.method == "local" and not app_settings.local_sorting_available():
+        raise HTTPException(status_code=400, detail="PyTorch isn't installed on this computer, so pages can't be sorted here.")
+    if payload.sorter:
+        check_transcription(payload.sorter.provider, payload.sorter.model, payload.sorter.effort)
+    write_lock(db)
+    if payload.method:
+        app_settings.save_page_sorting(db, payload.method)
+    app_settings.save_sorting_settings(db, unsure=payload.unsure,
+                                       sorter=None if payload.sameAsTranscription else payload.sorter.model_dump() if payload.sorter else False)
+    return get_page_sorting(db)
 
 
 #--API KEYS--# for transcribing through an AI company's API (backend/pipeline/transcribe/providers.py): kept on this computer,
@@ -1630,3 +1699,103 @@ def put_api_key(provider: str, payload: ApiKey):
         raise HTTPException(status_code=400, detail="That doesn't look like a key.")
     providers.save_key(provider, value)
     return get_api_keys()
+
+
+#whether a failure, or what caused it, is a connection or download failing (requests and huggingface_hub errors are matched by name)
+def no_internet(error):
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        names = {c.__name__ for c in type(error).__mro__}
+        if isinstance(error, (URLError, ConnectionError, socket.gaierror, socket.timeout)) or names & {"ConnectionError", "Timeout", "LocalEntryNotFoundError", "OfflineModeIsEnabled"}:
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+#checks page sorting on this computer works, by sorting a blank test page with it (loading PyTorch and the sorting model, which
+#is downloaded the first time); what went wrong in words if it doesn't
+@app.post("/page-sorting/check")
+def check_page_sorting():
+    import platform, tempfile, time
+    if not app_settings.local_sorting_available():
+        intel_mac = sys.platform == "darwin" and platform.machine() != "arm64"
+        return {"ok": False, "detail": "PyTorch isn't available for Intel Macs: sort pages by the reading model." if intel_mac
+                else "PyTorch isn't installed on this computer: run the installer again to add it."}
+    from PIL import Image
+    from backend.pipeline.identify.identify import identify_pages
+    with _checking:  #a check asked for while one runs waits for it, and gets its pass
+        if _checked:
+            return dict(_checked)
+        started = time.monotonic()
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                page = Path(folder) / "check.png"
+                Image.new("RGB", (850, 1100), "white").save(page)
+                identify_pages([page])
+        except Exception as error:
+            if no_internet(error):  #the sorting model's first download
+                return {"ok": False, "detail": f"The page sorting model couldn't be loaded; it's downloaded the first time, so check the internet ({error})"[:400]}
+            return {"ok": False, "detail": f"Page sorting on this computer failed: {type(error).__name__}: {error}"[:400]}
+        _checked.update(ok=True, seconds=round(time.monotonic() - started, 1))
+        return dict(_checked)
+
+
+#--UPDATES--# an installed copy (install.ps1 or install.sh; its release wrote VERSION) can see the latest release and update to it
+RELEASES = "https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4/releases"
+LATEST = "https://api.github.com/repos/bennos280/IT-Project-Unimelb-Archive-Team-4/releases/latest"
+
+def installed_version():
+    version = ROOT / "VERSION"
+    return version.read_text(encoding="utf-8").strip() if version.is_file() else None
+
+#the computer PrestCribe runs on, for a problem report: its system, Python, and whether pages can be sorted on it
+def system_info():
+    import platform
+    name = f"macOS {platform.mac_ver()[0]}" if sys.platform == "darwin" else f"{platform.system()} {platform.release()}"
+    return {"os": f"{name} ({platform.machine()})", "python": platform.python_version(),
+            "pytorch": app_settings.local_sorting_available()}
+
+#this copy's version (None: not installed from a release, e.g. a git checkout), the latest release's and its notes, whether
+#to update, when this was checked, and the computer it runs on
+@app.get("/version")
+def get_version():
+    import urllib.request
+    current, latest, notes, error = installed_version(), None, None, None
+    try:
+        request = urllib.request.Request(LATEST, headers={"Accept": "application/vnd.github+json", "User-Agent": "PrestCribe"})
+        with urllib.request.urlopen(request, timeout=10) as reply:
+            release = json.loads(reply.read().decode("utf-8"))
+        latest = release["tag_name"]
+        notes = release.get("body") if isinstance(release.get("body"), str) else None
+    except Exception:
+        error = "Couldn't reach GitHub to check for updates."
+    return {"current": current, "latest": latest, "notes": notes and notes.strip()[:5000], "releases": RELEASES, "error": error,
+            "updatable": bool(current and latest and latest != current),
+            "checkedAt": datetime.now(timezone.utc).isoformat(), "system": system_info()}
+
+#updates an installed copy: the installer is run again in its own window, for this folder, once this copy has stopped (it
+#starts PrestCribe again when it's done); the database, scans and results are kept
+@app.post("/update", status_code=202)
+def update(db: Session = Depends(get_db)):
+    import subprocess, urllib.request
+    if not installed_version():
+        raise HTTPException(status_code=400, detail="This copy wasn't installed from a release: update it with git pull.")
+    if db.query(models.Job).filter(models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="Wait for the tasks to finish before updating.")
+    installer = f"{RELEASES}/latest/download/install.{'ps1' if sys.platform == 'win32' else 'sh'}"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(installer, headers={"User-Agent": "PrestCribe"}), timeout=10):
+            pass
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't download the installer: {error}"[:300])
+    if sys.platform == "win32":
+        folder = str(ROOT).replace("'", "''")
+        script = (f"try {{ Start-Sleep 5; & ([scriptblock]::Create((irm '{installer}'))) -Folder '{folder}' }} "
+                  f"catch {{ Write-Host ('The update failed: ' + $_); Read-Host 'Press Enter to close this window' }}")
+        subprocess.Popen(["powershell", "-ExecutionPolicy", "ByPass", "-NoProfile", "-Command", script],
+                         creationflags=subprocess.CREATE_NEW_CONSOLE)
+    else:
+        script = f'sleep 5; f=$(mktemp) && curl -LsSf "{installer}" -o "$f" && PRESTCRIBE_HOME={shlex.quote(str(ROOT))} sh "$f"; rm -f "$f"'
+        subprocess.Popen(["sh", "-c", script], start_new_session=True)
+    threading.Timer(1, os._exit, [0]).start()  #this copy stops, so its files can be replaced; the worker stops with it
+    return {"updating": True}

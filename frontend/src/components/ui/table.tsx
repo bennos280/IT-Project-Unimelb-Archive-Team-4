@@ -50,28 +50,37 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   )
 }
 
-// clickable: a row that opens something, through the TableRowLink in it (with a TableOpenArrow at its end)
-function TableRow({ className, clickable, ...props }: React.ComponentProps<"tr"> & { clickable?: boolean }) {
+const INTERACTIVE = "a, button, input, select, textarea, label, [role=button], [role=checkbox], [role=menuitem]"
+
+// clickable: a row that opens something, through the TableRowLink in it (with a TableOpenArrow at its end). A click anywhere
+// else in the row clicks that link, unless it lands on another control or ends a text selection.
+function TableRow({ className, clickable, onClick, ...props }: React.ComponentProps<"tr"> & { clickable?: boolean }) {
+  function open(event: React.MouseEvent<HTMLTableRowElement>) {
+    onClick?.(event)
+    if (event.defaultPrevented || (event.target as Element).closest(INTERACTIVE) || window.getSelection()?.toString()) return
+    event.currentTarget.querySelector<HTMLAnchorElement>("a[data-slot=table-row-link]")?.click()
+  }
   return (
     <tr
       data-slot="table-row"
       className={cn(
         "border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
-        clickable && "relative cursor-pointer hover:bg-muted focus-within:bg-muted",
+        clickable && "cursor-pointer hover:bg-muted focus-within:bg-muted",
         className
       )}
+      onClick={clickable ? open : onClick}
       {...props}
     />
   )
 }
 
-// A clickable row's link: it covers the whole row; the row's other links and buttons sit above it ("relative z-10").
+// A clickable row's link: what the row opens, and how it's reached from the keyboard.
 function TableRowLink({ className, ...props }: React.ComponentProps<"a">) {
   return (
     <a
       data-slot="table-row-link"
       className={cn(
-        "rounded-sm font-medium outline-none after:absolute after:inset-0 hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring/50",
+        "rounded-sm font-medium outline-none hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring/50",
         className
       )}
       {...props}

@@ -11,9 +11,22 @@ Open **PowerShell** (Start menu, type "PowerShell"), paste this line and press E
 powershell -ExecutionPolicy ByPass -c "irm https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4/releases/latest/download/install.ps1 | iex"
 ```
 
-It installs everything PrestCribe needs (the first time downloads a few GB), adds a **PrestCribe** icon to your desktop and
-opens the app in your browser. Next time, double-click the icon; close its window to stop it. Run the same line again to
-update: your database, scans and results are kept (in `%LOCALAPPDATA%\PrestCribe`).
+It installs everything PrestCribe needs (the first time downloads a few hundred MB), adds **PrestCribe** to your desktop and
+Start menu, and opens the app in your browser. Next time, open PrestCribe from either; close its window to stop it. Run the same
+line again to update, or use **Settings, then About**: your database, scans and results are kept (in `%LOCALAPPDATA%\PrestCribe`).
+
+## Install (Mac)
+
+Needs macOS 14 Sonoma or later (on an Intel Mac, pages are sorted by your reading model). Open **Terminal** (press Cmd+Space, type
+"Terminal", press Return), paste this line and press Return:
+
+```sh
+curl -LsSf https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4/releases/latest/download/install.sh | sh
+```
+
+It installs everything into `~/Library/Application Support/PrestCribe`, adds **PrestCribe** to your Applications (and Launchpad)
+and Desktop, and opens it in your browser. Next time, open PrestCribe like any app; close its Terminal window to stop it. Run the
+same line again to update, or use **Settings, then About**. To remove it, delete that folder and PrestCribe from Applications.
 
 To work on the Wilfred Prest Survey, download **wilfred-prest-survey.prestcribe** from the same
 [release page](https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4/releases/latest), then on PrestCribe's home page choose

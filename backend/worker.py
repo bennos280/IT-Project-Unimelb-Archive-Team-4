@@ -150,17 +150,29 @@ def add_items(db, job, progress):
 def run_bundle(db, job, progress):
     pdf = ROOT / job.pdf
     out = ROOT / settings()["OUTPUT"] / pdf.stem
-    active = db.query(models.SortingModel).filter(models.SortingModel.active).first()
-    if active and not (ROOT / active.path).is_file():
-        raise SystemExit(f"page sorting model {active.model_id}'s file {active.path} is missing: choose another model, or retrain")
     #the item's series' own page types, and blank too for a series that has any of sorting's own types (the Prest survey)
     series = loader.series_of(loader.archive_owners(db), job.pdf)
     if series is None:
         raise SystemExit("no series lists this item: add it to one first")
-    types = {t.name for t in db.query(models.PageType).filter_by(collection_id=series, unknown=False)}
+    labels = {t.name: t.label for t in db.query(models.PageType).filter_by(collection_id=series, unknown=False)}
+    types = set(labels)
+    #pages sorted on this computer, or by the reading model (the Settings page), which may call a page blank whatever the series
+    sorting_settings = app_settings.sorting_settings(db)
+    sorting = sorting_settings["method"]
+    unsure_to_model = sorting_settings["unsure"] == "model"
+    active = None
+    if sorting == "local":
+        if not app_settings.local_sorting_available():
+            raise SystemExit("sorting pages on this computer needs PyTorch, which isn't installed here: install it from "
+                             "Settings, then Page sorting, or choose the reading model for page sorting")
+        active = db.query(models.SortingModel).filter(models.SortingModel.active).first()
+        if active and not (ROOT / active.path).is_file():
+            raise SystemExit(f"page sorting model {active.model_id}'s file {active.path} is missing: choose another model, or retrain")
     run = pipeline.Run(pdf, out, progress=progress, texts=instructions.texts(db), #the newest versions, as the job starts
                        sorting_model=ROOT / active.path if active else None, grouping=grouping.rule(db, series),
-                       collection=series, page_types=types | ({"blank"} if types & set(LABELS) else set()))
+                       collection=series, sorting=sorting, page_type_labels=labels, sorter=sorting_settings["sorter"],
+                       unsure_to_model=unsure_to_model,
+                       page_types=types | ({"blank"} if sorting == "model" or unsure_to_model or types & set(LABELS) else set()))
     run.transcription_config = {field.upper(): value for field, value in transcription_choice(db, job).items()}
     pipeline.run_steps(run, pipeline.FULL)
     if not run.pages:

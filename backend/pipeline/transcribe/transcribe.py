@@ -85,6 +85,17 @@ def run_codex(image, prompt, template, model, effort):
         sys.exit(f"codex gave no JSON back:\n{raw[:500]}")
 
 
+#one image and a prompt -> template filled in, by provider's model
+def ask(image, prompt, template, provider, model, effort):
+    if provider in PROVIDERS:
+        return run_api(provider, image, prompt, schema_for(template), model)
+    if provider == "codex":
+        return run_codex(image, prompt, template, model, effort)
+    if provider == "claude":
+        return run_claude(image, prompt, template, model, effort)
+    sys.exit(f"PROVIDER must be one of {', '.join(ALL_PROVIDERS)}, not {provider!r}")
+
+
 #the prompt and each template as in the files, byte for byte: {"prompt": ..., "main": ..., ...}
 def read_texts():
     return {"prompt": (HERE / "prompt.txt").read_bytes().decode("utf-8"),
@@ -113,12 +124,7 @@ def transcribe(image, kind, provider=None, model=None, effort=None, texts=None):
     prompt = full_prompt(texts["prompt"], template)
 
     started = time.perf_counter()
-    if provider in PROVIDERS:
-        answer = run_api(provider, image, prompt, schema_for(template), model)
-    elif provider == "codex":
-        answer = run_codex(image, prompt, template, model, effort)
-    else:
-        answer = run_claude(image, prompt, template, model, effort)
+    answer = ask(image, prompt, template, provider, model, effort)
     seconds = round(time.perf_counter() - started, 1)
 
     # Notes pages: a model sometimes returns the whole structure as a string inside "text".

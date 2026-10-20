@@ -18,8 +18,8 @@ const ITEM = { ...SERIES, id: 216412, title: "Box Hill 00", identifier: "UMA-ITE
   url: "https://archives.library.unimelb.edu.au/nodes/view/216412" };
 
 type Fill = { status?: number; detail?: string; gate?: Promise<void> }; // how POST items/all answers; it queues the job unless it has a status
-async function mockApi(page: Page, { archiveDown = false, slowNode = 0, fill = {} as Fill } = {}) {
-  const calls = { created: [] as unknown[], filled: [] as unknown[] };
+async function mockApi(page: Page, { archiveDown = false, slowNode = 0, fill = {} as Fill, stateError = "", stateGate = undefined as Promise<void> | undefined } = {}) {
+  const calls = { created: [] as unknown[], filled: [] as unknown[], saved: [] as string[] };
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -43,6 +43,13 @@ async function mockApi(page: Page, { archiveDown = false, slowNode = 0, fill = {
         : route.fulfill({ status: 202, json: { id: 31, kind: "items", status: "waiting", step: null, donePages: 0, totalPages: 0, error: null } });
     }
     if (path === "/api/collections/2") return route.fulfill({ json: { ...SHIPS, id: 2, name: "Social survey forms", levels: [], recordName: "record", grouped: false } });
+    if (path === "/api/state") { // the PrestCribe file, sent as a download
+      calls.saved.push(new URL(request.url()).searchParams.get("content") ?? "");
+      await stateGate;
+      return stateError
+        ? route.fulfill({ status: 500, json: { detail: stateError } })
+        : route.fulfill({ headers: { "content-disposition": 'attachment; filename="PrestCribe.prestcribe"' }, contentType: "application/octet-stream", body: "file" });
+    }
     if (path === "/api/export/bundles") return route.fulfill({ json: [] });
     if (path === "/api/jobs") return route.fulfill({ json: [] });
     if (path === "/api/page-types") return route.fulfill({ json: [] });
@@ -107,6 +114,54 @@ test("a new series previews what it links to on the archive, takes its name from
   expect(calls.created).toEqual([{ name: "Social survey forms", archiveSeries: "https://archives.library.unimelb.edu.au/nodes/view/499420",
     archiveIdentifier: "UMA-SR-000000842", archiveTitle: "University of Melbourne Social Survey forms", archiveItems: 45 }]);
   expect(calls.filled).toEqual([{ search: "" }]);
+});
+
+test("home saves a PrestCribe file: Save asks what to save, then downloads everything or only the setup", async ({ page }) => {
+  const calls = await mockApi(page);
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Open a PrestCribe file" })).toHaveAttribute("href", "/?view=import");
+  await expect(page.getByRole("link", { name: "Save a PrestCribe file" })).toHaveCount(0); // a button that asks first, not a link
+  const save = page.getByRole("dialog", { name: "Save a PrestCribe file" });
+  const choose = page.getByRole("radiogroup", { name: "What to save" });
+
+  await page.getByRole("button", { name: "Save a PrestCribe file" }).click();
+  await expect(save).toContainText("Open it in PrestCribe on another computer, from its home page.");
+  await expect(choose.getByRole("radio")).toHaveCount(2);
+  await expect(choose.getByRole("radio", { name: /^Everything/ })).toBeChecked();
+  await expect(choose.getByRole("radio", { name: /^Setup only/ })).not.toBeChecked();
+  await save.getByRole("button", { name: "Cancel" }).click();
+  await expect(save).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Save a PrestCribe file" }).click();
+  const everything = page.waitForEvent("download");
+  await save.getByRole("button", { name: "Save", exact: true }).click();
+  expect((await everything).suggestedFilename()).toBe("PrestCribe.prestcribe");
+  expect(calls.saved).toEqual(["everything"]);
+  await expect(save).toHaveCount(0);
+  await expect(page).toHaveURL("/"); // the page stays: it was a download
+
+  await page.getByRole("button", { name: "Save a PrestCribe file" }).click();
+  await choose.getByRole("radio", { name: /^Setup only/ }).check();
+  const setup = page.waitForEvent("download");
+  await save.getByRole("button", { name: "Save", exact: true }).click();
+  expect((await setup).suggestedFilename()).toBe("PrestCribe.prestcribe");
+  expect(calls.saved).toEqual(["everything", "setup"]);
+  await expect(page.getByRole("heading", { name: "Series", level: 1 })).toBeVisible();
+});
+
+test("saving shows Saving… while it works, and a failure keeps the dialog open with the server's reason and Save enabled", async ({ page }) => {
+  let release = () => {};
+  const stateGate = new Promise<void>((resolve) => (release = resolve));
+  await mockApi(page, { stateError: "The database is busy.", stateGate });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Save a PrestCribe file" }).click();
+  const save = page.getByRole("dialog", { name: "Save a PrestCribe file" });
+  await save.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(save.getByRole("button", { name: "Saving…" })).toBeDisabled();
+  release();
+  await expect(save.getByRole("alert")).toHaveText("The database is busy.");
+  await expect(save.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+  await expect(page).toHaveURL("/");
 });
 
 const addItems = (page: Page) => dialog(page).getByRole("checkbox", { name: "Add all its items" });

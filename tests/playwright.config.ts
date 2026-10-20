@@ -25,6 +25,15 @@ export default defineConfig({
         viewport: { width: 1440, height: 1000 },
       },
     },
+    {
+      // Safari's engine: only the specs that depend on its layout.
+      name: "webkit",
+      testMatch: "{row-links,zz-probe}.spec.ts",
+      use: {
+        ...devices["Desktop Safari"],
+        viewport: { width: 1440, height: 1000 },
+      },
+    },
   ],
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 4176 --strictPort",

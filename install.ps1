@@ -34,19 +34,23 @@ try {
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "Installing its libraries (the first time downloads a few GB)..."
-& $uv sync --directory $Folder
+Write-Host "Installing its libraries (the first time downloads a few hundred MB)..."
+$sync = "sync", "--directory", $Folder
+if (Test-Path (Join-Path $Folder ".venv\Lib\site-packages\torch")) { $sync += "--extra", "local-sorting" }  # an update keeps page sorting on this computer
+& $uv @sync
 if ($LASTEXITCODE) { throw "uv sync failed" }
 
-if (-not $NoShortcut) {
-    $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath("Desktop")) "PrestCribe.lnk"))
-    $link.TargetPath = $uv
-    $link.Arguments = "run prestcribe"
-    $link.WorkingDirectory = $Folder
-    $link.Description = "Start PrestCribe"
-    $link.IconLocation = Join-Path $Folder "frontend\dist\favicon.ico"
-    $link.Save()
-    Write-Host "Added PrestCribe to your desktop."
+if (-not $NoShortcut) {  # on the desktop, and in the Start menu, so searching Start for PrestCribe finds it
+    foreach ($place in "Desktop", "Programs") {
+        $link = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath($place)) "PrestCribe.lnk"))
+        $link.TargetPath = $uv
+        $link.Arguments = "run prestcribe"
+        $link.WorkingDirectory = $Folder
+        $link.Description = "Start PrestCribe"
+        $link.IconLocation = Join-Path $Folder "frontend\dist\favicon.ico"
+        $link.Save()
+    }
+    Write-Host "Added PrestCribe to your desktop and Start menu."
 }
 
 if (-not ((Get-Command claude -ErrorAction SilentlyContinue) -or (Get-Command codex -ErrorAction SilentlyContinue))) {

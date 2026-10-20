@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { ExternalLink, FolderOpen, Lock, Plus } from "lucide-react";
+import { Download, ExternalLink, FolderOpen, Lock, Plus } from "lucide-react";
 
 import AppHeader from "@/components/AppHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableOpenArrow, Ta
 import { ARCHIVE, backendRequest } from "../progress/backend";
 import { isSetUp } from "../progress/setup";
 import type { Reviewer } from "../review-screen/api";
+import SaveFileDialog from "./SaveFileDialog";
 import Welcome from "./Welcome";
 
 type Collection = {
@@ -38,6 +39,7 @@ export default function CollectionsScreen({ onChosen }: { onChosen?: (person: Re
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
     backendRequest<Collection[]>("/collections")
@@ -67,6 +69,7 @@ export default function CollectionsScreen({ onChosen }: { onChosen?: (person: Re
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild><a href="/?view=import"><FolderOpen /> Open a PrestCribe file</a></Button>
+            <Button variant="outline" onClick={() => setSaving(true)}><Download /> Save a PrestCribe file</Button>
             <Button onClick={() => setCreating(true)}><Plus /> New series</Button>
           </div>
         </div>
@@ -117,6 +120,7 @@ export default function CollectionsScreen({ onChosen }: { onChosen?: (person: Re
           </Table>
         )}
       </main>
+      {saving && <SaveFileDialog onClose={() => setSaving(false)} />}
       {creating && (
         <NewCollectionDialog onClose={() => setCreating(false)}
           onCreated={(created) => { window.location.href = `/?collection=${created.id}`; }} />

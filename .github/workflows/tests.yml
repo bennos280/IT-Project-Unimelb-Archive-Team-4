@@ -16,7 +16,7 @@ jobs:
           enable-cache: true
       - name: Install dependencies
         id: dependencies
-        run: uv sync --locked
+        run: uv sync --locked --extra local-sorting
       # Run every group even if another group fails, provided setup succeeded.
       - name: Unit tests
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
@@ -52,7 +52,7 @@ jobs:
         run: |
           npm --prefix frontend ci
           npm --prefix tests ci
-          uv sync --locked
+          uv sync --locked --extra local-sorting
 
       - name: Install Chromium
         working-directory: tests
