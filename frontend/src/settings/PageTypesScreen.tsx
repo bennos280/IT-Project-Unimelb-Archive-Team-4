@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { me } from "../person";
 import { backendRequest, seriesParam } from "../progress/backend";
+import FieldRules from "./FieldRules";
+import { cleanRules, parseTemplate, sameRules, type Rules } from "./rules";
 import { describe } from "./shapes";
 
 export type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; templateVersion: number | null };
@@ -26,7 +28,7 @@ export type Collection = {
   id: number; name: string; levels: Level[]; recordName: string; grouped: boolean; archiveIdentifier?: string | null;
   archiveSeries?: number | null;
 };
-type Version = { id: number; body: string; reviewer: string | null; note: string | null; createdAt: string };
+type Version = { id: number; body: string; rules: Rules; reviewer: string | null; note: string | null; createdAt: string };
 
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
@@ -34,7 +36,7 @@ const start = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 const SECTIONS = ["levels", "page-types"];
 
 // A series' Setup tab: its levels of record, its page types (what each is called, the template its pages are read
-// with). The one shown is in the URL (?section=; the old ?view=page-types
+// with and its fields' rules). The one shown is in the URL (?section=; the old ?view=page-types
 // opens the page types).
 export default function PageTypesScreen() {
   const params = new URLSearchParams(location.search);
@@ -227,7 +229,7 @@ function AddDialog({ collectionId, onClose, onAdded }: {
   );
 }
 
-// A page type's label and its template (each save of those is a new version; an older one can be brought
+// A page type's label, its template and its fields' rules (each save of those is a new version; an older one can be brought
 // back).
 function EditDialog({ type, onClose, onSaved }: {
   type: PageType; onClose: () => void; onSaved: () => void;
@@ -236,6 +238,7 @@ function EditDialog({ type, onClose, onSaved }: {
   const [label, setLabel] = useState(type.label);
   const [versions, setVersions] = useState<Version[]>([]); // newest first
   const [template, setTemplate] = useState<string | null>(type.templateVersion ? null : ""); // null: loading
+  const [rules, setRules] = useState<Rules>({});
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const newest = versions[0] ?? null;
@@ -243,11 +246,14 @@ function EditDialog({ type, onClose, onSaved }: {
   useEffect(() => {
     if (!type.templateVersion) return;
     backendRequest<Version[]>(`/instructions/${type.name}`)
-      .then((loaded) => { setVersions(loaded); setTemplate(loaded[0].body); })
+      .then((loaded) => { setVersions(loaded); setTemplate(loaded[0].body); setRules(loaded[0].rules); })
       .catch((e) => setError(message(e, "Could not load the template.")));
   }, [type]);
 
-  const templateChanged = template !== null && template !== (newest?.body ?? "");
+  const parsed = parseTemplate(template);
+  const cleaned = cleanRules(rules, parsed);
+  const rulesChanged = !sameRules(cleaned, cleanRules(newest?.rules ?? {}, parseTemplate(newest?.body ?? null)));
+  const templateChanged = template !== null && (template !== (newest?.body ?? "") || rulesChanged);
   const settingsChanged = label.trim() !== type.label;
 
   async function save() {
@@ -257,7 +263,7 @@ function EditDialog({ type, onClose, onSaved }: {
       if (settingsChanged) await backendRequest(`/page-types/${type.name}`, json("PATCH", { label }));
       if (templateChanged) {
         await backendRequest(`/instructions/${type.name}`,
-          json("POST", { body: template, basedOn: newest?.id ?? null, reviewerId: me().id }));
+          json("POST", { body: template, rules: cleaned, basedOn: newest?.id ?? null, reviewerId: me().id }));
       }
       onSaved();
     } catch (e) {
@@ -293,6 +299,15 @@ function EditDialog({ type, onClose, onSaved }: {
                   {!type.templateVersion && " Until it has one, pages of this type aren't read."}
                 </FieldDescription>
               </Field>
+              <Field>
+                <FieldTitle>Fields</FieldTitle>
+                <FieldDescription>
+                  What each field should hold. A transcription that breaks a field's rule is flagged for review; the description
+                  helps the model read it.
+                </FieldDescription>
+                {parsed ? <FieldRules template={parsed} rules={rules} onRules={setRules} onTemplate={setTemplate} />
+                  : <p className="text-sm text-muted-foreground">{template ? "Fix the template's JSON to set its fields' rules." : "Add fields to the template first."}</p>}
+              </Field>
               {versions.length > 1 && (
                 <Field>
                   <FieldTitle>History</FieldTitle>
@@ -316,7 +331,7 @@ function EditDialog({ type, onClose, onSaved }: {
                           <TableCell>
                             {n === 0 ? <span className="text-muted-foreground">Current</span> : (
                               <Button variant="outline" size="sm" aria-label={`Use version ${v.id}`}
-                                onClick={() => setTemplate(v.body)}>Use this version</Button>
+                                onClick={() => { setTemplate(v.body); setRules(v.rules); }}>Use this version</Button>
                             )}
                           </TableCell>
                         </TableRow>

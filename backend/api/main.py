@@ -13,7 +13,7 @@ import re
 from pathlib import Path, PurePosixPath
 import sqlite3
 import threading
-from backend.db import app_settings, database, grouping, instructions, loader, models
+from backend.db import app_settings, checks, database, grouping, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
@@ -311,10 +311,12 @@ class InstructionRequest(BaseModel):
     basedOn: int | None #the version the edit started from (None: a page type's first template); refused if a newer one was saved since
     reviewerId: int
     note: str | None = None
+    rules: dict = {} #a template's fields' rules (backend/db/checks.py); the prompt has none
 
 def version_json(v, names):
-    return {"id": v.version_id, "kind": v.kind, "body": v.body, "reviewerId": v.reviewer_id, "reviewer": names.get(v.reviewer_id),
-            "note": v.note, "createdAt": v.created_at.replace(tzinfo=timezone.utc).isoformat() if v.created_at else ""}
+    return {"id": v.version_id, "kind": v.kind, "body": v.body, "rules": json.loads(v.rules) if v.rules else {},
+            "reviewerId": v.reviewer_id, "reviewer": names.get(v.reviewer_id), "note": v.note,
+            "createdAt": v.created_at.replace(tzinfo=timezone.utc).isoformat() if v.created_at else ""}
 
 #the newest prompt, and the newest template of each page type
 @app.get("/instructions")
@@ -345,12 +347,16 @@ def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depen
         raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
     if payload.basedOn != (current[kind].version_id if kind in current else None):
         raise HTTPException(status_code=409, detail="Someone saved a newer version: reload it and make your change again.")
-    if kind in current and payload.body.replace("\r\n", "\n") == current[kind].body.replace("\r\n", "\n"):
+    if kind == instructions.PROMPT and payload.rules:
+        raise HTTPException(status_code=400, detail="The prompt has no fields to set rules on.")
+    if (kind in current and payload.body.replace("\r\n", "\n") == current[kind].body.replace("\r\n", "\n")
+            and payload.rules == (json.loads(current[kind].rules) if current[kind].rules else {})):
         raise HTTPException(status_code=400, detail="Nothing changed.")
-    if found := instructions.problems(kind, payload.body, {k: v.body for k, v in current.items()}):
+    found = instructions.problems(kind, payload.body, {k: v.body for k, v in current.items()}, grouping.required_fields(db))
+    if found := found or (checks.rule_problems(payload.rules, json.loads(payload.body)) if kind != instructions.PROMPT else []):
         raise HTTPException(status_code=400, detail=found)
-    version = models.InstructionVersion(kind=kind, body=payload.body, sha256=instructions.sha256(payload.body),
-                                        reviewer_id=reviewer.reviewer_id, note=payload.note)
+    version = models.InstructionVersion(kind=kind, body=payload.body, rules=json.dumps(payload.rules) if payload.rules else None,
+                                        sha256=instructions.sha256(payload.body), reviewer_id=reviewer.reviewer_id, note=payload.note)
     db.add(version)
     db.commit()
     return version_json(version, {reviewer.reviewer_id: reviewer.name})
@@ -1347,6 +1353,8 @@ def classify_page(page_id: str, payload: PageClassificationRequest, db: Session 
     page.needs_transcription = not new_type.unknown
     page.revision_no = (page.revision_no or 0) + 1
     page.checked_revision = None
+    db.flush()
+    checks.check_pages(db.connection(), [page_id])  #its old type's rule flags go; its new type's rules apply to what it holds
     db.commit()
     return {
         "pageType": page.category,

@@ -3,7 +3,7 @@ import json
 from functools import cache
 from pathlib import Path, PurePosixPath
 
-from backend.db import database, models
+from backend.db import checks, database, models
 from backend.common import ROOT, settings
 from backend.pipeline.transcribe import areas
 
@@ -46,6 +46,7 @@ def dump_into_db(manifest_path):
                                                      " collection_id = (SELECT collection_id FROM bundles WHERE bundle_id = ?)", (bundle_id,))]
         insert_flags(run_folder / "review.json", con, keys)
         insert_check_flags(run_folder / "validation" / "output_flagged.json", con)
+        checks.check_pages(con, [p for (p,) in con.exec_driver_sql("SELECT page_id FROM pages WHERE bundle_id = ?", (bundle_id,))])
 
 
 #request: how the page was read (from the manifest); its prompt and template hashes find their versions

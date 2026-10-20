@@ -144,7 +144,7 @@ afterwards.V
 These checks run separately from pytest. They test adapter/API/database
 integration; browser behaviour and image loading are covered separately.
 
-## `review.spec.ts` — 18 tests
+## `review.spec.ts` — 22 tests
 
 Tests the review screen in a real browser using Playwright.
 Each test uses a sample survey, mock images and an isolated mock API.
@@ -155,6 +155,7 @@ No running backend or database is needed.
 | `test("Next/Previous show matching page data and image", async ({ page }) => ...)`                   | Navigation shows matching fields and images, with buttons disabled at the first and last pages. |
 | `test("Search and Clear filters return expected rows", async ({ page }) => ...)`                     | Search finds fields, shows an empty state and clears correctly.                                 |
 | `test("Flag filter and disclosure show the reason", async ({ page }) => ...)`                        | Flagged fields can be filtered and their explanations expanded.                                 |
+| `test("A field breaking its rule is flagged with why, and filtered to", async ({ page }) => ...)` | A value breaking its field's rule shows as that kind of flag with its reason, and the filter can show only those. |
 | `test("Zoom and Fit to Page change the image scale", async ({ page }) => ...)`                       | Zoom changes the scale and Fit to Page fits the image inside the viewer.                        |
 | `test("Clicking Address highlights its scan area", async ({ page }) => ...)`                         | Selecting Address displays its named highlight and zooms in.                                    |
 | `test("Clicking an annotation shows the whole card and a note", async ({ page }) => ...)` | An annotation with no mapped scan area shows the whole card with a note saying where it is; zooming by hand hides the note and a mapped field still highlights and zooms. |
