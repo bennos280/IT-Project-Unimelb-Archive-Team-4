@@ -1,3 +1,4 @@
+import type { ArchiveItem } from "../progress/backend";
 // Defines possible survey card/page types shown in the review screen.
 export type PageType = string;
 
@@ -45,6 +46,7 @@ export type Field = {
 export type SurveyPage = {
   id: string;
   type: PageType;
+  typeLabel?: string;
   needsTranscription?: boolean;
   imageUrl: string;
   fields: Field[];
@@ -54,8 +56,13 @@ export type SurveyPage = {
 // Represents the complete survey loaded by the review screen.
 export type Survey = {
   bundleId?: string;
+  item?: { name: string; archive: ArchiveItem | null }; // the item the record belongs to
+  collectionId?: number;
   id: string;
   title: string;
+  recordName: string; // what the collection calls a record
+  grouped: boolean; // whether the collection's pages group into records
+  wholeItem?: boolean; // the record is its whole item, all the item's pages
   pages: SurveyPage[];
 };
 
@@ -70,7 +77,7 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
     !s.pages.length
   )
     throw new Error(
-      "Survey response is missing data or belongs to another survey.",
+      "The record's data is missing or belongs to another record.",
     );
   const ids = new Set<string>();
   for (const p of s.pages) {
@@ -84,7 +91,7 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
       !Array.isArray(p.fields) ||
       !Array.isArray(p.flags)
     )
-      throw new Error("Invalid or duplicate survey page.");
+      throw new Error("Invalid or duplicate page.");
     ids.add(p.id);
     const fields = new Set<string>();
     for (const f of p.fields) {
@@ -117,17 +124,11 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
   return s;
 }
 
-// Maps page types to headings displayed in the UI.
-const pageNames: Record<string, string> = {
-  main: "Main page",
-  notes: "Notes page",
-  coded: "Coded page",
-  other: "Other page",
-};
-// Notes and other pages hold one free-text field.
-export function isTextPage(type: PageType): boolean {
-  return type === "notes" || type === "other";
+// A page of free writing: its writing is the field "text" (its annotations are fields too).
+export function isTextPage(page: SurveyPage): boolean {
+  return page.fields.some((field) => field.id === "text");
 }
-export function getPageName(type: PageType): string {
-  return Object.hasOwn(pageNames, type) ? pageNames[type] : type;
+// The page type's label from the db, else its name.
+export function getPageName(page: SurveyPage): string {
+  return page.typeLabel ?? page.type;
 }

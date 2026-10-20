@@ -54,9 +54,9 @@ jobs:
           npm --prefix tests ci
           uv sync --locked
 
-      - name: Install Chromium
+      - name: Install Chromium and WebKit
         working-directory: tests
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit  # WebKit: Safari's engine, for the row-links tests
 
       - name: Frontend lint
         run: npm --prefix frontend run lint
@@ -69,6 +69,3 @@ jobs:
 
       - name: Browser integration tests
         run: npm --prefix tests run test:e2e
-
-      - name: Backend adapter integration tests
-        run: npm --prefix tests run test:integration

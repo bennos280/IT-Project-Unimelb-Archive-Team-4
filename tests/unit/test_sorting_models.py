@@ -59,7 +59,7 @@ def test_a_retraining_that_fails_its_check_is_not_kept(fingerprints, tmp_path):
 def settled(db):
     """A reviewer, two added page types, and pages: 12 followup and 3 letters pages reviewers settled, 2 main forms,
     an other page, and a notes page nobody has checked yet."""
-    rows = [models.Reviewer(reviewer_id=1, name="Ben"), models.PageType(name="followup"), models.PageType(name="letters")]
+    rows = [models.Reviewer(reviewer_id=1, name="Ben"), models.PageType(name="followup", collection_id=1), models.PageType(name="letters", collection_id=1)]
     for n, (page_type, revision) in enumerate([("followup", 1)] * 12 + [("letters", 1)] * 3 + [("main", 2)] * 2
                                               + [("other", 1), ("notes", 0)]):
         rows.append(models.Page(page_id=f"6789_{n:05d}", category=page_type, revision_no=revision, import_path="x.png", bundle_id="6789"))

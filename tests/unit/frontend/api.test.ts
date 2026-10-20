@@ -14,6 +14,8 @@ import type { Survey } from "../../../frontend/src/review-screen/model";
 const sampleSurvey = (): Survey => ({
   id: "test-survey",
   title: "Test survey",
+  recordName: "survey",
+  grouped: true,
   pages: [
     {
       id: "test-bundle/p0",
@@ -127,7 +129,7 @@ describe("getSurvey", () => {
   it("rejects data for a different survey", async () => {
     fetchMock.mockResolvedValueOnce(json(sampleSurvey()));
 
-    await expect(getSurvey("another-survey")).rejects.toThrow(/another survey/);
+    await expect(getSurvey("another-survey")).rejects.toThrow(/another record/);
   });
 
   // Checks that two pages cannot share the same ID in a survey response.
@@ -136,7 +138,7 @@ describe("getSurvey", () => {
     source.pages[1].id = source.pages[0].id;
     fetchMock.mockResolvedValueOnce(json(source));
 
-    await expect(getSurvey(source.id)).rejects.toThrow(/duplicate survey page/);
+    await expect(getSurvey(source.id)).rejects.toThrow(/duplicate page/);
   });
 
   // Checks that the backend's not-found explanation reaches the caller.

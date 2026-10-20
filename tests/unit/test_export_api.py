@@ -3,7 +3,7 @@ from backend.db import models
 
 # Create one bundle, survey, page, reviewer, and two fields for the export tests.
 def setup_survey(db):
-    rows = [models.Bundle(bundle_id="bundle", source_pdf="data/123/bundle.pdf"),
+    rows = [models.Bundle(bundle_id="bundle", source_pdf="data/123/bundle.pdf", collection_id=1),
             models.Survey(survey_id="survey", bundle_id="bundle"),
             models.Page(page_id="p", survey_id="survey", bundle_id="bundle", category="main", import_path="scan.png"),
             models.Field(page_id="p", field_title="address", text_raw="Model"),
@@ -50,7 +50,7 @@ def test_export_rejects_invalid_selection(client):
     # Check IDs are trimmed and isolate the requested bundle even when another bundle has the same display number.
 def test_bundle_export_uses_id_and_excludes_other_bundles(client, db):
     setup_survey(db)
-    db.add(models.Bundle(bundle_id="other-bundle", source_pdf="data/123/other.pdf"))
+    db.add(models.Bundle(bundle_id="other-bundle", source_pdf="data/123/other.pdf", collection_id=1))
     db.flush()
     db.add(models.Survey(survey_id="other-survey", bundle_id="other-bundle"))
     db.add(models.Page(page_id="other-page", bundle_id="other-bundle", category="other", import_path="other.png"))

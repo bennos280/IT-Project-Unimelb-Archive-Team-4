@@ -6,8 +6,8 @@ from backend.db import models
 
 def seed(db):
     for row in (
-        models.Bundle(bundle_id="b", source_pdf="216417/b.pdf"),
-        models.Bundle(bundle_id="empty", source_pdf="empty.pdf"),
+        models.Bundle(bundle_id="b", source_pdf="216417/b.pdf", collection_id=1),
+        models.Bundle(bundle_id="empty", source_pdf="empty.pdf", collection_id=1),
         models.Survey(survey_id="s", bundle_id="b"),
         models.Page(page_id="p1", bundle_id="b", survey_id="s", category="main", import_path="1.png", model="test-model"),
         models.Page(page_id="p2", bundle_id="b", category="notes", import_path="2.png"),

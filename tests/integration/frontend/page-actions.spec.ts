@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 // Browser tests use mocked API responses: no real database or transcription service is called.
-// This scenario checks history, reviewer selection and moving a page within one bundle.
+// This scenario checks history and moving a page within one bundle.
 test("move keeps page identity and opens its destination; same types are allowed", async ({
   page,
 }) => {
@@ -55,11 +55,11 @@ test("move keeps page identity and opens its destination; same types are allowed
         configured: { model: "test-model", provider: "claude", effort: "low" },
         models: [],
       });
-    if (path === "/api/reviewers") return json([{ id: 1, name: "Alex" }]);
+    if (path === "/api/reviewers") return json([{ id: 1, name: "Ben" }]);
     if (path.startsWith("/api/reviews/"))
       return json({ reviews: {}, revisions: { "b/p4": 0 } });
     if (path.startsWith("/api/survey/"))
-      return json({ id: moved ? "s2" : "s1", title: "Survey", pages: [card] });
+      return json({ id: moved ? "s2" : "s1", title: "Survey", recordName: "survey", grouped: true, pages: [card] });
     if (path === "/api/page-actions/b/p4")
       return json({
         bundleId: "b",
@@ -115,7 +115,7 @@ test("move keeps page identity and opens its destination; same types are allowed
   ).toBeVisible();
   await history.getByRole("button", { name: "Close", exact: true }).click();
   await expect(history).not.toBeVisible();
-  // No reviewer or destination has been selected yet, so moving must be disabled.
+  // No destination has been selected yet, so moving must be disabled.
   await page.getByRole("button", { name: "Page actions", exact: true }).click();
   await page
     .getByRole("button", { name: "Move to another survey", exact: true })
@@ -124,10 +124,7 @@ test("move keeps page identity and opens its destination; same types are allowed
     page.getByRole("button", { name: "Move page", exact: true }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  // Choose a reviewer, then move to a survey that already contains another main page.
-  await page
-    .getByRole("combobox", { name: "Reviewer name", exact: true })
-    .selectOption("Alex");
+  // Move to a survey that already contains another main page.
   await page.getByRole("button", { name: "Page actions", exact: true }).click();
   await page
     .getByRole("button", { name: "Move to another survey", exact: true })
@@ -170,17 +167,19 @@ for (const changeType of [true, false]) {
           },
           models: [],
         });
-      if (path === "/api/reviewers") return json([{ id: 1, name: "Alex" }]);
+      if (path === "/api/reviewers") return json([{ id: 1, name: "Ben" }]);
       if (path.startsWith("/api/reviews/"))
         return json({ reviews: {}, revisions: {} });
       if (path.startsWith("/api/survey/"))
         return json({
           id: "s1",
           title: "Survey",
+          recordName: "survey", grouped: true,
           pages: [
             {
               id: "b/p4",
               type: category,
+              typeLabel: category === "coded" ? "Coded page" : "Main page",
               needsTranscription: needed,
               imageUrl: "/scan.svg",
               fields: [
@@ -205,6 +204,12 @@ for (const changeType of [true, false]) {
           bundleId: "b",
           surveyId: "s1",
           category,
+          pageTypes: [
+            { name: "coded", label: "Coded page" },
+            { name: "main", label: "Main page" },
+            { name: "notes", label: "Notes page" },
+            { name: "other", label: "Unknown" },
+          ],
           revision: classificationRequests,
           hasReviews: false,
           surveys: [],
@@ -245,15 +250,6 @@ for (const changeType of [true, false]) {
     await page.goto(
       changeType ? "/?survey=s1" : "/?survey=s1&page=b%2Fp4&action=transcribe",
     );
-    if (changeType)
-      await page
-        .getByRole("combobox", { name: "Reviewer name", exact: true })
-        .selectOption("Alex");
-    else
-      await page
-        .getByRole("dialog", { name: "Transcribe page" })
-        .getByRole("combobox", { name: "Reviewer", exact: true })
-        .selectOption("Alex");
     if (changeType) {
       await page.getByRole("button", { name: "Page actions", exact: true }).click();
       await page
@@ -262,6 +258,10 @@ for (const changeType of [true, false]) {
       const dialog = page.getByRole("dialog", { name: "Change page type" });
       // Type changes need no model selection; the reminder must survive a reload.
       await expect(dialog.getByLabel("Model", { exact: true })).toHaveCount(0);
+      // The choices are the page's collection's types, by label.
+      await expect(page.getByLabel("Correct page type").locator("option")).toHaveText(
+        ["Coded page", "Main page", "Notes page", "Unknown"],
+      );
       await page.getByLabel("Correct page type").selectOption("coded");
       await dialog
         .getByRole("button", { name: "Change page type", exact: true })
@@ -283,9 +283,6 @@ for (const changeType of [true, false]) {
           { exact: true },
         ),
       ).toBeVisible();
-      await page
-        .getByRole("combobox", { name: "Reviewer name", exact: true })
-        .selectOption("Alex");
     }
     if (changeType)
       await page
@@ -330,10 +327,10 @@ test("the page's Transcribe dialog prefills nothing and links to Settings when n
     const path = decodeURIComponent(new URL(r.request().url()).pathname);
     const json = (body: unknown) => r.fulfill({ json: body });
     if (path === "/api/transcription-models") return json({ configured: null, models: [] });
-    if (path === "/api/reviewers") return json([{ id: 1, name: "Alex" }]);
+    if (path === "/api/reviewers") return json([{ id: 1, name: "Ben" }]);
     if (path.startsWith("/api/reviews/")) return json({ reviews: {}, revisions: {} });
     if (path.startsWith("/api/survey/"))
-      return json({ id: "s1", title: "Survey", pages: [{ id: "b/p4", type: "main", imageUrl: "/scan.svg", fields: [], flags: [] }] });
+      return json({ id: "s1", title: "Survey", recordName: "survey", grouped: true, pages: [{ id: "b/p4", type: "main", imageUrl: "/scan.svg", fields: [], flags: [] }] });
     if (path === "/api/page-actions/b/p4")
       return json({ bundleId: "b", surveyId: "s1", category: "main", revision: 0, hasReviews: false, job: null, surveys: [] });
     if (path === "/api/page-transcription/b/p4") {
@@ -349,7 +346,6 @@ test("the page's Transcribe dialog prefills nothing and links to Settings when n
   await expect(dialog.getByLabel("Model", { exact: true })).toHaveValue("");
   await expect(dialog.getByLabel("Effort", { exact: true })).toHaveValue("");
   await expect(dialog.getByLabel("Provider", { exact: true })).toHaveValue("");
-  await dialog.getByRole("combobox", { name: "Reviewer", exact: true }).selectOption("Alex");
   const transcribe = dialog.getByRole("button", { name: "Transcribe", exact: true });
   await expect(transcribe).toBeDisabled();
   await dialog.getByLabel("Model", { exact: true }).fill("sonnet");

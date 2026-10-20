@@ -8,7 +8,6 @@ SECTIONS_MAIN = {
     "Tenure": ["tenure", "weekly_rent_or_instalments", "furnished_or_unfurnished", "length_of_residence"],
     "Archive and codes": ["archive_reference", "industry_of_head_code", "occupation_of_head_code"],
     "Wash house": ["wash_house"],
-    "Survey details": ["text"],
 }
 
 SECTIONS_CODED = {

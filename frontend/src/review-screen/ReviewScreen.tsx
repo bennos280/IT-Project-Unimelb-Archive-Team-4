@@ -2,7 +2,7 @@ import ExportDialog from "../export/ExportDialog";
 import PageActions from "./PageActions";
 // Main review screen: field table on the left, scan viewer on the right.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import ImageViewer from "./ImageViewer";
-import { request } from "./api";
+import { itemTitle, recordWords } from "../progress/backend";
 import type { useReviewSession } from "./useReviewSession";
 import { getPageName, isTextPage } from "./model";
 import type { Flag } from "./model";
@@ -76,7 +76,6 @@ export default function ReviewScreen({
   const [collapsedGroups, setCollapsedGroups] = useState<
     Record<string, boolean>
   >({});
-  const [creatingReviewer, setCreatingReviewer] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selection, setSelection] = useState<{
     pageId: string;
@@ -96,12 +95,6 @@ export default function ReviewScreen({
     pageReviews,
     flagsLeft,
     reviewer,
-    setReviewer,
-    reviewers,
-    newName,
-    setNewName,
-    adding,
-    setAdding,
     editing,
     setEditing,
     draft,
@@ -110,7 +103,6 @@ export default function ReviewScreen({
     saving,
     beginEdit,
     applyEdit,
-    addReviewer,
     reviewAll,
     savePage,
     navigate,
@@ -133,35 +125,28 @@ export default function ReviewScreen({
     return statusFilter === "all" || statusFilter === status;
   });
   const groups = [...new Set(visible.map((field) => field.group))];
-  const textPage = !!page && isTextPage(page.type);
-  // The dashboard names a bundle by its /bundles name; the id is accepted too when that is unavailable.
-  const bundleId = survey?.bundleId;
-  const [bundleNames, setBundleNames] = useState<{ bundle: string; name: string }[]>([]);
-  useEffect(() => {
-    if (!bundleId) return;
-    let active = true;
-    request<{ bundle: string; name: string }[]>("/bundles")
-      .then((list) => active && Array.isArray(list) && setBundleNames(list))
-      .catch(() => {});
-    return () => { active = false; };
-  }, [bundleId]);
-  const bundleLabel = bundleNames.find((b) => b.bundle === bundleId)?.name || bundleId || "";
+  const textPage = !!page && isTextPage(page);
+  // The dashboard names an item by its name; the bundle id is accepted too when the survey doesn't say.
+  const bundleLabel = survey?.item?.name || survey?.bundleId || "";
+  const words = recordWords(survey?.recordName);
+  // A record that is its whole item is named by the item, with no step between them.
+  const items = survey?.collectionId ? [{ label: "Items", href: `/?series=${survey.collectionId}` }] : [];
+  const itemLink = `/?series=${survey?.collectionId ?? 1}&item=${encodeURIComponent(bundleLabel)}`;
   return (
     <>
       <AppHeader
-        crumbs={[
-          { label: "All bundles", href: "/" },
-          ...(survey?.bundleId
-            ? [{ label: `Bundle ${bundleLabel}`, href: `/?bundle=${encodeURIComponent(bundleLabel)}` }]
-            : []),
-          { label: `Survey ${session.surveyId}`.trim() },
+        series={survey?.collectionId ? { id: survey.collectionId, name: survey.title } : undefined}
+        crumbs={survey?.wholeItem ? [...items, { label: itemTitle(bundleLabel, survey.item?.archive) }] : [
+          ...items,
+          ...(survey?.bundleId ? [{ label: itemTitle(bundleLabel, survey.item?.archive), href: itemLink }] : []),
+          { label: survey ? `${words.One} ${session.surveyId}` : session.surveyId || words.One },
         ]}
       />
       <main>
-        <h1 className="sr-only">Review survey card</h1>
+        <h1 className="sr-only">Review {words.one}</h1>
         {!session.surveyId ? (
           <div className="p-8 text-center text-muted-foreground" role="status">
-            Select a survey to review.
+            Select {words.a} to review.
           </div>
         ) : error ? (
           <Alert variant="destructive" className="m-6 w-auto">
@@ -182,17 +167,17 @@ export default function ReviewScreen({
             role="status"
           >
             <Spinner aria-hidden="true" />
-            Loading survey and source images…
+            Loading pages and source images…
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:h-[calc(100dvh-5.6rem)] md:grid-cols-[46%_54%]">
+          <div className="grid grid-cols-1 md:h-[calc(100dvh-3.5rem)] md:grid-cols-[46%_54%]">
             <section className="flex h-[560px] min-w-0 flex-col overflow-hidden border-b px-4 pt-4 md:h-auto md:border-r md:border-b-0 md:px-6">
               <div
                 className="flex flex-wrap items-center gap-2"
                 data-page-id={page.id}
               >
                 <h2 className="min-w-0 flex-1 basis-full text-base font-semibold min-[1150px]:basis-auto">
-                  {page.id} · {getPageName(page.type)}{" "}
+                  {page.id} · {getPageName(page)}{" "}
                 </h2>
                 <Badge variant="outline">
                   {`${
@@ -522,7 +507,7 @@ export default function ReviewScreen({
                   </h2>
                   <nav
                     className="flex items-center gap-3 text-sm"
-                    aria-label="Survey pages"
+                    aria-label={`${words.One} pages`}
                   >
                     <Button
                       variant="outline"
@@ -552,6 +537,8 @@ export default function ReviewScreen({
                   <ExportDialog
                     surveyId={survey.id}
                     initialBundleId={survey.bundleId}
+                    collectionId={survey.collectionId}
+                    recordName={survey.recordName}
                     hasDrafts={Object.values(session.reviews).some((fields) =>
                       Object.values(fields).some((review) => !review.savedAt),
                     )}
@@ -564,39 +551,9 @@ export default function ReviewScreen({
                 selection={selection?.pageId === page.id ? selection : null}
               />
               <div className="mt-2.5 flex flex-wrap items-end justify-end gap-2">
-                <Field className="w-auto flex-1 md:w-[250px] md:flex-none">
-                  <FieldLabel htmlFor="reviewer-name" className="text-xs">
-                    Reviewer name *
-                  </FieldLabel>
-                  <NativeSelect
-                    id="reviewer-name"
-                    aria-label="Reviewer name"
-                    value={reviewer}
-                    onChange={(e) => {
-                      if (e.target.value === "__add__") {
-                        setAdding(true);
-                      } else setReviewer(e.target.value);
-                    }}
-                  >
-                    <NativeSelectOption value="">
-                      Select reviewer
-                    </NativeSelectOption>
-                    {reviewers.map((person) => (
-                      <NativeSelectOption key={person.id} value={person.name}>
-                        {person.name}
-                      </NativeSelectOption>
-                    ))}
-                    <NativeSelectOption value="__add__">
-                      + Add reviewer…
-                    </NativeSelectOption>
-                  </NativeSelect>
-                </Field>
-                <Button variant="outline" onClick={() => setAdding((a) => !a)}>
-                  Add reviewer
-                </Button>
                 <Button
                   variant="outline"
-                  disabled={saving || !reviewer || !page.fields.length}
+                  disabled={saving || !page.fields.length}
                   onClick={reviewAll}
                 >
                   Mark all fields as reviewed
@@ -604,7 +561,6 @@ export default function ReviewScreen({
                 <Button
                   disabled={
                     saving ||
-                    !reviewer ||
                     !Object.values(pageReviews).some((e) => !e.savedAt)
                   }
                   onClick={savePage}
@@ -612,41 +568,12 @@ export default function ReviewScreen({
                   {saving ? "Saving…" : "Save Page Transcript"}
                 </Button>
               </div>
-              {adding && !editing && (
-                <form
-                  className="mt-2 flex justify-end gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    addReviewer();
-                  }}
-                >
-                  <Input
-                    autoFocus
-                    className="max-w-56 min-w-0"
-                    aria-label="New reviewer name"
-                    placeholder="Enter reviewer name"
-                    maxLength={80}
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                  <Button disabled={!newName.trim()} type="submit">
-                    Add
-                  </Button>
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={() => setAdding(false)}
-                  >
-                    Cancel
-                  </Button>
-                </form>
-              )}
               <p
                 className="mt-1.5 text-right text-xs leading-snug text-muted-foreground"
                 role="status"
               >
                 {message ||
-                  "Save page transcript saves your reviews. Select a reviewer before applying an edit."}
+                  `Save page transcript saves your reviews, as ${reviewer}.`}
               </p>
             </section>
           </div>
@@ -712,7 +639,7 @@ export default function ReviewScreen({
             className="grid gap-4"
             onSubmit={(e) => {
               e.preventDefault();
-              if (!adding && !creatingReviewer) applyEdit();
+              applyEdit();
             }}
           >
             <DialogHeader>
@@ -725,7 +652,7 @@ export default function ReviewScreen({
                 <FlagReason key={flag.id} flag={flag} />
               ))}
             <DialogDescription>
-              {page && getPageName(page.type)} · {editing?.label}{" "}
+              {page && getPageName(page)} · {editing?.label}{" "}
             </DialogDescription>
             <Field>
               <FieldLabel>Extracted value</FieldLabel>
@@ -738,7 +665,7 @@ export default function ReviewScreen({
               <Textarea
                 autoFocus
                 id="field-value"
-                rows={page && isTextPage(page.type) ? 10 : 4}
+                rows={page && isTextPage(page) ? 10 : 4}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
               />
@@ -747,72 +674,6 @@ export default function ReviewScreen({
                 field&apos;s flags show as checked.
               </FieldDescription>
             </Field>
-            <Field>
-              <FieldLabel htmlFor="edit-reviewer">Reviewer *</FieldLabel>
-              <NativeSelect
-                id="edit-reviewer"
-                value={adding ? "__add__" : reviewer}
-                disabled={creatingReviewer}
-                onChange={(e) => {
-                  if (e.target.value === "__add__") setAdding(true);
-                  else {
-                    setAdding(false);
-                    setReviewer(e.target.value);
-                  }
-                }}
-              >
-                <NativeSelectOption value="">
-                  Select reviewer
-                </NativeSelectOption>
-                {reviewers.map((person) => (
-                  <NativeSelectOption key={person.id} value={person.name}>
-                    {person.name}
-                  </NativeSelectOption>
-                ))}
-                <NativeSelectOption value="__add__">
-                  + Add reviewer…
-                </NativeSelectOption>
-              </NativeSelect>
-            </Field>
-            {adding && (
-              <div className="flex gap-2">
-                <Input
-                  autoFocus
-                  className="min-w-0"
-                  aria-label="New reviewer name"
-                  placeholder="Enter reviewer name"
-                  maxLength={80}
-                  value={newName}
-                  disabled={creatingReviewer}
-                  onChange={(event) => setNewName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.preventDefault();
-                  }}
-                />
-                <Button
-                  type="button"
-                  disabled={creatingReviewer || !newName.trim()}
-                  onClick={async () => {
-                    setCreatingReviewer(true);
-                    try {
-                      await addReviewer();
-                    } finally {
-                      setCreatingReviewer(false);
-                    }
-                  }}
-                >
-                  {creatingReviewer ? "Adding…" : "Add reviewer"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={creatingReviewer}
-                  onClick={() => setAdding(false)}
-                >
-                  Cancel adding
-                </Button>
-              </div>
-            )}
             <p role="status">{message}</p>
             <DialogFooter>
               <Button
@@ -822,10 +683,7 @@ export default function ReviewScreen({
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={!reviewer || adding || creatingReviewer}
-              >
+              <Button type="submit">
                 Apply review
               </Button>
             </DialogFooter>

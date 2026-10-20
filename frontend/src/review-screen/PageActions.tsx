@@ -14,10 +14,10 @@ import { NativeSelect } from '@/components/ui/native-select';
 import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
+import { recordWords } from '../progress/backend';
 
 type Job = { id: number; status: string; pageType?: string; step?: string | null; error: string | null };
-const typeLabel = (value?: string) => ({ main: "Main page", notes: "Notes", coded: "Coded", other: "Other" }[value ?? ""] ?? value ?? "the selected page type");
-type Context = { bundleId: string; surveyId: string; category: string; needsTranscription?: boolean; revision: number; hasReviews: boolean; job: Job | null; surveys: { id: string; pages: { id: string; type: string }[] }[] };
+type Context = { bundleId: string; surveyId: string; category: string; pageTypes?: { name: string; label: string }[]; needsTranscription?: boolean; revision: number; hasReviews: boolean; job: Job | null; surveys: { id: string; pages: { id: string; type: string }[] }[] };
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, options);
   const body = await response.json().catch(() => null);
@@ -30,7 +30,8 @@ const NO_CHOICE: ModelChoice = {model:'',provider:'',effort:''}; // nothing pref
 
 // Acts on the selected page, using backend checks rather than changing local sample data.
 export default function PageActions({ session, toolbar }: { session: ReturnType<typeof useReviewSession>; toolbar: HTMLDivElement | null }) {
-  const { page, reviewer, reviewers, reviews, saving, setAttempt } = session;
+  const { page, reviewerId, reviews, saving, setAttempt } = session;
+  const words = recordWords(session.survey?.recordName);
   const pageId = page?.id;
   const uid = useId();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -41,7 +42,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
   const [choice, setChoice] = useState<ModelChoice>(NO_CHOICE);
   const [showModels, setShowModels] = useState(false);
   const [target, setTarget] = useState('');
-  const [type, setType] = useState('main');
+  const [type, setType] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -49,11 +50,12 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
   const [job, setJob] = useState<Job | null>(null);
   const pendingJob = useRef<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const reviewerId = reviewers.find(person => person.name === reviewer)?.id;
   const dirty = Object.values(reviews).some(fields => Object.values(fields).some(value => !value.savedAt));
   const dirtyRef = useRef(dirty);
   useEffect(() => { dirtyRef.current = dirty; }, [dirty]);
   const running = job?.status === 'waiting' || job?.status === 'running';
+  // A page type's label from the page's collection, else its name.
+  const typeLabel = (name?: string) => context?.pageTypes?.find(t => t.name === name)?.label ?? name ?? 'the selected page type';
 
   function reloadPage() {
     const url = new URL(window.location.href);
@@ -137,7 +139,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
   }
   if (!page) return null;
   const destination = context?.surveys.find(s=>s.id===target);
-  const title = showModels ? 'Transcription models' : mode==='move'?'Move to another survey':mode==='type'?'Change page type':'Transcribe page';
+  const title = showModels ? 'Transcription models' : mode==='move'?`Move to another ${words.one}`:mode==='type'?'Change page type':'Transcribe page';
   return <div className="space-y-3 text-sm">
     {toolbar && createPortal(<div data-testid="page-toolbar" className="flex flex-wrap items-center gap-2">
       <Button type="button" variant="outline" size="sm" disabled={busy||saving||running} onClick={()=>void open('transcribe')}>Transcribe</Button>
@@ -145,7 +147,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
         <CollapsibleTrigger asChild><Button type="button" variant="outline" size="sm">{menuOpen ? <ChevronDown /> : <ChevronRight />}Page actions</Button></CollapsibleTrigger>
         <CollapsibleContent className="absolute right-0 z-20 mt-1 flex min-w-56 flex-col gap-1 rounded-lg bg-popover p-2 text-popover-foreground shadow-md ring-1 ring-foreground/10">
           <Button variant="ghost" size="sm" className="justify-start" disabled={busy||saving||running} onClick={()=>void open('type')}>Change page type</Button>
-          <Button variant="ghost" size="sm" className="justify-start" disabled={busy||saving||running} onClick={()=>void open('move')}>Move to another survey</Button>
+          {session.survey?.grouped&&<Button variant="ghost" size="sm" className="justify-start" disabled={busy||saving||running} onClick={()=>void open('move')}>Move to another {words.one}</Button>}
         </CollapsibleContent>
       </Collapsible>}
       <PageHistory pageId={page.id} />
@@ -168,22 +170,22 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
       <DialogContent showCloseButton={false} onInteractOutside={e=>e.preventDefault()} className={`max-h-[90vh] overflow-y-auto ${showModels ? 'sm:max-w-[1000px]' : 'sm:max-w-[540px]'}`}>
         <DialogHeader>
           <DialogTitle className="text-lg">{title}</DialogTitle>
-          <DialogDescription>Page {page.id}{context && ` · Bundle ${context.bundleId} · Survey ${context.surveyId}`}</DialogDescription>
+          <DialogDescription>Page {page.id}{context && ` · Item ${context.bundleId} · ${words.One} ${context.surveyId}`}</DialogDescription>
         </DialogHeader>
         {loading && <p role="status" className="flex items-center gap-2 text-muted-foreground"><Spinner role={undefined} aria-hidden="true" />Loading…</p>}
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-        {(dirty||(!reviewerId && mode!=='transcribe'))&&<Alert role={undefined}><AlertDescription>{dirty?'Save or discard your pending reviews before changing this page.':'Select a reviewer in the review screen first.'}</AlertDescription></Alert>}
+        {dirty&&<Alert role={undefined}><AlertDescription>Save or discard your pending reviews before changing this page.</AlertDescription></Alert>}
         {showModels && modelData ? <ModelTable data={modelData} /> : <>
         {context && (mode==='move'?<FieldGroup className="gap-4">
           <Field>
-            <FieldLabel htmlFor={`${uid}-target`}>Destination survey</FieldLabel>
-            <NativeSelect id={`${uid}-target`} className="w-full" value={target} onChange={e=>setTarget(e.target.value)}><option value="">Select a survey</option>{context.surveys.filter(s=>s.id!==context.surveyId).map(s=><option key={s.id} value={s.id}>{s.id}</option>)}</NativeSelect>
+            <FieldLabel htmlFor={`${uid}-target`}>Destination {words.one}</FieldLabel>
+            <NativeSelect id={`${uid}-target`} className="w-full" value={target} onChange={e=>setTarget(e.target.value)}><option value="">Select {words.a}</option>{context.surveys.filter(s=>s.id!==context.surveyId).map(s=><option key={s.id} value={s.id}>{s.id}</option>)}</NativeSelect>
           </Field>
-          <FieldDescription>Only surveys in the same bundle are available. The image, extracted data and saved reviews stay with this page.</FieldDescription>
-          {context.surveys.length<2&&<FieldDescription>No other surveys exist in this bundle.</FieldDescription>}
+          <FieldDescription>Only {words.many} in the same item are available. The image, extracted data and saved reviews stay with this page.</FieldDescription>
+          {context.surveys.length<2&&<FieldDescription>No other {words.many} exist in this item.</FieldDescription>}
           {destination&&<Card size="sm">
             <CardHeader><CardTitle>Destination pages</CardTitle></CardHeader>
-            <CardContent className="space-y-1">{destination.pages.map(p=><p key={p.id}>{p.id} · {p.type}</p>)}{destination.pages.some(p=>p.type===context.category)&&<p className="font-medium">Another page of this type already exists. Multiple pages of the same type are allowed; check the destination.</p>}</CardContent>
+            <CardContent className="space-y-1">{destination.pages.map(p=><p key={p.id}>{p.id} · {typeLabel(p.type)}</p>)}{destination.pages.some(p=>p.type===context.category)&&<p className="font-medium">Another page of this type already exists. Multiple pages of the same type are allowed; check the destination.</p>}</CardContent>
           </Card>}
           <Field>
             <FieldLabel htmlFor={`${uid}-reason`}>Reason (optional)</FieldLabel>
@@ -192,19 +194,15 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
         </FieldGroup>:mode==='type'?<FieldGroup className="gap-4">
           <Field>
             <FieldLabel htmlFor={`${uid}-type`}>Correct page type</FieldLabel>
-            <NativeSelect id={`${uid}-type`} className="w-full" value={type} onChange={e=>setType(e.target.value)}>{['main','notes','coded','other'].map(t=><option key={t} value={t}>{t}</option>)}</NativeSelect>
+            <NativeSelect id={`${uid}-type`} className="w-full" value={type} onChange={e=>setType(e.target.value)}>{(context.pageTypes ?? []).map(t=><option key={t.name} value={t.name}>{t.label}</option>)}</NativeSelect>
           </Field>
         </FieldGroup>:<FieldGroup className="gap-4">
-          <Field>
-            <FieldLabel htmlFor={`${uid}-reviewer`}>Reviewer</FieldLabel>
-            <NativeSelect id={`${uid}-reviewer`} aria-label="Reviewer" className="w-full" value={reviewer} onChange={e=>session.setReviewer(e.target.value)}><option value="">Select reviewer</option>{reviewers.map(person=><option key={person.id} value={person.name}>{person.name}</option>)}</NativeSelect>
-          </Field>
           {modelData && <ModelFields data={modelData} choice={choice} setChoice={setChoice} busy={busy} onViewTable={()=>setShowModels(true)} />}
           {context.hasReviews && <Alert role={undefined}><AlertDescription>Successful transcription replaces the current fields and resets their review status. Your previous data and saved reviews will be retained in history.</AlertDescription></Alert>}
         </FieldGroup>)}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={()=>setDialogOpen(false)}>Cancel</Button>
-          <Button disabled={loading||!context||busy||saving||dirty||!reviewerId||running||(mode==='move'?!target:mode==='type'?type===context.category:!modelData||!choice.provider||!choice.model.trim()||!choice.effort.trim())} onClick={()=>void submit()}>{busy?'Saving…':mode==='move'?'Move page':mode==='type'?'Change page type':'Transcribe'}</Button>
+          <Button disabled={loading||!context||busy||saving||dirty||running||(mode==='move'?!target:mode==='type'?type===context.category:!modelData||!choice.provider||!choice.model.trim()||!choice.effort.trim())} onClick={()=>void submit()}>{busy?'Saving…':mode==='move'?'Move page':mode==='type'?'Change page type':'Transcribe'}</Button>
         </DialogFooter>
         </>}
         {showModels && <Button variant="outline" className="justify-self-start" onClick={()=>setShowModels(false)}>Back to transcription</Button>}

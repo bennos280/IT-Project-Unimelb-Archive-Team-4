@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  getSurvey,
-  getReviewers,
-  createReviewer,
-  getReviews,
-  saveReviews,
-  type Reviewer,
-} from "./api";
+import { me } from "../person";
+import { getSurvey, getReviews, saveReviews } from "./api";
 import type { Survey, Field } from "./model";
 import { orderFields } from "./fieldOrder";
 type Edit = {
@@ -18,13 +12,10 @@ type Edit = {
 };
 type Reviews = Record<string, Record<string, Edit>>;
 
-// Manage the review screen state and expose loading, editing, saving and navigation actions.
+// Manage the review screen state and expose loading, editing, saving and navigation actions. Reviews are by whoever is working.
 export function useReviewSession() {
+  const { id: reviewerId, name: reviewer } = me();
   const [reviews, setReviews] = useState<Reviews>({}),
-    [reviewer, setReviewer] = useState(""),
-    [reviewers, setReviewers] = useState<Reviewer[]>([]),
-    [newName, setNewName] = useState(""),
-    [adding, setAdding] = useState(false),
     [editing, setEditing] = useState<Field | null>(null),
     [draft, setDraft] = useState(""),
     [message, setMessage] = useState("");
@@ -50,9 +41,8 @@ export function useReviewSession() {
     Promise.all([
       getSurvey(surveyId, controller.signal),
       getReviews(surveyId),
-      getReviewers(),
     ])
-      .then(([data, saved, people]) => {
+      .then(([data, saved]) => {
         if (controller.signal.aborted) return;
         setError("");
         setSurvey(data);
@@ -63,11 +53,10 @@ export function useReviewSession() {
         setReviews(saved.reviews);
         savedReviews.current = saved.reviews;
         setRevisions(saved.revisions);
-        setReviewers(people);
       })
       .catch((e) => {
         if (controller.signal.aborted) return;
-        setError(`Could not load survey: ${e.message}`);
+        setError(`Could not load this record: ${e.message}`);
       });
     return () => controller.abort();
   }, [surveyId, attempt]);
@@ -100,7 +89,7 @@ export function useReviewSession() {
 
   // Store the review in memory without a saved timestamp; an empty editor value becomes null.
   function applyEdit() {
-    if (!page || !editing || !reviewer.trim()) return;
+    if (!page || !editing) return;
     setReviews((r) => ({
       ...r,
       [page.id]: {
@@ -109,7 +98,7 @@ export function useReviewSession() {
           value: draft === "" ? null : draft,
           original: editing.value,
           reviewer,
-          reviewerId: reviewers.find((r) => r.name === reviewer)!.id,
+          reviewerId,
         },
       },
     }));
@@ -117,25 +106,9 @@ export function useReviewSession() {
     setMessage("Field reviewed. Save Page Transcript to save your changes.");
   }
 
-  // Create or retrieve a reviewer, update the selector and show any backend error.
-  async function addReviewer() {
-    const name = newName.trim();
-    if (!name) return;
-    try {
-      const person = await createReviewer(name);
-      setReviewers((r) => [...r.filter((p) => p.id !== person.id), person]);
-      setReviewer(person.name);
-      setAdding(false);
-      setNewName("");
-      setMessage("Reviewer added in this browser.");
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not add reviewer.");
-    }
-  }
-
   // Mark every unflagged field with no review yet as pending review; existing reviews keep their value and reviewer.
   function reviewAll() {
-    if (!page || !reviewer) return;
+    if (!page) return;
     setReviews((r) => ({
       ...r,
       [page.id]: {
@@ -153,7 +126,7 @@ export function useReviewSession() {
                 value: field.value,
                 original: field.value,
                 reviewer,
-                reviewerId: reviewers.find((r) => r.name === reviewer)!.id,
+                reviewerId,
               },
             ]),
         ),
@@ -166,7 +139,7 @@ export function useReviewSession() {
 
   // Save pending fields; update timestamps and the discard snapshot only after a successful response.
   async function savePage() {
-    if (!page || !reviewer || saving) return false;
+    if (!page || saving) return false;
     const pageId = page.id;
     const changed = Object.fromEntries(
       Object.entries(pageReviews)
@@ -316,12 +289,7 @@ export function useReviewSession() {
     flagsLeft,
     reviews,
     reviewer,
-    setReviewer,
-    reviewers,
-    newName,
-    setNewName,
-    adding,
-    setAdding,
+    reviewerId,
     editing,
     setEditing,
     draft,
@@ -331,7 +299,6 @@ export function useReviewSession() {
     saving,
     beginEdit,
     applyEdit,
-    addReviewer,
     reviewAll,
     savePage,
     navigate,

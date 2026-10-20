@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
-import { backendRequest, type AvailableBundle } from "./backend";
+import { backendRequest, itemTitle, type AvailableBundle } from "./backend";
 
 import { ModelFields, ModelTable, type ModelChoice, type ModelData } from "./ModelControls";
 export type { ModelChoice } from "./ModelControls";
@@ -39,7 +39,7 @@ export default function TranscriptionDialog({ source, busy, error, onClose, onSt
       onInteractOutside={(event) => event.preventDefault()}>
       <DialogHeader>
         <DialogTitle>{table ? "Transcription models" : "Transcribe scans"}</DialogTitle>
-        <DialogDescription>Bundle {source.name}</DialogDescription>
+        <DialogDescription>{itemTitle(source.name, source.archive)}</DialogDescription>
       </DialogHeader>
       {failure && <Alert variant="destructive"><AlertDescription className="flex flex-wrap items-center gap-2">{failure} <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>Try again</Button></AlertDescription></Alert>}
       {!data && !failure && <p role="status" className="flex items-center gap-2 text-muted-foreground"><Spinner role="presentation" aria-hidden="true" />Loading model information…</p>}

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { serveItems } from "./items-mock";
 
 // The API is intercepted: no requests reach the real backend, and the real claude and codex programs are never run.
 const choice = { provider: "claude", model: "sonnet", effort: "high" };
@@ -12,20 +13,20 @@ type Mock = {
   codex?: boolean;
   models?: number; // failing status of GET /transcription-models
   connections?: number; // failing status of GET /connections
-  growing?: boolean; // GET /progress returns one more page on every call, so a finished refresh shows in the stats
+  growing?: boolean; // the items come with one more page on every call, so a finished refresh shows in the stats
 };
 
 async function mock(page: Page, options: Mock = {}) {
   const calls = { models: 0, connections: 0, progress: 0 };
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/progress") {
+    const served = serveItems(() => {
       calls.progress++;
       const pages = Array.from({ length: options.growing ? calls.progress : 1 }, (_, i) => (
         { id: `b/p${i + 1}`, label: `Pg ${i + 1}`, category: "Coded", status: "Ready to review", flagCount: 0, surveyId: "s", reviewPageId: `b/p${i + 1}` }));
-      return route.fulfill({ json: [{ id: "b", pages }] });
-    }
-    if (path === "/api/bundles") return route.fulfill({ json: [] });
+      return [{ bundle: "b", name: "b", pages }];
+    }, route.request());
+    if (served) return route.fulfill(served);
     if (path === "/api/transcription-models") {
       calls.models++;
       if (options.models) return route.fulfill({ status: options.models, json: { detail: "failed" } });
@@ -45,7 +46,7 @@ const banner = (page: Page) => page.getByRole("status").filter({ hasText: /isn't
 const stat = (page: Page) => page.getByTestId("stat-total-pages");
 const NOT_SET_UP = "Transcription isn't set up yet. Choose a model in Settings to start transcribing.";
 
-for (const [view, url] of [["all-bundles", "/"], ["bundle page", "/?bundle=b"]] as const) {
+for (const [view, url] of [["all-items", "/?series=1"], ["item page", "/?series=1&item=b"]] as const) {
   test(`${view} view: no model chosen shows the setup banner above the stats`, async ({ page }) => {
     await mock(page, { configured: null });
     await page.goto(url);
@@ -65,13 +66,13 @@ for (const [view, url] of [["all-bundles", "/"], ["bundle page", "/?bundle=b"]] 
 
 test("the banner names Claude Code when it is the chosen provider", async ({ page }) => {
   await mock(page, { claude: false, codex: true });
-  await page.goto("/");
+  await page.goto("/?series=1");
   await expect(banner(page)).toContainText("Claude Code isn't signed in, so transcription won't work yet.");
 });
 
 test("no banner when the chosen provider is signed in, even if the other one is not", async ({ page }) => {
   const calls = await mock(page, { claude: true, codex: false });
-  await page.goto("/");
+  await page.goto("/?series=1");
   await expect(stat(page)).toHaveText("1");
   await expect.poll(() => calls.connections).toBe(1);
   await expect(banner(page)).toHaveCount(0);
@@ -84,7 +85,7 @@ for (const [name, options] of [
 ] as const) {
   test(`no banner and a working dashboard when ${name}`, async ({ page }) => {
     const calls = await mock(page, { configured: null, ...options });
-    await page.goto("/");
+    await page.goto("/?series=1");
     await expect(stat(page)).toHaveText("1");
     await expect.poll(() => calls.models + calls.connections).toBeGreaterThanOrEqual(2);
     await expect(banner(page)).toHaveCount(0);
@@ -94,7 +95,7 @@ for (const [name, options] of [
 
 test("Open Settings goes to the settings page", async ({ page }) => {
   await mock(page, { configured: null });
-  await page.goto("/");
+  await page.goto("/?series=1");
   const link = banner(page).getByRole("link", { name: "Open Settings" });
   await expect(link).toHaveAttribute("href", "/?view=settings");
   await link.click();
@@ -105,7 +106,7 @@ test("Open Settings goes to the settings page", async ({ page }) => {
 test("setup is requested once on load, not on the progress poll, and on focus at most every 30 s", async ({ page }) => {
   await page.clock.install();
   const calls = await mock(page, { configured: null, growing: true });
-  await page.goto("/");
+  await page.goto("/?series=1");
   await expect(banner(page)).toBeVisible();
   expect(calls).toMatchObject({ models: 1, connections: 1 });
 

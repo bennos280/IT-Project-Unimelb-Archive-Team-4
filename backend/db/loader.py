@@ -1,14 +1,13 @@
 """A finished pipeline run (output/<bundle>/manifest.json) into the database: uv run python -m backend.db.loader"""
 import json
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from backend.db import database
+from backend.db import database, models
 from backend.common import ROOT, settings
 from backend.pipeline.transcribe import areas
 
 CODED_DICT = Path(__file__).parent / "data_dict.json"
-OTHER_CAT = "other" #a page identify wasn't sure about
 META = ("provider", "model", "effort", "seconds") #how a page was read
 
 #a run's pages into the db, all or nothing
@@ -22,17 +21,22 @@ def dump_into_db(manifest_path):
 
     transcripts = data.get("transcripts") or {}
     with database.engine.begin() as con:
-        if not con.exec_driver_sql("INSERT OR IGNORE INTO bundles(bundle_id, source_pdf) VALUES(?, ?)",
-                                   (bundle_id, stored_path(data["input"]))).rowcount:
+        if not con.exec_driver_sql("INSERT OR IGNORE INTO bundles(bundle_id, source_pdf, collection_id) VALUES(?, ?, ?)",
+                                   (bundle_id, stored_path(data["input"]), series(con, data))).rowcount:
             print(f"{bundle_id} is already in the database.")
             return
-        page_types = {name for (name,) in con.exec_driver_sql("SELECT name FROM page_types")}
+        #the bundle's collection's page types; a page sorting couldn't place, or not read, is its Unknown type
+        types = con.exec_driver_sql("SELECT name, unknown FROM page_types WHERE collection_id ="
+                                    " (SELECT collection_id FROM bundles WHERE bundle_id = ?)", (bundle_id,)).fetchall()
+        page_types, unknown = {name for name, _ in types}, next((name for name, is_unknown in types if is_unknown), None)
         for p in data["pages"]:
             if p.get("path") is None or p.get("label") in (None, "blank"):
                 continue
             #a manifest written on Windows uses \
-            page = run_folder / p["transcript"].replace("\\", "/") if p.get("transcript") else None
-            category = p["label"] if page and p["label"] in page_types else OTHER_CAT
+            page = run_folder / p["transcript"].replace("\\", "/") if p.get("transcript") and p["label"] in page_types else None
+            category = p["label"] if page else unknown
+            if category is None:
+                raise ValueError(f"Bundle {bundle_id}'s collection has no Unknown page type to store {p['file']} as.")
             insert_page(Path(p["file"]).stem, page, stored_path(p["path"]), category,
                         p.get("survey"), bundle_id, con, transcripts.get(p["file"], {}).get("request") if page else None)
         insert_flags(run_folder / "review.json", con)
@@ -140,6 +144,26 @@ def insert_check_flags(check_p, con):
 def version_id(con, kind, sha):
     return sha and con.exec_driver_sql("SELECT MIN(version_id) FROM instruction_versions WHERE kind = ? AND sha256 = ?",
                                        (kind, sha)).scalar()
+
+#the series an item belongs to, by its number (its PDF's folder, or its folder of page images) in {item number: series};
+#None: no series lists it
+def series_of(owners, path):
+    path = PurePosixPath(str(path).replace("\\", "/"))
+    return owners.get(path.parent.name if path.suffix.lower() == ".pdf" else path.name)
+
+#{item number: series} for every item a series lists: its archive items, and the items uploaded to it
+def archive_owners(db):
+    return {**{str(node): series for node, series in db.query(models.ArchiveItem.node, models.ArchiveItem.collection_id)},
+            **{bundle: series for bundle, series in db.query(models.UploadedItem.bundle, models.UploadedItem.collection_id)}}
+
+#the series a run's item is loaded into: the one it was run for, else the one that lists it; a ValueError if none does
+def series(con, data):
+    owners = dict(con.exec_driver_sql("SELECT CAST(node AS TEXT), collection_id FROM archive_items"
+                                      " UNION ALL SELECT bundle, collection_id FROM uploaded_items").fetchall())
+    found = series_of(owners, data["input"])
+    if found is None:
+        raise ValueError(f"No series lists {data['input']}: add it to one from the app first.")
+    return found
 
 #relative to the repo with /, so the db works on any checkout
 def stored_path(path):

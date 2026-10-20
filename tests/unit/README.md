@@ -95,6 +95,7 @@ unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generat
 | `test_run_cli_turns_a_hang_into_a_readable_exit`                    | Converts a CLI timeout into a readable exit message instead of exposing a raw `TimeoutExpired` traceback.                                                                                                                              |
 | `test_run_cli_explains_a_missing_cli_instead_of_crashing`           | Converts a missing Claude/Codex executable into a clear "CLI not found" message.                                                                                                                                                       |
 | `test_run_cli_passes_capture_and_timeout_settings_through`          | Verifies subprocess output capture, timeout, replacement-character decoding, working directory, and command arguments are passed correctly.                                                                                            |
+| `test_cli_runs_with_stdin_closed` | The CLI is started with its standard input closed (`subprocess.DEVNULL`), so it never waits for input. |
 | `test_run_claude_returns_the_structured_output`                     | Parses a successful Claude response and returns the structured answer.                                                                                                                                                                 |
 | `test_run_claude_builds_the_command_with_the_image_path_and_schema` | Builds the Claude command with the image path, selected model and effort, Read as the only tool, none of the user's MCP servers, `--safe-mode` (none of their CLAUDE.md, plugins, hooks, skills or memory), and JSON schema arguments. |
 | `test_run_claude_exits_when_the_reply_is_not_json`                  | Rejects non-JSON CLI output and exits with a useful message containing the raw response.                                                                                                                                               |
@@ -122,15 +123,20 @@ The transcription choice saved on the Settings page (no default), and everything
 | Test | What it checks |
 | --- | --- |
 | `test_nothing_saved_is_none_and_so_is_part_of_a_choice` | The saved choice is `None` until all three of provider, model and effort are saved. |
+| `test_saving_again_replaces_and_leaves_other_settings` | Saving a choice again replaces the earlier one and leaves other saved settings alone. |
 | `test_nothing_is_configured_until_a_choice_is_saved` | `GET /transcription-models` gives `configured: null` until then. |
 | `test_put_saves_all_three_trimmed_and_returns_the_choice` / `test_there_is_no_reset` | `PUT /transcription-defaults` saves and returns exactly provider, model and effort; `DELETE` no longer exists. |
 | `test_folders_are_the_data_and_output_folders_inside_the_project` | `GET /folders` gives the absolute `data` and `output` folders under the project. |
+| `test_put_and_post_jobs_reject_the_same_values_with_the_same_message` — 10 cases | A blank, multi-word, option-like, too long or odd model, an unknown provider, or a blank, multi-word, option-like or too long effort is refused with the same 400 and message by `PUT /transcription-defaults` and `POST /jobs`; nothing is saved or queued. |
+| `test_put_needs_all_three_fields` | `PUT /transcription-defaults` without all of provider, model and effort is 422 and saves nothing. |
+| `test_put_rejects_a_body_that_is_not_json` | A `PUT` whose body isn't JSON is 422. |
 | `test_a_job_without_a_full_choice_and_nothing_saved_is_refused` | `POST /jobs` without a full choice and nothing saved is 409 "Choose a transcription model on the Settings page first." and queues nothing. |
 | `test_a_job_with_an_explicit_choice_works_with_nothing_saved` | An explicit choice in the payload needs nothing saved. |
 | `test_a_job_started_without_a_choice_uses_the_saved_one` / `test_a_job_with_part_of_a_choice_takes_the_rest_from_the_saved_one` | The saved choice fills whatever the payload leaves out. |
 | `test_a_page_transcription_cannot_leave_out_its_choice` | `POST /page-transcription` requires provider, model and effort (422). |
 | `test_a_bundle_job_with_no_choice_runs_with_the_saved_one` | The worker gives the pipeline the job's own fields, else the saved choice. |
 | `test_a_bundle_job_without_a_full_choice_and_nothing_saved_fails_with_the_message` / `test_a_page_job_with_no_choice_and_nothing_saved_fails_with_the_message` | A job with a missing field and nothing saved is marked failed with the message, and no model or pipeline runs. |
+| `test_a_page_job_with_no_choice_reads_with_the_saved_one` / `test_a_page_job_with_a_choice_keeps_it` | A page job with no choice reads the page with the saved one; a page job with its own choice keeps it whatever is saved. |
 
 ## `test_identify_fingerprint.py`
 
@@ -145,8 +151,9 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 ## `test_backend_api.py`
 |Test|What it checks|
 |---|---|
-|`test_get_survey_not_found`|Returns HTTP 404 if the requested survey id is not in the database.|
+|`test_get_survey_not_found`|Returns HTTP 404 ("No such record.") if the requested survey id is not in the database.|
 |`test_get_survey_success`|A seeded survey comes back with its page in it, the page's field and a resident's field (`residents.20.relationship`) with their values, the page's `imageUrl` (`/pages/<page id>/image`) and no flags.|
+|`test_a_surveys_title_is_its_collections_name`|A survey's `title` is the name of the series (collection) it belongs to.|
 |`test_get_reviewers_empty`|Returns an empty list without crashing if there are no reviewers in the database.|
 |`test_create_reviewer_success`|Saves a reviewer and returns its id and name.|
 |`test_create_reviewer_empty_name`|A name of only spaces returns HTTP 400, "Enter a reviewer name."|
@@ -188,6 +195,7 @@ The test db is built from `backend/db/models.py` with foreign keys checked, as i
 |Test|What it checks|
 |---|---|
 |`test_bundles_list_each_pdf_whether_it_is_loaded_and_its_surveys`|`GET /bundles` lists every PDF under `DATA` by its bundle number, with whether it is loaded, its survey ids in scan order (by each survey's first page) and its latest job.|
+|`test_a_pdf_is_listed_under_the_series_whose_archive_item_it_is_with_its_identifier_and_title`|`GET /bundles` lists a PDF not loaded yet under the series whose archive item its number is, with that item's identifier and title; `?collection=` lists another series' PDFs.|
 |`test_started_job_waits_for_the_worker`|`POST /jobs` queues a waiting job (202), with its last update time in UTC, that `GET /bundles` and `GET /jobs/<id>` report (an unknown id is 404), and refuses a second one for the same PDF while it waits.|
 |`test_pdfs_inside_the_repo_are_named_relative_to_it`|With `DATA` inside the repo (the usual setup), PDFs and jobs use a forward-slash path relative to the repo, so the db works on any checkout.|
 |`test_jobs_only_for_unloaded_pdfs_in_data`|A PDF outside `DATA` is refused (404), and a bundle already loaded is refused (409) so its reviews can't be lost.|
@@ -243,8 +251,11 @@ Page types added from the review screen, and a page read again as another type.
 | `test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was`     | A model answer the db can't take fails the job, and the page keeps its fields, type and revision: the swap is all or nothing.                                                                                                                                                                     |
 | `test_a_page_read_again_counts_for_accuracy_only_once_a_reviewer_saves_it` | A page read again isn't counted by `GET /accuracy` until a reviewer saves it.                                                                                                                                                                                                                     |
 | `test_a_new_page_type_needs_a_template_before_pages_are_read_as_it`        | `GET /page-types` lists the built-in four with their templates; a new type needs a lower-case name that isn't taken or reserved (`blank`) and a known reviewer; a page can't be read as it until it has a template (`other` can't have one); then `PUT /pages/{id}/type` queues a page job, once. |
+| `test_a_page_types_label_is_what_people_see_and_is_unique_in_its_collection` | A new page type's label is what people see (its name when none is given); a blank label is refused (400), and one a type in the series has already, built-in labels included, is refused (409) saying so. |
 | `test_reading_a_page_again_without_a_choice_uses_the_saved_one_or_is_refused` | `PUT /pages/{id}/type` without a model, provider and effort is refused with 409 and the Settings message when nothing is saved, and queues the saved choice otherwise. |
 | `test_a_part_of_a_choice_is_checked_like_a_whole_one` | A part given on its own (a bad effort, provider or model) is refused with 400 even when the rest comes from the saved choice. |
+| `test_the_unknown_setting_decides_not_the_name_other` | The page type a series marks Unknown, whatever its name, can't have a template, empties a page changed to it at once and flags it; `other`, no longer Unknown, needs a template like any type. |
+| `test_page_type_job_records_selected_transcription_model` | A page read again as another type queues a job with the model, provider and effort given (a blank model is refused). |
 | `test_a_page_made_other_is_emptied_at_once`                                | Making a page `other` empties it to one blank text field at once and moves its revision on.                                                                                                                                                                                                       |
 | `test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`   | An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).                                                                                                                                                  |
 | `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |
@@ -276,6 +287,7 @@ Page sorting retrained from the review screen; page fingerprints are made up, so
 |`test_failed_transcription_keeps_old_content`|A failed transcription keeps the existing content and reviews.|
 |`test_concurrent_review_prevents_replacement`|A page changed after transcription was queued is protected from replacement.|
 |`test_classification_rejects_invalid_type_reviewer_and_stale_revision`|Rejects unsupported types, unknown reviewers, outdated revisions, and selecting the existing type.|
+|`test_a_page_can_be_changed_to_any_type_of_its_collection_which_are_listed_by_label`|A page's actions list its series' page types by label; another series' type is refused (400), and one of its own is accepted.|
 |`test_transcription_requires_template_and_valid_model_details`|Rejects invalid model settings and transcription of a page type without a template.|
 |`test_other_does_not_require_transcription_but_main_does`|Changing Main → Other → Main updates the transcription requirement correctly in both the API response and database.|
 
@@ -285,7 +297,7 @@ It checks read-only, page-scoped history, archived reviews, moves, empty history
 
 ## `test_uploads.py`
 
-`POST /bundles/upload`: a bundle is one PDF, or a folder of page images that share a bundle number. Duplicates are refused without changing existing files or database records.
+`POST /bundles/upload`: each upload says which series it is for. A bundle is one PDF, or a folder of page images that share a bundle number. Duplicates are refused without changing existing files or database records.
 
 | Test                                                              | What it checks                                                                                                                                                                                          |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -300,6 +312,7 @@ It checks read-only, page-scoped history, archived reviews, moves, empty history
 | `test_a_file_over_the_limit_is_refused_and_leaves_nothing_behind` | A file over the size limit gets a 413, with no bundle folder and no temporary file left.                                                                                                                |
 | `test_names_windows_cannot_store_are_refused` — 6 tests           | Names with `? : | "` or a trailing dot or space are refused with a 400 before anything is saved.                                                                                                        |
 | `test_pdf_names_that_differ_only_by_case_are_the_same_bundle`     | A PDF name that differs from an uploaded, loaded or archive PDF only by case counts as the same bundle; an archive PDF is accepted under its own number whatever the case.                              |
+| `test_an_upload_needs_a_series_and_an_item_number_stays_with_its_first` | An upload for a series that isn't there is refused ("Choose the series these files are for.") and one with no series is 422; the first upload of an item number records its series, and later files for that number under another series are refused (409) without recording another. |
 
 ## `api.test.ts` — 19 tests
 

@@ -1,5 +1,5 @@
 """Shared by the backend tests: a fresh database file built from backend/db/models.py (foreign keys and other rules
-checked, as in the real db) holding just the built-in page types, and the API on it."""
+checked, as in the real db) holding just the first collection and the built-in page types, and the API on it."""
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
@@ -14,8 +14,17 @@ def sessions(tmp_path):
     committed."""
     engine = make_engine(f"sqlite:///{(tmp_path / 'test.db').as_posix()}")
     models.Base.metadata.create_all(engine)
-    with engine.begin() as con:  #as migration 001 adds them
-        con.execute(models.PageType.__table__.insert(), [{"name": name, "built_in": True} for name in ("main", "notes", "coded", "other")])
+    with engine.begin() as con:  #as migrations 001, 007-012, 021 and 023 add them
+        con.execute(models.Collection.__table__.insert(), [{"collection_id": 1, "name": "Wilfred Prest Survey",
+                                                                "archive_series": 499420, "archive_identifier": "UMA-SR-000000842",
+                                                                "archive_title": "University of Melbourne Social Survey forms", "archive_items": 45}])
+        con.execute(models.PageType.__table__.insert(), [
+            {"name": name, "label": label, "built_in": True, "unknown": name == "other", "collection_id": 1}
+            for name, label in (("main", "Main page"), ("notes", "Notes page"), ("coded", "Coded page"), ("other", "Unknown"))])
+        con.execute(models.RecordLevel.__table__.insert(), [{"collection_id": 1, "position": 1, "name": "survey", "record_key": "number_of_dwelling",
+                                                                 "parts": '[{"type": "main", "count": "one_or_more", "how": "starts"}, '
+                                                                          '{"type": "notes", "count": "any", "how": "follows"}, '
+                                                                          '{"type": "coded", "count": "one", "how": "matched"}]'}])
     yield sessionmaker(autoflush=False, bind=engine)
     engine.dispose()
 

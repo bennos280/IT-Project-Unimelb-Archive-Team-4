@@ -47,6 +47,6 @@ it("reports backend export errors", async () => {
 it("rejects blank survey IDs before requesting data", async () => {
   const fetch = vi.fn();
   vi.stubGlobal("fetch", fetch);
-  await expect(loadSurveyExport(" ")).rejects.toThrow("Enter a survey ID");
+  await expect(loadSurveyExport(" ")).rejects.toThrow("Enter a record ID");
   expect(fetch).not.toHaveBeenCalled();
 });

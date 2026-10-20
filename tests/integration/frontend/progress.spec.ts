@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
+import { serveItems, type MockItem, type MockPage } from "./items-mock";
 
 // The review-progress cell is the fourth column of a bundle row.
 const meter = (row: Locator) => row.getByRole("cell").nth(3);
@@ -14,7 +15,9 @@ const pageRow = (page: Page, label: string) =>
 test.describe("Progress navigation and layout", () => {
   const survey = {
     id: "216417_1",
-    title: "Test survey",
+    title: "Wilfred Prest Survey",
+    recordName: "survey", grouped: true,
+    collectionId: 1,
     pages: ["main", "notes", "coded"].map((type, index) => ({
       id: `216417/p${index}`,
       type,
@@ -37,6 +40,14 @@ test.describe("Progress navigation and layout", () => {
     })),
   };
 
+  // The review pages of item 216417, as the server lists them; status is what each is at.
+  const listed = (status = (_i: number) => "Ready to review", flags = (i: number) => survey.pages[i].flags.length): MockPage[] =>
+    survey.pages.map((p, i) => ({
+      id: p.id, label: `Pg ${i + 1}`, category: p.type, status: status(i), flagCount: flags(i),
+      surveyId: survey.id, reviewPageId: p.id,
+    }));
+  const items = (pages = listed()): MockItem[] => [{ bundle: "216417", name: "216417", pages }];
+
   // Intercept requests before opening the page.
   // No requests reach the real backend or database.
   test.beforeEach(async ({ page }) => {
@@ -49,25 +60,11 @@ test.describe("Progress navigation and layout", () => {
 
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
+      const served = serveItems(items(), route.request());
+      if (served) return route.fulfill(served);
 
-      if (path === "/api/progress")
-        return route.fulfill({
-          json: [
-            {
-              id: "216417",
-              pages: survey.pages.map((p, i) => ({
-                id: p.id,
-                label: `Pg ${i + 1}`,
-                category: p.type,
-                status: "Ready to review",
-                flagCount: p.flags.length,
-                surveyId: survey.id,
-                reviewPageId: p.id,
-              })),
-            },
-          ],
-        });
-      if (path === "/api/bundles") return route.fulfill({ json: [] });
+      if (path === "/api/collections/1")
+        return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordKey: "number_of_dwelling", recordName: "survey", grouped: true, archiveSeries: 499420 } });
       if (path === "/api/survey/216417_1") {
         return route.fulfill({ json: survey });
       }
@@ -79,7 +76,7 @@ test.describe("Progress navigation and layout", () => {
       }
 
       if (path === "/api/reviewers") {
-        return route.fulfill({ json: [] });
+        return route.fulfill({ json: [{ id: 1, name: "Ben" }] });
       }
 
       return route.fulfill({
@@ -98,9 +95,6 @@ test.describe("Progress navigation and layout", () => {
       let persisted = false;
       let saveRequests = 0;
       let savedReviews = {};
-      await page.route("**/api/reviewers", (route) =>
-        route.fulfill({ json: [{ id: 1, name: "Test reviewer" }] }),
-      );
       await page.route("**/api/reviews/216417_1", async (route) => {
         if (route.request().method() === "POST") {
           saveRequests++;
@@ -131,26 +125,16 @@ test.describe("Progress navigation and layout", () => {
           },
         });
       });
-      await page.route("**/api/progress", (route) =>
-        route.fulfill({
-          json: [
-            {
-              id: "216417",
-              pages: survey.pages.map((p, i) => ({
-                id: p.id,
-                label: `Pg ${i + 1}`,
-                category: p.type,
-                status: persisted && i === 0 ? "Reviewed" : "Ready to review",
-                flagCount: persisted && i === 0 ? 0 : p.flags.length,
-                surveyId: survey.id,
-                reviewPageId: p.id,
-              })),
-            },
-          ],
-        }),
+      await page.route("**/api/collections/1/items**", (route) =>
+        route.fulfill(
+          serveItems(
+            () => items(listed((i) => (persisted && i === 0 ? "Reviewed" : "Ready to review"), (i) => (persisted && i === 0 ? 0 : survey.pages[i].flags.length))),
+            route.request(),
+          )!,
+        ),
       );
 
-      await page.goto("/");
+      await page.goto("/?series=1");
       const bundleRow = bundleRows(page).filter({
         has: page.getByRole("link", { name: "216417", exact: true }),
       });
@@ -160,9 +144,6 @@ test.describe("Progress navigation and layout", () => {
       await expect(firstRow).toContainText("5 need checking");
       await firstRow.getByRole("link", { name: "Review Pg 1", exact: true }).click();
       await expect(page.getByRole("heading", { name: "216417/p0 ·" })).toBeVisible();
-      await page
-        .getByRole("combobox", { name: "Reviewer name", exact: true })
-        .selectOption("Test reviewer");
       // Flagged fields must be reviewed individually before saving.
       for (const field of survey.pages[0].fields) {
         await page.getByRole("button", { name: `Edit ${field.label}`, exact: true }).click();
@@ -185,7 +166,7 @@ test.describe("Progress navigation and layout", () => {
       }
       // Accept the browser's leave warning for deliberately discarded drafts.
       page.on("dialog", (dialog) => dialog.accept());
-      await page.getByRole("link", { name: "All bundles" }).click();
+      await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Items", exact: true }).click();
       const complete = outcome === "saved";
       expect(saveRequests).toBe(outcome === "unsaved" ? 0 : 1);
       for (const refresh of [false, true]) {
@@ -200,7 +181,7 @@ test.describe("Progress navigation and layout", () => {
           complete ? "2" : "3",
         );
       }
-      await page.getByRole("link", { name: "216417", exact: true }).click();
+      await page.goto("/?series=1&item=216417");
       await expect(firstRow.getByRole("cell").nth(3)).toHaveText(
         complete ? "Reviewed" : "Ready to review",
       );
@@ -216,29 +197,29 @@ test.describe("Progress navigation and layout", () => {
     });
   }
 
-  test("searches bundles and clears an empty result", async ({ page }) => {
-    await page.goto("/");
+  test("searches items and clears an empty result", async ({ page }) => {
+    await page.goto("/?series=1");
 
     await expect(
-      page.getByRole("heading", { name: "All survey bundles" }),
+      page.getByRole("heading", { name: "All items" }),
     ).toBeVisible();
 
-    await page.getByLabel("Search bundles").fill("216417");
+    await page.getByLabel("Search items").fill("216417");
     await expect(bundleRows(page)).toHaveCount(1);
 
-    await page.getByLabel("Search bundles").fill("missing");
+    await page.getByLabel("Search items").fill("missing");
     await expect(
-      page.getByText("No bundles match your filters."),
+      page.getByText("No items match your filters."),
     ).toBeVisible();
 
     await page.getByRole("button", { name: "Clear filters" }).click();
     await expect(bundleRows(page)).toHaveCount(1);
   });
 
-  test("disables pagination for one bundle and filters by status", async ({
+  test("disables pagination for one item and filters by status", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/?series=1");
 
     await expect(
       page.getByRole("button", { name: "Next", exact: true }),
@@ -246,7 +227,7 @@ test.describe("Progress navigation and layout", () => {
 
     await page.getByLabel("Status", { exact: true }).selectOption("Reviewed");
     await expect(
-      page.getByText("No bundles match your filters."),
+      page.getByText("No items match your filters."),
     ).toBeVisible();
 
     await page
@@ -258,12 +239,11 @@ test.describe("Progress navigation and layout", () => {
     ).toBeVisible();
   });
 
-  test("opens bundle pages with matching review targets", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("link", { name: "216417", exact: true }).click();
+  test("opens item pages with matching review targets", async ({ page }) => {
+    await page.goto("/?series=1&item=216417");
 
     await expect(
-      page.getByRole("heading", { name: "Bundle Number · 216417" }),
+      page.getByRole("heading", { name: "Item 216417" }),
     ).toBeVisible();
 
     const notesRow = pageRow(page, "Pg 2");
@@ -272,17 +252,11 @@ test.describe("Progress navigation and layout", () => {
       notesRow.getByRole("link", { name: "Review Pg 2", exact: true }),
     ).toHaveAttribute("href", "/?survey=216417_1&page=216417%2Fp1");
 
-    await page.getByRole("link", { name: "All bundles" }).click();
+    await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Items", exact: true }).click();
 
     await expect(
-      page.getByRole("heading", { name: "All survey bundles" }),
+      page.getByRole("heading", { name: "All items" }),
     ).toBeVisible();
-  });
-
-  test("Import opens the import screen", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: "Import", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Import survey bundles" })).toBeVisible();
   });
 
   for (const [label, pageId] of [
@@ -291,8 +265,7 @@ test.describe("Progress navigation and layout", () => {
     ["Pg 3", "216417/p2"],
   ]) {
     test(`${label} opens its matching US7 page`, async ({ page }) => {
-      await page.goto("/");
-      await page.getByRole("link", { name: "216417", exact: true }).click();
+      await page.goto("/?series=1&item=216417");
 
       const row = pageRow(page, label);
 
@@ -310,8 +283,7 @@ test.describe("Progress navigation and layout", () => {
   for (const width of [936, 640, 375]) {
     test(`page table keeps actions visible at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto("/");
-      await page.getByRole("link", { name: "216417", exact: true }).click();
+      await page.goto("/?series=1&item=216417");
 
       await expect(
         page.getByRole("columnheader", { name: "Flags", exact: true }),
@@ -367,6 +339,7 @@ test.describe("Progress and transcription states", () => {
       status?: string;
       partial?: boolean;
       count?: number;
+      archive?: boolean;
     } = {},
   ) {
     const loaded = options.loaded ?? false;
@@ -381,35 +354,16 @@ test.describe("Progress and transcription states", () => {
             options.status === "failed" ? "Test transcription failure" : null,
         }
       : null;
+    const items: MockItem[] = [{
+      bundle: "b", name: "216424", pdf: "b.pdf", loaded, job,
+      archive: options.archive ? { identifier: "UMA-ITE-1973000200013", title: "Collingwood 07" } : null,
+      pages: loaded ? Array.from({ length: options.count ?? 2 }, (_, i) =>
+        ({ ...readyPage(i + 1) })) : [],
+    }];
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path === "/api/progress")
-        return route.fulfill({
-          json: loaded
-            ? [
-                {
-                  id: "b",
-                  pages: Array.from({ length: options.count ?? 2 }, (_, i) =>
-                    readyPage(i + 1),
-                  ),
-                },
-              ]
-            : [],
-        });
-      if (path === "/api/bundles")
-        return route.fulfill({
-          json: [
-            {
-              bundle: "b",
-              name: "216424",
-              pdf: "b.pdf",
-              loaded,
-              surveys: [],
-              job,
-            },
-          ],
-        });
-      if (path === "/api/jobs/1") return route.fulfill({ json: job });
+      const served = serveItems(items, route.request());
+      if (served) return route.fulfill(served);
       if (path === "/api/jobs/1/transcripts")
         return route.fulfill({
           json: {
@@ -430,14 +384,57 @@ test.describe("Progress and transcription states", () => {
         json: { detail: `Unexpected request: ${path}` },
       });
     });
-    await page.goto("/");
+    await page.goto("/?series=1");
   }
 
   async function openBundle(page: Page) {
-    await page.getByRole("link", { name: "216424", exact: true }).click();
+    await page.goto("/?series=1&item=216424");
   }
 
-  test("untouched bundle prompts Transcribe and shows no reviewable pages", async ({
+  test("an archive item is listed by its title over its identifier and number, found by any of them, and its page links to the archive", async ({
+    page,
+  }) => {
+    await mock(page, { loaded: true, archive: true });
+    const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "Collingwood 07", exact: true }) });
+    await expect(row).toContainText("UMA-ITE-1973000200013 · 216424");
+    await expect(row.getByRole("link")).toHaveCount(1);
+    for (const [query, found] of [["collingwood", 1], ["UMA-ITE-1973000200013", 1], ["216424", 1], ["brighton", 0]] as const) {
+      await page.getByLabel("Search items").fill(query);
+      await expect(row).toHaveCount(found);
+    }
+    await page.getByLabel("Search items").fill("");
+    await openBundle(page);
+    await expect(page.getByRole("heading", { name: "Collingwood 07", level: 1 })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator('[aria-current="page"]')).toHaveText("Collingwood 07");
+    const archive = page.getByRole("link", { name: "UMA-ITE-1973000200013" });
+    await expect(archive).toHaveAttribute("href", "https://archives.library.unimelb.edu.au/nodes/view/216424");
+    await expect(archive).toHaveAttribute("target", "_blank");
+    await expect(page.locator("main")).toContainText("UMA-ITE-1973000200013 · 216424 · 2 pages ready to review");
+  });
+
+  test("the Transcribe and error dialogs and the progress bar name an archive item by its title", async ({ page }) => {
+    await mock(page, { status: "failed", archive: true });
+    const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "Collingwood 07", exact: true }) });
+    await row.getByRole("button", { name: "Retry transcription", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Transcribe scans" })).toHaveAccessibleDescription("Collingwood 07");
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await row.getByRole("button", { name: "more details here" }).click();
+    await expect(page.getByRole("dialog", { name: "Transcription error" })).toHaveAccessibleDescription("Collingwood 07");
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await mock(page, { loaded: true, archive: true });
+    await expect(page.getByRole("progressbar", { name: "Collingwood 07 review progress" })).toBeVisible();
+  });
+
+  test("a series whose pages don't group offers no grouping status", async ({ page }) => {
+    await mock(page, { loaded: true });
+    await page.route("**/api/collections/1", (route) =>
+      route.fulfill({ json: { id: 1, name: "Letters", recordName: "letter", grouped: false } }));
+    await page.reload();
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toContainText("Letters");
+    await expect(page.getByLabel("Status").locator("option", { hasText: "Not in a" })).toHaveCount(0);
+  });
+
+  test("untouched item prompts Transcribe and shows no reviewable pages", async ({
     page,
   }) => {
     await mock(page);
@@ -447,7 +444,7 @@ test.describe("Progress and transcription states", () => {
     await openBundle(page);
     await expect(
       page.getByText(
-        "This bundle has not been processed yet. Press Transcribe to get started.",
+        "This item has not been processed yet. Press Transcribe to get started.",
       ),
     ).toBeVisible();
     await expect(
@@ -458,7 +455,7 @@ test.describe("Progress and transcription states", () => {
     ).toHaveCount(0);
   });
 
-  test("partial bundle shows model and completion action without review access", async ({
+  test("partial item shows model and completion action without review access", async ({
     page,
   }) => {
     await mock(page, { status: "failed", partial: true });
@@ -503,7 +500,7 @@ test.describe("Progress and transcription states", () => {
     });
   }
 
-  test("loaded bundle shows model or dash and hides incomplete notice", async ({
+  test("loaded item shows model or dash and hides incomplete notice", async ({
     page,
   }) => {
     await mock(page, { loaded: true });
@@ -536,27 +533,27 @@ test.describe("Progress and transcription states", () => {
     ).toBeDisabled();
   });
 
-  test("bundle, page and status stay in the URL across reload and Back", async ({
+  test("item, page and status stay in the URL across reload and Back", async ({
     page,
   }) => {
     await mock(page, { loaded: true, count: 11 });
     await openBundle(page);
     await page.getByRole("button", { name: "Next", exact: true }).click();
-    await expect(page).toHaveURL(/\/\?bundle=216424&page=2$/);
+    await expect(page).toHaveURL(/\/\?series=1&item=216424&page=2$/);
     await page.reload();
     await expect(page.getByText("Showing 10–11 of 11 pages")).toBeVisible();
     await page.getByLabel("Status").selectOption("Ready to review");
-    await expect(page).toHaveURL(/\/\?bundle=216424&status=Ready\+to\+review$/);
+    await expect(page).toHaveURL(/\/\?series=1&item=216424&status=Ready\+to\+review$/);
     await page.goBack();
     await expect(page.getByText("Showing 10–11 of 11 pages")).toBeVisible();
     await page.goBack();
     await expect(page.getByText("Showing 1–9 of 11 pages")).toBeVisible();
     await page.goBack();
-    await expect(page).toHaveURL(/:\d+\/$/);
+    await expect(page).toHaveURL(/\/\?series=1$/);
     await expect(page.getByRole("link", { name: "216424", exact: true })).toBeVisible();
   });
 
-  test("clicking a bundle row opens it, but its Transcribe button only opens the dialog", async ({
+  test("clicking an item row opens it, but its Transcribe button only opens the dialog", async ({
     page,
   }) => {
     await mock(page);
@@ -567,17 +564,14 @@ test.describe("Progress and transcription states", () => {
     await expect(page.getByRole("dialog", { name: "Transcribe scans" })).toBeVisible();
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
-    await expect(page).toHaveURL(/:\d+\/$/);
-    // The row link's overlay covers the Total pages cell, so click its centre with the mouse.
-    const box = await row.getByRole("cell").nth(1).boundingBox();
-    expect(box).not.toBeNull();
-    await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
-    await expect(page.getByRole("heading", { name: "Bundle Number · 216424" })).toBeVisible();
-    await expect(page).toHaveURL(/\/\?bundle=216424$/);
+    await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
+    await expect(page).toHaveURL(/\/\?series=1$/);
+    await row.getByRole("cell").nth(1).click();
+    await expect(page.getByRole("heading", { name: "Item 216424" })).toBeVisible();
+    await expect(page).toHaveURL(/\/\?series=1&item=216424$/);
   });
 
-  test("a failed bundle's Retry and error buttons act without opening the bundle", async ({
+  test("a failed item's Retry and error buttons act without opening the item", async ({
     page,
   }) => {
     await mock(page, { status: "failed" });
@@ -591,11 +585,11 @@ test.describe("Progress and transcription states", () => {
     await row.getByRole("button", { name: "more details here" }).click();
     await expect(page.getByRole("dialog")).toContainText("Test transcription failure");
     await page.getByRole("button", { name: "Close", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
-    await expect(page).toHaveURL(/:\d+\/$/);
+    await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
+    await expect(page).toHaveURL(/\/\?series=1$/);
   });
 
-  test("bundle rows have one keyboard stop, an Actions header, and open natively in a new tab", async ({
+  test("item rows have one keyboard stop, an Actions header, and open natively in a new tab", async ({
     page,
   }) => {
     await page.context().route("**/api/**", (route) => route.abort());
@@ -607,19 +601,19 @@ test.describe("Progress and transcription states", () => {
     await expect(row.getByRole("link")).toHaveCount(1);
     await expect(row.getByRole("button")).toHaveCount(0);
     const link = row.getByRole("link", { name: "216424", exact: true });
-    await expect(link).toHaveAttribute("href", "/?bundle=216424");
+    await expect(link).toHaveAttribute("href", "/?series=1&item=216424");
     const opened = page.context().waitForEvent("page");
     await link.click({ modifiers: ["Control"] });
     const tab = await opened;
-    expect(new URL(tab.url()).search).toBe("?bundle=216424");
+    expect(new URL(tab.url()).search).toBe("?series=1&item=216424");
     await tab.close();
-    await expect(page).toHaveURL(/:\d+\/$/);
-    await expect(page.getByRole("heading", { name: "All survey bundles" })).toBeVisible();
+    await expect(page).toHaveURL(/\/\?series=1$/);
+    await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
     await link.focus();
     await expect(link).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("heading", { name: "Bundle Number · 216424" })).toBeVisible();
-    await expect(page).toHaveURL(/\/\?bundle=216424$/);
+    await expect(page.getByRole("heading", { name: "Item 216424" })).toBeVisible();
+    await expect(page).toHaveURL(/\/\?series=1&item=216424$/);
     await expect(page.getByRole("columnheader", { name: "Actions", exact: true })).toHaveCount(1);
   });
 
@@ -632,13 +626,14 @@ test.describe("Progress and transcription states", () => {
     await expect(page).toHaveURL(/\/\?survey=s&page=p2/);
   });
 
+
   test("failed progress request can be retried", async ({ page }) => {
     await mock(page, { loaded: true });
     let failed = true;
-    await page.route("**/api/progress", (route) =>
+    await page.route(/\/api\/collections\/1\/items(\?.*)?$/, (route) =>
       failed
         ? route.fulfill({ status: 500, json: { detail: "Temporary failure" } })
-        : route.fulfill({ json: [{ id: "b", pages: [readyPage(1)] }] }),
+        : route.fulfill(serveItems([{ bundle: "b", name: "216424", pages: [readyPage(1)] }], route.request())!),
     );
     await page.reload();
     await expect(page.getByRole("alert")).toContainText("Temporary failure");
@@ -655,15 +650,10 @@ test.describe("Progress and transcription states", () => {
     await expect(
       page.getByText("0 / 2 reviewed · 0%", { exact: true }),
     ).toBeVisible();
-    await page.route("**/api/progress", (route) =>
-      route.fulfill({
-        json: [
-          {
-            id: "b",
-            pages: [{ ...readyPage(1), status: "Reviewed" }, readyPage(2)],
-          },
-        ],
-      }),
+    await page.route(/\/api\/collections\/1\/items(\?.*)?$/, (route) =>
+      route.fulfill(
+        serveItems([{ bundle: "b", name: "216424", pages: [{ ...readyPage(1), status: "Reviewed" }, readyPage(2)] }], route.request())!,
+      ),
     );
     await expect(
       page.getByText("1 / 2 reviewed · 50%", { exact: true }),
@@ -678,10 +668,10 @@ test.describe("Progress and transcription states", () => {
     let calls = 0;
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/progress", async (route) => {
+    await page.route(/\/api\/collections\/1\/items(\?.*)?$/, async (route) => {
       calls++;
       await held;
-      await route.fulfill({ json: [{ id: "b", pages: [readyPage(1), readyPage(2)] }] });
+      await route.fulfill(serveItems([{ bundle: "b", name: "216424", pages: [readyPage(1), readyPage(2)] }], route.request())!);
     });
     await page.clock.runFor(5000);
     await expect.poll(() => calls).toBe(1);
@@ -705,17 +695,16 @@ test.describe("Progress and transcription states", () => {
 
 test('awaiting transcription page has a Transcribe action targeting its survey page', async ({ page }) => {
   await page.route('**/api/**', route => {
-    const path = new URL(route.request().url()).pathname;
-    if (path === '/api/progress') return route.fulfill({json:[{id:'b',pages:[{id:'b/p4',label:'Pg 4',category:'Coded',status:'Awaiting transcription',flagCount:0,surveyId:'s1',reviewPageId:'b/p4'}]}]});
-    if (path === '/api/bundles') return route.fulfill({json:[]});
+    const served = serveItems([{bundle:'b',name:'b',pages:[{id:'b/p4',label:'Pg 4',category:'Coded',status:'Awaiting transcription',flagCount:0,surveyId:'s1',reviewPageId:'b/p4'}]}], route.request());
+    if (served) return route.fulfill(served);
     return route.fulfill({status:404,json:{detail:'Unexpected test request'}});
   });
-  await page.goto('/');
-  await page.getByRole('link',{name:'b',exact:true}).click();
+  await page.goto("/?series=1&item=b");
   const row=bundleRows(page).filter({hasText:'Pg 4'});
   await expect(row.getByRole('link',{name:'Transcribe Pg 4',exact:true})).toHaveAttribute('href','/?survey=s1&page=b%2Fp4&action=transcribe');
   await expect(row.getByRole('link',{name:'Review Pg 4',exact:true})).toHaveCount(0);
 });
+
 
 test.describe("Pages without a survey", () => {
   async function showBundle(page: Page, includeReviewedPage: boolean) {
@@ -745,18 +734,17 @@ test.describe("Pages without a survey", () => {
     // Keep requests isolated from the real backend and review database.
     await page.route("**/api/**", (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path === "/api/progress") {
-        return route.fulfill({ json: [{ id: "test-bundle", pages }] });
-      }
-      if (path === "/api/bundles") {
-        return route.fulfill({ json: [] });
+      const served = serveItems([{ bundle: "test-bundle", name: "test-bundle", pages }], route.request());
+      if (served) return route.fulfill(served);
+      if (path === "/api/collections/1") {
+        return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true } });
       }
       return route.fulfill({
         status: 404,
         json: { detail: `Unexpected request: ${path}` },
       });
     });
-    await page.goto("/");
+    await page.goto("/?series=1");
     return page.getByRole("row").filter({
       has: page.getByRole("link", { name: "test-bundle", exact: true }),
     });
@@ -785,12 +773,14 @@ test.describe("Pages without a survey", () => {
     await expect(page.getByRole("columnheader", { name: "Actions", exact: true })).toHaveCount(1);
   });
 
-  test("a bundle with only unassigned pages has no review percentage", async ({ page }) => {
+  test("an item with only unassigned pages has no review percentage", async ({ page }) => {
     const row = await showBundle(page, false);
-    await expect(row.locator("td").nth(1)).toHaveText("1");
-    await expect(meter(row)).toContainText("No reviewable pages");
-    await expect(meter(row)).toContainText("1 page not in a survey");
-    await expect(meter(row)).not.toContainText("%");
+    // No item has more than one page, so there is no Total pages column: the progress is the third cell.
+    await expect(page.getByRole("columnheader", { name: "Total pages" })).toHaveCount(0);
+    const progress = row.getByRole("cell").nth(2);
+    await expect(progress).toContainText("No reviewable pages");
+    await expect(progress).toContainText("1 page not in a survey");
+    await expect(progress).not.toContainText("%");
     await expect(row.getByRole("progressbar")).toHaveCount(0);
   });
 });
@@ -800,9 +790,8 @@ test("with no transcription model saved, the dialog prefills nothing, links to S
   await page.route("**/api/**", (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
-    if (path === "/api/progress") return route.fulfill({ json: [] });
-    if (path === "/api/bundles")
-      return route.fulfill({ json: [{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false, surveys: [], job: null }] });
+    const served = serveItems([{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false }], request);
+    if (served) return route.fulfill(served);
     if (path === "/api/transcription-models") return route.fulfill({ json: { configured: null, models: [] } });
     if (path === "/api/jobs" && request.method() === "POST") {
       started.push(request.postDataJSON());
@@ -810,7 +799,7 @@ test("with no transcription model saved, the dialog prefills nothing, links to S
     }
     return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${path}` } });
   });
-  await page.goto("/");
+  await page.goto("/?series=1");
   const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "216424", exact: true }) });
   await row.getByRole("button", { name: "Transcribe", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Transcribe scans" });
@@ -835,14 +824,13 @@ test("with no transcription model saved, the dialog prefills nothing, links to S
 test("with a transcription model saved, the dialog prefills it and shows no notice", async ({ page }) => {
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/progress") return route.fulfill({ json: [] });
-    if (path === "/api/bundles")
-      return route.fulfill({ json: [{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false, surveys: [], job: null }] });
+    const served = serveItems([{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false }], route.request());
+    if (served) return route.fulfill(served);
     if (path === "/api/transcription-models")
       return route.fulfill({ json: { configured: { provider: "codex", model: "gpt-x", effort: "high" }, models: [] } });
     return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${path}` } });
   });
-  await page.goto("/");
+  await page.goto("/?series=1");
   await bundleRows(page).getByRole("button", { name: "Transcribe", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Transcribe scans" });
   await expect(dialog.getByLabel("Model", { exact: true })).toHaveValue("gpt-x");
@@ -850,3 +838,123 @@ test("with a transcription model saved, the dialog prefills it and shows no noti
   await expect(dialog.getByLabel("Effort", { exact: true })).toHaveValue("high");
   await expect(dialog.getByText("No transcription model is set.")).toHaveCount(0);
 });
+
+test.describe("The server pages, searches and filters the overview", () => {
+  const SERIES = { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true };
+  const params = (url: URL) => Object.fromEntries(url.searchParams);
+  // The different requests made, in order; the dev build's remount asks for the first one twice.
+  const distinct = (asked: URL[]) => [...new Set(asked.map((url) => url.search))].map((query) => Object.fromEntries(new URLSearchParams(query)));
+  const onePage: MockPage = { id: "p1", label: "Pg 1", category: "Main page", status: "Ready to review", flagCount: 0, surveyId: "s", reviewPageId: "p1" };
+
+  test("the overview asks for the URL's page, search and status, and shows the server's counts and totals", async ({ page }) => {
+    const asked: URL[] = [];
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/collections/1") return route.fulfill({ json: SERIES });
+      if (url.pathname === "/api/collections/1/items") {
+        asked.push(url);
+        return route.fulfill({
+          json: {
+            items: [
+              { bundle: "b1", name: "216412", pdf: "b1.pdf", loaded: true, job: null, archive: { identifier: "UMA-ITE-1973000200001", title: "Box Hill 00" },
+                counts: { total: 227, reviewable: 220, unassigned: 7, reviewed: 110, ready: 110 } },
+              { bundle: "b2", name: "216413", pdf: "b2.pdf", loaded: true, job: null, archive: null,
+                counts: { total: 4, reviewable: 4, unassigned: 0, reviewed: 0, ready: 4 } },
+            ],
+            page: 2, total: 20, all: 40,
+            totals: { total: 9000, reviewable: 8700, unassigned: 300, reviewed: 1744, ready: 6956 },
+          },
+        });
+      }
+      return route.fulfill({ status: 404, json: { detail: `Unexpected request: ${url.pathname}` } });
+    });
+    await page.goto("/?series=1&page=3&q=box&status=Reviewed");
+    const row = bundleRows(page).filter({ has: page.getByRole("link", { name: "Box Hill 00", exact: true }) });
+    await expect(row.getByRole("cell").nth(1)).toHaveText("227");
+    await expect(row.getByRole("cell").nth(2)).toHaveText("110");
+    await expect(meter(row)).toContainText("110 / 220 reviewed · 50%");
+    await expect(meter(row)).toContainText("7 pages not in a survey");
+    await expect(meter(bundleRows(page).filter({ has: page.getByRole("link", { name: "216413", exact: true }) }))).toContainText("0 / 4 reviewed · 0%");
+    await expect(page.getByTestId("stat-total-pages")).toHaveText("9,000");
+    await expect(page.getByTestId("stat-reviewed")).toHaveText("1,744");
+    await expect(page.getByTestId("stat-ready-to-review")).toHaveText("6,956");
+    await expect(page.locator("main")).toContainText("Track review progress across 40 items");
+    await expect(page.getByText("Showing 19–20 of 20 items")).toBeVisible();
+    await expect(page.getByText("Page 3 of 3")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+    await expect(page.getByLabel("Search items")).toHaveValue("box");
+    await expect(page.getByLabel("Status", { exact: true })).toHaveValue("Reviewed");
+    expect(distinct(asked)).toEqual([{ page: "2", size: "9", search: "box", status: "Reviewed" }]);
+    await page.getByRole("button", { name: "Previous", exact: true }).click();
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "1", size: "9", search: "box", status: "Reviewed" });
+    await expect(page).toHaveURL(/page=2/);
+  });
+
+  test("paging, searching and filtering each ask the server, which answers one page at a time", async ({ page }) => {
+    const asked: URL[] = [];
+    const items: MockItem[] = Array.from({ length: 20 }, (_, i) => ({ bundle: `b${i}`, name: String(216410 + i), pages: [onePage] }));
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/collections/1") return route.fulfill({ json: SERIES });
+      if (url.pathname === "/api/collections/1/items") asked.push(url);
+      const served = serveItems(items, route.request());
+      return served ? route.fulfill(served) : route.fulfill({ status: 404, json: { detail: `Unexpected request: ${url.pathname}` } });
+    });
+    await page.goto("/?series=1");
+    await expect(page.getByText("Showing 1–9 of 20 items")).toBeVisible();
+    await expect(bundleRows(page)).toHaveCount(9);
+    expect(distinct(asked)).toEqual([{ page: "0", size: "9" }]);
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "1", size: "9" });
+    await expect(page.getByText("Showing 10–18 of 20 items")).toBeVisible();
+    await expect(page.getByRole("link", { name: "216419", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "216410", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(page.getByText("Showing 19–20 of 20 items")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+    // A search starts again from the first page, and is sent once typing pauses.
+    await page.getByLabel("Search items").pressSequentially("216427");
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "0", size: "9", search: "216427" });
+    await expect(bundleRows(page)).toHaveCount(1);
+    await page.getByLabel("Status", { exact: true }).selectOption("Reviewed");
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "0", size: "9", search: "216427", status: "Reviewed" });
+    await expect(page.getByText("No items match your filters.")).toBeVisible();
+    await page.getByRole("button", { name: "Clear filters" }).click();
+    await expect.poll(() => params(asked[asked.length - 1])).toEqual({ page: "0", size: "9" });
+    await expect(bundleRows(page)).toHaveCount(9);
+  });
+
+  test("an item's page asks only for that item, and for its partial results when it has a job and isn't loaded", async ({ page }) => {
+    const asked: string[] = [];
+    const job = { id: 7, status: "running", step: "transcribe", donePages: 1, totalPages: 2, error: null };
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      asked.push(url.pathname);
+      if (url.pathname === "/api/collections/1") return route.fulfill({ json: SERIES });
+      if (url.pathname === "/api/jobs/7/transcripts")
+        return route.fulfill({ json: { pages: [{ id: "b_00001", category: "main", status: "Transcribed — not grouped", data: { model: "partial-model" } }] } });
+      const served = serveItems([{ bundle: "b", name: "216424", pdf: "b.pdf", loaded: false, job }, { bundle: "c", name: "216425" }], route.request());
+      return served ? route.fulfill(served) : route.fulfill({ status: 404, json: { detail: `Unexpected request: ${url.pathname}` } });
+    });
+    await page.goto("/?series=1&item=216424");
+    await expect(page.getByRole("cell", { name: "partial-model", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Item 216424" })).toBeVisible();
+    expect(new Set(asked)).toEqual(new Set([
+      "/api/collections/1", "/api/collections", "/api/collections/1/items/216424", "/api/jobs/7/transcripts", "/api/jobs",
+      "/api/transcription-models", "/api/connections", "/api/reviewers", // the last, once on load, checks who is working
+    ]));
+  });
+
+  test("an item that isn't there says so", async ({ page }) => {
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/collections/1") return route.fulfill({ json: SERIES });
+      const served = serveItems([{ bundle: "b", name: "216424" }], route.request());
+      return served ? route.fulfill(served) : route.fulfill({ status: 404, json: { detail: `Unexpected request: ${url.pathname}` } });
+    });
+    await page.goto("/?series=1&item=nobody");
+    await expect(page.getByRole("alert")).toContainText("No such item.");
+    await expect(bundleRows(page)).toHaveCount(0);
+  });
+});
+

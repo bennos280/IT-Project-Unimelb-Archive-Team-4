@@ -3,13 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel
 from functools import cache
 import json
+import os
+import re
+from pathlib import Path, PurePosixPath
 import sqlite3
 import threading
-from backend.db import app_settings, database, instructions, loader, models
+from backend.db import app_settings, database, grouping, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
@@ -17,7 +20,7 @@ from datetime import datetime, timezone
 from backend.common import ROOT, find_images, settings
 from backend.pipeline.transcribe import areas
 
-from backend.api.uploads import upload_bundle
+from backend.api.uploads import archive_sources, upload_bundle
 from backend.api import connections, transcription_options
 
 app = FastAPI()
@@ -34,8 +37,8 @@ def write_lock(db):
 get_db = database.get_db #the db session dependency, defined there so connections.py can use it too
 
 @app.post("/bundles/upload", status_code=201)
-async def import_bundle(request: Request, bundle: str, filename: str, db: Session = Depends(get_db)):
-    return await upload_bundle(request, bundle, filename, db)
+async def import_bundle(request: Request, bundle: str, filename: str, collection: int, db: Session = Depends(get_db)):
+    return await upload_bundle(request, bundle, filename, collection, db)
 
 
 #request bodies
@@ -59,18 +62,25 @@ def printed_labels(category):
     fields = pages.get({"main": "1", "coded": "3"}.get(category), {}).get("fields", {})
     return {title: field["label_text"] for title, field in fields.items() if "label_text" in field}
 
-#shown on a page of unknown type (stored as other)
-OTHER_PAGE = ("The computer couldn't tell what this page is, so it wasn't read. It is in this survey because it comes "
-              "after the survey's main form in the scan: check it belongs here, and type anything worth keeping.")
+#shown on a page of unknown type; one grouped with other pages is in their record because it follows its first page
+OTHER_PAGE = "The computer couldn't tell what this page is, so it wasn't read. "
+OTHER_PAGE_GROUPED = ("It is in this {0} because it comes after the {0}'s first page in the scan: check it belongs here, and "
+                      "type anything worth keeping.")
+OTHER_PAGE_ALONE = "Check what it is, and type anything worth keeping."
 
-#a page's fields as the review screen shows them: id, label, group, value
+#what the record a page is in is called on screen (its level's name)
+def page_record_name(db, p):
+    return grouping.record_name(db, db.get(models.Bundle, p.bundle_id).collection_id, p.survey_id)
+
+#a page's fields as the review screen shows them: id, label, group, value; free text is under "<record> details"
 def page_fields(db, p):
     fields_list = []
     for f in db.query(models.Field).filter(models.Field.page_id == p.page_id):
         #nested fields go under their parent, others by sections.py
         parent, _, leaf = f.field_title.rpartition(".")
         group = (parent.replace('_', ' ').capitalize() if parent
-                 else (groupings_coded if p.category == "coded" else groupings_main).get(leaf, "Miscellaneous"))
+                 else (groupings_coded if p.category == "coded" else groupings_main).get(leaf)
+                 or (f"{page_record_name(db, p)} details".capitalize() if leaf == "text" else "Miscellaneous"))
         fields_list.append({"id": f.field_title, "label": leaf.replace('_', ' ').capitalize(),
                             "labelText": printed_labels(p.category).get(f.field_title), "group": group, "value": f.text_raw,
                             "decoded": f.decoded_value})
@@ -97,36 +107,48 @@ def page_fields(db, p):
                             **({"areaLabel": areas.label(p.category, a.area), "sourceRegion": box} if box else {})})
     return fields_list
 
-#what to check on a page: stored flags, unreadable ([?]) text, and an other page
+#what to check on a page: stored flags, unreadable ([?]) text, and a page of its collection's Unknown type
 def page_flags(db, p, fields_list):
     flags = [{"id": f"flag-{fl.flag_id}", "fieldId": fl.field_title, "kind": fl.kind, "reason": fl.reason}
              for fl in db.query(models.Flag).filter(models.Flag.page_id == p.page_id).order_by(models.Flag.flag_id)]
     flags += [{"id": f"unreadable-{f['id']}", "fieldId": f["id"], "kind": "uncertain",
                "reason": "The model couldn't read part of this ([?]): compare it with the scan."}
               for f in fields_list if "[?]" in (f["value"] or "")]
-    if p.category == loader.OTHER_CAT and any(f["id"] == "text" for f in fields_list):
-        flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain", "reason": OTHER_PAGE})
+    if db.get(models.PageType, p.category).unknown and any(f["id"] == "text" for f in fields_list):
+        grouped = grouping.grouped(db, db.get(models.Bundle, p.bundle_id).collection_id) and p.survey_id and db.query(models.Page).filter_by(survey_id=p.survey_id).count() > 1
+        flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain",
+                      "reason": OTHER_PAGE + (OTHER_PAGE_GROUPED.format(page_record_name(db, p)) if grouped else OTHER_PAGE_ALONE)})
     return flags
 
-#a survey's pages in scan order, with fields, flags and scan URL
+#a survey's pages in scan order, with fields, flags and scan URL, and whether it is its whole item (all the item's pages)
 @app.get("/survey/{survey_id}")
 def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
     survey = db.get(models.Survey, survey_id)
     if not survey:
-        raise HTTPException(status_code=404, detail="Survey not found")
+        raise HTTPException(status_code=404, detail="No such record.")
 
     pages_list = []
     for p in db.query(models.Page).filter(models.Page.survey_id == survey_id).order_by(models.Page.page_id):
-        fields_list = page_fields(db, p)
+        fields_list, page_type = page_fields(db, p), db.get(models.PageType, p.category)
         pages_list.append({
             "id": p.page_id,
             "type": p.category,
+            "typeLabel": page_type.label,
             "needsTranscription": p.needs_transcription,
             "imageUrl": str(request.url_for("page_image", page_id=p.page_id)),
             "fields": fields_list,
             "flags": page_flags(db, p, fields_list),
         })
-    return {"id":survey_id, "bundleId":survey.bundle_id, "title":"Wilfred Prest Survey", "pages":pages_list}
+    bundle = db.get(models.Bundle, survey.bundle_id)
+    collection = db.get(models.Collection, bundle.collection_id)
+    number = PurePosixPath(bundle.source_pdf.replace("\\", "/")).parent.name
+    name = number if number.isdigit() else bundle.bundle_id  #as the dashboard names it
+    item = db.get(models.ArchiveItem, int(name)) if name.isascii() and name.isdigit() and len(name) < 19 else None
+    return {"id":survey_id, "bundleId":survey.bundle_id, "collectionId":collection.collection_id, "title":collection.name,
+            "item": {"name": name, "archive": {"identifier": item.identifier, "title": item.title} if item else None},
+            "recordName": grouping.record_name(db, collection.collection_id, survey_id), "grouped": grouping.grouped(db, collection.collection_id),
+            "wholeItem": db.query(models.Page).filter_by(bundle_id=bundle.bundle_id).count() == len(pages_list),
+            "pages":pages_list}
 
 #a page's scan: the one this computer's pipeline run made, else the archive's; preprocessed=true: straightened, cropped
 #and black and white (the scan itself if that fails)
@@ -219,7 +241,7 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
         raise HTTPException(status_code=400, detail="Save one page at a time.")
     [(page_id, reviews)] = payload.reviews.items()
     if not db.query(models.Page).filter(models.Page.page_id == page_id, models.Page.survey_id == survey_id).first():
-        raise HTTPException(status_code=404, detail=f"Page {page_id} is not in this survey.")
+        raise HTTPException(status_code=404, detail=f"Page {page_id} is not in this record.")
     if page_id not in payload.revisions:
         raise HTTPException(status_code=400, detail="Page not in revisions.")
     revision = payload.revisions[page_id]
@@ -296,12 +318,13 @@ def get_instruction_versions(kind: str, db: Session = Depends(get_db)):
     names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
     return [version_json(v, names) for v in versions]
 
-#saves a new version of the prompt or of a page type's template (other has none), used from the next job on; checked first
+#saves a new version of the prompt or of a page type's template (an Unknown type has none), used from the next job on; checked first
 @app.post("/instructions/{kind}", status_code=201)
 def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depends(get_db)):
     write_lock(db)
     current = instructions.newest(db)
-    if kind != instructions.PROMPT and (kind == loader.OTHER_CAT or not db.get(models.PageType, kind)):
+    page_type = db.get(models.PageType, kind)
+    if kind != instructions.PROMPT and (not page_type or page_type.unknown):
         raise HTTPException(status_code=404, detail=f"No prompt or page type called {kind}.")
     reviewer = db.get(models.Reviewer, payload.reviewerId)
     if reviewer is None:
@@ -321,8 +344,27 @@ def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depen
 
 #--PAGE TYPES--# (the four built in, and any added here; a page type's pages are read with its template)
 class PageTypeRequest(BaseModel):
-    name: str
     reviewerId: int
+    collectionId: int = 1
+    label: str | None = None #what people see; the name if not given
+    name: str | None = None #its id; made from the label if not given
+
+class PageTypeSettings(BaseModel):
+    label: str | None = None
+
+class CollectionSettings(BaseModel):
+    name: str | None = None
+    archiveSeries: str | None = None #its series' address on the archive, or the number at its end
+    archiveIdentifier: str | None = None #and the series' identifier, title and items from /archive-series, with archiveSeries
+    archiveTitle: str | None = None
+    archiveItems: int | None = None
+
+class NewCollection(BaseModel):
+    name: str
+    archiveSeries: str
+    archiveIdentifier: str | None = None #the series' identifier, title and items from /archive-series; None: not looked up
+    archiveTitle: str | None = None
+    archiveItems: int | None = None
 
 class PageTypeChange(BaseModel):
     pageType: str
@@ -333,27 +375,263 @@ class PageTypeChange(BaseModel):
 
 RESERVED = {instructions.PROMPT, "blank", "review"} #the prompt's kind, and what page sorting answers for no page type
 
+def page_type_json(t, templates):
+    return {"name": t.name, "label": t.label, "builtIn": t.built_in, "unknown": t.unknown,
+            "templateVersion": templates[t.name].version_id if t.name in templates else None}
+
 #the page types, each with its newest template's version (None: it has none, so its pages aren't read)
 @app.get("/page-types")
-def get_page_types(db: Session = Depends(get_db)):
+def get_page_types(collection: int | None = None, db: Session = Depends(get_db)):
     templates = instructions.newest(db)
-    return [{"name": t.name, "builtIn": t.built_in, "templateVersion": templates[t.name].version_id if t.name in templates else None}
-            for t in db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)]
+    types = db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)
+    return [page_type_json(t, templates) for t in (types if collection is None else types.filter_by(collection_id=collection))]
+
+#a free id for a page type, from its label: "Follow-up visit" -> follow_up_visit, then follow_up_visit_2, ...
+def new_name(db, label):
+    base = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+    base = base if instructions.KEY.fullmatch(base) else f"type_{base}".rstrip("_")
+    name, n = base, 1
+    while name in RESERVED or db.get(models.PageType, name):
+        n += 1
+        name = f"{base}_{n}"
+    return name
 
 #adds a page type; POST /instructions/{name} gives it a template, and only then can pages be read as it
 @app.post("/page-types", status_code=201)
 def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
-    name = payload.name.strip()
+    label = (payload.label or payload.name or "").strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="A page type's label can't be empty.")
     write_lock(db)
+    name = payload.name.strip() if payload.name else new_name(db, label)
     if not instructions.KEY.fullmatch(name) or name in RESERVED:
         raise HTTPException(status_code=400, detail="A page type's name is lower-case letters, digits and _, starting with a letter.")
     if db.get(models.PageType, name):
         raise HTTPException(status_code=409, detail=f"There is already a page type called {name}.")
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
-    db.add(models.PageType(name=name, reviewer_id=payload.reviewerId))
+    if not db.get(models.Collection, payload.collectionId):
+        raise HTTPException(status_code=400, detail="No such series.")
+    try:
+        db.add(models.PageType(name=name, label=label, reviewer_id=payload.reviewerId, collection_id=payload.collectionId))
+        db.commit()
+    except IntegrityError: #the label is taken in the collection
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
+    return page_type_json(db.get(models.PageType, name), {})
+
+#changes a page type's label
+@app.patch("/page-types/{name}")
+def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends(get_db)):
+    write_lock(db)
+    t = db.get(models.PageType, name)
+    if not t:
+        raise HTTPException(status_code=404, detail=f"No page type called {name}.")
+    label = t.label if payload.label is None else payload.label.strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="A page type's label can't be empty.")
+    t.label = label
+    try:
+        db.commit()
+    except IntegrityError: #the label is taken in the collection
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
+    return page_type_json(t, instructions.newest(db))
+
+#a collection's bundle jobs: those waiting or running, and the PDFs whose latest job failed and that aren't loaded
+def bundle_jobs(db, collection_id):
+    owners = loader.archive_owners(db)
+    latest = {job.pdf: job for job in db.query(models.Job).filter_by(kind="bundle").order_by(models.Job.job_id)
+              if loader.series_of(owners, job.pdf) == collection_id}
+    loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id)}
+    return {"running": sum(job.status in ("waiting", "running") for job in latest.values()),
+            "failed": sum(job.status == "failed" and PurePosixPath(job.pdf.replace("\\", "/")).stem not in loaded for job in latest.values())}
+
+#a collection, and with db how far along it is: bundles loaded (processed), being processed or failed; pages, those in a survey
+#(reviewable) and reviewed; what needs a person (pages of its Unknown type, open flags); and whether its pages group into records (a type starts one of
+#its top level); and what one record is called
+def collection_json(c, db=None):
+    found = {}
+    if db is not None:
+        pages = [p for b in cached_progress(db) if b["collectionId"] == c.collection_id for p in b["pages"]]
+        reviewable = [p for p in pages if p["surveyId"] is not None]
+        types = db.query(models.PageType).filter_by(collection_id=c.collection_id).all()
+        unknown = {t.name for t in types if t.unknown}
+        jobs = bundle_jobs(db, c.collection_id)
+        found = {"bundles": db.query(models.Bundle).filter_by(collection_id=c.collection_id).count(), **jobs, "pages": len(pages),
+                 "reviewable": len(reviewable), "reviewed": sum(p["status"] == "Reviewed" for p in reviewable),
+                 "unknownPages": db.query(models.Page).filter(models.Page.category.in_(unknown)).count(),
+                 "flagged": sum(p["flagCount"] for p in pages),
+                 "grouped": grouping.grouped(db, c.collection_id)}
+    levels = grouping.levels(object_session(c), c.collection_id)
+    return {"id": c.collection_id, "name": c.name,
+            "recordName": levels[-1].name if levels else "record", "archiveSeries": c.archive_series,
+            "archiveIdentifier": c.archive_identifier, "archiveTitle": c.archive_title, "archiveItems": c.archive_items, **found}
+
+def series_text(text):
+    return (text or "").strip()[:300] or None
+
+#a series' node id on archives.library.unimelb.edu.au, from its address (.../nodes/view/499420) or the number itself; None: neither
+def series_node(text):
+    found = re.fullmatch(r"\s*(?:https?://archives\.library\.unimelb\.edu\.au/nodes/view/)?([1-9]\d{0,8})/?\s*", text or "")
+    return int(found.group(1)) if found else None
+
+SERIES_HELP = "Paste the series' address from archives.library.unimelb.edu.au (.../nodes/view/<number>), or just its number."
+
+#every collection, with how many bundles and pages it has
+#every series with its counts; brief: each one's id and name only (the header's series switcher), without counting
+@app.get("/collections")
+def get_collections(brief: bool = False, db: Session = Depends(get_db)):
+    found = db.query(models.Collection).order_by(models.Collection.collection_id)
+    return [{"id": c.collection_id, "name": c.name} for c in found] if brief else [collection_json(c, db) for c in found]
+
+#a new collection, linked to its series on the archive, starts with its Unknown page type
+@app.post("/collections", status_code=201)
+def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
+    name, node = payload.name.strip(), series_node(payload.archiveSeries)
+    if not name:
+        raise HTTPException(status_code=400, detail="A series needs a name.")
+    if node is None:
+        raise HTTPException(status_code=400, detail=SERIES_HELP)
+    write_lock(db)
+    collection = models.Collection(name=name, archive_series=node, archive_identifier=series_text(payload.archiveIdentifier),
+                                   archive_title=series_text(payload.archiveTitle), archive_items=payload.archiveItems)
+    db.add(collection)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"There is already a series called {name}.")
+    db.add(models.PageType(name=new_name(db, "Unknown"), label="Unknown", unknown=True, built_in=True, collection_id=collection.collection_id))
     db.commit()
-    return {"name": name, "builtIn": False, "templateVersion": None}
+    return collection_json(collection, db)
+
+@app.get("/collections/{collection_id}")
+def get_collection(collection_id: int, db: Session = Depends(get_db)):
+    c = db.get(models.Collection, collection_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="No such series.")
+    return collection_json(c, db)
+
+#renames a collection or relinks its series; a field left out of the request stays as it is
+@app.patch("/collections/{collection_id}")
+def update_collection(collection_id: int, payload: CollectionSettings, db: Session = Depends(get_db)):
+    write_lock(db)
+    c = db.get(models.Collection, collection_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="No such series.")
+    given = payload.model_fields_set
+    if "name" in given:
+        if not (payload.name or "").strip():
+            raise HTTPException(status_code=400, detail="A series needs a name.")
+        c.name = payload.name.strip()
+    if "archiveSeries" in given:
+        if series_node(payload.archiveSeries) is None:
+            raise HTTPException(status_code=400, detail=SERIES_HELP)
+        c.archive_series = series_node(payload.archiveSeries)
+        c.archive_identifier, c.archive_title = series_text(payload.archiveIdentifier), series_text(payload.archiveTitle)
+        c.archive_items = payload.archiveItems
+    name = c.name
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"There is already a series called {name}.")
+    return collection_json(c, db)
+
+#a series on the archive, to check before a collection links to it
+@app.get("/archive-series/{node}")
+def get_archive_series(node: int):
+    try:
+        series = scans.archive_series(node)
+    except scans.ARCHIVE_ERRORS as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't reach the archive ({error}).")
+    if series is None:
+        raise HTTPException(status_code=404, detail="The archive has no page with that number.")
+    return series
+
+#a series' items on the archive, a page of 24 at a time, each saying whether it has scans and whether a series lists it already
+@app.get("/collections/{collection_id}/archive-items")
+def list_archive_items(collection_id: int, page: int = 1, search: str = "", db: Session = Depends(get_db)):
+    c = linked_collection(db, collection_id)
+    try:
+        listing = scans.archive_listing(scans.listing_link(c.archive_series), max(page, 1), search.strip()[:200])
+    except scans.ARCHIVE_ERRORS as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't reach the archive ({error}).")
+    added = {node for (node,) in db.query(models.ArchiveItem.node)}
+    return {**listing, "items": [{**item, "added": item["node"] in added} for item in listing["items"]]}
+
+class NewItems(BaseModel):
+    nodes: list[int]
+
+#adds up to 25 of a series' archive items to its list, each checked on the archive first to be an item of this series; an item
+#another series lists already, or that the archive doesn't show, is said why instead. Its PDF is looked up when it is run.
+@app.post("/collections/{collection_id}/items")
+def add_items(collection_id: int, payload: NewItems, db: Session = Depends(get_db)):
+    c = linked_collection(db, collection_id)
+    nodes = list(dict.fromkeys(payload.nodes))
+    if not 1 <= len(nodes) <= 25:
+        raise HTTPException(status_code=400, detail="Add between 1 and 25 items at a time.")
+    if not all(0 < node < 2**31 for node in nodes):
+        raise HTTPException(status_code=400, detail="An item's number is a whole number from 1.")
+    try:  #the series' identifier, as linked or else as the archive has it, to check each item's against
+        series = c.archive_identifier or (scans.archive_series(c.archive_series) or {}).get("identifier")
+    except scans.ARCHIVE_ERRORS as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't reach the archive ({error}).")
+    if not series:
+        raise HTTPException(status_code=400, detail="The archive shows no identifier for this series to check items against.")
+    listed = {node for (node,) in db.query(models.ArchiveItem.node).filter(models.ArchiveItem.node.in_(nodes))}
+    rows, added, refused = [], [], []
+    for node in nodes:
+        if node in listed:
+            refused.append({"node": node, "reason": "A series lists it already."})
+            continue
+        try:
+            item = scans.archive_item(node)
+        except scans.ARCHIVE_ERRORS as error:
+            refused.append({"node": node, "reason": f"Couldn't reach the archive ({error})."})
+            continue
+        reason = ("The archive has no item with that number." if item is None else
+                  "It belongs to another series on the archive." if not item["series"].startswith(f"[{series}]") else None)
+        if reason:
+            refused.append({"node": node, "reason": reason})
+        else:
+            rows.append(models.ArchiveItem(node=node, collection_id=collection_id, identifier=item["identifier"], title=item["title"],
+                                           pdf=f"{node}/{node}.pdf"))
+            added.append({"node": node, "title": item["title"]})
+    write_lock(db)
+    db.add_all(rows)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A series listed one of these items while they were being checked. Try again.")
+    return {"added": added, "refused": refused}
+
+class AllItems(BaseModel):
+    search: str = ""
+
+#queues the worker to add every item of a series' list on the archive (the whole list, or a search's results) that can be
+#downloaded and that no series lists yet, trusting the archive's list for which series they are in (worker.add_items)
+@app.post("/collections/{collection_id}/items/all", status_code=202)
+def add_all_items(collection_id: int, payload: AllItems, db: Session = Depends(get_db)):
+    linked_collection(db, collection_id)
+    write_lock(db)
+    if db.query(models.Job).filter(models.Job.kind == "items", models.Job.collection_id == collection_id,
+                                   models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="This series is already adding items.")
+    job = models.Job(kind="items", collection_id=collection_id, search=payload.search.strip()[:200] or None)
+    db.add(job)
+    db.commit()
+    return job_json(job)
+
+def linked_collection(db, collection_id):
+    c = db.get(models.Collection, collection_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="No such series.")
+    if not c.archive_series:
+        raise HTTPException(status_code=400, detail="This series isn't linked to the archive.")
+    return c
 
 #reads a page again as another page type, replacing what was read off it: queued for the worker, or for other done now (an
 #empty page to type into). A page with saved reviews keeps its type, as reading it again would lose them.
@@ -363,8 +641,9 @@ def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depend
     page = db.get(models.Page, page_id)
     if page is None:
         raise HTTPException(status_code=404, detail="Page not found.")
-    if not db.get(models.PageType, payload.pageType):
-        raise HTTPException(status_code=400, detail=f"No page type called {payload.pageType}.")
+    new_type = db.get(models.PageType, payload.pageType)
+    if not new_type or new_type.collection_id != db.get(models.Bundle, page.bundle_id).collection_id:
+        raise HTTPException(status_code=400, detail=f"No page type called {payload.pageType} in this page's series.")
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
     if payload.pageType == page.category:
@@ -373,10 +652,10 @@ def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depend
         raise HTTPException(status_code=409, detail="This page has saved reviews, which reading it again would lose.")
     if db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.status.in_(("waiting", "running"))).first():
         raise HTTPException(status_code=409, detail="This page is already waiting to be read again.")
-    if payload.pageType == loader.OTHER_CAT:
+    if new_type.unknown:
         loader.clear_content(page_id, db.connection())
-        loader.insert_content(page_id, None, loader.OTHER_CAT, db.connection())
-        page.category, page.revision_no = loader.OTHER_CAT, (page.revision_no or 0) + 1
+        loader.insert_content(page_id, None, new_type.name, db.connection())
+        page.category, page.revision_no = new_type.name, (page.revision_no or 0) + 1
         page.provider = page.model = page.effort = page.runtime = page.prompt_version_id = page.template_version_id = None
         db.commit()
         return {"pageType": page.category, "job": None}
@@ -473,52 +752,196 @@ class StartJobRequest(BaseModel):
     effort: str | None = None
     pdf: str #as listed by GET /bundles
 
-#every survey PDF under DATA (the data folder), each DATA/<bundle number>/ folder of page images, and each of the archive's
-#bundles whose PDF isn't there, as DATA/<bundle number>/<its PDF> (running it downloads the PDF)
-def pdfs():
+#every runnable PDF, in order, as (its stored path, bundle id, bundle number, the folder that numbers it): each survey PDF
+#under DATA (the data folder), each DATA/<bundle number>/ folder of page images, and each of the archive's bundles whose PDF
+#isn't there (the Prest survey's and those added to a series), as DATA/<bundle number>/<its PDF> (running it downloads the
+#PDF). The archive's, which can be tens of thousands, are made from their names, without a path object each.
+def runnables(db):
     data = ROOT / settings()["DATA"]
     here = list(data.rglob("*.pdf")) + [p for p in (data.iterdir() if data.is_dir() else ())
                                         if p.is_dir() and p.name.isdigit() and find_images(p)]
     names = {p.name for p in here}
-    return sorted(here + [p for p in (data / pdf for pdf in scans.ARCHIVE_PDFS) if p.name not in names])
+    prefix = stored_path(data)
+    under = (lambda pdf: prefix + os.sep + pdf.replace("/", os.sep)) if Path(prefix).is_absolute() else (lambda pdf: f"{prefix}/{pdf}")
+    found = [(stored_path(p), p.stem, p.stem if p.parent == data else p.parent.name,
+              p.parent.name if p.suffix.lower() == ".pdf" else p.name) for p in here]
+    for pdf in archive_sources(db):
+        number, _, file = pdf.rpartition("/")
+        if file not in names:
+            found.append((under(pdf), file.rsplit(".", 1)[0], number, number))
+    return sorted(found)
 
 def job_json(job):
     return {"id": job.job_id, "kind": job.kind, "pdf": job.pdf, "pageId": job.page_id, "pageType": job.page_type,
             "status": job.status, "step": job.step,
-            "donePages": job.done_pages, "totalPages": job.total_pages, "error": job.error,
+            "donePages": job.done_pages, "totalPages": job.total_pages, "error": job.error, "collectionId": job.collection_id,
+            "search": job.search, "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
+
+#the worker's tasks for the Tasks panel, newest first: each waiting or running one, then the 20 latest done or failed
+@app.get("/jobs")
+def list_jobs(db: Session = Depends(get_db)):
+    active = db.query(models.Job).filter(models.Job.status.in_(("waiting", "running"))).order_by(models.Job.job_id.desc()).all()
+    recent = (db.query(models.Job).filter(models.Job.status.in_(("done", "failed"))).order_by(models.Job.job_id.desc())
+              .limit(20).all())
+    owners, names = loader.archive_owners(db), dict(db.query(models.Collection.collection_id, models.Collection.name))
+    return [task_json(db, job, owners, names) for job in active + recent]
+
+#a task as its own page shows it: its lines in the worker's log from its last "started" line on, oldest first, each without its
+#"job N" (an id can be another job's in an older db: a waiting task has none); the items its latest count line says it has added
+#and skipped; an items task's series' items now; and whether a worker is running. worker.log rotates at 1 MB into worker.log.1 to
+#.3, so an old task's lines may be gone.
+@app.get("/jobs/{job_id}/log")
+def job_log(job_id: int, db: Session = Depends(get_db)):
+    job = db.get(models.Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"There's no task {job_id}.")
+    output = ROOT / settings()["OUTPUT"]
+    line = re.compile(rf"(\d{{4}}-\d\d-\d\d \d\d:\d\d:\d\d),\d+ \w+ job {job_id}:? (.*)")
+    found = [m.groups() for path in [output / f"worker.log.{n}" for n in (3, 2, 1)] + [output / "worker.log"] if path.is_file()
+             for m in map(line.match, path.read_text(encoding="utf-8", errors="replace").splitlines()) if m]
+    log = [{"time": datetime.strptime(at, "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc).isoformat(), "text": text.strip()}
+           for at, text in found]  #the worker logs local time
+    started = [n for n, entry in enumerate(log) if entry["text"].startswith("started")]
+    log = [] if job.status == "waiting" else log[started[-1]:] if started else log
+    counts = next(filter(None, (re.search(r"([\d,]+) read, ([\d,]+) added", entry["text"]) for entry in reversed(log))), None)
+    read, added = (int(n.replace(",", "")) for n in counts.groups()) if counts else (None, None)
+    names = dict(db.query(models.Collection.collection_id, models.Collection.name))
+    return {**task_json(db, job, loader.archive_owners(db), names), "log": log,
+            "startedAt": log[0]["time"] if started and log else None,
+            "added": added, "skipped": read - added if counts else None,
+            "seriesItems": db.query(models.ArchiveItem).filter_by(collection_id=job.collection_id).count() if job.kind == "items" else None,
+            "workerRunning": worker_running(output)}
+
+#whether a worker is running, from how lately it touched its heartbeat (worker.beat); None if none has run since it got one
+def worker_running(output):
+    beat = output / "worker.alive"
+    return datetime.now().timestamp() - beat.stat().st_mtime < 30 if beat.is_file() else None
+
+#a task as the Tasks page shows it: what it is (label), its series, how far it has got, in items or pages, and where to see it (href)
+def task_json(db, job, owners, names):
+    series, href, unit = None, None, "pages"
+    if job.kind == "items":
+        series, unit = job.collection_id, "items"
+        label = f"Adding items to {names.get(series, 'a series')}" + (f' matching "{job.search}"' if job.search else "")
+        href = f"/?series={series}"
+    elif job.kind == "bundle":
+        path = PurePosixPath((job.pdf or "").replace("\\", "/"))
+        number = path.parent.name if path.parent.name.isdigit() else path.stem
+        series = loader.series_of(owners, job.pdf or "")
+        item = db.get(models.ArchiveItem, int(number)) if number.isascii() and number.isdigit() and len(number) < 19 else None
+        label, href = f"Transcribing {item.title if item else f'item {number}'}", f"/?series={series}&item={number}"
+    elif job.kind == "page":
+        page = db.get(models.Page, job.page_id)
+        label = f"Reading page {job.page_id} again"
+        if page:
+            series = db.get(models.Bundle, page.bundle_id).collection_id
+            href = f"/?survey={page.survey_id}&page={page.page_id}" if page.survey_id else f"/?series={series}"
+    else:
+        label = "Training page sorting"
+    return {"id": job.job_id, "kind": job.kind, "label": label, "status": job.status, "step": job.step, "done": job.done_pages,
+            "total": job.total_pages, "unit": unit, "error": job.error, "collectionId": series, "series": names.get(series), "href": href,
             "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
 
-#every runnable PDF, with its loaded survey ids and latest job; name is the bundle number (the PDF's folder)
+#a series' items, loaded or not, in order of their PDFs: bundle id, name (the bundle number: the PDF's folder), stored PDF,
+#archive (its identifier and title when that number is one of the series' archive items), whether it's loaded, and latest job
+#ponytail: made afresh each request (about 0.5 s for 60,000 items); keep it per db data_version, as cached_progress does, if slower
+def series_items(db, collection):
+    items = {str(node): {"identifier": identifier, "title": title} for node, identifier, title in
+             db.query(models.ArchiveItem.node, models.ArchiveItem.identifier, models.ArchiveItem.title).filter_by(collection_id=collection)}
+    owners = loader.archive_owners(db)
+    loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id).filter_by(collection_id=collection)}
+    elsewhere = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id).filter(models.Bundle.collection_id != collection)}
+    latest = {job.pdf: job for job in db.query(models.Job).order_by(models.Job.job_id)}
+    rows = []
+    for stored, bundle, name, folder in runnables(db):
+        if bundle in elsewhere or (bundle not in loaded and owners.get(folder) != collection):
+            continue
+        job = latest.get(stored)
+        rows.append({"pdf": stored, "bundle": bundle, "name": name, "archive": items.get(name), "loaded": bundle in loaded,
+                     "job": job_json(job) if job else None})
+    return rows
+
+#every runnable PDF of a collection, as series_items, with its loaded survey ids
 @app.get("/bundles")
-def get_bundles(db: Session = Depends(get_db)):
-    loaded = {bundle_id for (bundle_id,) in db.query(models.Bundle.bundle_id)}
+def get_bundles(collection: int = 1, db: Session = Depends(get_db)):
     surveys = {}
     for survey_id, bundle_id in (db.query(models.Page.survey_id, models.Page.bundle_id)
                                  .filter(models.Page.survey_id.is_not(None))
                                  .group_by(models.Page.survey_id, models.Page.bundle_id)
                                  .order_by(func.min(models.Page.page_id))):
         surveys.setdefault(bundle_id, []).append(survey_id)
-    latest = {job.pdf: job for job in db.query(models.Job).order_by(models.Job.job_id)}
-    data = ROOT / settings()["DATA"]
-    bundles = []
-    for p in pdfs():
-        job = latest.get(stored_path(p))
-        bundles.append({"pdf": stored_path(p), "bundle": p.stem, "name": p.stem if p.parent == data else p.parent.name,
-                        "loaded": p.stem in loaded, "surveys": surveys.get(p.stem, []), "job": job_json(job) if job else None})
-    return bundles
+    return [{**row, "surveys": surveys.get(row["bundle"], [])} for row in series_items(db, collection)]
+
+#how many of some pages there are, are in a record (reviewable), aren't, are reviewed and are ready to review, and how many
+#records they make up
+def page_counts(pages):
+    reviewable = [p for p in pages if p.get("surveyId") is not None]
+    return {"total": len(pages), "reviewable": len(reviewable), "unassigned": sum(p["status"] == "Not in a survey" for p in pages),
+            "reviewed": sum(p["status"] == "Reviewed" for p in reviewable),
+            "ready": sum(p["status"] == "Ready to review" for p in reviewable),
+            "records": len({p["surveyId"] for p in reviewable})}
+
+#each of a series' items' pages: a loaded one's as /progress gives them, one being transcribed its finished ones so far
+def items_pages(db, collection, rows):
+    loaded = {b["id"]: b["pages"] for b in cached_progress(db) if b["collectionId"] == collection}
+    return {row["bundle"]: loaded.get(row["bundle"], []) if row["loaded"] else
+            partial_pages(db, db.get(models.Job, row["job"]["id"])) if row["job"] and row["job"]["kind"] == "bundle" else []
+            for row in rows}
+
+#whether an item shows under the dashboard's search (its number, bundle id, title or identifier) and status
+def item_matches(row, pages, search, status):
+    if search not in " ".join([row["name"], row["bundle"], *(row["archive"] or {}).values()]).lower():
+        return False
+    if status == "All" or (status == "Awaiting transcription" and not row["loaded"]):
+        return True
+    if status == "Transcription in progress":
+        return not row["loaded"] and (row["job"] or {}).get("status") == "running"
+    if status == "Reviewed":
+        counted = page_counts(pages)
+        return counted["reviewable"] > 0 and counted["reviewed"] == counted["reviewable"]
+    return any(p["status"] == status for p in pages)
+
+#a page of a series' items for its dashboard: those its search and status match, in order of their numbers (216412 before
+#2164120), each with its pages' counts and its record if it is one; with how many match, how many it has, the counts of all
+#its pages, and the most pages and records any of its items has, so the dashboard leaves out a level none has more than one of
+@app.get("/collections/{collection_id}/items")
+def list_items(collection_id: int, page: int = 0, size: int = 9, search: str = "", status: str = "All", db: Session = Depends(get_db)):
+    if not db.get(models.Collection, collection_id):
+        raise HTTPException(status_code=404, detail="No such series.")
+    rows = series_items(db, collection_id)
+    pages = items_pages(db, collection_id, rows)
+    search, size = search.strip().lower(), min(max(size, 1), 100)
+    natural = lambda row: ((0, int(row["name"]), []) if row["name"].isdigit() else
+                           (1, 0, [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", row["name"])]))
+    matching = sorted((row for row in rows if item_matches(row, pages[row["bundle"]], search, status)), key=natural)
+    page = min(max(page, 0), max(len(matching) - 1, 0) // size)
+    return {"items": [{**row, "counts": page_counts(pages[row["bundle"]])}
+                      for row in matching[page * size:(page + 1) * size]],
+            "page": page, "total": len(matching), "all": len(rows),
+            "totals": page_counts([p for row in rows for p in pages[row["bundle"]]]),
+            "most": {"pages": max((len(p) for p in pages.values()), default=0),
+                     "records": max((page_counts(p)["records"] for p in pages.values()), default=0)}}
+
+#one of a series' items, by its number or bundle id, with its pages as /progress gives them (none until it's loaded)
+@app.get("/collections/{collection_id}/items/{name}")
+def get_item(collection_id: int, name: str, db: Session = Depends(get_db)):
+    row = next((row for row in series_items(db, collection_id) if name in (row["name"], row["bundle"])), None)
+    if row is None:
+        raise HTTPException(status_code=404, detail="No such item.")
+    return {**row, "pages": next((b["pages"] for b in cached_progress(db) if b["id"] == row["bundle"]), [])}
 
 #queues a pipeline run of one PDF; the worker picks it up
 @app.post("/jobs", status_code=202)
 def start_job(payload: StartJobRequest, db: Session = Depends(get_db)):
-    pdf = next((p for p in pdfs() if stored_path(p) == payload.pdf), None)
+    pdf = next((found for found in runnables(db) if found[0] == payload.pdf), None)
     if pdf is None:
         raise HTTPException(status_code=404, detail="No such PDF in DATA or on the archive.")
     write_lock(db)
     #a rerun could lose saved reviews
-    if db.query(models.Bundle).filter(models.Bundle.bundle_id == pdf.stem).first():
-        raise HTTPException(status_code=409, detail="This bundle is already loaded.")
+    if db.query(models.Bundle).filter(models.Bundle.bundle_id == pdf[1]).first():
+        raise HTTPException(status_code=409, detail="This item is already loaded.")
     if db.query(models.Job).filter(models.Job.pdf == payload.pdf, models.Job.status.in_(("waiting", "running"))).first():
-        raise HTTPException(status_code=409, detail="This bundle is already waiting or running.")
+        raise HTTPException(status_code=409, detail="This item is already waiting or running.")
 
     chosen = chosen_transcription(db, payload.provider, payload.model, payload.effort)
     check_transcription(**chosen)
@@ -541,7 +964,11 @@ _progress, _watchers, _progress_lock = {}, {}, threading.Lock()
 
 
 @app.get("/progress")
-def get_progress(db: Session = Depends(get_db)):
+def get_progress(collection: int | None = None, db: Session = Depends(get_db)):
+    progress = cached_progress(db)
+    return [b for b in progress if collection is None or b["collectionId"] == collection]
+
+def cached_progress(db):
     from backend.api.progress import review_progress
     path = db.get_bind().url.database
     #an in-memory db can't be watched from another connection
@@ -589,13 +1016,17 @@ def put_transcription_defaults(payload: TranscriptionDefaults, db: Session = Dep
 @app.get("/jobs/{job_id}/transcripts")
 def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
     """Read completed, checksum-verified page outputs without loading a partial bundle."""
-    from pathlib import Path
-    from backend.pipeline.run import read_manifest, digest
     job = db.get(models.Job, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="No such job.")
     if job.kind != "bundle" or not job.pdf:
-        raise HTTPException(status_code=400, detail="This job is not a bundle transcription.")
+        raise HTTPException(status_code=400, detail="This job is not an item transcription.")
+    return {"jobId": job_id, "status": job.status, "pages": partial_pages(db, job)}
+
+#an item transcription's pages so far, from its run's folder: each one's id, type, status and what was read off it
+def partial_pages(db, job):
+    from pathlib import Path
+    from backend.pipeline.run import read_manifest, digest
     folder = ROOT / settings()["OUTPUT"] / Path(job.pdf).stem
     manifest = read_manifest(folder)
     pages = []
@@ -614,17 +1045,18 @@ def get_job_transcripts(job_id: int, db: Session = Depends(get_db)):
     identified = {Path(page["file"]).stem: page for page in manifest.get("pages", []) if page.get("file")}
     # Published page images are available before identification completes.
     extracted = {path.stem for path in (folder / "pages").glob("*.png")}
+    unknown = {name for (name,) in db.query(models.PageType.name).filter(models.PageType.unknown)}
     result = []
     for page_id in sorted(extracted | identified.keys() | completed.keys()):
         page = completed.get(page_id)
         category = identified.get(page_id, {}).get("label") or (page or {}).get("category") or "unidentified"
         status = ("Transcribed — not grouped" if page else
                   "Not required" if category == "blank" else
-                  "Needs identification" if category in ("unidentified", "review", "other") else
+                  "Needs identification" if category in {"unidentified", "review", *unknown} else
                   "Awaiting transcription")
         result.append({"id": page_id, "category": category, "status": status,
                        "data": page["data"] if page else None})
-    return {"jobId": job_id, "status": job.status, "pages": result}
+    return result
 
 
 def export_survey(survey_id: str, request: Request, db: Session):
@@ -664,24 +1096,25 @@ def export_survey(survey_id: str, request: Request, db: Session):
 
 
 @app.get("/export/bundles")
-def export_bundles(db: Session = Depends(get_db)):
+def export_bundles(collection: int | None = None, db: Session = Depends(get_db)):
     from pathlib import PurePosixPath
+    bundles = db.query(models.Bundle).order_by(models.Bundle.bundle_id)
     return [{"id": b.bundle_id, "name": PurePosixPath(b.source_pdf.replace("\\", "/")).parent.name or b.bundle_id}
-            for b in db.query(models.Bundle).order_by(models.Bundle.bundle_id)]
+            for b in (bundles if collection is None else bundles.filter_by(collection_id=collection))]
 
 
 @app.get("/export")
 def download_export(request: Request, survey_id: str | None = None, bundle_id: str | None = None,
                     db: Session = Depends(get_db)):
     if (survey_id is None) == (bundle_id is None):
-        raise HTTPException(status_code=400, detail="Choose a survey ID or a bundle.")
+        raise HTTPException(status_code=400, detail="Choose a survey ID or an item.")
     if survey_id is not None:
         return export_survey(survey_id, request, db)
     bundle_id = bundle_id.strip()
     if not bundle_id:
-        raise HTTPException(status_code=400, detail="Choose a bundle.")
+        raise HTTPException(status_code=400, detail="Choose an item.")
     if not db.get(models.Bundle, bundle_id):
-        raise HTTPException(status_code=404, detail="Bundle not found.")
+        raise HTTPException(status_code=404, detail="Item not found.")
     surveys = []
     for (sid,) in db.query(models.Survey.survey_id).filter_by(bundle_id=bundle_id).order_by(models.Survey.survey_id):
         surveys.extend(export_survey(sid, request, db)["surveys"])
@@ -710,7 +1143,9 @@ def page_action_context(page_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Page not found.")
     surveys = db.query(models.Survey).filter(models.Survey.bundle_id == page.bundle_id).order_by(models.Survey.survey_id).all()
     job = db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.kind == "page").order_by(models.Job.job_id.desc()).first()
+    types = db.query(models.PageType).filter_by(collection_id=db.get(models.Bundle, page.bundle_id).collection_id)         .order_by(models.PageType.built_in.desc(), models.PageType.name)
     return {"bundleId": page.bundle_id, "surveyId": page.survey_id, "category": page.category,
+            "pageTypes": [{"name": t.name, "label": t.label} for t in types], #what it can be changed to: its collection's types
             "needsTranscription": page.needs_transcription, "revision": page.revision_no or 0, "hasReviews": bool(db.query(models.Edit).filter_by(page_id=page_id).first()),
             "job": job_json(job) if job else None,
             "surveys": [{"id": s.survey_id, "pages": [{"id": p.page_id, "type": p.category} for p in
@@ -722,13 +1157,13 @@ def move_page(page_id: str, payload: MovePageRequest, db: Session = Depends(get_
     page = db.get(models.Page, page_id)
     target = db.get(models.Survey, payload.surveyId)
     if page is None or target is None:
-        raise HTTPException(404, "Page or destination survey not found.")
+        raise HTTPException(404, "Page or destination record not found.")
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(400, "Select a valid reviewer.")
     if target.bundle_id != page.bundle_id:
-        raise HTTPException(400, "Pages can only move within the same bundle.")
+        raise HTTPException(400, "Pages can only move within the same item.")
     if target.survey_id == page.survey_id:
-        raise HTTPException(400, "Choose a different survey.")
+        raise HTTPException(400, f"Choose a different {page_record_name(db, page)}.")
     if page.survey_id != payload.sourceSurveyId or (page.revision_no or 0) != payload.revision:
         raise HTTPException(409, "This page changed. Refresh before moving it.")
     if db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.status.in_(("waiting", "running"))).first():
@@ -771,15 +1206,16 @@ def actionable_page(db, page_id, reviewer_id, revision):
 @app.put("/page-classification/{page_id:path}")
 def classify_page(page_id: str, payload: PageClassificationRequest, db: Session = Depends(get_db)):
     page = actionable_page(db, page_id, payload.reviewerId, payload.revision)
-    if payload.pageType not in ("main", "notes", "coded", "other"):
-        raise HTTPException(400, "Choose a supported page type.")
+    new_type = db.get(models.PageType, payload.pageType)
+    if not new_type or new_type.collection_id != db.get(models.Bundle, page.bundle_id).collection_id:
+        raise HTTPException(400, f"No page type called {payload.pageType} in this page's series.")
     if payload.pageType == page.category:
         raise HTTPException(400, "The page is already that type.")
     from backend.db.page_history import snapshot
     snapshot(db, page_id, payload.reviewerId, "change_type")
     page.category = payload.pageType
-    # Other pages have no transcription template.
-    page.needs_transcription = payload.pageType != loader.OTHER_CAT
+    # An Unknown type's pages wait, unread, for a reviewer to pick their type.
+    page.needs_transcription = not new_type.unknown
     page.revision_no = (page.revision_no or 0) + 1
     page.checked_revision = None
     db.commit()
@@ -824,7 +1260,7 @@ def get_page_history(page_id: str, db: Session = Depends(get_db)):
               "Page type changed" if version.action == "change_type" else "Page retranscribed",
               f"Previous page type: {previous.get('category', 'Unknown')}. Previous revision: {previous.get('revision_no', 'Unknown')}.", content)
     for move in db.query(models.PageMove).filter_by(page_id=page_id):
-        event("move", move.move_id, move.time, move.reviewer_id, "Moved to another survey",
+        event("move", move.move_id, move.time, move.reviewer_id, f"Moved to another {page_record_name(db, page)}",
               f"{move.from_survey or 'Unassigned'} → {move.to_survey}" + (f". Reason: {move.reason}" if move.reason else ""))
     previous_values = {}
     for edit in db.query(models.Edit).filter_by(page_id=page_id).order_by(models.Edit.edit_id):

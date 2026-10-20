@@ -87,28 +87,35 @@ Pages → surveys (`step_group`), from stored transcriptions: no model calls.
 
 ## `test_scans.py`
 
-The archive's real download page for Box Hill 00 (bundle 216412), saved as `archive/download_216412.html`, so the
-code that reads it is checked against the archive's own markup, not only the tests' stand-in.
+Real archive pages saved in `archive/` (Box Hill 00's download page; the Strathfieldsaye Estate Diaries' series page, list of
+items and a search of it; a search of the Red Cross cards; a card's page; a diary's download page), so the code that reads
+them is checked against the archive's own markup, not only the tests' stand-in.
 
 | Test                                                             | What it checks                                                                                                                                             |
 | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_the_archives_real_download_page_gives_every_page_its_file` | Reading the real page finds all 227 pages in order, each with its file id (page 1 → 423448, page 227 → 425881).                                            |
+| `test_a_series_real_list_of_items_is_read_with_which_can_be_downloaded` | The diaries' page links to their list; reading it gives all 18 items with title, identifier and number, and the one with no scans can't be downloaded. |
+| `test_a_real_search_result_keeps_the_fields_its_matches_are_highlighted_in` | In a search's results, an identifier the archive highlighted part of is read whole. |
+| `test_a_real_reading_room_card_is_listed_as_not_downloadable` | A card for the Reading Room only ("Access restrictions apply") is listed as not downloadable. |
+| `test_a_real_items_page_names_its_series_and_its_download_page_its_original_pdf` | A card's page gives its title, identifier and series; a diary's download page gives its original PDF's file id. |
 | `test_no_test_reaches_the_internet`                              | A plain `urllib` request to the archive fails during tests: `tests/conftest.py` blocks every internet lookup but this computer's own.                      |
 | `test_a_scan_the_archive_cant_send_is_logged_with_the_reason`    | A page scan the archive can't send comes back as none and logs one warning naming the bundle, the page and the error, and when the archive is asked again. |
 
 ## `test_migrations.py`
 
-| Test                                                                    | What it checks                                                                                                                                                                                                                                                                                                                       |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `test_migrations_match_the_models`                                      | The migrations in `backend/db/migrations/` build the same tables and columns as `backend/db/models.py` (Alembic's check). Fails if `models.py` changes a table or column without a migration. It does not compare CHECK constraints or server defaults, and the unit tests build their db from `models.py`, not from the migrations. |
-| `test_a_table_change_keeps_the_edits_on_it_and_backs_the_db_up_first`   | A later migration that rebuilds `fields` (how SQLite changes a column) keeps the reviewers' edits on it, and the db is copied to `<name>-backup-<revision>.db` before it runs.                                                                                                                                                       |
-| `test_a_migration_that_breaks_a_link_is_undone`                         | A later migration that leaves rows pointing at nothing (deletes a bundle its pages belong to) stops with an error, and the db is left as it was before it.                                                                                                                                                                           |
-| `test_version_1_of_the_prompt_and_templates_is_the_files_byte_for_byte` | Migration 001 stores `prompt.txt` and each template as version 1 byte for byte, with the files' hashes, so transcripts already made from the files are reused, not read (and paid for) again.                                                                                                                                        |
+The database is `backend/db/prestcribe.db`, made by one migration, `backend/db/migrations/versions/001_prestcribe.py`: the tables in `backend/db/models.py` and nothing in them. A series is added in the app or opened from a PrestCribe file.
+
+| Test | What it checks |
+| ---- | -------------- |
+| `test_migrations_match_the_models` | The migration in `backend/db/migrations/` builds the same tables and columns as `backend/db/models.py` (Alembic's check). Fails if `models.py` changes a table or column without a migration. It does not compare CHECK constraints or server defaults, and the unit tests build their db from `models.py`, not from the migrations. |
+| `test_a_fresh_db_is_at_revision_001_with_every_table_of_the_models_and_no_rows` | A db made by the migration is at revision `001`, has every table of the models and no rows in any of them. |
+| `test_a_table_change_keeps_the_edits_on_it_and_backs_the_db_up_first` | A later migration that rebuilds `fields` (how SQLite changes a column) keeps the reviewers' edits on it, and the db is copied to `<name>-backup-<revision>.db` before it runs. |
+| `test_a_migration_that_breaks_a_link_is_undone` | A later migration that leaves rows pointing at nothing (deletes a bundle its pages belong to) stops with an error, and the db is left as it was before it. |
 
 ## `check_review_integration.mjs` / `check_review_integration.py` — 15 test
 
 Tests the real frontend review adapter against the FastAPI backend using a
-temporary copy of `backend/db/wilfprestsurvey.db`. The source database stays
+temporary copy of `backend/db/prestcribe.db`. The source database stays
 unchanged. Results appear in the terminal, and the temporary copy is deleted
 afterwards.V
 
@@ -143,21 +150,24 @@ No running backend or database is needed.
 | `test("Flag filter and disclosure show the reason", async ({ page }) => ...)`                        | Flagged fields can be filtered and their explanations expanded.                                 |
 | `test("Zoom and Fit to Page change the image scale", async ({ page }) => ...)`                       | Zoom changes the scale and Fit to Page fits the image inside the viewer.                        |
 | `test("Clicking Address highlights its scan area", async ({ page }) => ...)`                         | Selecting Address displays its named highlight and zooms in.                                    |
-| `test("Cancel discards draft text and reviewer is required", async ({ page, api }) => ...)`          | A reviewer is required, and cancelling leaves the original value unchanged.                     |
+| `test("Clicking an annotation shows the whole card and a note", async ({ page }) => ...)` | An annotation with no mapped scan area shows the whole card with a note saying where it is; zooming by hand hides the note and a mapped field still highlights and zooms. |
+| `test("Clicking an annotation with an area highlights the area and shows the note", async ({ page }) => ...)` | An annotation with an area highlights it, zooms to fit it (between 100% and 200%) and still shows the note; zooming by hand keeps the new zoom and the highlight. |
+| `test("Clicking an annotation with a region highlights the region", async ({ page }) => ...)` | An annotation with its own region (a row of the residents table) highlights that region, not its whole area. |
+| `test("A field's own wide region is highlighted at a lower zoom", async ({ page }) => ...)` | A field's own region is used instead of the shared one, and a wide one zooms less than 200%. |
+| `test("The status line names the person working", async ({ page }) => ...)`                          | The status line says the page is saved as the person chosen on the home page.                   |
+| `test("Cancel discards draft text", async ({ page, api }) => ...)`                                   | Cancelling the editor leaves the original value unchanged.                                      |
 | `test("Apply creates draft; Save persists and reload restores it", async ({ page, api }) => ...)`    | Applying creates a draft; saving stores it in the mock API and refreshing restores it.          |
 | `test("Rejected save displays reason and retains unsaved correction", async ({ page, api }) => ...)` | A rejected save displays the error and preserves the draft.                                     |
 | `test("Review all preserves correction and saves all fields", async ({ page, api }) => ...)`         | Reviewing all fields preserves existing corrections and saves every field.                      |
 | `test("Review all keeps another reviewer's saved review", async ({ page, api }) => ...)`             | A field another reviewer already saved keeps their value and name after reviewing all fields.   |
 | `test("Try again recovers from a failed survey request", async ({ page, api }) => ...)`              | Retrying restores the screen after a failed request.                                            |
-| `test("Add reviewer makes the new reviewer selectable", async ({ page }) => ...)`                    | A newly added reviewer becomes selected.                                                        |
 | `test("Stay here and Escape retain the unsaved review", async ({ page, api }) => ...)`               | Dismissing the navigation warning retains the draft without saving.                             |
 | `test("Save and continue saves before switching pages", async ({ page, api }) => ...)`               | Changes are saved before navigation and remain visible when returning.                          |
 | `test("Discard restores the previous saved correction", async ({ page, api }) => ...)`               | Discarding a draft restores the earlier saved correction without another save.                  |
 | `test("Failed save keeps the current page and unsaved review", async ({ page, api }) => ...)`        | A failed save keeps the warning open, displays the error and preserves the draft.               |
 | `test("Leaving the website warns about unsaved reviews", async ({ page }) => ...)`                   | Leaving with unsaved changes triggers the browser warning.                                      |
-| `test("adds a reviewer inside the field editor without losing the draft", async ({ page }) => ...)`  | Adding a reviewer inside the editor preserves the draft value.                                  |
 
-## `ui-reviewscreen/export.spec.ts` — 8 tests
+## `export.spec.ts` — 8 tests
 
 It tests the export interface in a real browser using Playwright.
 API responses are mocked, so no running backend or database is needed.
@@ -168,11 +178,11 @@ Run from the project folder:
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
 | Downloads backend correction instead of an unsaved on-screen edit         | The downloaded export uses the backend response rather than an unsaved browser draft. |
 | Shows backend export failure and permits retry                            | A failed export displays an error and allows another attempt.                         |
-| Downloads a selected bundle as JSON                                       | Selecting a bundle produces a JSON download.                                          |
-| Dashboard exports the selected bundle ID rather than its display number   | Dashboard export requests use the database bundle ID.                                 |
-| Review screen exports its current bundle using the backend bundle ID      | The Current bundle option uses the bundle ID supplied by the survey response.         |
+| Downloads a selected item as JSON                                         | Selecting an item produces a JSON download.                                           |
+| Dashboard exports the selected item's ID rather than its display number   | Dashboard export requests use the database item ID.                                   |
+| Review screen exports its current item using the backend item ID          | The Current item option uses the item ID supplied by the survey response.             |
 | Warns for unreviewed data and clears the warning for a reviewed selection | The export warning reflects whether the selected data has been reviewed.              |
-| Conditional export warning on dashboard — 2 cases                         | Checks the warning on both the all-bundles and selected-bundle dashboard views.       |
+| Conditional export warning on dashboard — 2 cases                         | Checks the warning on both the all-items and selected-item dashboard views.           |
 
 These tests cover browser interactions with mocked API responses.
 The backend export tests separately check database selection and saved values.
@@ -232,16 +242,23 @@ npm --prefix tests run test:e2e -- progress.spec.ts
 | `Import opens the import screen` | The Import button opens the import screen. |
 | `Pg 1/2/3 opens its matching US7 page` — 3 tests                         | Each page's Review link opens the matching page in the review screen.                                                                                                             |
 | `page table keeps actions visible at 936/640/375px` — 3 tests            | Flags and review actions remain visible without horizontal table overflow at desktop, tablet and phone widths.                                                                    |
-| `untouched bundle prompts Transcribe and shows zero progress`            | A bundle without pages or a job shows 0% progress, the not-started message and an enabled Transcribe button beside the filters.                                                   |
-| `partial bundle shows model and completion action without review access` | A failed partial bundle offers Retry transcription and error details; its page list shows the incomplete notice, Complete transcription and the saved model, with no Review link. |
+| `untouched item prompts Transcribe and shows no reviewable pages`        | An item without pages or a job shows No reviewable pages, the not-started message and an enabled Transcribe button beside the filters.                                            |
+| `partial item shows model and completion action without review access`   | A failed partial item offers Retry transcription and error details; its page list shows the incomplete notice, Complete transcription and the saved model, with no Review link.   |
 | `waiting job disables duplicate transcription`                           | A queued job disables the transcription button and keeps the incomplete notice visible.                                                                                           |
 | `running job disables duplicate transcription`                           | A running job disables the transcription button and keeps the incomplete notice visible.                                                                                          |
-| `loaded bundle shows model or dash and hides incomplete notice`          | The Model column shows saved model information or a dash; completed bundles hide the incomplete notice and transcription action.                                                  |
+| `loaded item shows model or dash and hides incomplete notice`            | The Model column shows saved model information or a dash; completed items hide the incomplete notice and transcription action.                                                    |
 | `pagination changes rows and searching resets to first page`             | Eleven pages span two table pages; searching from the second page resets pagination and shows matching rows.                                                                      |
+| `item, page and status stay in the URL across reload and Back` | An item's table page and status filter are in the URL, survive a reload and are undone one step at a time by Back, down to the items list. |
+| `clicking an item row opens it, but its Transcribe button only opens the dialog` | A click on an item's row opens the item; its Transcribe button opens the Transcribe dialog without opening the item. |
+| `a failed item's Retry and error buttons act without opening the item` | Retry transcription and the error details button on a failed item's row open their dialogs and leave the list where it is. |
+| `item rows have one keyboard stop, an Actions header, and open natively in a new tab` | Each row has one link and no buttons, under a single Actions header; Ctrl-click opens it in a new tab and Enter on the focused link opens it here. |
+| `clicking a plain cell in a page row opens that page` | A click on a page row's ordinary cell opens that page in the review screen. |
+| `awaiting transcription page has a Transcribe action targeting its survey page` | A page awaiting transcription links Transcribe to its survey page with the transcribe action, and has no Review link. |
+| `polling waits for a slow refresh instead of piling up requests` | While a refresh is still unanswered, later polls send no new request; polling resumes once it finishes. |
 | `failed progress request can be retried`                                 | A failed request displays its error; Try again restores the dashboard after the API recovers.                                                                                     |
 | `polling updates review counts without a reload`                         | Updated API data changes the displayed reviewed count and percentage automatically.                                                                                               |
 
-Related backend coverage lives in `tests/unit/test_progress.py` (3 tests): model/status/flag response data and review targets, saved versus unsaved reviews, and reviews of resident, child and annotation fields. Run it with `uv run pytest tests/unit/test_progress.py`.
+Related backend coverage lives in `tests/unit/test_progress.py` (5 tests): model/status/flag response data and review targets, saved versus unsaved reviews, reviews of resident, child and annotation fields, a transcribed page in no survey not being ready to review, and the progress being worked out again only after the database changes. Run it with `uv run pytest tests/unit/test_progress.py`.
 
 ### US7 → US9 review round trip — 3 browser tests
 
