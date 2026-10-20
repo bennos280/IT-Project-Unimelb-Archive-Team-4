@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from backend.api.connections import NO_WINDOW, run_cli, stop
 from backend.db import models
 from backend.db.database import get_db
+from backend.pipeline.transcribe import providers
 
 router = APIRouter()
 
@@ -187,6 +188,28 @@ def codex_options():
         return {"available": False, "models": [], "efforts": [], "error": None}
     return cached("codex", exe, read_codex)
 
+#an API's models for its key (providers.py), remembered like a program's; not available without a key (Ollama: not running)
+def read_api(provider):
+    try:
+        names = providers.models(provider)
+        return {"available": True, "error": None if names else "No models that read images were listed.", "efforts": ["default"],
+                "models": [{"value": n, "label": n, "group": "listed", "efforts": ["default"], "defaultEffort": "default"} for n in names]}
+    except Exception:  #unreachable, refused, or an answer of another shape
+        return {"available": provider != "ollama", "models": [], "efforts": ["default"],
+                "error": "Couldn't list its models: check the key on this page." if provider != "ollama" else None}
+
+def api_options(provider):
+    if providers.key(provider) is None:
+        return {"available": False, "models": [], "efforts": [], "error": None}
+    with _locks.setdefault(provider, threading.Lock()):
+        entry = _cache.get(provider)
+        if entry and entry[0] > time.monotonic() and entry[1] == providers.key(provider):
+            return entry[2]
+        result = read_api(provider)
+        _cache[provider] = (time.monotonic() + (CACHE_SECONDS if result["error"] is None else FAILED_CACHE_SECONDS),
+                            providers.key(provider), result)
+        return result
+
 @router.get("/transcription-options")
 def get_transcription_options(db: Session = Depends(get_db)):
-    return {"claude": claude_options(db), "codex": codex_options()}
+    return {"claude": claude_options(db), "codex": codex_options(), **{p: api_options(p) for p in providers.PROVIDERS}}

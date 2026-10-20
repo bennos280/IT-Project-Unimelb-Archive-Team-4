@@ -128,6 +128,14 @@ def test_only_one_worker_runs_at_a_time(tmp_path, monkeypatch):
     worker.only_worker().release()  # free again once the first worker has stopped
 
 
+def test_an_item_no_series_lists_fails_without_running(db, committed, tmp_path, monkeypatch):
+    job = queue(db, tmp_path, series=None)
+    runs = []
+    fake_pipeline(monkeypatch, lambda run: runs.append(run))
+    assert worker.work_once(db)
+    assert (committed(job).status, committed(job).error, runs) == ("failed", "no series lists this item: add it to one first", [])
+
+
 def test_a_job_reads_with_the_newest_prompt_and_templates(db, tmp_path, monkeypatch):
     db.add_all([models.InstructionVersion(kind="prompt", body="old", sha256="a"),
                 models.InstructionVersion(kind="main", body="{}", sha256="b"),

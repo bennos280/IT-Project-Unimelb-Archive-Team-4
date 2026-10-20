@@ -289,7 +289,7 @@ def test_transcribe_reads_with_the_provider_it_is_given(prompt_files, monkeypatc
 
 
 def test_transcribe_refuses_an_unknown_provider(prompt_files):
-    with pytest.raises(SystemExit, match="PROVIDER must be claude or codex, not 'chatgpt'"):
+    with pytest.raises(SystemExit, match="PROVIDER must be one of claude, codex, anthropic, openai, gemini, openrouter, ollama, not 'chatgpt'"):
         transcribe("page.jpg", "main", provider="chatgpt", model="gpt-5", effort="high")
 
 def test_transcribe_stamps_every_answer_with_provenance(prompt_files, monkeypatch):

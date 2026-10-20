@@ -84,7 +84,7 @@ class Page(Base):
     __tablename__ = "pages"
     page_id = Column(String, primary_key=True)
     import_path = Column(String, nullable=False)
-    provider = Column(String, nullable=True) #claude or codex
+    provider = Column(String, nullable=True) #claude, codex, or an API's (transcribe.ALL_PROVIDERS)
     model = Column(String, nullable=True)
     effort = Column(String, nullable=True)
     runtime = Column(Numeric, nullable=True)

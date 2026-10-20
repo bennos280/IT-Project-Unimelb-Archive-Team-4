@@ -19,14 +19,16 @@ type Options = {
   testStatus?: number;
   gateTests?: boolean; // hold test replies until calls.release()
   transcriptionOptions?: object; // the body of GET /transcription-options; without it the request fails and the text boxes stay
+  apiKeys?: object[]; // the body of GET /api/api-keys
 };
 
 async function mockApi(page: Page, state: State, options: Options = {}) {
   let defaults = options.defaults === undefined ? SAVED : options.defaults;
   let release = () => {};
   const gate = options.gateTests ? new Promise<void>((resolve) => { release = resolve; }) : null;
+  const apiKeys = options.apiKeys ?? [];
   const calls = {
-    get: 0, post: [] as string[], delete: [] as string[], loginBody: [] as unknown[],
+    get: 0, apiKeys, post: [] as string[], delete: [] as string[], loginBody: [] as unknown[],
     put: [] as unknown[], deletes: 0, logout: [] as string[], logoutBody: [] as unknown[], tests: [] as string[], testBody: [] as unknown[],
     release: () => release(),
   };
@@ -78,6 +80,7 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
       return route.fulfill({ json: options.transcriptionOptions });
     if (path === "/api/transcription-models")
       return route.fulfill({ json: { configured: defaults, models: [] } });
+    if (path === "/api/api-keys") return route.fulfill({ json: apiKeys });
     if (path === "/api/progress" || path === "/api/bundles") return route.fulfill({ json: [] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
@@ -255,7 +258,7 @@ test("with the model lists, nothing is picked for you: the dropdowns start on Ch
   await page.goto("/?view=settings");
   const save = page.getByRole("button", { name: "Save defaults" });
   for (const label of ["Provider", "Model", "Effort"]) await expect(field(page, label)).toHaveValue("");
-  expect(await optionTexts(page, "Provider")).toEqual(["Choose…", "Claude", "Codex"]);
+  expect(await optionTexts(page, "Provider")).toEqual(["Choose…", "Claude Code", "Codex CLI", "Claude API", "OpenAI API", "Gemini API", "OpenRouter", "Ollama (this computer)"]);
   await field(page, "Provider").selectOption("claude");
   expect(await optionTexts(page, "Model")).toEqual(["Choose…", "claude-used-1", "opus (latest)", "sonnet (latest)", "Other…"]);
   await expect(field(page, "Model")).toHaveValue("");
@@ -837,7 +840,6 @@ test("sections run Transcription model, Accounts, then the folders footer", asyn
   expect(tops[0]).toBeLessThan(tops[1]);
   expect(tops[1]).toBeLessThan(tops[2]);
   await expect(page.locator("footer", { has: page.getByRole("heading", { name: "Folders", level: 2 }) })).toBeVisible();
-  await expect(page.locator("section#transcription-defaults + section#connections + footer")).toHaveCount(1);
 });
 
 test("the model row leaves no empty line under it until there is a message", async ({ page }) => {

@@ -80,7 +80,7 @@ PLIST
 fi
 
 if ! command -v claude >/dev/null 2>&1 && ! command -v codex >/dev/null 2>&1; then
-    echo "Note: reading pages needs Claude Code or the Codex CLI signed in. PrestCribe's Settings page shows how."
+    echo "Note: reading pages needs Claude Code or the Codex CLI signed in, or an API key. PrestCribe's Settings page shows how."
 fi
 echo "PrestCribe is installed in $FOLDER."
 if [ -z "${PRESTCRIBE_NO_START:-}" ]; then

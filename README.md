@@ -33,7 +33,9 @@ To work on the Wilfred Prest Survey, download **wilfred-prest-survey.prestcribe*
 **Open a PrestCribe file**: it adds the survey with its page types, templates and checks, ready to read.
 
 Reading pages uses [Claude Code](https://claude.com/claude-code) or the Codex CLI with your own subscription (install one and
-sign in).
+sign in), an API key from Anthropic, OpenAI, Google (Gemini) or OpenRouter, or a model on your own computer through
+[Ollama](https://ollama.com). Add keys and choose the model on PrestCribe's Settings page (the gear button); keys stay on your
+computer, never in a PrestCribe file.
 
 ## Developer setup
 

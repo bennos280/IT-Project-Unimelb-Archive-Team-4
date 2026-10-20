@@ -19,7 +19,9 @@ const json = (method: string, body: unknown) => ({ method, headers: { "Content-T
 // The provider, model and effort used when a transcription is started without choosing them: chosen here (there is no default) and saved in the database.
 // notReady: provider id -> what its connection card says, for the providers that can't transcribe yet.
 // onSaved: told the saved choice (null: none yet), on load and after every save.
-export default function TranscriptionDefaults({ notReady, onSaved }: { notReady: Record<string, string>; onSaved: (saved: ModelChoice | null) => void }) {
+export default function TranscriptionDefaults({ notReady, onSaved, version }: {
+  notReady: Record<string, string>; onSaved: (saved: ModelChoice | null) => void; version?: number; // version: keys changed, lists again
+}) {
   const id = useId();
   const [data, setData] = useState<ModelData | null>(null);
   const [saved, setSaved] = useState<ModelChoice | null>(null);
@@ -38,8 +40,10 @@ export default function TranscriptionDefaults({ notReady, onSaved }: { notReady:
       onSaved(result.configured);
       if (result.configured) setChoice(result.configured);
     }).catch((e) => setLoadError(e instanceof Error ? e.message : "Could not load the defaults."));
-    backendRequest<Record<string, ProviderOptions>>("/transcription-options").then(setOptions).catch(() => setOptions(null));
   }, [onSaved]);
+  useEffect(() => {
+    backendRequest<Record<string, ProviderOptions>>("/transcription-options").then(setOptions).catch(() => setOptions(null));
+  }, [version]);
 
   // Every edit goes through here so the notice goes away with it.
   function edit(next: ModelChoice) {
@@ -119,7 +123,7 @@ export default function TranscriptionDefaults({ notReady, onSaved }: { notReady:
                 <NativeSelect id={`${id}-provider`} className="w-full" value={choice.provider} disabled={busy}
                   onChange={(e) => pickProvider(e.target.value)}>
                   {!choice.provider && <option value="" disabled>Choose…</option>}
-                  <option value="claude">Claude</option><option value="codex">Codex</option>
+                  {Object.entries(providerNames).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </NativeSelect>
               </Field>
               <Field>
