@@ -7,6 +7,7 @@ import { useReviewSession } from "./review-screen/useReviewSession";
 import ProgressDashboard from "./progress/ProgressDashboard";
 import PageTypesScreen from "./settings/PageTypesScreen";
 import SettingsScreen from "./settings/SettingsScreen";
+import TasksScreen, { TaskScreen } from "./tasks/TasksScreen";
 import { keepPerson, storedPerson } from "./person";
 import { getReviewers } from "./review-screen/api";
 import { itemParam, seriesParam } from "./progress/backend";
@@ -33,6 +34,7 @@ export default function App() {
   const view = params.get("view");
   if (view === "import") return <ImportScreen/>;
   if (view === "settings") return <SettingsScreen/>;
+  if (view === "tasks") return params.get("task") ? <TaskScreen id={params.get("task")!}/> : <TasksScreen/>;
   if ((view === "setup" || view === "page-types") && !seriesParam(params)) return <CollectionsScreen/>; // which series's? home asks
   if (view === "setup" || view === "page-types") return <PageTypesScreen/>; // page-types: the old name of a series' Setup
   if (params.has("survey")) return <SurveyReview/>;

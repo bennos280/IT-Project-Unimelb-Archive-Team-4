@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { serveItems } from "./items-mock";
 
-// The top bar on every screen: the app's name (home), the series switcher and the trail below it, and Settings; and a
+// The top bar on every screen: the app's name (home), the series switcher and the trail below it, and Settings and Tasks; and a
 // series' own header with its actions and its Items | Setup tabs. Every API call is intercepted: no requests reach the real backend.
 // The bundle's id (pdf-216417) differs from its name (216417), as for a PDF inside a numbered folder.
 const pages = ["main", "notes"].map((type, index) => ({
@@ -58,12 +58,13 @@ const bundleLink = (page: Page) => page.getByRole("link", { name: "216417", exac
 const appName = (page: Page) => page.getByRole("link", { name: "PrestCribe", exact: true });
 const tabs = (page: Page) => page.getByRole("navigation", { name: "Series" }).getByRole("link");
 
-test("home is the app's name alone, which links home, with Settings", async ({ page }) => {
+test("home is the app's name alone, which links home, with Settings and Tasks", async ({ page }) => {
   await mockApi(page);
   await page.goto("/");
   await expect(trail(page)).toHaveCount(0);
   await expect(appName(page)).toHaveAttribute("href", "/");
   await expect(page.getByRole("banner").getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/?view=settings");
+  await expect(page.getByRole("banner").getByRole("link", { name: "Tasks" })).toHaveAttribute("href", "/?view=tasks");
   await expect(page.locator("h1")).toHaveText("Series");
 });
 
@@ -208,7 +209,7 @@ test("a survey without item info falls back to the bundle id in the crumb, and t
   await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
 });
 
-for (const [url, crumb, h1] of [["/?view=settings", "Settings", "Settings"]]) {
+for (const [url, crumb, h1] of [["/?view=settings", "Settings", "Settings"], ["/?view=tasks", "Tasks", "Tasks"]]) {
   test(`the ${crumb} screen is a crumb after the app's name, with one h1`, async ({ page }) => {
     await mockApi(page);
     await page.goto(url);
@@ -221,6 +222,20 @@ for (const [url, crumb, h1] of [["/?view=settings", "Settings", "Settings"]]) {
   });
 }
 
+test("a series' actions sit by its title, Add items first; Settings and Tasks are in the top bar", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?series=1");
+  const main = page.getByRole("main");
+  await expect(main.getByRole("button", { name: /^(Add items|Export|Import)$/ })).toHaveText(["Add items", "Export"]);
+  await expect(page.getByRole("banner").getByRole("button")).toHaveCount(2); // the series menu and who is working; the rest are links
+  await main.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "Export" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await tabs(page).last().click();
+  await expect(page).toHaveURL("/?series=1&view=setup");
+  await page.getByRole("banner").getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings", level: 1 })).toBeVisible();
+});
 
 test("on a phone no screen scrolls sideways, and the trail shows the level above and where you are", async ({ page }) => {
   await mockApi(page);

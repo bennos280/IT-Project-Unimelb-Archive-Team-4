@@ -15,6 +15,7 @@ export type Task = {
   updatedAt: string;
   collectionId: number | null;
   series: string | null;
+  href: string | null;
 };
 export const isActive = (task: Task) => task.status === "waiting" || task.status === "running";
 

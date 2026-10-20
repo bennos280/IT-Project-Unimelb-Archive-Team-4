@@ -17,6 +17,7 @@ async function mock(page: Page, people: { id: number; name: string }[]) {
     }
     if (path === "/api/reviewers") return route.fulfill({ json: people });
     if (path === "/api/collections") return route.fulfill({ json: [] });
+    if (path === "/api/jobs") return route.fulfill({ json: [] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });
   });
   return added;
@@ -24,6 +25,22 @@ async function mock(page: Page, people: { id: number; name: string }[]) {
 
 const welcome = (page: Page) => page.getByRole("region", { name: "Welcome to PrestCribe" });
 const who = (page: Page) => page.getByRole("form", { name: "Who's working?" });
+
+test("a first visit to any page welcomes on the home page and asks who's working, then goes on to the page asked for", async ({ page }) => {
+  const added = await mock(page, []);
+  await page.goto("/?view=tasks");
+  await expect(welcome(page).getByRole("list", { name: "How it works" }).getByRole("listitem")).toHaveText([
+    "Add a series from the University of Melbourne Archives", "Read the rest, then check each record"]);
+  await expect(page.getByRole("button", { name: /^Working as/ })).toHaveCount(0);
+  await expect(who(page).getByRole("button", { name: "Continue" })).toBeDisabled();
+  await who(page).getByLabel("Your name").fill(" Lachlan ");
+  await who(page).getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByRole("heading", { name: "Tasks", level: 1 })).toBeVisible();
+  expect(added).toEqual(["Lachlan"]);
+  await expect(page.getByRole("button", { name: "Working as Lachlan" })).toBeVisible();
+  await page.reload(); // kept in this browser
+  await expect(page.getByRole("heading", { name: "Tasks", level: 1 })).toBeVisible();
+});
 
 test("a name saved before is chosen from the list, or someone new added; Switch person asks again", async ({ page }) => {
   const added = await mock(page, [{ id: 1, name: "Ben" }, { id: 2, name: "Sandy" }]);

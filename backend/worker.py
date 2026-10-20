@@ -3,6 +3,7 @@ OUTPUT/worker.log, with the full error of a failed job."""
 import logging
 import logging.handlers
 import sys
+import threading
 import time
 from collections import Counter
 from pathlib import Path
@@ -19,6 +20,8 @@ from backend.common import ROOT, settings
 LOCK = Path(__file__).parent / "worker.lock"
 log = logging.getLogger("worker")
 MIN_CONFIRMED = 10 #pages of a new page type reviewers must settle before page sorting can learn it
+HEARTBEAT = "worker.alive" #in OUTPUT: touched every BEAT seconds while a worker runs, so the API can tell (api.main.worker_running)
+BEAT = 10
 
 #exits if another worker is running (two would write the same output folder)
 def only_worker():
@@ -26,6 +29,16 @@ def only_worker():
         return FileLock(LOCK).acquire(timeout=0).lock
     except Timeout:
         sys.exit("another worker is already running")
+
+#a running worker's heartbeat, from its own thread so a long step doesn't stop it; a touch that fails (the file held open a moment)
+#waits for the next beat
+def beat(path):
+    while True:
+        try:
+            path.touch()
+        except OSError:
+            pass
+        time.sleep(BEAT)
 
 #a job still running at startup was cut off: mark it failed
 def recover(db):
@@ -54,8 +67,10 @@ def work_once(db):
     db.commit()
     log.info("job %s started: %s %s", job.job_id, job.kind, job.pdf or job.page_id or "")
 
-    #a step start reports 0 pages: keep the last count
+    #a step start reports 0 pages: keep the last count. Each new step is logged (the task's page lists its lines).
     def progress(step, done, total):
+        if step != job.step:
+            log.info("job %s step: %s", job.job_id, step)
         job.step = step
         if total:
             job.done_pages, job.total_pages = done, total
@@ -217,6 +232,7 @@ def main():
                                   logging.handlers.RotatingFileHandler(output / "worker.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8")])
     log.setLevel(logging.INFO)
     database.migrate()
+    threading.Thread(target=beat, args=(output / HEARTBEAT,), daemon=True).start()
     db = database.SessionLocal()
     recover(db)
     log.info("waiting for pipeline jobs (Ctrl+C to stop); log: %s", output / "worker.log")

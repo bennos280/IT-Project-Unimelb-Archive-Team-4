@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState, type MouseEvent } from "react";
 import { ChevronsUpDown, Settings, UserRound } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 
+import TasksButton from "@/components/TasksButton";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -18,8 +19,8 @@ type Crumb = { label: string; href?: string; onClick?: (event: MouseEvent<HTMLAn
 type Series = { id: number; name: string };
 
 // The one top bar: the app's name (home); where you are, as the series (a menu of its Items and Setup, the other series, and all
-// of them) and the levels below it, of which a phone shows the last two; and what's for the whole app, who is working and Settings.
-// A screen's own title and actions sit below it.
+// of them) and the levels below it, of which a phone shows the last two; and what's for the whole app, who is working, Settings and
+// Tasks. A screen's own title and actions sit below it.
 export default function AppHeader({ series, crumbs = [] }: { series?: Series; crumbs?: Crumb[] }) {
   return (
     <header className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-2 sm:px-6">
@@ -56,6 +57,7 @@ export default function AppHeader({ series, crumbs = [] }: { series?: Series; cr
         <Button asChild variant="outline" size="icon" title="Settings">
           <a href="/?view=settings" aria-label="Settings"><Settings /></a>
         </Button>
+        <TasksButton />
       </div>
     </header>
   );

@@ -777,7 +777,7 @@ def job_json(job):
             "donePages": job.done_pages, "totalPages": job.total_pages, "error": job.error, "collectionId": job.collection_id,
             "search": job.search, "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
 
-#the worker's tasks, newest first: each waiting or running one, then the 20 latest done or failed
+#the worker's tasks for the Tasks panel, newest first: each waiting or running one, then the 20 latest done or failed
 @app.get("/jobs")
 def list_jobs(db: Session = Depends(get_db)):
     active = db.query(models.Job).filter(models.Job.status.in_(("waiting", "running"))).order_by(models.Job.job_id.desc()).all()
@@ -786,27 +786,60 @@ def list_jobs(db: Session = Depends(get_db)):
     owners, names = loader.archive_owners(db), dict(db.query(models.Collection.collection_id, models.Collection.name))
     return [task_json(db, job, owners, names) for job in active + recent]
 
-#a task: what it is (label), its series, how far it has got, in items or pages
+#a task as its own page shows it: its lines in the worker's log from its last "started" line on, oldest first, each without its
+#"job N" (an id can be another job's in an older db: a waiting task has none); the items its latest count line says it has added
+#and skipped; an items task's series' items now; and whether a worker is running. worker.log rotates at 1 MB into worker.log.1 to
+#.3, so an old task's lines may be gone.
+@app.get("/jobs/{job_id}/log")
+def job_log(job_id: int, db: Session = Depends(get_db)):
+    job = db.get(models.Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"There's no task {job_id}.")
+    output = ROOT / settings()["OUTPUT"]
+    line = re.compile(rf"(\d{{4}}-\d\d-\d\d \d\d:\d\d:\d\d),\d+ \w+ job {job_id}:? (.*)")
+    found = [m.groups() for path in [output / f"worker.log.{n}" for n in (3, 2, 1)] + [output / "worker.log"] if path.is_file()
+             for m in map(line.match, path.read_text(encoding="utf-8", errors="replace").splitlines()) if m]
+    log = [{"time": datetime.strptime(at, "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc).isoformat(), "text": text.strip()}
+           for at, text in found]  #the worker logs local time
+    started = [n for n, entry in enumerate(log) if entry["text"].startswith("started")]
+    log = [] if job.status == "waiting" else log[started[-1]:] if started else log
+    counts = next(filter(None, (re.search(r"([\d,]+) read, ([\d,]+) added", entry["text"]) for entry in reversed(log))), None)
+    read, added = (int(n.replace(",", "")) for n in counts.groups()) if counts else (None, None)
+    names = dict(db.query(models.Collection.collection_id, models.Collection.name))
+    return {**task_json(db, job, loader.archive_owners(db), names), "log": log,
+            "startedAt": log[0]["time"] if started and log else None,
+            "added": added, "skipped": read - added if counts else None,
+            "seriesItems": db.query(models.ArchiveItem).filter_by(collection_id=job.collection_id).count() if job.kind == "items" else None,
+            "workerRunning": worker_running(output)}
+
+#whether a worker is running, from how lately it touched its heartbeat (worker.beat); None if none has run since it got one
+def worker_running(output):
+    beat = output / "worker.alive"
+    return datetime.now().timestamp() - beat.stat().st_mtime < 30 if beat.is_file() else None
+
+#a task as the Tasks page shows it: what it is (label), its series, how far it has got, in items or pages, and where to see it (href)
 def task_json(db, job, owners, names):
-    series, unit = None, "pages"
+    series, href, unit = None, None, "pages"
     if job.kind == "items":
         series, unit = job.collection_id, "items"
         label = f"Adding items to {names.get(series, 'a series')}" + (f' matching "{job.search}"' if job.search else "")
+        href = f"/?series={series}"
     elif job.kind == "bundle":
         path = PurePosixPath((job.pdf or "").replace("\\", "/"))
         number = path.parent.name if path.parent.name.isdigit() else path.stem
         series = loader.series_of(owners, job.pdf or "")
         item = db.get(models.ArchiveItem, int(number)) if number.isascii() and number.isdigit() and len(number) < 19 else None
-        label = f"Transcribing {item.title if item else f'item {number}'}"
+        label, href = f"Transcribing {item.title if item else f'item {number}'}", f"/?series={series}&item={number}"
     elif job.kind == "page":
         page = db.get(models.Page, job.page_id)
         label = f"Reading page {job.page_id} again"
         if page:
             series = db.get(models.Bundle, page.bundle_id).collection_id
+            href = f"/?survey={page.survey_id}&page={page.page_id}" if page.survey_id else f"/?series={series}"
     else:
         label = "Training page sorting"
     return {"id": job.job_id, "kind": job.kind, "label": label, "status": job.status, "step": job.step, "done": job.done_pages,
-            "total": job.total_pages, "unit": unit, "error": job.error, "collectionId": series, "series": names.get(series),
+            "total": job.total_pages, "unit": unit, "error": job.error, "collectionId": series, "series": names.get(series), "href": href,
             "updatedAt": job.updated_at.replace(tzinfo=timezone.utc).isoformat() if job.updated_at else ""}
 
 #a series' items, loaded or not, in order of their PDFs: bundle id, name (the bundle number: the PDF's folder), stored PDF,
