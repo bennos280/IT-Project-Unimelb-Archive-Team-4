@@ -379,6 +379,38 @@ Page types added from the review screen, and a page read again as another type.
 | `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |
 | `test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`            | If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.                                                                                                                                                                                 |
 
+## `test_suggest_types.py` — 41 test cases
+
+Page types suggested from an item's pages: pages picked, laid on a contact sheet and shown to the chosen model, which proposes page types for the series to add.
+
+|Test|What it checks|
+|---|---|
+|`test_pages_are_spread_evenly_starting_with_the_first`|`pick` spreads the pages evenly over the item, starting with its first.|
+|`test_random_pages_are_in_order_without_repeats_and_the_same_for_the_same_seed`|Random pages come back in page order without repeats, the same for the same seed.|
+|`test_a_range_is_clamped_to_the_item_and_the_pages_are_spread_over_what_is_left_of_it`|A range is clamped to the item and the pages are spread over what is left of it.|
+|`test_an_item_with_no_more_pages_than_asked_for_gives_all_of_them`|An item with no more pages than asked for gives all of them.|
+|`test_no_more_than_30_pages_are_picked_and_at_least_one`|No more than 30 pages are picked, and at least one.|
+|`test_a_contact_sheet_is_one_jpeg_with_a_numbered_tile_for_each_page_in_the_order_given`|A contact sheet is one JPEG with a numbered tile for each page, in the order given.|
+|`test_pages_of_different_shapes_are_each_drawn_as_wide_as_a_tile_in_a_row_as_high_as_the_tallest`|Pages of different shapes are each drawn as wide as a tile, in a row as high as its tallest.|
+|`test_a_very_tall_page_is_shrunk_to_fit_and_each_row_is_as_tall_as_its_own_tallest_tile`|A page far taller than a tile is shrunk to fit (the sheet stays bounded), and each row is as tall as its own tallest tile.|
+|`test_a_contact_sheet_of_one_page_is_that_page_and_its_number`|A sheet of one page is that page and its number.|
+|`test_the_model_is_asked_once_about_a_sheet_of_the_pages_and_its_tiles_are_taken_for_their_page_numbers`|The model is asked once about the sheet, and the tiles it names are taken as their page numbers.|
+|`test_tiles_that_are_not_on_the_sheet_are_ignored_and_a_kind_with_none_left_has_no_pages`|Tiles not on the sheet are ignored, and a kind with none left has no pages.|
+|`test_a_kind_named_again_or_with_no_name_is_dropped_and_names_and_descriptions_are_tidied`|A kind named again or with no name is dropped; names and descriptions are tidied.|
+|`test_an_answer_with_no_kinds_gives_none` — 4 tests|An answer with no kinds (empty, null, an empty list, or another key) gives none.|
+|`test_the_prompt_counts_the_pages_and_names_the_page_types_the_series_has_and_what_the_person_said`|The prompt counts the pages, names the series' page types and carries the person's hint.|
+|`test_a_request_the_model_cant_answer_is_not_caught_here`|`suggest` lets the model's error through.|
+|`test_suggesting_asks_the_chosen_model_once_about_the_picked_pages_and_adds_nothing`|`POST /collections/{id}/page-types/suggest` asks the chosen model once about the picked pages and adds no page type.|
+|`test_the_pages_can_be_picked_at_random_or_from_a_range_and_are_16_unless_asked_otherwise`|Pages are picked at random or from a range, and are 16 unless asked otherwise.|
+|`test_a_range_with_no_pages_in_it_is_400_and_the_model_isnt_asked` — 3 tests|A range starting past the item's end, or ending before it starts, is a 400 saying how many pages the item has, and the model isn't asked.|
+|`test_the_400_for_an_empty_range_counts_a_one_page_item_in_the_singular`|The 400 for an empty range says "1 page" for a one-page item.|
+|`test_suggesting_with_no_transcription_model_chosen_is_refused_before_anything_is_asked`|With no transcription model chosen it is refused with 409 before the model is asked.|
+|`test_a_request_the_endpoint_cant_make_sense_of_is_422` — 7 tests|A count outside 1-30, a hint over 1000 characters, an unknown pick, a range end below 1 or a count that isn't a number is a 422.|
+|`test_a_request_with_no_item_is_422_and_the_most_it_allows_is_30_pages_and_a_1000_character_hint`|No item is a 422; 30 pages and a 1000-character hint are the most allowed.|
+|`test_a_model_that_cant_answer_is_a_502_with_what_it_said`|Any failure (the model's, or drawing the sheet) is a 502 "Page types couldn't be suggested" carrying what was said.|
+|`test_an_item_the_series_doesnt_list_or_has_no_pdf_for_is_404_and_the_model_isnt_asked` — 6 tests|An item the series doesn't list, or has no PDF for, is a 404 and the model isn't asked.|
+|`test_an_items_pdf_not_here_yet_is_downloaded_first_and_an_archive_that_cant_send_it_is_a_502`|An item's PDF not here yet is downloaded first; an archive that can't send it is a 502.|
+
 ## `test_add_items.py`
 
 A series' items listed from the archive (a fake archive here) and added to its list, one by one or the whole list as a queued task, then run into that series.

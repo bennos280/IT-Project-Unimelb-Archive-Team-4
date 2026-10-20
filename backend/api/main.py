@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal
 from functools import cache
 import json
@@ -1202,6 +1202,34 @@ def item_scan(collection_id: int, name: str, n: int, width: int = 240, db: Sessi
     if not image:
         raise HTTPException(status_code=404, detail="No scan of this page here.")
     return Response(image, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+class SuggestRequest(BaseModel):
+    item: str #one of the series' items, by number
+    count: int = Field(16, ge=1, le=30) #how many of its pages to show
+    pick: Literal["spread", "random", "range"] = "spread"
+    first: int | None = Field(None, ge=1) #the range, for pick "range"
+    last: int | None = Field(None, ge=1)
+    hint: str = Field("", max_length=1000) #told to the model as is
+
+#page types suggested for a series by the transcription model (Settings), from some of one of its items' pages shown side by
+#side (its PDF is downloaded first if it isn't here, as item_scans does); nothing is added: {pages, types: [{label, description,
+#pages}]}. 409 until a transcription model is chosen; 502 when the model can't answer
+@app.post("/collections/{collection_id}/page-types/suggest")
+def suggest_page_types(collection_id: int, payload: SuggestRequest, db: Session = Depends(get_db)):
+    from backend.pipeline.identify import suggest
+    chosen = chosen_transcription(db, None, None, None)
+    total = item_scans(collection_id, payload.item, db)["pages"]
+    pages = suggest.pick(total, payload.count, payload.pick, payload.first, payload.last)
+    if not pages:  #a range past the item's end, or ending before it starts
+        raise HTTPException(status_code=400, detail=f"That item has {total} page{'' if total == 1 else 's'}: choose pages within them.")
+    known = [t["label"] for t in get_page_types(collection_id, db) if not t["unknown"]]
+    try:
+        types = suggest.suggest(item_pdf(db, collection_id, payload.item), pages, chosen, known, payload.hint)
+    except BaseException as error:  #a failed model call raises SystemExit
+        if isinstance(error, (KeyboardInterrupt, GeneratorExit)):
+            raise
+        raise HTTPException(status_code=502, detail=f"Page types couldn't be suggested: {error}"[:400])
+    return {"pages": pages, "types": types}
 
 #the page types said of an item's pages before it is read (setting its series up on it): page number -> page type
 @app.get("/collections/{collection_id}/items/{name}/labels")

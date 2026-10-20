@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
-import { Box, File, Layers, Plus } from "lucide-react";
+import { Box, File, Layers, Plus, WandSparkles } from "lucide-react";
 
 import AppHeader from "@/components/AppHeader";
 import SeriesHeader from "@/components/SeriesHeader";
@@ -18,6 +18,7 @@ import ChecksSection from "./ChecksSection";
 import FieldRules from "./FieldRules";
 import { cleanRules, parseTemplate, sameRules, type Rules } from "./rules";
 import SetupGuide from "./SetupGuide";
+import SuggestTypesDialog from "./SuggestTypesDialog";
 import { describe } from "./shapes";
 
 export type PageType = { name: string; label: string; builtIn: boolean; unknown: boolean; templateVersion: number | null };
@@ -57,6 +58,7 @@ export default function PageTypesScreen() {
   const [collection, setCollection] = useState<(Collection & SeriesCounts) | null>(null);
   const [loadError, setLoadError] = useState("");
   const [adding, setAdding] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [editing, setEditing] = useState<PageType | null>(null);
 
   const load = useCallback(() =>
@@ -108,6 +110,7 @@ export default function PageTypesScreen() {
                     <p className="text-sm text-muted-foreground">A page is read with its type's template; a type with no template isn't read.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <Button variant="ai" onClick={() => setSuggesting(true)}><WandSparkles /> Suggest page types</Button>
                     <Button onClick={() => setAdding(true)}>Add page type</Button>
                   </div>
                 </div>
@@ -140,6 +143,10 @@ export default function PageTypesScreen() {
         </Tabs>
         )}
       </main>
+      {suggesting && types && (
+        <SuggestTypesDialog collectionId={collectionId} existing={types.filter((t) => !t.unknown).map((t) => t.label)}
+          onClose={() => setSuggesting(false)} onChanged={load} onAdded={() => { setSuggesting(false); load(); }} />
+      )}
       {adding && (
         <AddDialog collectionId={collectionId} onClose={() => setAdding(false)}
           onAdded={(created) => { setAdding(false); setEditing(created); load(); }} />
