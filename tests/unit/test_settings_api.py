@@ -319,19 +319,56 @@ def test_the_reason_a_folder_couldnt_be_opened_is_cut_to_300_characters(client, 
     assert detail == ("The folder couldn't be opened: " + "x" * 500)[:300]
 
 
-def test_a_setup_only_file_opened_here_keeps_this_computers_own_choices(client, db, work, root, tmp_path, monkeypatch):
-    monkeypatch.setattr(main.database, "migrate", lambda url: None)  # the file is as old as this database
-    (root / "backend" / "db").mkdir(parents=True)
+def setup_file(client, tmp_path, version=None):
+    """A setup-only PrestCribe file saved here, at the given migration (None: before the first)."""
     file = tmp_path / "setup.db"
     file.write_bytes(client.get("/state", params={"content": "setup"}).content)
     with sqlite3.connect(file) as setup:
         assert setup.execute("SELECT COUNT(*) FROM app_settings").fetchone()[0] == 0
         setup.execute("CREATE TABLE alembic_version (version_num TEXT)")  # which the test database, built from the models, hasn't
+        if version:
+            setup.execute("INSERT INTO alembic_version VALUES (?)", (version,))
     setup.close()
-    assert client.post("/state", content=file.read_bytes()).json() == {"opened": True}
+    return file.read_bytes()
+
+
+def backups(root):
+    return sorted(path.name for path in (root / "backend" / "db").glob("prestcribe-backup-*.db"))
+
+
+def test_a_setup_only_file_opened_here_keeps_this_computers_own_choices_and_what_was_here_is_backed_up(client, db, work, root, tmp_path):
+    (root / "backend" / "db").mkdir(parents=True)
+    assert client.post("/state", content=setup_file(client, tmp_path)).json() == {"opened": True}
     db.expire_all()
     assert [(row.key, row.value) for row in db.query(models.AppSetting)] == [("page_sorting", "model")]
     assert db.query(models.Page).count() == 0  # the rest is the file's
+    [backup] = backups(root)
+    with sqlite3.connect(root / "backend" / "db" / backup) as kept:
+        assert kept.execute("SELECT page_id FROM pages").fetchall() == [("b/p1",)]
+    kept.close()
+
+
+@pytest.mark.parametrize("body, status, detail", [
+    (b"not a database", 400, "That isn't a PrestCribe file."),
+    ("newer", 409, "That file was saved by a newer PrestCribe. Update this one first (Settings, then About), then open it."),
+])
+def test_a_file_that_cant_be_opened_here_is_refused_and_nothing_here_changes(client, db, work, root, tmp_path, body, status, detail):
+    (root / "backend" / "db").mkdir(parents=True)
+    body = setup_file(client, tmp_path, version="zzz999") if body == "newer" else body
+    refused = client.post("/state", content=body)
+    assert (refused.status_code, refused.json()["detail"]) == (status, detail)
+    db.expire_all()
+    assert db.query(models.Page).count() == 1 and backups(root) == []
+
+
+def test_tasks_waiting_or_running_hold_a_file_back_and_nothing_here_changes(client, db, work, root, tmp_path):
+    (root / "backend" / "db").mkdir(parents=True)
+    db.add(models.Job(kind="check", status="waiting"))
+    db.commit()
+    refused = client.post("/state", content=setup_file(client, tmp_path))
+    assert (refused.status_code, refused.json()["detail"]) == (409, "Wait for the tasks waiting or running to finish (Tasks, top right), then open it.")
+    db.expire_all()
+    assert db.query(models.Page).count() == 1 and backups(root) == []
 
 
 @pytest.fixture
