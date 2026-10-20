@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
-from backend.db import database
+from backend.db import models, database
 from backend.api import main
 from backend import worker
 from backend.pipeline import run
@@ -41,6 +41,15 @@ def setup(tmp_path, monkeypatch):
 
     url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
     database.migrate(url)  # the real tables, built the way the real db is
+    with database.make_engine(url).begin() as con:  # the series the bundle is in, as a PrestCribe file sets it up
+        con.execute(models.Collection.__table__.insert(), [{"collection_id": 1, "name": "Wilfred Prest Survey"}])
+        con.execute(models.PageType.__table__.insert(), [{"name": name, "label": label, "built_in": True, "unknown": name == "other", "collection_id": 1}
+                                                         for name, label in (("main", "Main page"), ("coded", "Coded page"), ("other", "Unknown"))])
+        con.execute(models.RecordLevel.__table__.insert(), [{"collection_id": 1, "position": 1, "name": "survey", "record_key": "number_of_dwelling",
+                                                             "parts": '[{"type": "main", "count": "one", "how": "starts"}, '
+                                                                      '{"type": "coded", "count": "one", "how": "matched"}]'}])
+        con.execute(models.ArchiveItem.__table__.insert(), [{"node": 216441, "collection_id": 1, "identifier": "UMA-ITE-1973000200030",
+                                                             "title": "Prest survey bundle", "pdf": "216441/bundle.pdf"}])
     monkeypatch.setattr(database, "engine", database.make_engine(url))
     db = sessionmaker(autoflush=False, bind=database.engine)()
     main.app.dependency_overrides[main.get_db] = lambda: db
