@@ -299,6 +299,28 @@ Page types added from the review screen, and a page read again as another type.
 | `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |
 | `test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`            | If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.                                                                                                                                                                                 |
 
+## `test_add_items.py`
+
+A series' items listed from the archive (a fake archive here) and added to its list, one by one or the whole list as a queued task, then run into that series.
+
+|Test|What it checks|
+|---|---|
+|`test_a_series_items_are_listed_from_the_archive_saying_which_have_scans_and_which_are_listed_already`|A page of a series' list comes back with each item's title, identifier and number; an item with no scans or for the Reading Room only can't be downloaded; one a series lists is marked; the search and page are asked for oldest first.|
+|`test_listing_needs_a_series_linked_to_an_archive_that_answers`|A series with no archive series can't list items (400), and an archive that can't be reached says so (502).|
+|`test_chosen_items_are_added_once_the_archive_shows_them_in_this_series`|Chosen items are added once the archive's page shows each in this series; one of another series, one a series lists already, and a number the archive doesn't know are refused with the reason; no download page is read.|
+|`test_an_added_item_is_listed_and_run_under_its_series_only`|An added item is listed under its series, not the Prest survey's, can be run, and its job counts on its series only.|
+|`test_a_series_linked_without_its_identifier_checks_items_against_the_archives`|A series stored without its archive identifier checks items against the identifier the archive shows for it, and refuses to add when the archive shows none.|
+|`test_an_item_number_out_of_range_is_refused`|An item number below 1 or too big for the db is refused with the reason.|
+|`test_adding_a_series_whole_list_is_queued_and_the_worker_adds_each_downloadable_item_no_series_lists`|Adding a whole list (or a search's) queues a task, once per series at a time; the worker goes through every page of it, saving each downloadable item no series lists, and its progress counts the items gone through of those listed.|
+|`test_a_list_too_long_for_the_archive_to_show_is_added_a_box_at_a_time_and_logged`|A list the archive can't show whole (10,000 or more) is gone through a unit (box) at a time, without paging the capped list, and counted against the series' item count. Each page it reads is logged with its box, how many it has read and added, and the end with how many it skipped. An item listed by hand while the task runs isn't counted as added by it.|
+|`test_adding_a_list_from_an_archive_that_cant_be_reached_fails_the_task_with_the_reason`|A task that can't reach the archive, even when asked again, fails with the reason.|
+|`test_tasks_say_what_each_job_is_how_far_it_has_got_and_where_to_see_it`|The Tasks list gives running tasks first, then finished ones newest first, each with what it is, its progress in items or pages, its error, its series and where to see it.|
+|`test_a_task_comes_with_its_log_oldest_first_when_it_started_what_it_has_added_and_whether_a_worker_runs`|One task comes with its own lines in the worker's log and the files it rotated to, oldest first, from its last "started" line on (not an older db's job with its id, and none for a waiting task), and when it started (the log's local time as UTC); what its latest count line says it has added and skipped; an items task's series' items now; and whether a worker is running, from its heartbeat file (unknown with none, no after a minute without a beat). A task not yet started has no log, and one that isn't there is a 404.|
+|`test_a_run_saves_the_series_it_is_loaded_into`|A run's manifest names the series its item is loaded into.|
+|`test_an_added_items_pdf_is_its_newest_original_looked_up_when_it_is_downloaded`|An added item's PDF is its newest original, found on its download page when it is downloaded; an item with none says so.|
+|`test_a_page_takes_only_a_page_type_of_its_own_series`|Changing a page's type to another series' type is refused.|
+|`test_an_upload_cant_take_the_number_of_an_item_added_from_the_archive`|An upload can't use the number of an item added from the archive, nor give another number a PDF named as that item's.|
+
 ## `test_series_items.py`
 
 A series' dashboard asks for a page of its items at a time, searched, filtered and counted on the server.

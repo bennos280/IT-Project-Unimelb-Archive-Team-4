@@ -552,13 +552,15 @@ def bundle_jobs(db, collection_id):
             "failed": sum(job.status == "failed" and PurePosixPath(job.pdf.replace("\\", "/")).stem not in loaded for job in latest.values())}
 
 #a collection, and with db how far along it is: bundles loaded (processed), being processed or failed; pages, those in a survey
-#(reviewable) and reviewed; what needs a person (pages of its Unknown type, open flags); and whether its pages group into records (a type starts one of
+#(reviewable) and reviewed; what needs a person (pages of its Unknown type, open flags); how far it is set up (page types
+#other than Unknown, and how many of them have a template); and whether its pages group into records (a type starts one of
 #its top level); with its levels of record, top first, and what one record is called
 def collection_json(c, db=None):
     found = {}
     if db is not None:
         pages = [p for b in cached_progress(db) if b["collectionId"] == c.collection_id for p in b["pages"]]
         reviewable = [p for p in pages if p["surveyId"] is not None]
+        templates = instructions.newest(db)
         types = db.query(models.PageType).filter_by(collection_id=c.collection_id).all()
         unknown = {t.name for t in types if t.unknown}
         jobs = bundle_jobs(db, c.collection_id)
@@ -566,6 +568,7 @@ def collection_json(c, db=None):
                  "reviewable": len(reviewable), "reviewed": sum(p["status"] == "Reviewed" for p in reviewable),
                  "unknownPages": db.query(models.Page).filter(models.Page.category.in_(unknown)).count(),
                  "flagged": sum(p["flagCount"] for p in pages),
+                 "pageTypes": len(types) - len(unknown), "templates": sum(t.name in templates for t in types if not t.unknown),
                  "grouped": grouping.grouped(db, c.collection_id)}
     levels = grouping.levels(object_session(c), c.collection_id)
     return {"id": c.collection_id, "name": c.name, "levels": [grouping.level_json(level) for level in levels],
