@@ -316,13 +316,32 @@ How pages are sorted into page types: on this computer (PyTorch) or by the readi
 
 ## `test_settings_api.py`
 
-What the home page's Save a PrestCribe file ask of the API: `GET /state`.
+What the Settings page's Updates card and Open folder buttons and the home page's Save a PrestCribe file ask of the API: `GET /version`, `POST /update`, `POST /folders/{which}/open` and `GET /state`. Nothing is fetched from GitHub, no installer is started, no folder is opened (what would open one is only recorded, under each platform in turn, inside a temporary folder), and the timer that stops this copy after an update is only recorded: the real one would end the test run.
 
 |Test|What it checks|
 |---|---|
+|`test_a_copy_not_installed_from_a_release_has_no_version_and_isnt_updatable`|With no `VERSION` file, the current version is none, the latest release is GitHub's (asked once, with a time limit), and it isn't updatable.|
+|`test_an_installed_copy_is_updatable_only_when_the_latest_release_is_another_version`|The version is read from `VERSION`, trimmed; it is updatable when the latest release differs, not when it is the same.|
+|`test_when_github_cant_be_reached_or_understood_the_error_is_said_and_nothing_is_updatable` — 3 cases|A failed request, a reply with no release, or one that isn't JSON gives no latest release, no notes, "Couldn't reach GitHub to check for updates." and not updatable.|
+|`test_the_latest_releases_notes_are_its_body_trimmed_and_cut_to_5000_characters_or_none` — 8 cases|`notes` is the latest release's body with the space around it trimmed, then cut to 5000 characters; none when the body is missing, null or not text (a number, a list, an object).|
+|`test_the_time_it_was_checked_is_now_in_utc`|`checkedAt` is an ISO time in UTC between just before and just after the request.|
+|`test_the_computer_it_runs_on_is_given_with_whether_pages_can_be_sorted_on_it` — 2 cases|`system` holds `os` (ending in the chip), this Python's version and `pytorch`, whether PyTorch is installed here (true or false).|
+|`test_the_system_is_named_with_its_version_and_chip` — 3 cases|`system_info()` names Windows and Linux by system, release and chip, and a Mac as "macOS" with its macOS version (not the kernel's) and chip.|
+|`test_a_copy_not_installed_from_a_release_cant_be_updated_and_is_told_to_use_git`|`POST /update` on such a copy is a 400 saying to update it with git pull, and starts nothing.|
+|`test_updating_starts_the_installer_in_its_own_process_for_this_folder_then_stops_this_copy`|On an installed copy it answers 202, fetches the installer from the latest release (with a 10 second limit), starts it in its own process (a new console on Windows) for this folder, and sets a one-second timer to stop this copy.|
+|`test_tasks_waiting_or_running_hold_an_update_back_and_nothing_is_started`|With a task waiting or running, `POST /update` is a 409 ("Wait for the tasks to finish before updating.") and starts nothing.|
+|`test_an_installer_that_cant_be_downloaded_is_a_502_and_nothing_is_started`|An installer that can't be fetched is a 502 ("Couldn't download the installer: ...") and starts nothing.|
+|`test_a_folder_with_an_apostrophe_is_escaped_in_the_windows_installer_command_which_waits_for_enter_if_it_fails`|On Windows a folder name with an apostrophe is escaped in the PowerShell command, which prints the failure and waits for Enter.|
+|`test_a_folder_with_an_apostrophe_is_quoted_in_the_installer_command_on_a_mac_or_linux_which_runs_only_a_downloaded_script`|On a Mac or Linux the folder is shell-quoted and the installer is run only once downloaded to a file, never piped as it arrives.|
 |`test_a_saved_file_holds_everything_unless_only_the_setup_is_asked_for`|`GET /state` has every table's rows, named `.prestcribe`; `?content=everything` is the same.|
 |`test_a_setup_only_file_keeps_the_series_and_how_theyre_read_but_no_pages_or_this_computers_choices`|`?content=setup` keeps the series, page types, record levels and people, leaves out bundles, pages, fields and this computer's settings, is named "PrestCribe setup", and leaves what is here as it was.|
 |`test_a_file_can_be_saved_as_only_everything_or_the_setup`|Any other `content` is refused (422).|
+|`test_a_folder_is_made_and_opened_the_way_this_computer_opens_folders` — 6 cases|`POST /folders/data/open` and `/folders/output/open` make the folder (and the ones above it) and answer 204 with nothing; it is opened with `os.startfile` on Windows, `open` on a Mac and `xdg-open` elsewhere, with the folder's full path.|
+|`test_a_folder_already_there_is_opened_as_it_is`|A folder that is there is not made again, what is in it is kept, and it can be opened again.|
+|`test_only_the_data_and_output_folders_can_be_opened` — 3 cases|Any other `which` (`elsewhere`, `DATA`, `scans`) is refused (422): nothing is made or opened.|
+|`test_a_folder_that_cant_be_opened_is_a_500_saying_why` — 3 cases|An `OSError` from `os.startfile` (Windows) or from starting `open` or `xdg-open` is a 500, "The folder couldn't be opened: ..." with the error.|
+|`test_a_folder_that_cant_be_made_is_a_500_and_nothing_is_opened`|A file where the folder should be is a 500 with the same message, and nothing is opened.|
+|`test_the_reason_a_folder_couldnt_be_opened_is_cut_to_300_characters`|The whole message, "The folder couldn't be opened: ..." included, is cut to 300 characters.|
 |`test_a_setup_only_file_opened_here_keeps_this_computers_own_choices`|`POST /state` with a setup-only file (no app settings) keeps this computer's own settings, such as page sorting, and takes the rest from the file.|
 |`test_a_check_that_cant_download_the_sorting_model_says_to_check_the_internet` — 5 cases|`POST /page-sorting/check` failing with a URL, connection, name lookup or `requests`-style connection error, or one caused by such an error, says to check the internet.|
 |`test_a_check_that_fails_any_other_way_doesnt_blame_the_internet` — 3 cases|Any other failure (a DLL that won't load, a missing file, a bad value) is "Page sorting on this computer failed: ..." with the error.|

@@ -10,6 +10,7 @@ from functools import cache
 import json
 import os
 import re
+import shlex
 import socket
 from pathlib import Path, PurePosixPath
 import sqlite3
@@ -933,6 +934,20 @@ def set_active_sorting_model(payload: ActiveModelRequest, db: Session = Depends(
 def get_folders():
     return {key.lower(): str((ROOT / settings()[key]).resolve()) for key in ("DATA", "OUTPUT")}
 
+#opens the scans' or the results' folder in Explorer or Finder, on the computer PrestCribe runs on
+@app.post("/folders/{which}/open", status_code=204)
+def open_folder(which: Literal["data", "output"]):
+    import subprocess
+    folder = (ROOT / settings()[which.upper()]).resolve()
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        if sys.platform == "win32":
+            os.startfile(folder)
+        else:
+            subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(folder)])
+    except OSError as error:
+        raise HTTPException(status_code=500, detail=f"The folder couldn't be opened: {error}"[:300])
+
 #a transcription's provider, model and effort: the ones given, else the saved choice; 409 when either is still missing
 def chosen_transcription(db, provider, model, effort):
     saved = app_settings.transcription_defaults(db) or {}
@@ -1723,3 +1738,62 @@ def check_page_sorting():
             return {"ok": False, "detail": f"Page sorting on this computer failed: {type(error).__name__}: {error}"[:400]}
         _checked.update(ok=True, seconds=round(time.monotonic() - started, 1))
         return dict(_checked)
+
+
+#--UPDATES--# an installed copy (install.ps1 or install.sh; its release wrote VERSION) can see the latest release and update to it
+RELEASES = "https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4/releases"
+LATEST = "https://api.github.com/repos/bennos280/IT-Project-Unimelb-Archive-Team-4/releases/latest"
+
+def installed_version():
+    version = ROOT / "VERSION"
+    return version.read_text(encoding="utf-8").strip() if version.is_file() else None
+
+#the computer PrestCribe runs on, for a problem report: its system, Python, and whether pages can be sorted on it
+def system_info():
+    import platform
+    name = f"macOS {platform.mac_ver()[0]}" if sys.platform == "darwin" else f"{platform.system()} {platform.release()}"
+    return {"os": f"{name} ({platform.machine()})", "python": platform.python_version(),
+            "pytorch": app_settings.local_sorting_available()}
+
+#this copy's version (None: not installed from a release, e.g. a git checkout), the latest release's, whether
+#to update, when this was checked, and the computer it runs on
+@app.get("/version")
+def get_version():
+    import urllib.request
+    current, latest, error = installed_version(), None, None
+    try:
+        request = urllib.request.Request(LATEST, headers={"Accept": "application/vnd.github+json", "User-Agent": "PrestCribe"})
+        with urllib.request.urlopen(request, timeout=10) as reply:
+            latest = json.loads(reply.read().decode("utf-8"))["tag_name"]
+    except Exception:
+        error = "Couldn't reach GitHub to check for updates."
+    return {"current": current, "latest": latest, "releases": RELEASES, "error": error,
+            "updatable": bool(current and latest and latest != current),
+            "checkedAt": datetime.now(timezone.utc).isoformat(), "system": system_info()}
+
+#updates an installed copy: the installer is run again in its own window, for this folder, once this copy has stopped (it
+#starts PrestCribe again when it's done); the database, scans and results are kept
+@app.post("/update", status_code=202)
+def update(db: Session = Depends(get_db)):
+    import subprocess, urllib.request
+    if not installed_version():
+        raise HTTPException(status_code=400, detail="This copy wasn't installed from a release: update it with git pull.")
+    if db.query(models.Job).filter(models.Job.status.in_(("waiting", "running"))).first():
+        raise HTTPException(status_code=409, detail="Wait for the tasks to finish before updating.")
+    installer = f"{RELEASES}/latest/download/install.{'ps1' if sys.platform == 'win32' else 'sh'}"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(installer, headers={"User-Agent": "PrestCribe"}), timeout=10):
+            pass
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Couldn't download the installer: {error}"[:300])
+    if sys.platform == "win32":
+        folder = re.sub("['‘’‚‛]", lambda quote: quote[0] * 2, str(ROOT))  #PowerShell's single quotes, curly ones too
+        script = (f"try {{ Start-Sleep 5; & ([scriptblock]::Create((irm '{installer}'))) -Folder '{folder}' }} "
+                  f"catch {{ Write-Host ('The update failed: ' + $_); Read-Host 'Press Enter to close this window' }}")
+        subprocess.Popen(["powershell", "-ExecutionPolicy", "ByPass", "-NoProfile", "-Command", script],
+                         creationflags=subprocess.CREATE_NEW_CONSOLE)
+    else:
+        script = f'sleep 5; f=$(mktemp) && curl -LsSf "{installer}" -o "$f" && PRESTCRIBE_HOME={shlex.quote(str(ROOT))} sh "$f"; rm -f "$f"'
+        subprocess.Popen(["sh", "-c", script], start_new_session=True)
+    threading.Timer(1, os._exit, [0]).start()  #this copy stops, so its files can be replaced; the worker stops with it
+    return {"updating": True}

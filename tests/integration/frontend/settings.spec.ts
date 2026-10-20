@@ -12,7 +12,13 @@ type Defaults = { provider: string; model: string; effort: string };
 const SAVED: Defaults = { provider: "claude", model: "claude-saved-model", effort: "high" };
 const APP: Defaults = { provider: "codex", model: "gpt-app-model", effort: "medium" };
 const FOLDERS = { data: "C:\\projects\\survey\\data", output: "C:\\projects\\survey\\output" };
-const ACCOUNTS = "/?view=settings&tab=accounts"; // the other tabs are hidden until opened: Accounts and API keys
+const RELEASES = "https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4/releases";
+const REPO = "https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4";
+const SYSTEM = { os: "Windows 11", python: "3.12.4", pytorch: true };
+const CHECKED_AT = "2026-10-20T04:05:00Z";
+const UP_TO_DATE = { current: "v0.2.0", latest: "v0.2.0", releases: RELEASES, error: null, updatable: false, checkedAt: CHECKED_AT, system: SYSTEM };
+const ACCOUNTS = "/?view=settings&tab=accounts"; // the other tabs are hidden until opened: Accounts and API keys, and About below
+const ABOUT = "/?view=settings&tab=about";
 type Options = {
   defaults?: Defaults | null; // the saved choice; null: nothing saved yet; left out: SAVED
   saveError?: string; // a 400 for PUT /transcription-defaults
@@ -24,6 +30,11 @@ type Options = {
   sortingCheck?: object; // the body of POST /api/page-sorting/check; left out: it passes
   sortingModels?: object[]; // the body of GET /api/sorting-models
   sortingInstall?: { installable?: boolean; detail?: string; result?: { ok: boolean; detail?: string } }; // GET /api/page-sorting/install (installable left out: it is); result: how an install started with POST ends
+  version?: object; // the body of GET /api/version; left out: UP_TO_DATE
+  versionFails?: boolean; // GET /api/version answers 500 (calls.versionFails changes it later)
+  foldersFail?: boolean; // GET /api/folders answers 500
+  openError?: string; // POST /api/folders/<which>/open answers 500 with this detail (calls.openError changes it later)
+  updateStatus?: number; // the status of POST /api/update; left out: 202
   apiKeys?: object[]; // the body of GET /api/api-keys
 };
 
@@ -33,10 +44,15 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
   const gate = options.gateTests ? new Promise<void>((resolve) => { release = resolve; }) : null;
   const apiKeys = options.apiKeys ?? [];
   const calls = {
-    get: 0, apiKeys, post: [] as string[], delete: [] as string[], loginBody: [] as unknown[],
+    get: 0, updates: 0, apiKeys, post: [] as string[], delete: [] as string[], loginBody: [] as unknown[],
     put: [] as unknown[], deletes: 0, logout: [] as string[], logoutBody: [] as unknown[], tests: [] as string[], testBody: [] as unknown[],
     release: () => release(),
+    versions: 0, versionBody: options.version ?? UP_TO_DATE, versionFails: options.versionFails ?? false, opened: [] as string[],
+    openError: options.openError ?? "",
+    // Holds the replies to GET /api/version until the returned function is called.
+    holdVersion: () => { let open = () => {}; versionGate = new Promise<void>((resolve) => { open = resolve; }); return open; },
   };
+  let versionGate: Promise<void> | null = null;
   const sorting = {
     method: options.sorting ?? "model", unsure: "review", sorter: null as unknown, localAvailable: options.localSorting ?? true,
     saved: [] as unknown[], checks: 0, active: [] as unknown[], retrains: [] as unknown[], installs: 0,
@@ -58,7 +74,13 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
       calls.deletes++;
       return route.fulfill({ status: 405, json: { detail: "Method Not Allowed" } });
     }
-    if (path === "/api/folders") return route.fulfill({ json: FOLDERS });
+    const opened = path.match(/^\/api\/folders\/(data|output)\/open$/);
+    if (opened && request.method() === "POST") {
+      calls.opened.push(opened[1]);
+      return calls.openError ? route.fulfill({ status: 500, json: { detail: calls.openError } }) : route.fulfill({ status: 204 });
+    }
+    if (path === "/api/folders")
+      return options.foldersFail ? route.fulfill({ status: 500, json: { detail: "No folders." } }) : route.fulfill({ json: FOLDERS });
     if (logout && request.method() === "POST") {
       calls.logout.push(logout[1]);
       calls.logoutBody.push(request.postDataJSON());
@@ -128,6 +150,15 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
       return route.fulfill({ status: 202, json: {} });
     }
     if (path === "/api/sorting-models") return route.fulfill({ json: options.sortingModels ?? [] });
+    if (path === "/api/version") {
+      calls.versions++;
+      await versionGate;
+      return calls.versionFails ? route.fulfill({ status: 500, json: { detail: "No version." } }) : route.fulfill({ json: calls.versionBody });
+    }
+    if (path === "/api/update" && request.method() === "POST") {
+      calls.updates++;
+      return route.fulfill({ status: options.updateStatus ?? 202, json: options.updateStatus ? { detail: "This copy wasn't installed from a release: update it with git pull." } : { updating: true } });
+    }
     if (path === "/api/api-keys") return route.fulfill({ json: apiKeys });
     if (path === "/api/collections/1/items")
       return route.fulfill({ json: { items: [], page: 0, total: 0, all: 0, totals: { total: 0, reviewable: 0, unassigned: 0, reviewed: 0, ready: 0 } } });
@@ -155,7 +186,7 @@ const OPTIONS = {
 
 const claude = (page: Page) => page.getByRole("group", { name: "Claude Code" });
 const codex = (page: Page) => page.getByRole("group", { name: "Codex CLI" });
-const TABS = ["Transcription", "Accounts and API keys"];
+const TABS = ["Transcription", "Accounts and API keys", "About"];
 const tab = (page: Page, name: string) => page.getByRole("tab", { name, exact: true });
 const panel = (page: Page, name: string) => page.getByRole("tabpanel", { name, exact: true });
 
@@ -581,20 +612,21 @@ test("the page has a Settings heading and subtitle above the tabs, and each tab 
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.getByText("How pages are read, and the accounts that read them", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "PrestCribe" })).toBeVisible();
-  const headings = [["Transcription", ["Transcription model", "Page sorting"]], ["Accounts and API keys", ["Accounts", "API keys"]]] as const;
+  const headings = [["Transcription", ["Transcription model", "Page sorting"]], ["Accounts and API keys", ["Accounts", "API keys"]],
+    ["About", ["PrestCribe v0.2.0", "Where your files are", "Help"]]] as const;
   for (const [name, titles] of headings) {
     await tab(page, name).click();
     for (const title of titles) await expect(panel(page, name).getByRole("heading", { name: title, level: 2 })).toBeVisible();
   }
 });
 
-test("Settings has tabs, Transcription first, and the other tabs' sections stay on the page, hidden", async ({ page }) => {
+test("Settings has three tabs, Transcription first, and the other tabs' sections stay on the page, hidden", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
   await page.goto("/?view=settings");
   await expect(page.getByRole("tablist", { name: "Settings" }).getByRole("tab")).toHaveText(TABS);
   await expect(tab(page, "Transcription")).toHaveAttribute("aria-selected", "true");
   for (const id of ["transcription-defaults", "page-sorting"]) await expect(page.locator(`section#${id}`)).toBeVisible();
-  for (const id of ["connections", "api-keys"]) {
+  for (const id of ["connections", "api-keys", "updates", "folders", "help"]) {
     await expect(page.locator(`section#${id}`)).toHaveCount(1);
     await expect(page.locator(`section#${id}`)).toBeHidden();
   }
@@ -607,12 +639,18 @@ test("a tab opens from ?tab=, clicking one shows it and puts it in the URL, and 
   await expect(page.locator("section#connections")).toBeVisible();
   await expect(page.locator("section#transcription-defaults")).toBeHidden();
 
+  await tab(page, "About").click();
+  await expect(page).toHaveURL(/\/\?view=settings&tab=about$/);
+  await expect(page.locator("section#updates")).toBeVisible();
+  await expect(page.locator("section#connections")).toBeHidden();
   await tab(page, "Transcription").click();
   await expect(page).toHaveURL(/\/\?view=settings&tab=transcription$/);
   await expect(page.locator("section#transcription-defaults")).toBeVisible();
 
   await page.goto("/?view=settings&tab=nonsense");
   await expect(tab(page, "Transcription")).toHaveAttribute("aria-selected", "true");
+  await page.goto(ABOUT);
+  await expect(tab(page, "About")).toHaveAttribute("aria-selected", "true");
 });
 
 test("switching tabs loads nothing again and keeps what was typed", async ({ page }) => {
@@ -623,6 +661,8 @@ test("switching tabs loads nothing again and keeps what was typed", async ({ pag
   await field(page, "Model").fill("typed-model");
   await tab(page, "Accounts and API keys").click();
   await expect(claude(page).getByRole("button", { name: "Test connection" })).toBeVisible();
+  await tab(page, "About").click();
+  await expect(page.locator("section#updates")).toContainText("Up to date");
   await tab(page, "Transcription").click();
   await expect(field(page, "Model")).toHaveValue("typed-model");
   expect(calls.get).toBe(loaded);
@@ -668,15 +708,293 @@ test("the Used for transcription tag is on the saved provider's card from the st
   await expect(usedTag(codex(page))).toHaveCount(0);
 });
 
-test("the folders are shown read-only with their note", async ({ page }) => {
-  await mockApi(page, { claude: ready(), codex: conn() }, { defaults: null });
-  await page.goto("/?view=settings");
-  const footer = page.locator("footer", { has: page.getByRole("heading", { name: "Folders", level: 2 }) });
-  await expect(footer).toContainText("Scans: " + FOLDERS.data);
-  await expect(footer).toContainText("Results: " + FOLDERS.output);
-  await expect(footer).toContainText("Inside the project folder.");
-  await expect(footer.locator("code")).toHaveText([FOLDERS.data, FOLDERS.output]);
-  await expect(footer.locator("input, button, select, textarea")).toHaveCount(0);
+const updates = (page: Page) => page.locator("section#updates");
+const statusLine = (page: Page) => updates(page).locator("p[role=status]");
+const copied = (page: Page) => updates(page).locator("span[role=status]");
+const AVAILABLE = { ...UP_TO_DATE, current: "v0.1.0", updatable: true };
+// The time shown for the check, as this browser formats it.
+const checkedTime = (page: Page) => page.evaluate((iso) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), CHECKED_AT);
+
+const folders = (page: Page) => page.locator("section#folders");
+const NOTE_FILES = "Your work itself is in PrestCribe's database: save it as a PrestCribe file from the home page.";
+
+test("the folders list Scans and Results with their paths, an Open folder button each, and the note", async ({ page }) => {
+  await mockApi(page, { claude: ready(), codex: conn() });
+  await page.goto(ABOUT);
+  await expect(folders(page).getByRole("heading", { name: "Where your files are", level: 2 })).toBeVisible();
+  await expect(folders(page).locator("code")).toHaveText([FOLDERS.data, FOLDERS.output]);
+  await expect(folders(page).getByText("Scans", { exact: true })).toBeVisible();
+  await expect(folders(page).getByText("Results", { exact: true })).toBeVisible();
+  await expect(folders(page).getByRole("button")).toHaveCount(2);
+  for (const name of ["Open folder: scans", "Open folder: results"]) await expect(folders(page).getByRole("button", { name })).toHaveText("Open folder");
+  await expect(folders(page)).toContainText(NOTE_FILES);
+  await expect(folders(page).locator("input, select, textarea")).toHaveCount(0);
+  await expect(folders(page).locator(".text-destructive")).toHaveCount(0);
+});
+
+test("each Open folder button sends a POST for its own folder", async ({ page }) => {
+  const calls = await mockApi(page, { claude: ready(), codex: conn() });
+  await page.goto(ABOUT);
+  await expect(folders(page).locator("code")).toHaveCount(2);
+  await folders(page).getByRole("button", { name: "Open folder: scans" }).click();
+  await expect.poll(() => calls.opened).toEqual(["data"]);
+  await folders(page).getByRole("button", { name: "Open folder: results" }).click();
+  await expect.poll(() => calls.opened).toEqual(["data", "output"]);
+  await expect(folders(page).locator(".text-destructive")).toHaveCount(0);
+});
+
+test("a folder the server can't open shows its reason in red, until the next try", async ({ page }) => {
+  const reason = "Couldn't open the folder: no file manager found.";
+  const calls = await mockApi(page, { claude: ready(), codex: conn() }, { openError: reason });
+  await page.goto(ABOUT);
+  await folders(page).getByRole("button", { name: "Open folder: results" }).click();
+  await expect(folders(page).getByText(reason)).toHaveClass(/text-destructive/);
+  expect(calls.opened).toEqual(["output"]);
+  await expect(folders(page).locator("code")).toHaveText([FOLDERS.data, FOLDERS.output]);
+
+  calls.openError = "";
+  await folders(page).getByRole("button", { name: "Open folder: scans" }).click();
+  await expect(folders(page).getByText(reason)).toHaveCount(0);
+  expect(calls.opened).toEqual(["output", "data"]);
+});
+
+test("folders that can't be loaded say so in red, with no paths or buttons, and the note stays", async ({ page }) => {
+  await mockApi(page, { claude: ready(), codex: conn() }, { foldersFail: true });
+  await page.goto(ABOUT);
+  await expect(folders(page).getByText("The folders couldn't be loaded.")).toHaveClass(/text-destructive/);
+  await expect(folders(page).locator("code")).toHaveCount(0);
+  await expect(folders(page).getByRole("button")).toHaveCount(0);
+  await expect(folders(page)).toContainText(NOTE_FILES);
+});
+
+const LATEST_RELEASE = `${RELEASES}/tag/v0.2.0`;
+const help = (page: Page) => page.locator("section#help");
+
+test("Help links to how PrestCribe works and where to report a problem, each in a new tab", async ({ page }) => {
+  await mockApi(page, { claude: ready(), codex: conn() }, { version: UP_TO_DATE });
+  await page.goto(ABOUT);
+  await expect(help(page).getByRole("heading", { name: "Help", level: 2 })).toBeVisible();
+  const links: [string, string | RegExp][] = [["How PrestCribe works", `${REPO}#readme`], ["Report a problem", new RegExp(`^${REPO}/issues/new\\?body=`)]];
+  await expect(help(page).getByRole("link")).toHaveText(links.map(([name]) => name));
+  for (const [name, href] of links) {
+    const link = help(page).getByRole("link", { name });
+    await expect(link).toHaveAttribute("href", href);
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(link).toHaveAttribute("rel", /noopener/);
+  }
+});
+
+test("Report a problem opens a new issue with this copy's version info in its body", async ({ page }) => {
+  const calls = await mockApi(page, { claude: ready(), codex: conn() });
+  const body = (info: string) => `${REPO}/issues/new?body=${encodeURIComponent(`\n\n---\n${info}`)}`;
+  const report = help(page).getByRole("link", { name: "Report a problem" });
+  await page.goto(ABOUT);
+  await expect(report).toHaveAttribute("href",
+    `${REPO}/issues/new?body=%0A%0A---%0APrestCribe%20v0.2.0%0AWindows%2011%0APython%203.12.4%0APage%20sorting%20on%20this%20computer%3A%20available`);
+
+  calls.versionBody = { ...UP_TO_DATE, current: null, latest: "v0.3.0", system: { os: "macOS 15.1", python: "3.11.9", pytorch: false } };
+  await updates(page).getByRole("button", { name: "Check again" }).click();
+  await expect(report).toHaveAttribute("href",
+    body("PrestCribe (not installed from a release)\nmacOS 15.1\nPython 3.11.9\nPage sorting on this computer: not available"));
+});
+
+test("About names PrestCribe and its version and says this copy is up to date and when it was checked, with no Update now", async ({ page }) => {
+  await mockApi(page, { claude: ready(), codex: conn() });
+  await page.goto(ABOUT);
+  await expect(updates(page).getByRole("heading", { name: "PrestCribe v0.2.0", level: 2 })).toBeVisible();
+  await expect(updates(page).getByRole("heading", { level: 2 }).locator("span")).toHaveText("v0.2.0");
+  await expect(updates(page)).toContainText("Made by IT Project Team 4 at the University of Melbourne, for the University of Melbourne Archives.");
+  await expect(updates(page).locator("img")).toHaveAttribute("src", "/favicon.svg");
+  await expect(statusLine(page)).toHaveText(`Up to date · checked at ${await checkedTime(page)}.`);
+  await expect(updates(page).getByRole("button")).toHaveText(["Check again", "Copy version info"]);
+  await expect(updates(page).getByRole("button", { name: "Update now" })).toHaveCount(0);
+  await expect(updates(page).locator("details")).toHaveCount(0);
+  await expect(copied(page)).toHaveText("");
+});
+
+test("while the version is being checked it says so and Check again is disabled; if it can't be reached it says so and Check again recovers", async ({ page }) => {
+  const calls = await mockApi(page, { claude: ready(), codex: conn() }, { versionFails: true });
+  const check = updates(page).getByRole("button", { name: "Check again" });
+  const release = calls.holdVersion();
+  await page.goto(ABOUT);
+  await expect(statusLine(page)).toHaveText("Checking for updates…");
+  await expect(check).toBeDisabled();
+  await expect(updates(page).getByRole("heading", { level: 2 })).toHaveText("PrestCribe");
+  release();
+
+  await expect(statusLine(page)).toHaveText("Couldn't check for updates.");
+  await expect(check).toBeEnabled();
+  await expect(updates(page).getByRole("button")).toHaveText(["Check again"]); // nothing to copy or update yet
+  await expect(updates(page).getByRole("button", { name: "Copy version info" })).toHaveCount(0);
+  await expect(updates(page).getByRole("link", { name: /What's new/ })).toHaveCount(0); // not until the check has answered
+  await expect(help(page).getByRole("link", { name: "Report a problem" })).toHaveAttribute("href", `${REPO}/issues/new`);
+
+  calls.versionFails = false;
+  const asked = calls.versions;
+  await check.click();
+  await expect(statusLine(page)).toHaveText(`Up to date · checked at ${await checkedTime(page)}.`);
+  expect(calls.versions).toBe(asked + 1);
+  await expect(updates(page).getByRole("heading", { name: "PrestCribe v0.2.0", level: 2 })).toBeVisible();
+  await expect(updates(page).getByRole("button")).toHaveText(["Check again", "Copy version info"]);
+  await expect(updates(page).getByRole("link", { name: "What's new in v0.2.0" })).toHaveAttribute("href", LATEST_RELEASE);
+});
+
+test("Check again asks for the version again and shows what it finds", async ({ page }) => {
+  const calls = await mockApi(page, { claude: ready(), codex: conn() }, { version: AVAILABLE });
+  await page.goto(ABOUT);
+  await expect(statusLine(page)).toHaveText("v0.2.0 is available.");
+  const asked = calls.versions;
+  const release = calls.holdVersion();
+  calls.versionBody = { ...AVAILABLE, current: "v0.2.0", updatable: false };
+  await updates(page).getByRole("button", { name: "Check again" }).click();
+  await expect(statusLine(page)).toHaveText("Checking for updates…");
+  await expect(updates(page).getByRole("button", { name: "Check again" })).toBeDisabled();
+  await expect(updates(page).getByRole("button", { name: "Update now" })).toBeVisible(); // the last answer stays until the new one arrives
+  release();
+  await expect(statusLine(page)).toHaveText(`Up to date · checked at ${await checkedTime(page)}.`);
+  expect(calls.versions).toBe(asked + 1);
+  await expect(updates(page).getByRole("button", { name: "Update now" })).toHaveCount(0);
+  await expect(updates(page).getByRole("heading", { name: "PrestCribe v0.2.0", level: 2 })).toBeVisible();
+});
+
+// The clipboard's text, its line breaks as \n (Windows keeps them as \r\n there).
+const clipboard = async (page: Page) => (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
+
+test("Copy version info puts the version and the computer's details on the clipboard and says Copied.", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await mockApi(page, { claude: ready(), codex: conn() });
+  await page.goto(ABOUT);
+  await expect(copied(page)).toHaveText("");
+  await updates(page).getByRole("button", { name: "Copy version info" }).click();
+  await expect(copied(page)).toHaveText("Copied.");
+  expect(await clipboard(page)).toBe("PrestCribe v0.2.0\nWindows 11\nPython 3.12.4\nPage sorting on this computer: available");
+});
+
+test("a copy not installed from a release copies that, and a computer without PyTorch says page sorting isn't available", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const system = { os: "Ubuntu 24.04", python: "3.12.3", pytorch: false };
+  await mockApi(page, { claude: ready(), codex: conn() }, { version: { ...UP_TO_DATE, current: null, system } });
+  await page.goto(ABOUT);
+  await updates(page).getByRole("button", { name: "Copy version info" }).click();
+  await expect(copied(page)).toHaveText("Copied.");
+  expect(await clipboard(page)).toBe("PrestCribe (not installed from a release)\nUbuntu 24.04\nPython 3.12.3\nPage sorting on this computer: not available");
+});
+
+test("when the browser refuses the copy it says Couldn't copy it.", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("denied")) } });
+  });
+  await mockApi(page, { claude: ready(), codex: conn() });
+  await page.goto(ABOUT);
+  await updates(page).getByRole("button", { name: "Copy version info" }).click();
+  await expect(copied(page)).toHaveText("Couldn't copy it.");
+  await updates(page).getByRole("button", { name: "Check again" }).click();
+  await expect(copied(page)).toHaveText("");
+});
+
+test("About offers the newer release; Update now asks first, then sends the update and says PrestCribe closes", async ({ page }) => {
+  const calls = await mockApi(page, { claude: ready(), codex: conn() }, { version: { ...AVAILABLE, latest: "v0.3.0" } });
+  const asked: string[] = [];
+  let accept = false;
+  page.on("dialog", (dialog) => { asked.push(dialog.message()); return accept ? dialog.accept() : dialog.dismiss(); });
+  await page.goto(ABOUT);
+  await expect(updates(page).getByRole("heading", { name: "PrestCribe v0.1.0", level: 2 })).toBeVisible();
+  await expect(statusLine(page)).toHaveText("v0.3.0 is available.");
+  await expect(updates(page)).not.toContainText("Up to date");
+  await expect(updates(page).getByRole("button")).toHaveText(["Update now", "Check again", "Copy version info"]);
+  await updates(page).getByRole("button", { name: "Update now" }).click();
+  await expect.poll(() => asked).toEqual(["Update to v0.3.0? PrestCribe closes, updates in a new window, then opens again."]);
+  expect(calls.updates).toBe(0);
+  await expect(updates(page).getByRole("button", { name: "Update now" })).toBeVisible();
+
+  accept = true;
+  await updates(page).getByRole("button", { name: "Update now" }).click();
+  await expect(statusLine(page)).toHaveText("Updating: PrestCribe closes now, updates in a new window, then opens again.");
+  expect(calls.updates).toBe(1);
+  await expect(updates(page).getByRole("button")).toHaveText(["Copy version info"]); // nothing else to press while it updates
+  await expect(updates(page)).not.toContainText("is available");
+});
+
+test("while updating it asks for the version every 5 s and reloads once PrestCribe answers again", async ({ page }) => {
+  await page.clock.install();
+  const calls = await mockApi(page, { claude: ready(), codex: conn() }, { version: { ...AVAILABLE, latest: "v0.3.0" } });
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto(ABOUT);
+  await updates(page).getByRole("button", { name: "Update now" }).click();
+  await expect(statusLine(page)).toHaveText("Updating: PrestCribe closes now, updates in a new window, then opens again.");
+  calls.versionFails = true;
+  const asked = calls.versions;
+  await page.clock.runFor(5000);
+  await expect.poll(() => calls.versions).toBe(asked + 1);
+  await expect(statusLine(page)).toHaveText("Updating: PrestCribe closes now, updates in a new window, then opens again.");
+
+  calls.versionFails = false;
+  calls.versionBody = { ...UP_TO_DATE, current: "v0.3.0", latest: "v0.3.0" };
+  const reloaded = page.waitForEvent("load");
+  await page.clock.runFor(5000);
+  await reloaded;
+  await expect(updates(page).getByRole("heading", { name: "PrestCribe v0.3.0", level: 2 })).toBeVisible();
+});
+
+test("an update that hasn't finished after 3 minutes says so, points to the install line, and offers Check again", async ({ page }) => {
+  await page.clock.install();
+  const calls = await mockApi(page, { claude: ready(), codex: conn() }, { version: { ...AVAILABLE, latest: "v0.3.0" } });
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto(ABOUT);
+  await updates(page).getByRole("button", { name: "Update now" }).click();
+  await expect(statusLine(page)).toHaveText("Updating: PrestCribe closes now, updates in a new window, then opens again.");
+  calls.versionFails = true;
+  await page.clock.runFor(3 * 60 * 1000);
+  await expect(statusLine(page)).toHaveText("The update didn't finish. Running the install line from the README again fixes it.");
+  await expect(updates(page).getByRole("button", { name: "Check again" })).toBeEnabled();
+
+  calls.versionFails = false;
+  await updates(page).getByRole("button", { name: "Check again" }).click();
+  await expect(statusLine(page)).toHaveText("v0.3.0 is available.");
+});
+
+test("an update the server refuses shows its reason and keeps Update now", async ({ page }) => {
+  const calls = await mockApi(page, { claude: ready(), codex: conn() }, { version: { ...AVAILABLE, latest: "v0.3.0" }, updateStatus: 400 });
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.goto(ABOUT);
+  await updates(page).getByRole("button", { name: "Update now" }).click();
+  await expect(statusLine(page)).toHaveText("v0.3.0 is available. This copy wasn't installed from a release: update it with git pull.");
+  expect(calls.updates).toBe(1);
+  await expect(updates(page)).not.toContainText("Updating:");
+  await expect(updates(page).getByRole("button", { name: "Update now" })).toBeVisible();
+  await expect(updates(page).getByRole("button", { name: "Check again" })).toBeEnabled();
+});
+
+test("a copy not installed from a release is told it is updated with git, and shows the latest release", async ({ page }) => {
+  await mockApi(page, { claude: ready(), codex: conn() }, { version: { ...UP_TO_DATE, current: null, latest: "v0.3.0" } });
+  await page.goto(ABOUT);
+  await expect(statusLine(page)).toHaveText("Latest release: v0.3.0. A copy not installed from a release is updated with git.");
+  await expect(updates(page).getByRole("heading", { level: 2 })).toHaveText("PrestCribe");
+  await expect(updates(page)).not.toContainText("PrestCribe v");
+  await expect(updates(page).getByRole("button")).toHaveText(["Check again", "Copy version info"]);
+  await expect(updates(page).getByRole("link", { name: "What's new in v0.3.0" })).toHaveAttribute("href", `${RELEASES}/tag/v0.3.0`);
+});
+
+test("when GitHub can't be reached About shows the error in place of the latest release", async ({ page }) => {
+  await mockApi(page, { claude: ready(), codex: conn() },
+    { version: { ...UP_TO_DATE, current: "v0.1.0", latest: null, error: "Couldn't reach GitHub to check for updates." } });
+  await page.goto(ABOUT);
+  await expect(updates(page).getByRole("heading", { name: "PrestCribe v0.1.0", level: 2 })).toBeVisible();
+  await expect(statusLine(page)).toHaveText("Couldn't reach GitHub to check for updates.");
+  await expect(updates(page)).not.toContainText("Up to date");
+  await expect(updates(page).getByRole("button")).toHaveText(["Check again", "Copy version info"]);
+  const link = updates(page).getByRole("link", { name: "What's new", exact: true }); // no latest release to name, so all of them
+  await expect(link).toHaveAttribute("href", RELEASES);
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", /noopener/);
+});
+
+test("What's new links to the latest release's notes on GitHub, in a new tab", async ({ page }) => {
+  await mockApi(page, { claude: ready(), codex: conn() }, { version: UP_TO_DATE });
+  await page.goto(ABOUT);
+  const link = updates(page).getByRole("link", { name: "What's new in v0.2.0" });
+  await expect(link).toHaveAttribute("href", LATEST_RELEASE);
+  await expect(link).toHaveAttribute("target", "_blank");
 });
 
 test("the line under each title is the plan and the version, leaving out what is unknown", async ({ page }) => {
@@ -975,7 +1293,7 @@ test("banner: updates when a sign-in finishes", async ({ page }) => {
   await expect(banner(page)).toHaveCount(0);
 });
 
-test("settings run the banner, the tabs, then each tab's sections in order", async ({ page }) => {
+test("settings run the banner, the tabs, then each tab's sections in order, with no footer", async ({ page }) => {
   await mockApi(page, { claude: conn(), codex: conn() }, { defaults: null }); // the banner is showing
   await page.goto("/?view=settings");
   const top = (locator: ReturnType<Page["locator"]>) => locator.evaluate((el) => el.getBoundingClientRect().top);
@@ -986,7 +1304,7 @@ test("settings run the banner, the tabs, then each tab's sections in order", asy
   expect(h1Top).toBeLessThan(bannerTop);
   expect(bannerTop).toBeLessThan(tabsTop);
   const sections: [string, string[]][] = [["Transcription", ["transcription-defaults", "page-sorting"]],
-    ["Accounts and API keys", ["connections", "api-keys"]]];
+    ["Accounts and API keys", ["connections", "api-keys"]], ["About", ["updates", "folders", "help"]]];
   for (const [name, ids] of sections) {
     await tab(page, name).click();
     await expect.poll(() => panel(page, name).locator(":scope > section").evaluateAll((all) => all.map((el) => el.id))).toEqual(ids);
@@ -997,6 +1315,7 @@ test("settings run the banner, the tabs, then each tab's sections in order", asy
       before = now;
     }
   }
+  await expect(page.locator("footer")).toHaveCount(0);
 });
 
 test("the model row leaves no empty line under it until there is a message", async ({ page }) => {
@@ -1024,16 +1343,20 @@ test("the model row leaves no empty line under it until there is a message", asy
   expect(await gap()).toBe(empty);
 });
 
-test("on a phone the ready line, the sections and the folders footer stack without sideways scroll", async ({ page }) => {
+test("on a phone the ready line and the cards stack, and no tab scrolls sideways", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: ready({ method: "chatgpt" }) });
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto(ACCOUNTS);
   await expect(readyLine(page)).toBeVisible();
-  await expect(page.locator("footer").getByRole("heading", { name: "Folders" })).toBeAttached();
-  await expect(page.locator("footer code")).toHaveCount(2);
   const [a, b] = [(await claude(page).boundingBox())!, (await codex(page).boundingBox())!];
   expect(b.y).toBeGreaterThan(a.y + a.height - 1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(page.locator("section#folders code")).toHaveCount(2); // the About tab's paths and version are loaded before its width is measured
+  await expect(page.locator("section#updates [role=status]").first()).toHaveText(/^Up to date/);
+  for (const name of TABS) {
+    await tab(page, name).click();
+    await expect(panel(page, name)).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
 });
 
 test("the ready line's status element is on the page before the line appears, and stays the same element", async ({ page }) => {

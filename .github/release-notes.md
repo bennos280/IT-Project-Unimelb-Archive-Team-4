@@ -14,7 +14,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://github.com/bennos280/IT-Proje
 curl -LsSf https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4/releases/latest/download/install.sh | sh
 ```
 
-PrestCribe then opens, and is in your Start menu or Applications. Run the same line again to update; your work is kept.
+PrestCribe then opens, and is in your Start menu or Applications. Run the same line again to update (or use **Settings, then About**); your work is kept.
 
 ## Try it
 

@@ -14,6 +14,7 @@ import { backendRequest, providerNames } from "../progress/backend";
 import type { ModelChoice } from "../progress/ModelControls";
 import ApiKeys, { type ApiKey } from "./ApiKeys";
 import PageSorting from "./PageSorting";
+import About from "./About";
 
 const hasKey = (k: ApiKey) => !k.needsKey || k.saved || k.fromEnvironment; // Ollama needs none
 import TranscriptionDefaults from "./TranscriptionDefaults";
@@ -108,28 +109,10 @@ function Checklist({ saved, signedIn, show }: { saved: ModelChoice | null | unde
   );
 }
 
-// Where the scans are read from and the results written: fixed, inside the project, so read-only here.
-function Folders() {
-  const [folders, setFolders] = useState<{ data: string; output: string } | null>(null);
-  useEffect(() => {
-    backendRequest<{ data: string; output: string }>("/folders").then(setFolders).catch(() => setFolders(null));
-  }, []);
-  if (!folders) return null;
-  const path = (value: string) => <code className="rounded bg-muted px-1 py-0.5 font-mono break-all">{value}</code>;
-  return (
-    <footer className="space-y-1 border-t pt-4 text-xs text-muted-foreground">
-      <h2 className="sr-only">Folders</h2>
-      <p>Scans: {path(folders.data)}</p>
-      <p>Results: {path(folders.output)}</p>
-      <p>Inside the project folder.</p>
-    </footer>
-  );
-}
+const TABS = ["transcription", "accounts", "about"];
 
-const TABS = ["transcription", "accounts"];
-
-// Settings in tabs, the one shown kept in the URL (?tab=): Transcription (the model, and page sorting) and Accounts and API keys;
-// they stay loaded, as the checklist above counts them.
+// Settings in tabs, the one shown kept in the URL (?tab=): Transcription (the model, and page sorting), Accounts and API keys, and
+// About (the version and updates, where this copy keeps its files, help); they stay loaded, as the checklist above counts them.
 export default function SettingsScreen() {
   const [tab, setTab] = useState(() => TABS.find((t) => t === new URLSearchParams(location.search).get("tab")) ?? "transcription");
   function show(next: string) {
@@ -236,6 +219,7 @@ export default function SettingsScreen() {
             <TabsList aria-label="Settings">
               <TabsTrigger value="transcription">Transcription</TabsTrigger>
               <TabsTrigger value="accounts">Accounts and API keys</TabsTrigger>
+              <TabsTrigger value="about">About</TabsTrigger>
             </TabsList>
             <TabsContent value="transcription" forceMount className="space-y-8 data-[state=inactive]:hidden">
           <TranscriptionDefaults notReady={notReady} onSaved={setSaved} version={keysVersion} />
@@ -363,8 +347,10 @@ export default function SettingsScreen() {
           </section>
           <ApiKeys onChange={keysChanged} />
             </TabsContent>
+            <TabsContent value="about" forceMount className="space-y-8 data-[state=inactive]:hidden">
+              <About />
+            </TabsContent>
           </Tabs>
-          <Folders />
         </main>
       </TooltipProvider>
       <Dialog open={signingOut !== null} onOpenChange={(open) => { if (!open && !busy) setSigningOut(null); }}>
