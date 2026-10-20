@@ -1,11 +1,15 @@
 """A page type's field rules (backend/db/checks.py): saved with its template version, and a page's values that break them
 flagged for review (kind invalid) when its item is loaded or it is read again."""
 import json
+import shutil
+import sqlite3
+from pathlib import Path
 
 import pytest
 
-from backend.db import checks, models
+from backend.db import checks, database, loader, models
 from tests.unit.test_instructions import TEXTS, main_with, seeded  # noqa: F401 (seeded is a fixture)
+from tests.unit.test_loader import run_folder
 
 STATUS = ["Missing", "Wounded", "POW = Prisoner of war"]
 
@@ -102,6 +106,34 @@ def test_a_templates_rules_are_saved_with_it_changed_alone_and_refused_when_they
     prompt = client.post("/instructions/prompt", json={"body": TEXTS["prompt"] + " ", "basedOn": prompt_id, "reviewerId": 1,
                                                         "rules": rules})
     assert (prompt.status_code, prompt.json()["detail"]) == (400, "The prompt has no fields to set rules on.")
+
+
+def test_a_loaded_items_values_that_break_their_rules_are_flagged_and_a_new_check_replaces_the_last(tmp_path, monkeypatch):
+    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+    shutil.copy(Path(__file__).parents[2] / "setups" / "wilfred-prest-survey.prestcribe", tmp_path / "test.db")  # Prest's setup
+    engine = database.make_engine(url)
+    monkeypatch.setattr(database, "engine", engine)
+    rules = {"type_of_family": {"type": "one_of", "values": ["1 = Complete simple family", "2", "3"]},
+             "normal_household_income": {"type": "number", "max": 300}, "weekly_rent": {"type": "number"},
+             "washouse": {"type": "number", "required": True}}
+    with sqlite3.connect(tmp_path / "test.db") as con:  # the coded card's newest template, with rules
+        body, sha = con.execute("SELECT body, sha256 FROM instruction_versions WHERE kind = 'coded'").fetchone()
+        con.execute("INSERT INTO instruction_versions (kind, body, sha256, rules) VALUES ('coded', ?, ?, ?)", (body, sha, json.dumps(rules)))
+    loader.dump_into_db(run_folder(tmp_path) / "manifest.json")
+
+    def invalid():
+        with sqlite3.connect(tmp_path / "test.db") as con:
+            return con.execute("SELECT page_id, field_title, reason FROM flags WHERE kind = 'invalid' ORDER BY field_title").fetchall()
+    assert invalid() == [("216412_00002", "normal_household_income", "Should be at most 300")]  # weekly_rent is 1[?]: unreadable
+
+    with engine.begin() as con:
+        con.exec_driver_sql("UPDATE fields SET text_raw = '' WHERE field_title = 'washouse'")
+        con.exec_driver_sql("UPDATE instruction_versions SET rules = ? WHERE rules IS NOT NULL",
+                            (json.dumps({**rules, "normal_household_income": {"type": "number"}}),))
+        checks.check_pages(con, ["216412_00001", "216412_00002"])
+    assert invalid() == [("216412_00002", "washouse", "Required, but empty")]
+    with sqlite3.connect(tmp_path / "test.db") as con:  # the other kinds of flag are left alone
+        assert con.execute("SELECT kind FROM flags WHERE kind != 'invalid'").fetchall() == [("inconsistency",)]
 
 
 def test_a_page_read_again_is_checked_against_its_types_rules(client, db, monkeypatch):

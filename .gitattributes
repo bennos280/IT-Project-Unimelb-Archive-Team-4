@@ -4,3 +4,5 @@
 *.jpg binary
 *.png binary
 *.pdf binary
+*.sh text eol=lf
+*.prestcribe binary

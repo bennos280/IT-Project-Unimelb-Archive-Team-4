@@ -225,7 +225,7 @@ test("a survey without item info falls back to the bundle id in the crumb, and t
   await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
 });
 
-for (const [url, crumb, h1] of [["/?view=settings", "Settings", "Settings"], ["/?view=tasks", "Tasks", "Tasks"]]) {
+for (const [url, crumb, h1] of [["/?view=import", "Open a PrestCribe file", "Open a PrestCribe file"], ["/?view=settings", "Settings", "Settings"], ["/?view=tasks", "Tasks", "Tasks"]]) {
   test(`the ${crumb} screen is a crumb after the app's name, with one h1`, async ({ page }) => {
     await mockApi(page);
     await page.goto(url);

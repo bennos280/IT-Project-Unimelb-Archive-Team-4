@@ -219,6 +219,50 @@ def test_a_page_changed_to_another_type_is_checked_against_that_types_rules(clie
     assert flags(series, "invalid") == []  # the Unknown type has no rules
 
 
+def _prest():
+    """The Prest survey's checks and its coded card's rules, as its setup file (setups/wilfred-prest-survey.prestcribe) has them."""
+    import sqlite3
+    from pathlib import Path
+    setup = sqlite3.connect(Path(checks.__file__).parents[2] / "setups" / "wilfred-prest-survey.prestcribe")
+    [(body,)] = setup.execute("SELECT body FROM check_versions").fetchall()
+    [(rules,)] = setup.execute("SELECT rules FROM instruction_versions WHERE kind = 'coded'").fetchall()
+    setup.close()
+    return {c["id"]: c for c in json.loads(body)}, json.loads(rules)
+
+
+PREST_CHECKS, PREST_RULES = _prest()
+
+
+@pytest.mark.parametrize("check, left, right, reason", [  # values as transcribed on the main form and the coded card
+    ("dwelling_number", "24A", "24 a", None),
+    ("dwelling_number", "03", "3", None),
+    ("dwelling_number", "125A", "125", "Number of dwelling (125A) should equal Number of dwelling (125)"),
+    ("dwelling_number", "4.", "265", "Number of dwelling (4.) should equal Number of dwelling (265)"),
+    ("dwelling_number", "10/", "101", None),  # unsure as written
+    ("dwelling_number", "45(1)", "45", None),
+    ("industry_code", "0133", "133", None),
+    ("industry_code", "013.3", "0133", None),  # a code is its digits
+    ("industry_code", "17?", "173", None),
+    ("occupation_code", "4309m", "4309", None),
+    ("occupation_code", "173", "172", "Occupation of head code (173) should equal Occupation of head (172)"),
+    ("municipality", "Camberwell", "03", None),
+    ("municipality", "N. Fitzroy", "03", None),  # a suburb, not a council: can't be told
+    ("municipality", "Brighton", "03", "Municipality (Brighton) should name Municipality 03 (Camberwell)"),
+])
+def test_the_prest_surveys_checks_flag_what_its_validation_did(check, left, right, reason):
+    found = PREST_CHECKS[check]
+    values = {found["left"][0]: left, found["right"][0]: right}
+    lists = lambda ref: PREST_RULES.get(ref.partition(".")[2], {}).get("values")
+    assert checks.check_failure(found, values.get, lists) == reason
+
+
+def test_the_prest_surveys_children_living_and_dead_add_up_to_the_total():
+    found = PREST_CHECKS["children_living_plus_dead"]
+    fields = dict(zip(found["left"] + found["right"], ("2", "3", "5")))
+    assert checks.check_failure(found, fields.get) is None
+    assert checks.check_failure(found, {**fields, found["right"][0]: "6"}.get).startswith("Children of head or wife living + ")
+
+
 @pytest.mark.parametrize("found, problem", [
     ({**ROOMS, "op": "names"}, "Check 1: names compares one field with one coded field"),
     ({**ROOMS, "as": "letters"}, "Check 1: compares as values, or as codes"),
