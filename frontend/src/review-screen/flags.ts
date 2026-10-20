@@ -6,6 +6,8 @@ export const flagCategories = {
   total_mismatch: "Total mismatch",
   count_exceeds_total: "Count exceeds total",
   uncertain: "Uncertain values",
+  invalid: "Breaks its field's rules",
+  check: "Fails a check",
 };
 
 export const flagLabels: Record<Flag["kind"], string> = {

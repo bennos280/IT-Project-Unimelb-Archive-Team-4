@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from backend.db import app_settings
 from backend.pipeline.transcribe import transcribe as transcription
-from backend.pipeline.transcribe.transcribe import run_claude, run_cli, run_codex, schema_for, transcribe
+from backend.pipeline.transcribe.transcribe import full_prompt, run_claude, run_cli, run_codex, schema_for, transcribe
 
 
 @pytest.fixture
@@ -67,11 +67,19 @@ def test_schemafor_recurses_through_nested_structures():
     member = schema["properties"]["household"]["properties"]["members"]["items"]
     assert member["properties"]["name"] == {"type": ["string", "null"]}
 
-@pytest.mark.parametrize("value", [None, "text", 5, True])
+@pytest.mark.parametrize("value", [None, 5, True])
 def test_schemafor_maps_every_scalar_to_string_or_null(value):
     """Whatever placeholder a template uses, the model is asked for text or null.
     """
     assert schema_for(value) == {"type": ["string", "null"]}
+
+
+def test_a_field_given_as_text_is_described_by_it_in_the_schema_and_the_prompt():
+    """A field's description goes to the model, which is told it isn't the answer; a template without any adds nothing."""
+    template = {"status": "Stamped or written at the top", "name": None}
+    assert schema_for(template)["properties"]["status"] == {"type": ["string", "null"], "description": "Stamped or written at the top"}
+    assert full_prompt("Read the card.", template).endswith("answer with what the page shows, not the description.")
+    assert full_prompt("Read the card.", {"name": None}) == 'Read the card.\n\n{\n  "name": null\n}'
 
 def test_schema_for_output_is_json_serialisable():
     """The schema is passed to the CLI via `json.dumps`, so it must serialise.

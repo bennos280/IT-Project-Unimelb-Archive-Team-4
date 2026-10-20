@@ -3,7 +3,7 @@ import json
 from functools import cache
 from pathlib import Path, PurePosixPath
 
-from backend.db import database, models
+from backend.db import checks, database, models
 from backend.common import ROOT, settings
 from backend.pipeline.transcribe import areas
 
@@ -29,6 +29,9 @@ def dump_into_db(manifest_path):
         types = con.exec_driver_sql("SELECT name, unknown FROM page_types WHERE collection_id ="
                                     " (SELECT collection_id FROM bundles WHERE bundle_id = ?)", (bundle_id,)).fetchall()
         page_types, unknown = {name for name, _ in types}, next((name for name, is_unknown in types if is_unknown), None)
+        for record in data.get("records", []):  #parents first; an older run's records are its pages' surveys, all at the top
+            con.exec_driver_sql("INSERT OR IGNORE INTO surveys(survey_id, bundle_id, parent_id) VALUES(?, ?, ?)",
+                                (record["id"], bundle_id, record["parent"]))
         for p in data["pages"]:
             if p.get("path") is None or p.get("label") in (None, "blank"):
                 continue
@@ -39,8 +42,10 @@ def dump_into_db(manifest_path):
                 raise ValueError(f"Bundle {bundle_id}'s collection has no Unknown page type to store {p['file']} as.")
             insert_page(Path(p["file"]).stem, page, stored_path(p["path"]), category,
                         p.get("survey"), bundle_id, con, transcripts.get(p["file"], {}).get("request") if page else None)
-        insert_flags(run_folder / "review.json", con)
-        insert_check_flags(run_folder / "validation" / "output_flagged.json", con)
+        keys = [key for (key,) in con.exec_driver_sql("SELECT record_key FROM record_levels WHERE record_key IS NOT NULL AND"
+                                                     " collection_id = (SELECT collection_id FROM bundles WHERE bundle_id = ?)", (bundle_id,))]
+        insert_flags(run_folder / "review.json", con, keys)
+        checks.check_pages(con, [p for (p,) in con.exec_driver_sql("SELECT page_id FROM pages WHERE bundle_id = ?", (bundle_id,))])
 
 
 #request: how the page was read (from the manifest); its prompt and template hashes find their versions
@@ -109,36 +114,22 @@ def decode(title, raw):
                 meaning = text
     return meaning
 
-#grouping problems become flags, on the page's dwelling number if it has one
-def insert_flags(review_p, con):
+#grouping problems become flags, on the field a problem is about (its level's number field) if the page has it, else on any of
+#its collection's levels' number fields it has
+def insert_flags(review_p, con, keys):
     if not review_p.is_file():
         return
     for entry in json.loads(review_p.read_text(encoding="utf-8")):
         if entry.get("step") != "group":
             continue
         page_id = Path(entry["file"]).stem
-        field = con.exec_driver_sql("""SELECT field_title FROM fields WHERE page_id = ?
-            ORDER BY field_title != 'number_of_dwelling', rowid LIMIT 1""", (page_id,)).fetchone()
+        field = con.exec_driver_sql(f"""SELECT field_title FROM fields WHERE page_id = ?
+            ORDER BY field_title IS NOT ?, field_title NOT IN ({', '.join('?' * len(keys))}), rowid LIMIT 1""",
+                                    (page_id, entry.get("field"), *keys)).fetchone()
         if field is not None: #a blank page isn't in the db
             con.exec_driver_sql("""INSERT INTO flags(page_id, field_title, kind, reason)
                 VALUES(?, ?, 'inconsistency', ?)""", (page_id, field[0], "Grouping: " + entry["reason"].split(": ", 1)[-1]))
 
-#the consistency check's conflicts become flags on the fields they name (a resident's field isn't in fields: skipped);
-#"comparison incomplete" (one side blank or unreadable) isn't a conflict
-def insert_check_flags(check_p, con):
-    if not check_p.is_file():
-        return
-    for survey in json.loads(check_p.read_text(encoding="utf-8"))["surveys"]:
-        pages = {"Page 1": survey["page_files"]["main"], "Page 3": survey["page_files"]["coded"]}
-        for flag in survey["validation_flags"]:
-            if "incomplete" in flag["type"]:
-                continue
-            for path in flag["fields"]:
-                page, _, field_title = path.partition(": ")
-                if page in pages:
-                    con.exec_driver_sql("""INSERT INTO flags(page_id, field_title, kind, reason)
-                        SELECT page_id, field_title, 'inconsistency', ? FROM fields WHERE page_id = ? AND field_title = ?""",
-                        ("Consistency: " + flag["reason"], Path(pages[page]).stem, field_title))
 
 #the first version of kind with this text's hash; None if no version has it
 def version_id(con, kind, sha):
@@ -158,6 +149,8 @@ def archive_owners(db):
 
 #the series a run's item is loaded into: the one it was run for, else the one that lists it; a ValueError if none does
 def series(con, data):
+    if data.get("collection"):
+        return data["collection"]
     owners = dict(con.exec_driver_sql("SELECT CAST(node AS TEXT), collection_id FROM archive_items"
                                       " UNION ALL SELECT bundle, collection_id FROM uploaded_items").fetchall())
     found = series_of(owners, data["input"])

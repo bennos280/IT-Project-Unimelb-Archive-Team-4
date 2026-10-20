@@ -90,7 +90,8 @@ unit tests for `backend.pipeline.transcribe.transcribe`, covering schema generat
 | `test_schemafor_handles_lists_by_describing_their_first_item`       | Converts template lists into arrays whose item schema matches the first example element.                                                                                                                                               |
 | `test_schemfor_handles_an_empty_list_without_crashing`              | Handles an empty template list without raising an `IndexError`, falling back to string-or-null items.                                                                                                                                  |
 | `test_schemafor_recurses_through_nested_structures`                 | Correctly builds schemas for nested objects and lists at multiple levels.                                                                                                                                                              |
-| `test_schemafor_maps_every_scalar_to_string_or_null`                | Maps every scalar template value, including `None`, strings, numbers, and booleans, to a string-or-null schema.                                                                                                                        |
+| `test_schemafor_maps_every_scalar_to_string_or_null`                | Maps a blank template value (`None`, a number or a boolean) to a string-or-null schema.                                                                                                                        |
+| `test_a_field_given_as_text_is_described_by_it_in_the_schema_and_the_prompt` | A field given as text (its description) keeps string-or-null with that text as its schema description, and the prompt tells the model the text describes the field; a template without descriptions adds nothing to the prompt. |
 | `test_schema_for_output_is_json_serialisable`                       | Ensures the generated schema can be serialised with `json.dumps()` before being passed to the CLI.                                                                                                                                     |
 | `test_run_cli_turns_a_hang_into_a_readable_exit`                    | Converts a CLI timeout into a readable exit message instead of exposing a raw `TimeoutExpired` traceback.                                                                                                                              |
 | `test_run_cli_explains_a_missing_cli_instead_of_crashing`           | Converts a missing Claude/Codex executable into a clear "CLI not found" message.                                                                                                                                                       |
@@ -173,11 +174,19 @@ Unit tests for `backend.pipeline.identify.fingerprint`, covering empty input, vi
 |`test_survey_flags_grouping_problems_unreadable_text_and_other_pages`|A stored grouping flag comes back as `inconsistency` on its field and a value containing `[?]` as `uncertain`; a page of type `other` is sent as `notes` with an `uncertain` flag on its empty text field.|
 
 ## `test_loader.py`
+Each test starts from a new database made by the migration, holding the Prest series (its page types, its survey level) and an item 216412 it lists with its PDF, as the app is set up.
+
 |Test|What it checks|
 |---|---|
 |`test_each_page_records_the_prompt_and_template_versions_that_read_it`|A page whose manifest entry has the hashes of a stored prompt and template version is stored with those versions; a hash no version has, or a page that wasn't read, leaves them empty.|
-|`test_consistency_conflicts_become_flags_on_the_fields_they_name`|A conflict in the run's consistency check (validation/output_flagged.json) becomes an `inconsistency` flag ("Consistency: ...") on each field it names that the page has, on the main form and the coded card; a resident's field, which isn't a page field, is skipped, and a "comparison incomplete" result makes no flag.|
+|`test_a_run_loads_its_records_inside_one_another_parents_first`|The records a run's grouping made are loaded with the record each sits in, each page into its own, and a grouping problem flagged on the field it names.|
+|`test_a_run_loads_into_the_series_its_manifest_names_reading_nothing_into_a_type_that_series_lacks`|A run whose manifest names series 2 loads its item into series 2, and a page labelled with a type series 2 doesn't have is stored as its Unknown type with no fields read into it.|
 |`test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other`|A page read as a page type the db has no record of is stored as `other`, not refused.|
+|`test_a_page_sorting_was_unsure_about_is_stored_as_the_collections_unknown_type`|A page sorting sent to review is stored as its series' Unknown page type, whatever that is called.|
+|`test_a_collection_has_at_most_one_unknown_type_and_without_one_the_bundle_is_refused_by_name`|A series can't have a second Unknown page type (UNIQUE); with none, loading is refused with a message naming the item and the page, and nothing is loaded.|
+|`test_an_annotation_is_stored_with_its_area_when_the_page_type_has_it`|An annotation is stored with its area only when the page's type has that area (right margin on a main form, bottom left on a coded card); another type's area, a blank area and a transcript from before areas store none.|
+|`test_a_run_no_series_lists_is_refused_by_name`|A run of an item no series lists is refused with "No series lists <pdf>: add it to one from the app first." and nothing is loaded.|
+|`test_a_run_of_an_item_uploaded_to_a_series_loads_into_it`|A run of an item that was uploaded to a series (no series lists it from the archive) loads into that series.|
 |`test_run_loads_into_its_surveys`|A pipeline run (manifest.json + transcripts, Windows-style paths) loads into the database: each page in its survey, a page in no survey kept with none, a blank page left out, a page identify sent to review stored as category `other` with one empty `text` field, residents and each list of other children (`died`, `living_elsewhere`) numbered from 0, and the run's `group` problem in review.json saved as an `inconsistency` flag ("Grouping: ...") on its page's `number_of_dwelling` field, while an `identify` problem makes none. Coded values are decoded to their meaning, with an unreadable "1[?]" left undecoded. Loading the same run again leaves the database as it is. Transcripts from before the rename, which say `engine`, store it as the page's `provider`, not as a field, and an older model label listing every model Claude Code used (`claude-haiku-4-5-20251001+claude-opus-5-5`) is stored as the one the run asked for in its manifest (`opus`).|
 
 ## `test_schema.py`
@@ -220,7 +229,7 @@ The pipeline and loader are faked: no model calls. Job state is read through a s
 |---|---|
 |`test_a_job_reads_with_the_newest_prompt_and_templates`|A job hands the pipeline the newest version of the prompt and of each template, as the job starts.|
 |`test_job_runs_the_pipeline_reports_progress_and_loads_its_surveys`|The worker runs the oldest waiting job, commits each step and page count while it runs, keeps the page count once the run moves on, loads the run's manifest.json and marks the job done.|
-|`test_a_job_runs_every_step`|A job runs split, identify, transcribe, group and validate.|
+|`test_a_job_runs_every_step`|A job runs split, identify, transcribe and group.|
 |`test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing`|A failed model call marks the job failed with its reason, and nothing is loaded.|
 |`test_a_failed_job_is_logged_with_its_full_error`|The worker logs a job's start and, when it fails, the step it failed during with the full error and traceback (the job keeps just the message).|
 |`test_pdf_with_no_pages_fails_instead_of_loading_nothing`|A PDF with no pages fails with a reason instead of ending done with nothing loaded.|
@@ -236,11 +245,40 @@ The transcription prompt and templates as versions in the db (`backend/db/instru
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_a_prompt_saved_with_only_its_line_endings_changed_is_no_change`              | A prompt sent back with plain line endings instead of Windows ones (as a browser's text box does) is no change, so no new version makes jobs read pages again.                                                                                                                                                                                                                        |
 | `test_todays_prompt_and_templates_pass_the_checks`                                 | Today's `prompt.txt` and templates pass every check.                                                                                                                                                                                                                                                                                                                                  |
-| `test_a_template_that_would_break_the_pipeline_or_the_review_screen_is_refused`    | 14 cases: a template that isn't JSON or an object or has no fields, lacks `number_of_dwelling` (main, coded) or `text` (notes), has a field the pipeline fills in, `annotations`, `residents` or `other_children` in another shape, a name with a dot or capitals, a field that isn't null or an object, or makes the command line too long for Windows, is refused with that reason. |
+| `test_a_template_that_would_break_the_pipeline_or_the_review_screen_is_refused`    | 14 cases: a template that isn't JSON or an object or has no fields, lacks `number_of_dwelling` (main, coded) or `text` (notes), has a field the pipeline fills in, `annotations`, `residents` or `other_children` in another shape, a name with a dot or capitals, a field that isn't null, its description (text) or an object, or makes the command line too long for Windows, is refused with that reason. |
 | `test_an_empty_prompt_is_refused`                                                  | A blank prompt is refused.                                                                                                                                                                                                                                                                                                                                                            |
 | `test_a_saved_template_becomes_the_newest_version_and_the_old_one_is_kept`         | `POST /instructions/main` saves a new version with its reviewer and note; it becomes the newest (what the next job reads with) and the history lists both, newest first.                                                                                                                                                                                                              |
 | `test_a_save_is_refused_when_unknown_unchanged_invalid_or_based_on_an_old_version` | An unknown kind (404) or reviewer (400), no change, or a template with problems (400, listing them) is refused; a save based on a version that is no longer the newest is refused (409).                                                                                                                                                                                              |
 | `test_accuracy_is_kept_apart_for_each_prompt_and_template_version`                 | `GET /accuracy` gives a row per prompt and template version, so versions can be compared.                                                                                                                                                                                                                                                                                             |
+
+## `test_field_rules.py`
+
+A page type's field rules (`backend/db/checks.py`): saved with its template version, and a page's values that break them flagged for review (kind `invalid`).
+
+| Test | What it checks |
+| --- | --- |
+| `test_a_value_breaking_its_rule_says_why` | 35 cases: required but blank or `/` (crossed out); `[?]` left alone (flagged as unreadable already); a number with thousands separators, out of its range or not a number; dates as 12 March 1917, 12/3/17 and Sept. 1917, an impossible or unreadable date, a date outside its range (a two-digit year has no century, so no range; a month in range as far as it goes); yes or no; one of a list by its code or its meaning, and a range of codes (000-996); several of a list, and an allowed value holding a comma; a pattern, said with its example; a number code as a number (1 is 01); an odd digit (①) without crashing; the card's own full stop, and a list's values with their own (Mrs.); a range saved as a number. |
+| `test_rules_that_dont_fit_the_template_or_make_no_sense_are_refused` | 17 cases: a rule on a field the template lacks, on a group, or in a list (residents); an unknown type or key; required not true or false; a range that isn't numbers or dates, or runs backwards, or on a type with no range; a list with no values; a pattern missing, invalid, not text, repeating a repeat (which can take forever), or not matching its example; a range that isn't a number or a date. |
+| `test_sensible_rules_pass` | Rules of each kind that fit the template pass. |
+| `test_a_templates_rules_are_saved_with_it_changed_alone_and_refused_when_they_dont_fit` | `POST /instructions/main` saves rules with the template, and rules changed alone are a new version; rules for a field the template lacks are refused (400); versions list their rules (version 1 none); the prompt takes none. |
+| `test_a_page_read_again_is_checked_against_its_types_rules` | A page the worker reads again is checked against its type's newest rules. |
+
+## `test_series_checks.py`
+
+A series' checks across fields (`backend/db/checks.py`): saved as versions, and a record's values that fail one flagged for review (kind `check`).
+
+| Test | What it checks |
+| --- | --- |
+| `test_a_check_says_why_it_fails` | 25 cases: fields added up against a field (pass and fail, with its own message); a crossed-out, unreadable or missing value can't be told; a field against a value; dates, to the precision both have; words only as the same or different; if a field is a value then another must be filled (the card's full stop ignored), and if one is filled another must be empty; a date with its full stop the same as without; a two-digit year can't be told; decimals that add up; nil as none; a check's own value (N/A) never unsure; words in brackets compared; a decimal point and ticks count. |
+| `test_checks_that_name_no_field_of_the_series_or_make_no_sense_are_refused` | 11 cases: no id, an unknown kind, a field the series' templates lack, an unknown comparison, nothing to compare, fields and a value both or neither (or a blank value), an if with no value to be, on not true or false, a field that isn't a name. |
+| `test_sensible_checks_pass_and_ids_are_their_own` | Sensible checks pass; two with one id, or checks not in a list, are refused. |
+| `test_a_records_values_failing_a_check_are_flagged_on_each_field_it_names_and_checked_again_as_reviewers_left_them` | Checking a page checks its whole record: a failing check flags each field it names; a check across page types needs one page of each; a switched-off check isn't run; checking again uses a reviewer's saved correction and leaves other kinds of flag alone. |
+| `test_a_series_checks_are_saved_as_versions_refused_when_they_dont_fit_and_an_old_one_can_come_back` | `/collections/{id}/checks` lists versions newest first, numbered; saves one with its reviewer and note; refuses checks naming a field the series lacks (400), no change (400) or an old base (409); an older version saved again is the newest; no checks at all is a version too; an unknown series is a 404. |
+| `test_checking_a_series_again_is_a_task_that_flags_its_pages_and_logs_how_many` | `POST /collections/{id}/check` queues a task (one at a time per series), listed as "Checking …"; the worker checks every page, counting them, and logs the version of the checks and how many fields it flagged. |
+| `test_a_page_waiting_to_be_read_again_isnt_checked_and_its_last_flags_go` | A page waiting to be read again isn't checked, its flags go, and its record's checks across page types wait for it. |
+| `test_a_page_moved_to_another_record_is_checked_there_and_the_record_it_left_again` | Moving a page re-checks its new record and the one it left. |
+| `test_a_page_changed_to_another_type_is_checked_against_that_types_rules` | Changing a page's type re-checks it: the old type's rule flags go. |
+| `test_names_and_codes_are_checked_when_saved` | A names check needs one field each side; as is values or codes. |
 
 ## `test_page_types.py`
 
@@ -260,6 +298,38 @@ Page types added from the review screen, and a page read again as another type.
 | `test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown`   | An unknown page (404), page type (400) or the type it already has (400) is refused, and so is any change once the page has a saved review (409).                                                                                                                                                  |
 | `test_the_worker_reads_the_page_again_and_swaps_what_was_read`             | The worker reads the page's scan (a WebP converted to JPEG) with the new type's newest template, then swaps the page's fields, type, model, template version and revision in one go.                                                                                                              |
 | `test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was`            | If a review is saved while the page is being read, the job fails with that reason and the page is left as it was.                                                                                                                                                                                 |
+
+## `test_series_items.py`
+
+A series' dashboard asks for a page of its items at a time, searched, filtered and counted on the server.
+
+|Test|What it checks|
+|---|---|
+|`test_items_come_a_page_at_a_time_in_order_of_their_numbers_with_their_counts_and_the_series`|Items come a page at a time in order of their numbers (2, 9, 10, 100), each with its pages' counts and records (an item being transcribed, those so far), with how many match and how many there are, the counts of all the series' pages, the most pages and records any item has, and a page past the end gives the last.|
+|`test_items_are_found_by_number_title_or_identifier_and_by_status`|Search finds an item by its number, title or identifier, any case; each status filter finds the items the dashboard always showed for it.|
+|`test_an_item_is_given_by_its_number_or_bundle_id_with_its_pages`|One item comes with its pages; an item not loaded has none; an unknown item or series is 404.|
+|`test_a_record_names_its_item_as_the_dashboard_does`|A record's response names its item and its archive title, for the review screen's crumb.|
+|`test_an_item_gives_its_records_and_a_record_the_ones_it_sits_inside_top_first`|An item comes with its records, each with the one it sits in, and a record with the records it sits inside, top first, each named by its level (not one holding just it and no pages, which the item's page opens past), itself named by its own.|
+|`test_an_item_that_is_one_record_gives_it_so_the_dashboard_opens_it_straight_away`|An item's row gives its record only once all its pages are in it (a page in none, or another item: none), and the record then says it is its whole item.|
+
+## `test_record_levels.py`
+
+A series' levels of record (`PUT /collections/{id}/levels`), each with its name and what one is made of, in order, which the
+pipeline's group step reads; a series with none has each item as one record.
+
+|Test|What it checks|
+|---|---|
+|`test_prest_has_one_level_its_surveys_and_a_new_series_none`|The Prest survey has one level, its surveys (main pages start one, coded cards join by `number_of_dwelling`), and is grouped; a new series has none, its records are called "record", and each item is one.|
+|`test_a_level_is_named_in_lower_case_and_made_of_its_series_page_types_in_order`|A level's name is stored in lower case with single spaces and what one is made of in order; a bad name, another series' or an Unknown page type, a page type twice, a first one that doesn't start one or a later one that does, one matched by number with no number field, a number field with no page types to read it from, a bad field name, or a number field missing from a type's template (or a list or group of fields there) is refused with the reason, and nothing refused is saved.|
+|`test_the_number_field_must_stay_in_the_templates_of_the_page_types_that_group_by_it`|A template that drops a level's number field is refused while a type of that level groups by it, and saved once the level groups by page order.|
+|`test_with_no_levels_each_item_is_one_record_and_with_one_its_page_types_start_them`|A record of a series with no levels is a "record" with its free text under "Record details" and an Unknown page just to be checked; with a level its type starts, the series is grouped and its records take the level's name; with none again each item is one record.|
+|`test_an_unknown_page_grouped_with_others_is_flagged_as_part_of_their_survey`|An Unknown page in a Prest survey with other pages is flagged as in that survey because it follows the survey's first page, with its free text under "Survey details".|
+|`test_a_record_with_too_many_or_too_few_of_a_part_or_a_page_type_it_isnt_made_of_is_flagged`|Grouping flags a record with more of a part than it may have (at most one notes page, exactly one coded card), fewer (no coded card, or no notes page where there must be at least one), or a page type it isn't made of, but not an Unknown page, which is flagged as unread.|
+|`test_a_level_isnt_flagged_for_the_page_types_of_the_levels_below_and_its_problems_are_its_own`|A box holding surveys isn't flagged for their coded cards, which it isn't made of, and what it lacks is said of the box, though its first page is also its first survey's.|
+|`test_levels_tried_on_an_item_read_show_its_records_by_the_numbers_reviewers_saved_and_save_nothing`|`POST /collections/{id}/levels/preview` groups an item already read by levels not yet saved, from its page types and the numbers reviewers last saved (a corrected coded card joins its survey without a flag), with each record's pages, each page's type and each problem on a page with the record it's about; nested too, a box made of notes not flagged for its surveys' pages; saving nothing; an unknown item is 404 and a bad level refused as saving would.|
+|`test_levels_nest_top_first_and_a_page_type_can_need_a_number_field_for_each_level_it_groups`|A series' levels are saved top first, the bottom one naming its records; a page type grouping in several levels needs each one's number field; two levels can't share a name, and a refused save keeps the levels there were.|
+|`test_a_record_inside_another_says_so_is_named_by_its_level_and_its_export_keeps_it`|A record inside another gives its parent (none at the top) and is called by its own level's name (folder, letter), on its own and in its item's export; a record holding only records isn't exported; a record goes when the record it sits in goes.|
+|`test_an_unknown_page_of_an_item_that_is_one_record_isnt_said_to_follow_its_first_page`|In a series with no levels, an Unknown page sharing the item's record with others is just to be checked, not said to follow the record's first page.|
 
 ## `test_sorting_models.py`
 
@@ -364,86 +434,3 @@ These frontend tests run separately from `uv run pytest tests/unit`.
 They check request construction and response handling; the integration runner
 checks the adapter against the real backend and database.
 
-## `test_validate_rules.py`
-Covers the page 1 / page 3 consistency rules on the sample survey, with a consistent baseline that each test then breaks in one place. No model calls.
-
-|Test|What it checks|
-|---|---|
-|`test_consistent_sample_no_flags`|The unmodified consistent sample survey produces no issues.|
-|`test_isolated_unreadable_ignored`|An unreadable `[?]` in a field that has no counterpart on the other page is not flagged.|
-|`test_no_codebook_mapping_guessed`|With no codebook supplied, a municipality name on page 1 and a code on page 3 are not compared, so no issue is raised.|
-|`test_children_from_ages_8_and_7`|Children aged 8 and 7 count towards "children under 14", and a page 3 value of 1 instead of 2 is flagged as a page 1-3 conflict.|
-|`test_age_boundaries`|Ages 4, 5, 10, 11, 13 and 14 fall into the correct under-5, 5-10, over-10 and under-14 counts, and the matching page 3 values raise no issue.|
-|`test_corresponding_missing_markers`|A missing bedrooms value on page 3 (None, empty, space, `/` or `[?]`) while page 1 has one is flagged as an incomplete comparison.|
-|`test_absent_field_has_location`|A field deleted from the coded card is flagged with its location and the value `<missing>` (`Page 3: number_of_bedrooms`).|
-|`test_both_corresponding_blank_no_crosspage_issue`|When the dwelling number is blank on page 1 and `/` on page 3, no cross-page issue is raised.|
-|`test_unknown_age_not_silently_zero`|A resident age of `[?]` is not counted as 0, and "children under 14" is flagged as incomplete.|
-|`test_unknown_sex_not_guessed_from_head`|A head with no sex recorded is not assumed to be male or female, so the residents-over-10 check raises nothing.|
-|`test_empty_template_columns_not_residents`|A resident column with no age and a `/` relationship is not counted as a resident.|
-|`test_page3_age_sum_reason`|A page 3 resident total of 5 that disagrees with the age-band counts is flagged as a page 3 internal conflict that mentions age bands.|
-|`test_children_arithmetic`|A children total of 3 against 2 living and 0 dead is flagged as a page 3 conflict about living plus dead.|
-|`test_combined_rooms`|A total room count of 4 that is smaller than separate bedrooms plus living rooms is flagged.|
-|`test_page1_conflict`|Bedrooms used as living rooms combined with zero living rooms on page 1 is flagged as a page 1 internal conflict.|
-|`test_equivalent_count_text`|"None" and 0 for rooms not in daily use, and "01" and 1 for the dwelling number, are treated as equal.|
-|`test_probable_age_range`|A page 3 house age of 61 outside the page 1 probable-age interval is flagged.|
-|`test_children_elsewhere_bound`|Resident children plus children elsewhere that exceed the children total are flagged.|
-|`test_legacy_other_children_is_not_used`|An other-children count on a resident, or a died entry in the main form's `other_children` list, raises no head's-other-children issue.|
-|`test_negative_only_flagged_in_relationship`|A negative value is flagged only in a field that is part of a cross-page relationship (bedrooms), not in an unrelated one (removal).|
-|`test_preserves_input_and_deterministic_batch`|Checking a survey twice gives the same result and leaves both readings unchanged, and the consistent sample has no rule issues.|
-|`test_missing_page_is_input_error`|A survey with no coded page raises `ValueError`.|
-
-## `test_validate_codebook.py`
-Covers codebook value ranges, special codes, municipality mapping, house-age and residence codes, and codebook file loading, using the example main and coded surveys. No model calls.
-
-|Test|What it checks|
-|---|---|
-|`test_unspecified_head_sex_accepts_feasible_assignments`|With an unspecified head sex and a 71-year-old head and 69-year-old wife, male/female counts of 1/1 and 0/2 are accepted.|
-|`test_unspecified_head_sex_still_rejects_impossible_assignments`|For the same couple, counts of 2/0, 1/2 and 0/0 are flagged as a page 1-3 conflict on residents over 10.|
-|`test_sleepout_count_and_category_compatible`|Sleepout counts and page 3 categories that fit together (0 with 0, 1 with 1/2/3, 2 or 9 with 4, "Balcony" with 2) raise no sleepouts issue.|
-|`test_sleepout_count_and_category_conflict`|Sleepout counts and categories that do not fit (0 with 1, 1 with 4, 2 with 2, "Balcony" with 1) are flagged as a page 1-3 conflict.|
-|`test_shared_facility_code_is_not_a_room_count`|A rooms-shared code of 7 is accepted as a facility code, and 8 is flagged as a codebook conflict.|
-|`test_declared_codebook_domains`|For each listed field, a value inside the codebook range raises no codebook conflict and a value just outside it does.|
-|`test_municipality_uses_actual_mapping`|Essendon with code 08, Brunswick with 2 and Box Hill with 00 match the codebook mapping and raise no flags.|
-|`test_municipality_mismatch_is_explained`|Essendon on page 1 with code 2 (Brunswick) is flagged with a reason saying the code means Brunswick, naming `Page 3: municipality`, and both readings are left unchanged.|
-|`test_municipality_ignores_punctuation_and_suburbs`|"Brighton." (01), "N. Fitzroy." (09), "South Yarra SE 1." (21), "St Kilda" (26) and "Glen Iris" (03) raise no flags; with code 02 (Brunswick) only the two that name a council are flagged; with `suburb_coded_as_council` off, the three suburbs are flagged against their own codes.|
-|`test_missing_municipality_counterpart_is_incomplete`|A page 3 municipality of None, `/` or `[?]` against a named page 1 municipality is flagged as an incomplete comparison.|
-|`test_no_reference_fields_and_special_money_codes_not_reinterpreted`|Industry and occupation codes, an unreadable removal, unmapped military-service text and an income code of 997 are not checked or reinterpreted, so no flags result.|
-|`test_zero_room_code_accepts_over_eleven`|With bedrooms coded 0 and total rooms coded 0, an exact page 1 bedroom count of 12 or 18 is accepted.|
-|`test_zero_room_code_also_means_none`|No living rooms on page 1, coded 0, with 3 rooms in total raises no flags; with `zero_rooms_means_none` off it's flagged.|
-|`test_house_special_codes_not_treated_as_exact_ages`|House-age codes 00, 98 and 99 against "55", "old", "105 years." and "over 99 years." are not compared as exact ages.|
-|`test_over_ninety_nine_house_code_conflicts_with_fifteen`|A house-age code of 99 (over 99 years) against a page 1 age of 15 years is flagged as a page 1-3 conflict.|
-|`test_residence_special_codes`|Length of residence "0.5 years" with code 00 and "22 years" with code 99 raise no residence issue.|
-|`test_explicit_missing_dictionary_fails`|An explicitly supplied codebook path that does not exist raises `FileNotFoundError`.|
-|`test_malformed_dictionary_fails_before_validation`|A codebook file with no usable content raises `ValueError` before any validation runs.|
-|`test_missing_default_dictionary_preserves_standalone_api`|When the default codebook file cannot be found, validation still runs with no flags and returns a warning that codebook checks were not run.|
-
-## `test_validate_regressions.py`
-Covers relationship parsing, year-unit punctuation, age ranges, annotated child relationships and the 1940s coders' conventions (each accepted when switched on and flagged when off), using the example main and coded surveys. No model calls.
-
-|Test|What it checks|
-|---|---|
-|`test_female_head_is_identified_and_sex_is_explicit`|A head written as "Head (F)", "head (female)", "H. (F)", "H (f)" or " Head ( F ) " is recognised as the head and taken as female, and an age of head of 75 is then flagged as a conflict.|
-|`test_head_prefix_does_not_identify_unrelated_labels`|"headache", "head boarder" and "head of son" are not recognised as the head.|
-|`test_period_after_year_unit_is_accepted`|"15 years.", "15 year.", "15 yrs." and "15 y." are all read as 15 years for house age and length of residence, with no flags.|
-|`test_age_ranges_and_bounds_allow_period`|"50-60 years.", "over 50 years." and "under 60 years." are accepted as probable-age values with a trailing period, with no flags.|
-|`test_annotated_son_and_daughter_count_as_resident_children`|"Son (M)" and "Daughter (F)" count as resident children, and a page 3 living-children total of 1 is flagged because the resident sons and daughters exceed it.|
-|`test_conventions_file`|`conventions.json` sets every convention; a file with a value that isn't true/false, a missing convention or a misspelt one is refused.|
-|`test_checks_file`|`checks.json` names every check; a file with a value that isn't true/false, a missing check or a misspelt one is refused.|
-|`test_switched_off_check_gives_no_flags`|A coded bedroom count of 5 against 3 on page 1 is flagged by `bedrooms`, and gives no `bedrooms` flag with that check switched off.|
-|`test_relationship_with_full_stops`|"Son.", "Head (F).", "H. (F.)", "Head (R.S.)" and "daughter." are read as son, female head, female head, head and daughter.|
-|`test_sleepout_marks`|Beside the printed B V O, "B 1" is one sleepout, two ticks are two, "B yes. V O" and a lone "V" are one, "none." is none; the bare letters misread as "B Y O" or "B V 9" are unknown.|
-|`test_another_resident_may_stand_in_as_head`|An age of head of 70 matches the 70-year-old wife when Sex of Head is coded 1 (female); coded 0 (male), or with `another_resident_as_head` off, it's flagged against the 76-year-old head.|
-|`test_sleepout_may_be_counted_as_a_bedroom`|With "V yes." for sleepouts, 4 bedrooms and sleepouts 0 on the coded card raise no flags (3 bedrooms + the sleepout); 3 bedrooms with sleepouts 0 flags the sleepouts, and 5 bedrooms flags the bedrooms. With `sleepout_counted_as_bedroom` off, 4 bedrooms is flagged.|
-|`test_living_rooms_may_leave_out_the_kitchen`|Against 2 living rooms on page 1 (3 bedrooms), code 2 raises no living-room flag; code 1 raises none only when the coded total of 5 counts the kitchen apart (7 doesn't) and the convention is on; 0 and 3 are flagged.|
-|`test_residents_serving_in_the_forces_may_be_left_out`|A son with earning status M., or marked A.I.F., R.A.A.F, "in Army." or "In camp", may be left out of the resident total and the over-10 count and counted as a child away; written as a clerk, the same codes flag all three. With `serving_residents_left_out` off, all three are flagged too.|
-|`test_ten_year_old_may_be_counted_over_10`|A 10-year-old daughter may be coded in 5–10 or over 10 (only 5–10 with the convention off); left out of both, the survey is flagged.|
-|`test_part_years_of_residence_may_be_dropped_or_rounded_up`|"4½ yrs." matches codes 04 and 05; 03 and 06 are flagged, and all four with the convention off.|
-
-## `test_validate_fields.py`
-The consistency check reads fields by their template names: a field renamed in a template fails here instead of
-switching a check off quietly. No model calls.
-
-|Test|What it checks|
-|---|---|
-|`test_every_field_the_rules_read_is_in_the_templates`|Running every rule on readings with every template field filled in, each field the rules look up (residents' optional `sex`/`gender` aside) is in `main.json` or `coded.json`. Every convention is switched on, so every rule runs.|
-|`test_every_codebook_field_is_a_coded_template_field`|Every field in the codebook (`data_dict.json` page 3) is a field of the coded card's template.|

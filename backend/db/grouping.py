@@ -17,16 +17,42 @@ def level_json(level):
             "starts": [p["type"] for p in parts if p["how"] == "starts"], "matched": [p["type"] for p in parts if p["how"] == "matched"]}
 
 
-#what one record of a collection is called on screen: its level's name, else (no levels: each item one record) record
+#what one record of a collection is called on screen: its level's name (a record's level is how deep it sits; no record: the
+#bottom level's, the one a reviewer checks), else (no levels: each item one record) record
 def record_name(db, collection_id, survey_id=None):
     found = levels(db, collection_id)
     depth = len(found) - 1
+    if survey_id is not None:
+        depth, parent = 0, db.get(models.Survey, survey_id).parent_id
+        while parent is not None:
+            depth, parent = depth + 1, db.get(models.Survey, parent).parent_id
     return found[min(depth, len(found) - 1)].name if found else "record"
 
 
+#a record name with its article; ponytail: "an" before a vowel letter, so "an hour" and "a unit" come out wrong
+def a_record(name):
+    return f"{'an' if name[:1] in 'aeiou' else 'a'} {name}"
+
+
+#the rule pipeline.Run.grouping takes: the collection's levels, top first (none: each item is one record), each as level_json
+#gives it; every type's label, for the review flags; and its Unknown types, whose pages aren't expected or unexpected in one
+def rule(db, collection_id):
+    types = db.query(models.PageType).filter_by(collection_id=collection_id).all()
+    return {"levels": [level_json(level) for level in levels(db, collection_id)], "labels": {t.name: t.label for t in types},
+            "unknown": [t.name for t in types if t.unknown]}
 
 
 #whether a collection's pages group into records: a page type starts one of its top level, so a page can be in none or move
 def grouped(db, collection_id):
     found = levels(db, collection_id)
     return bool(found and level_json(found[0])["starts"])
+
+
+#page type -> the fields its templates must have, as grouping reads them (a type can group in more than one level)
+def required_fields(db):
+    found = {}
+    for level in db.query(models.RecordLevel):
+        found_by = level_json(level)
+        for t in found_by["starts"] + found_by["matched"] if level.record_key else []:
+            found.setdefault(t, set()).add(level.record_key)
+    return found

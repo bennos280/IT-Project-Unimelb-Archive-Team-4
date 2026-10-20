@@ -12,6 +12,8 @@ export type Flag = {
     | "inconsistency"
     | "gibberish"
     | "uncertain"
+    | "invalid"
+    | "check"
     | "between_page_mismatch"
     | "total_mismatch"
     | "count_exceeds_total";
@@ -63,6 +65,8 @@ export type Survey = {
   recordName: string; // what the collection calls a record
   grouped: boolean; // whether the collection's pages group into records
   wholeItem?: boolean; // the record is its whole item, all the item's pages
+  parentId?: string | null; // the record it sits in (null: at the top)
+  ancestors?: { id: string; name: string; parent: string | null }[]; // the records it sits inside, top first (not ones skipped)
   pages: SurveyPage[];
 };
 
@@ -114,6 +118,8 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
           "inconsistency",
           "gibberish",
           "uncertain",
+          "invalid",
+          "check",
           "between_page_mismatch",
           "total_mismatch",
           "count_exceeds_total",

@@ -1,5 +1,5 @@
 """The Setup tab's page types API: a new page type named from its label (POST /page-types) and a type's label (PATCH
-/page-types/{name})."""
+/page-types/{name}); how pages group is the series' levels' (test_record_levels.py)."""
 from backend.db import grouping, models
 from tests.unit.test_backend_api import add_in_order
 

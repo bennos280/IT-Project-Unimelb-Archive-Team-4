@@ -13,7 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.dialects.sqlite import insert
 
 from backend import scans
-from backend.db import app_settings, database, instructions, loader, models
+from backend.db import app_settings, checks, database, grouping, instructions, loader, models
 from backend.pipeline import run as pipeline
 from backend.common import ROOT, settings
 
@@ -77,7 +77,7 @@ def work_once(db):
         db.commit()
 
     try:
-        {"bundle": run_bundle, "page": read_page_again, "train": train_sorting, "items": add_items}[job.kind](db, job, progress)
+        {"bundle": run_bundle, "page": read_page_again, "train": train_sorting, "items": add_items, "check": check_series}[job.kind](db, job, progress)
     except KeyboardInterrupt:
         log.warning("job %s stopped during %s", job.job_id, job.step)
         fail(db, job, "the worker was stopped during this job; run it again")
@@ -149,11 +149,15 @@ def add_items(db, job, progress):
 def run_bundle(db, job, progress):
     pdf = ROOT / job.pdf
     out = ROOT / settings()["OUTPUT"] / pdf.stem
+    series = loader.series_of(loader.archive_owners(db), job.pdf)
+    if series is None:
+        raise SystemExit("no series lists this item: add it to one first")
     active = db.query(models.SortingModel).filter(models.SortingModel.active).first()
     if active and not (ROOT / active.path).is_file():
         raise SystemExit(f"page sorting model {active.model_id}'s file {active.path} is missing: choose another model, or retrain")
     run = pipeline.Run(pdf, out, progress=progress, texts=instructions.texts(db), #the newest versions, as the job starts
-                       sorting_model=ROOT / active.path if active else None)
+                       sorting_model=ROOT / active.path if active else None, grouping=grouping.rule(db, series),
+                       collection=series)
     run.transcription_config = {field.upper(): value for field, value in transcription_choice(db, job).items()}
     pipeline.run_steps(run, pipeline.FULL)
     if not run.pages:
@@ -189,6 +193,24 @@ def read_page_again(db, job, progress):
                         " prompt_version_id = ?, template_version_id = ? WHERE page_id = ?",
                         (job.page_type, *(answer.get(key) for key in loader.META), newest[instructions.PROMPT].version_id,
                          newest[job.page_type].version_id, page.page_id))
+    checks.check_pages(con, [page.page_id])
+
+#every page of a series checked again against its page types' newest rules and its newest checks, 400 at a time, each lot saved
+#as it goes; logged with the version of the checks and how many fields it flagged
+def check_series(db, job, progress):
+    pages = [page for (page,) in db.query(models.Page.page_id).join(models.Bundle)
+             .filter(models.Bundle.collection_id == job.collection_id).order_by(models.Page.page_id)]
+    versions = db.query(models.CheckVersion.version_id).filter_by(collection_id=job.collection_id).count()
+    progress("check", 0, len(pages))
+    log.info("job %s: checking %s pages with %s", job.job_id, f"{len(pages):,}",
+             f"version {versions} of the series' checks" if versions else "no series checks (its field rules only)")
+    for start in range(0, len(pages), 400):
+        checks.check_pages(db.connection(), pages[start:start + 400])
+        progress("check", min(start + 400, len(pages)), len(pages))
+    flagged = (db.query(models.Flag.page_id, models.Flag.field_title).distinct().join(models.Page, models.Page.page_id == models.Flag.page_id)
+               .join(models.Bundle).filter(models.Bundle.collection_id == job.collection_id, models.Flag.kind.in_(("invalid", "check")))
+               .count())  #fields, each once however many checks it fails
+    log.info("job %s: %s fields flagged", job.job_id, f"{flagged:,}")
 
 #refits page sorting on the pages reviewers settled; kept and used only if it passes the check
 def train_sorting(db, job, progress):

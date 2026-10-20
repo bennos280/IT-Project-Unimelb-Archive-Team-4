@@ -67,7 +67,7 @@ def test_a_job_runs_every_step(db, tmp_path, monkeypatch):
                         lambda run, names: asked.append(names) or run.pages.append({"file": "a_00001.png"}))
     monkeypatch.setattr(worker.loader, "dump_into_db", lambda manifest: None)
     worker.work_once(db)
-    assert asked == [["split", "identify", "transcribe", "group", "validate"]]
+    assert asked == [["split", "identify", "transcribe", "group"]]
 
 
 def test_failed_run_is_marked_failed_with_its_reason_and_loads_nothing(db, committed, tmp_path, monkeypatch):

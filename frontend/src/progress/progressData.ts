@@ -84,5 +84,44 @@ export function counts(pages: ProgressPage[]) {
     records: new Set(reviewable.map((page) => page.surveyId)).size,
   };
 }
+// A record's statuses, least far along first; a record is as far along as its least far page.
+export const recordStatuses: PageStatus[] = ["Awaiting transcription", "Ready to review", "Reviewed"];
+// A record of an item, or the item itself at the root (depth 0, its own pages those in no record): its own pages, the records
+// inside it, every page under it, how far along those are, the page to open (its first that far along) and their flags.
+export type RecordNode = {
+  id: string; parent: string | null; depth: number; pages: ProgressPage[]; children: RecordNode[]; all: ProgressPage[];
+  status: PageStatus; page: ProgressPage | undefined; flagCount: number;
+};
+// An item's records as a tree, from its pages and the records the server gives (each with the one it sits in; without them,
+// every record its pages name is at the top), each list in scan order; a record with no pages under it (one a move emptied)
+// has nothing to show, so it's left out.
+export function recordTree(pages: ProgressPage[], records: { id: string; parent: string | null }[] = []): RecordNode {
+  const node = (id: string, parent: string | null): RecordNode =>
+    ({ id, parent, depth: 0, pages: [], children: [], all: [], status: "Reviewed", page: undefined, flagCount: 0 });
+  const root = node("", null);
+  const nodes = new Map(records.map((r) => [r.id, node(r.id, r.parent)]));
+  for (const page of pages) if (page.surveyId && !nodes.has(page.surveyId)) nodes.set(page.surveyId, node(page.surveyId, null));
+  for (const page of pages) (page.surveyId ? nodes.get(page.surveyId)! : root).pages.push(page);
+  for (const n of nodes.values()) ((n.parent && nodes.get(n.parent)) || root).children.push(n);
+  const order = new Map(pages.map((page, i) => [page, i]));
+  const first = (n: RecordNode) => (n.all.length ? order.get(n.all[0])! : Infinity);
+  const fill = (n: RecordNode, depth: number) => {
+    n.depth = depth;
+    n.children.forEach((child) => fill(child, depth + 1));
+    n.children = n.children.filter((child) => child.all.length).sort((a, b) => first(a) - first(b));
+    n.all = [...n.pages, ...n.children.flatMap((child) => child.all)].sort((a, b) => order.get(a)! - order.get(b)!);
+    n.status = recordStatuses.find((s) => n.all.some((page) => page.status === s)) ?? "Reviewed";
+    n.page = n.all.find((page) => page.status === n.status && page.surveyId) ?? n.all.find((page) => page.surveyId);
+    n.flagCount = n.all.reduce((sum, page) => sum + page.flagCount, 0);
+  };
+  fill(root, 0);
+  return root;
+}
+// Where opening a record leads: down through any record holding just one other and no pages of its own, so a level with only
+// one thing in it is skipped.
+export function descend(n: RecordNode): RecordNode {
+  while (n.children.length === 1 && !n.pages.length) n = n.children[0];
+  return n;
+}
 // The page counts of one item, or of a whole series.
 export type Counts = ReturnType<typeof counts>;

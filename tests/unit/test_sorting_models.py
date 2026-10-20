@@ -108,7 +108,8 @@ def test_a_model_that_fails_its_check_is_recorded_but_not_used(settled, monkeypa
 def test_a_bundle_job_sorts_with_the_active_model(db, tmp_path, monkeypatch):
     (tmp_path / "model-1.npz").write_bytes(b"weights")
     db.add_all([models.SortingModel(path=str(tmp_path / "model-1.npz"), page_types="main", pages=1, answered=1, wrong=0,
-                                    passed=True, active=True), models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")])
+                                    passed=True, active=True), models.ArchiveItem(node=216441, collection_id=1, identifier="UMA-ITE-216441", title="A file"),
+                models.Job(pdf=str(tmp_path / "216441" / "a.pdf"), transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")])
     db.commit()
     used = []
     monkeypatch.setattr(worker, "settings", lambda: {"OUTPUT": str(tmp_path / "output")})

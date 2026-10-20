@@ -1,4 +1,4 @@
-"""The `survey` command: split -> identify -> transcribe -> group -> validate on each PDF. A step is one function on run.pages."""
+"""The `survey` command: split -> identify -> transcribe -> group on each PDF. A step is one function on run.pages."""
 import argparse
 import hashlib
 import json
@@ -8,6 +8,7 @@ import re
 import sys
 import tempfile
 import time
+from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -34,16 +35,21 @@ class Run:
     texts: dict[str, str] | None = None                  # the prompt and templates to read with (a job: the db's); None: the files
     transcription_config: dict[str, str] | None = None
     sorting_model: Path | None = None                    # retrained page sorting's weights; None: the shipped model
+    grouping: dict | None = None                         # how pages group into records (backend.db.grouping.rule); None: one each
+    records: list[dict] = field(default_factory=list)    # every record grouping made, parents first: its id and its parent's
+    collection: int | None = None                        # the series the item is loaded into; None: the one that lists it
     progress: Callable[[str, int, int], None] = lambda step, done, total: None  # told (step, pages done, pages to do)
 
-    def flag(self, page: dict, step: str, reason: str) -> None:
-        self.review.append({"file": page["file"], "step": step, "reason": reason})
+    def flag(self, page: dict, step: str, reason: str, field: str | None = None, record: str | None = None) -> None:
+        """field, record: the field and the record it is about"""
+        self.review.append({"file": page["file"], "step": step, "reason": reason, **({"field": field} if field else {}),
+                            **({"record": record} if record else {})})
 
     def save(self) -> None:
         self.out.mkdir(parents=True, exist_ok=True)
         write(self.out / "review.json", self.review)
-        write(self.out / "manifest.json", {"input": str(self.input), "steps": self.log,
-                                           "pages": self.pages, "transcripts": self.transcripts})
+        write(self.out / "manifest.json", {"input": str(self.input), "collection": self.collection, "steps": self.log,
+                                           "pages": self.pages, "records": self.records, "transcripts": self.transcripts})
 
 
 def write(path: Path, data) -> None:
@@ -163,6 +169,15 @@ def transcription_config(chosen: dict | None = None) -> dict:
     return {**settings(), **chosen}
 
 
+def series_rules(inputs) -> dict:
+    """{input: (its series, how its pages group into records)} for the command line's inputs a series lists, from the db."""
+    from backend.db import database, grouping, loader
+    with database.SessionLocal() as db:
+        owners = loader.archive_owners(db)
+        return {path: (series, grouping.rule(db, series)) for path in inputs
+                if (series := loader.series_of(owners, path)) is not None}
+
+
 def step_transcribe(run: Run) -> None:
     """Each labelled page -> out/transcribe/<file>.json, READERS at a time, each saved as soon as it is read (paid: only
     with --transcribe). A failed page stops the step once the reads under way are saved."""
@@ -214,30 +229,58 @@ def step_transcribe(run: Run) -> None:
         raise failure
 
 
-def step_group(run: Run) -> None:
-    """Pages -> surveys. A main form starts a survey and the pages after it join it, except coded cards; a main form
-    with no new dwelling number, not straight after a coded card, is a second sheet of the same survey. A flat
-    letter is part of the number (24A is not 24B). A coded card joins the survey before or after it whose main form
-    has its dwelling number, else the only survey anywhere with that number that no neighbouring card matched,
-    else the neighbour no card matched, else the side most matched cards joined."""
+#what a record (counts: page type -> how many of its pages) lacks or has too many of, by its level's parts, and the page types it
+#has that it isn't made of (labels: each type's name on screen; exempt: types it may have anyway); none without parts
+def expectations(parts, counts, labels, exempt, record):
+    found = []
+    for part in parts:
+        n, label = counts[part["type"]], labels.get(part["type"], part["type"])
+        if part["count"] == "one" and n != 1 or part["count"] == "one_or_more" and n < 1:
+            found.append(f"expected {'at least ' if part['count'] == 'one_or_more' else ''}one {label}, found {n or 'none'}")
+        elif part["count"] == "at_most_one" and n > 1:
+            found.append(f"expected at most one {label}, found {n}")
+    made_of = {part["type"] for part in parts}
+    return found + [f"{labels[t]} isn't part of {'an' if record[:1] in 'aeiou' else 'a'} {record}" for t in sorted(counts)
+                    if parts and t not in made_of and t in labels and t not in exempt]
+
+
+def group_level(run: Run, pages: list[dict], level: dict, labels: dict, parent: str | None = None,
+                exempt: frozenset = frozenset()) -> list[tuple[str, list[dict]]]:
+    """One level's records among some pages (an item's at the top, else a record's of the level above), in scan order, each
+    (its name, its pages). A page of a type that starts one starts one and the pages after it join it, except the types
+    matched by number; one showing no new number, not straight after a matched page, is a second sheet of the same record. A
+    letter after the number is part of it (24A is not 24B). A matched page joins the record before or after it whose start
+    page shows its number, else the only record anywhere with that number that no neighbouring matched page took, else the
+    neighbour none took, else the side most matched pages joined. With no type that starts one, each page is one. A record at
+    the top is named <item>-<number>, else by its first page; one inside another <parent>-<number>, else <parent>-n<its
+    place>. Problems are flagged: a record with too few or too many of a part (level["parts"]: one, one_or_more, any or
+    at_most_one) or with a page type it isn't made of, but not the exempt ones (Unknown types, whose pages are flagged as
+    unread anyway, and the ones the levels below are made of); and at the top, pages before the first start (which belong to
+    none; further down, to the record above, as a folder's cover is its own). A record's problems are about it, on its first
+    page."""
+    starts, by_key, key = set(level.get("starts", ())), set(level.get("matched", ())), level.get("key")
+    record = level.get("name", "record")
+    unnumbered = lambda first, place: Path(first["file"]).stem if parent is None else f"{parent}-n{place}"
+    if not starts:
+        return [(unnumbered(page, n), [page]) for n, page in enumerate((p for p in pages if p["label"] != "blank"), start=1)]
     surveys, cards, last = [], [], None
-    for i, page in enumerate(run.pages):
-        page["survey"], found = None, set()
-        if page.get("transcript"):
-            answer = json.loads((run.out / page["transcript"]).read_text(encoding="utf-8"))
-            text = str(answer.get("number_of_dwelling") or "")
+    for i, page in enumerate(pages):
+        found = set()
+        if key and ("values" in page or page.get("transcript")):  # values: as a reviewer last saved them (a preview)
+            answer = page["values"] if "values" in page else json.loads((run.out / page["transcript"]).read_text(encoding="utf-8"))
+            text = str(answer.get(key) or "")
             found = {n.lstrip("0") + flat.upper() for n, flat in re.findall(r"(\d+)\s*([A-Za-z]?)(?![A-Za-z])", text)} - {""}
-        if page["label"] == "coded":
+        if page["label"] in by_key:
             cards.append((i, page, found))
-        elif page["label"] == "main" and (not surveys or last == "coded" or not found <= surveys[-1]["main"]):
+        elif page["label"] in starts and (not surveys or not key or last in by_key or not found <= surveys[-1]["main"]):
             surveys.append({"start": i, "pages": [page], "main": set(found), "card": set()})
         elif surveys:
             surveys[-1]["pages"].append(page)
-            if page["label"] == "main":
+            if page["label"] in starts:
                 surveys[-1]["main"] |= found
         if page["label"] != "blank":
             last = page["label"]
-    beside = {}  # card index -> (index of the first survey after it, index of the one neighbour matching it or None)
+    beside = {}  # matched page index -> (index of the first record after it, index of the one neighbour matching it or None)
     for i, _, found in cards:
         k = sum(s["start"] < i for s in surveys)
         match = [j for j in (k - 1, k) if 0 <= j < len(surveys) and found & surveys[j]["main"]]
@@ -254,35 +297,60 @@ def step_group(run: Run) -> None:
         if j is not None:
             surveys[j]["pages"].append(page)
             surveys[j]["card"] |= found
-    taken = set()
-    for s in surveys:
-        coded = sum(p["label"] == "coded" for p in s["pages"])
+    words, taken, groups, order = (key or "").replace("_", " "), set(), [], {id(page): i for i, page in enumerate(pages)}
+    for place, s in enumerate(surveys, start=1):
+        counts = Counter(p["label"] for p in s["pages"])
         number = max(sorted(s["main"] & s["card"] or s["card"] or s["main"]), key=len, default="")
-        name = f"{run.input.stem}-{number}"
-        problems = [f"{coded} coded cards"] if coded != 1 else []
-        if coded and number and not s["main"] & s["card"]:
-            problems.append("its main form and coded card do not show the same dwelling number")
-        if not number or name in taken:
-            problems.append(f"dwelling number {number} is also used by an earlier survey in this bundle" if number
-                            else "no dwelling number")
-            name = Path(s["pages"][0]["file"]).stem
+        name = f"{parent or run.input.stem}-{number}"
+        problems = expectations(level.get("parts", []), counts, labels, exempt, record)
+        if any(counts[t] for t in by_key) and number and not s["main"] & s["card"]:
+            problems.append(f"its pages don't agree on '{words}'")
+        if not key:
+            name = unnumbered(s["pages"][0], place)
+        elif not number or name in taken:
+            problems.append(f"'{words}' {number} is also used by an earlier {record} in this bundle" if number else f"no '{words}'")
+            name = unnumbered(s["pages"][0], place)
         taken.add(name)
-        for p in s["pages"]:
-            p["survey"] = name
+        groups.append((name, sorted(s["pages"], key=lambda page: order[id(page)])))  # in scan order, for the level below
         if problems:
-            run.flag(s["pages"][0], "group", f"survey {name}: " + "; ".join(problems))
-    loose = [p for p in run.pages if p["survey"] is None and p["label"] != "blank"]
-    if loose:
-        run.flag(loose[0], "group", f"{len(loose)} page(s) before the first main form belong to no survey")
+            run.flag(s["pages"][0], "group", f"{record} {name}: " + "; ".join(problems), key, name)
+    inside = {id(page) for _, found in groups for page in found}
+    loose = [p for p in pages if id(p) not in inside and p["label"] != "blank"]
+    if loose and parent is None:
+        first = " or ".join(sorted(labels.get(t, t) for t in starts))
+        run.flag(loose[0], "group", f"{len(loose)} page(s) before the first {first} belong to no {record}")
+    return groups
 
 
-def step_validate(run: Run) -> None:
-    """US6: compare grouped page transcripts and publish field review flags."""
-    from backend.pipeline.validate.pipeline_step import step_validate as validate
-    validate(run)
+def step_group(run: Run) -> None:
+    """Pages -> records, by the collection's levels (run.grouping), top first: each level's records (group_level) are made
+    among the pages of a record of the level above, and a page is in the bottom record it falls in; one before the first
+    start of a level below stays in the record above, and one before the first at the top is in none. With no levels the
+    item's pages are one record; with no rule at all, each page is one."""
+    rule = run.grouping if run.grouping is not None else {"levels": [{}]}
+    levels, labels = rule.get("levels", []), rule.get("labels", {})
+    run.records = []
+    for page in run.pages:
+        page["survey"] = None
+    if not levels:
+        if any(page["label"] != "blank" for page in run.pages):
+            run.records.append({"id": run.input.stem, "parent": None})
+        for page in run.pages:
+            page["survey"] = None if page["label"] == "blank" else run.input.stem
+        return
 
+    def nest(pages, depth, parent):
+        below = {part["type"] for level in levels[depth + 1:] for part in level.get("parts", [])}
+        for name, found in group_level(run, pages, levels[depth], labels, parent, frozenset(rule.get("unknown", ())) | below):
+            run.records.append({"id": name, "parent": parent})
+            if depth + 1 < len(levels):
+                nest(found, depth + 1, name)
+            for page in found:
+                if page["survey"] is None:
+                    page["survey"] = name
+    nest(run.pages, 0, None)
 
-STEPS = {"split": step_split, "identify": step_identify, "transcribe": step_transcribe, "group": step_group, "validate": step_validate}
+STEPS = {"split": step_split, "identify": step_identify, "transcribe": step_transcribe, "group": step_group}
 FULL = list(STEPS)  # a full run: what a job does, and what a run needs before it is loaded
 
 
@@ -327,11 +395,8 @@ def main(argv=None) -> int:
     if args[:1] == ["train"]:
         from backend.pipeline.identify.identify import train
         return train()
-    if args[:1] == ["validate"]:
-        from backend.pipeline.validate.pipeline_step import main as validate
-        return validate(args[1:])
 
-    parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train | validate <manifest.json>")
+    parser = argparse.ArgumentParser(prog="survey", description=__doc__, epilog="or: survey train")
     parser.add_argument("inputs", nargs="*", type=Path, help="PDFs or folders of page images; default: unprocessed PDFs in DATA")
     parser.add_argument("--transcribe", action="store_true", help="also transcribe (paid)")
     opts = parser.parse_args(args)
@@ -339,7 +404,7 @@ def main(argv=None) -> int:
     config = settings()
 
     output = (ROOT / config["OUTPUT"]).resolve()
-    steps = [s for s in STEPS if s not in ("transcribe", "group", "validate") or opts.transcribe]  # group and validate read the transcripts
+    steps = [s for s in STEPS if s not in ("transcribe", "group") or opts.transcribe]  # group reads the transcripts
     inputs = opts.inputs or unprocessed(ROOT / config["DATA"], output, steps)
     if missing := [p for p in inputs if not p.exists()]:
         sys.exit(f"not found: {missing[0]}")
@@ -347,9 +412,14 @@ def main(argv=None) -> int:
         print(f"nothing to do: every input in DATA has completed the requested steps under {output}")
         return 0
     chosen = transcription_config() if opts.transcribe else {}
+    listed = series_rules(inputs)
     print(f"{len(inputs)} to process -> {output}" + (f"   ({chosen['PROVIDER']}: {chosen['MODEL']})" if opts.transcribe else ""))
     for path in inputs:
-        run_steps(Run(path.resolve(), output / path.stem), steps)
+        if path not in listed:
+            print(f"skipped {path.name}: no series lists it; add it to one from the app first")
+            continue
+        series, rule = listed[path]
+        run_steps(Run(path.resolve(), output / path.stem, grouping=rule if opts.transcribe else None, collection=series), steps)
     return 0
 
 

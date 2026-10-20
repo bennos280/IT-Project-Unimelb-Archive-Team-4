@@ -134,16 +134,22 @@ test("an item's pages show Items > Item, and Items returns in-app with Back and 
   await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
 });
 
-test("a Ctrl or middle click on Items opens the series' items in a new tab and leaves this one on the item", async ({ page, context }) => {
+test("a Ctrl or middle click on Items is left to the browser to open the series' items in a new tab, and this one stays on the item", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?series=1&item=216417");
-  for (const click of [{ modifiers: ["Control" as const] }, { button: "middle" as const }]) {
-    const [tab] = await Promise.all([context.waitForEvent("page"), itemsCrumb(page).click(click)]);
-    await expect(tab).toHaveURL(/\/\?series=1$/);
-    await expect(page).toHaveURL("/?series=1&item=216417");
-    await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
-    await tab.close();
-  }
+  await expect(itemsCrumb(page)).toHaveAttribute("href", "/?series=1");
+  await expect(itemsCrumb(page)).not.toHaveAttribute("target", /./);
+  // Each click records whether the app cancelled it, then is cancelled here so no tab opens.
+  await page.evaluate(() => {
+    const clicks: [string, boolean][] = ((window as unknown as { clicks: [string, boolean][] }).clicks = []);
+    for (const type of ["click", "auxclick"])
+      window.addEventListener(type, (e) => { clicks.push([e.type, e.defaultPrevented]); e.preventDefault(); });
+  });
+  await itemsCrumb(page).click({ modifiers: ["Control"] });
+  await itemsCrumb(page).click({ button: "middle" });
+  expect(await page.evaluate(() => (window as unknown as { clicks: [string, boolean][] }).clicks)).toEqual([["click", false], ["auxclick", false]]);
+  await expect(page).toHaveURL("/?series=1&item=216417");
+  await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
 });
 
 test("the review screen shows the series, then Items > Item > Survey, and the item crumb opens that item's pages", async ({ page }) => {
@@ -160,7 +166,7 @@ test("the review screen shows the series, then Items > Item > Survey, and the it
   await trail(page).getByRole("link", { name: "Item 216417" }).click();
   await expect(page).toHaveURL("/?series=1&item=216417");
   await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Review Pg 1", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Review Survey 216417_1", exact: true })).toBeVisible();
 });
 
 test("a record that is its whole item is named by the item, with no step between them", async ({ page }) => {
@@ -172,6 +178,16 @@ test("a record that is its whole item is named by the item, with no step between
   await expect(itemsCrumb(page)).toHaveAttribute("href", "/?series=1");
 });
 
+test("a record of one page has no page arrows, and one of several has", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?survey=216417_1");
+  await expect(page.getByRole("navigation", { name: "Survey pages" })).toContainText("Page 1 of 2");
+  await page.route("**/api/survey/216417_1", (route) => route.fulfill({ json: {
+    id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", recordName: "survey", grouped: true, pages: [pages[0]] } }));
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Transcript Review" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Survey pages" })).toHaveCount(0);
+});
 
 test("an item on the archive is named by its title in the review screen's crumbs and on its own page", async ({ page }) => {
   await mockApi(page, { archive: true });
@@ -259,4 +275,33 @@ test("an old item link without a series still opens the item", async ({ page }) 
   await page.goto("/?bundle=216417");
   await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
   await expect(crumbs(page)).toHaveText(["Items", "Item 216417"]);
+});
+
+test("an old ?collection= and ?bundle= link still opens its item, and ?collection= alone its series", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?collection=1&bundle=216417");
+  await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
+  await expect(crumbs(page)).toHaveText(["Items", "Item 216417"]);
+  await expect(switcher(page)).toHaveAccessibleName("Series: Wilfred Prest Survey");
+  await itemsCrumb(page).click();
+  await expect(page).toHaveURL("/?series=1");
+  await page.goto("/?collection=2");
+  await expect(switcher(page)).toHaveAccessibleName("Series: Strathfieldsaye Estate Diaries");
+  await expect(page.getByRole("heading", { name: "Strathfieldsaye Estate Diaries", level: 1 })).toBeVisible();
+  await expect(tabs(page).first()).toHaveAttribute("href", "/?series=2");
+});
+
+test("a record inside others follows them in the trail, each opening its records on the item's page", async ({ page }) => {
+  await mockApi(page);
+  await page.route("**/api/survey/216417_1", (route) => route.fulfill({ json: {
+    id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", recordName: "letter", grouped: true, pages,
+    item: { name: "216417", archive: null }, parentId: "216417", ancestors: [{ id: "216417", name: "folder", parent: null }] } }));
+  await page.goto("/?survey=216417_1");
+  await expect(crumbs(page)).toHaveText(["Items", "Item 216417", "Folder 216417", "Letter 1"]);
+  await expect(trail(page).getByRole("link", { name: "Folder 216417" })).toHaveAttribute("href", "/?series=1&item=216417&record=216417");
+  await page.route("**/api/survey/216417_1", (route) => route.fulfill({ json: {  // the folder holds just this letter: no crumb
+    id: "216417_1", bundleId: "pdf-216417", collectionId: 1, title: "Wilfred Prest Survey", recordName: "letter", grouped: true, pages,
+    item: { name: "216417", archive: null }, parentId: "216417", ancestors: [] } }));
+  await page.reload();
+  await expect(crumbs(page)).toHaveText(["Items", "Item 216417", "Letter 1"]); // numbered within its folder, not the item
 });
