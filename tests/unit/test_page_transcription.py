@@ -112,3 +112,18 @@ def test_other_does_not_require_transcription_but_main_does(client, db):
         page = db.get(models.Page, 'b/p4')
         assert page.category == page_type
         assert page.needs_transcription is required
+
+
+def test_a_page_can_be_changed_to_any_type_of_its_collection_which_are_listed_by_label(client, db):
+    seed(db)
+    db.add(models.Collection(collection_id=2, name="Shipping manifests"))
+    db.add(models.PageType(name="followup", label="Follow-up visit", collection_id=1))
+    db.add(models.PageType(name="manifest", label="Manifest", collection_id=2))
+    db.commit()
+    assert client.get('/page-actions/b/p4').json()['pageTypes'] == [
+        {"name": "coded", "label": "Coded page"}, {"name": "main", "label": "Main page"}, {"name": "notes", "label": "Notes page"},
+        {"name": "other", "label": "Unknown"}, {"name": "followup", "label": "Follow-up visit"}]
+    payload = {'revision': 0, 'reviewerId': 1}
+    refused = client.put('/page-classification/b/p4', json={**payload, 'pageType': 'manifest'})  # another collection's type
+    assert (refused.status_code, refused.json()['detail']) == (400, "No page type called manifest in this page's series.")
+    assert client.put('/page-classification/b/p4', json={**payload, 'pageType': 'followup'}).json()['pageType'] == 'followup'

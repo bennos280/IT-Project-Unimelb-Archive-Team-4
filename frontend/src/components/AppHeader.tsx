@@ -17,7 +17,7 @@ import { backendRequest } from "../progress/backend";
 type Crumb = { label: string; href?: string; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void };
 type Series = { id: number; name: string };
 
-// The one top bar: the app's name (home); where you are, as the series (a menu of its Items, the other series, and all
+// The one top bar: the app's name (home); where you are, as the series (a menu of its Items and Setup, the other series, and all
 // of them) and the levels below it, of which a phone shows the last two; and what's for the whole app, who is working and Settings.
 // A screen's own title and actions sit below it.
 export default function AppHeader({ series, crumbs = [] }: { series?: Series; crumbs?: Crumb[] }) {
@@ -85,12 +85,13 @@ function PersonMenu() {
   );
 }
 
-// The series you're in, as a menu of links: its Items, another series, or all of them.
+// The series you're in, as a menu of links: its Items and Setup, another series (on the same tab), or all of them.
 function SeriesMenu({ current }: { current: Series }) {
   const [all, setAll] = useState<Series[]>([]);
   useEffect(() => {
     backendRequest<Series[]>("/collections?brief=true").then(setAll).catch(() => {});
   }, []);
+  const tab = new URLSearchParams(location.search).get("view") === "setup" ? "&view=setup" : "";
   const others = all.filter((s) => s.id !== current.id);
   const name = current.name || "Series";
   return (
@@ -105,12 +106,13 @@ function SeriesMenu({ current }: { current: Series }) {
         <DropdownMenu.Content align="start" sideOffset={4} className="z-50 max-h-96 min-w-56 overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
           <DropdownMenu.Label className={menuLabel}>{name}</DropdownMenu.Label>
           <DropdownMenu.Item asChild><a className={menuItem} href={`/?series=${current.id}`}>Items</a></DropdownMenu.Item>
+          <DropdownMenu.Item asChild><a className={menuItem} href={`/?series=${current.id}&view=setup`}>Setup</a></DropdownMenu.Item>
           {others.length > 0 && (
             <>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
               <DropdownMenu.Label className={menuLabel}>Other series</DropdownMenu.Label>
               {others.map((s) => (
-                <DropdownMenu.Item key={s.id} asChild><a className={menuItem} href={`/?series=${s.id}`}>{s.name}</a></DropdownMenu.Item>
+                <DropdownMenu.Item key={s.id} asChild><a className={menuItem} href={`/?series=${s.id}${tab}`}>{s.name}</a></DropdownMenu.Item>
               ))}
             </>
           )}

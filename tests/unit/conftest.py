@@ -17,7 +17,7 @@ def sessions(tmp_path):
     with engine.begin() as con:  #as migrations 001, 007-012, 021 and 023 add them
         con.execute(models.Collection.__table__.insert(), [{"collection_id": 1, "name": "Wilfred Prest Survey"}])
         con.execute(models.PageType.__table__.insert(), [
-            {"name": name, "built_in": True}
+            {"name": name, "label": label, "built_in": True, "unknown": name == "other", "collection_id": 1}
             for name, label in (("main", "Main page"), ("notes", "Notes page"), ("coded", "Coded page"), ("other", "Unknown"))])
         con.execute(models.RecordLevel.__table__.insert(), [{"collection_id": 1, "position": 1, "name": "survey", "record_key": "number_of_dwelling",
                                                                  "parts": '[{"type": "main", "count": "one_or_more", "how": "starts"}, '

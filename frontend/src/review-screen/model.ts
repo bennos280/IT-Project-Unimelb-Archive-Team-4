@@ -45,6 +45,7 @@ export type Field = {
 export type SurveyPage = {
   id: string;
   type: PageType;
+  typeLabel?: string;
   needsTranscription?: boolean;
   imageUrl: string;
   fields: Field[];
@@ -122,17 +123,11 @@ export function parseSurvey(input: unknown, expectedId: string): Survey {
   return s;
 }
 
-// Maps page types to headings displayed in the UI.
-const pageNames: Record<string, string> = {
-  main: "Main page",
-  notes: "Notes page",
-  coded: "Coded page",
-  other: "Other page",
-};
-// Notes and other pages hold one free-text field.
-export function isTextPage(type: PageType): boolean {
-  return type === "notes" || type === "other";
+// A page of free writing: its writing is the field "text" (its annotations are fields too).
+export function isTextPage(page: SurveyPage): boolean {
+  return page.fields.some((field) => field.id === "text");
 }
-export function getPageName(type: PageType): string {
-  return Object.hasOwn(pageNames, type) ? pageNames[type] : type;
+// The page type's label from the db, else its name.
+export function getPageName(page: SurveyPage): string {
+  return page.typeLabel ?? page.type;
 }

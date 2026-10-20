@@ -125,7 +125,7 @@ export default function ReviewScreen({
     return statusFilter === "all" || statusFilter === status;
   });
   const groups = [...new Set(visible.map((field) => field.group))];
-  const textPage = !!page && isTextPage(page.type);
+  const textPage = !!page && isTextPage(page);
   // The dashboard names an item by its name; the bundle id is accepted too when the survey doesn't say.
   const bundleLabel = survey?.item?.name || survey?.bundleId || "";
   const words = recordWords(survey?.recordName);
@@ -177,7 +177,7 @@ export default function ReviewScreen({
                 data-page-id={page.id}
               >
                 <h2 className="min-w-0 flex-1 basis-full text-base font-semibold min-[1150px]:basis-auto">
-                  {page.id} · {getPageName(page.type)}{" "}
+                  {page.id} · {getPageName(page)}{" "}
                 </h2>
                 <Badge variant="outline">
                   {`${
@@ -652,7 +652,7 @@ export default function ReviewScreen({
                 <FlagReason key={flag.id} flag={flag} />
               ))}
             <DialogDescription>
-              {page && getPageName(page.type)} · {editing?.label}{" "}
+              {page && getPageName(page)} · {editing?.label}{" "}
             </DialogDescription>
             <Field>
               <FieldLabel>Extracted value</FieldLabel>
@@ -665,7 +665,7 @@ export default function ReviewScreen({
               <Textarea
                 autoFocus
                 id="field-value"
-                rows={page && isTextPage(page.type) ? 10 : 4}
+                rows={page && isTextPage(page) ? 10 : 4}
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
               />

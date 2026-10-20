@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { serveItems } from "./items-mock";
 
 // The top bar on every screen: the app's name (home), the series switcher and the trail below it, and Settings; and a
-// series' own header with its actions. Every API call is intercepted: no requests reach the real backend.
+// series' own header with its actions and its Items | Setup tabs. Every API call is intercepted: no requests reach the real backend.
 // The bundle's id (pdf-216417) differs from its name (216417), as for a PDF inside a numbered folder.
 const pages = ["main", "notes"].map((type, index) => ({
   id: `216417/p${index}`,
@@ -66,22 +66,27 @@ test("home is the app's name alone, which links home, with Settings", async ({ p
   await expect(page.locator("h1")).toHaveText("Series");
 });
 
-test("a series' items name it in the series menu and its heading", async ({ page }) => {
+test("a series' items name it in the series menu and its heading, with its Items and Setup tabs", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?series=1");
   await expect(switcher(page)).toHaveAccessibleName("Series: Wilfred Prest Survey");
   await switcher(page).click();
-  await expect(menuItems(page)).toHaveText(["Items", "Strathfieldsaye Estate Diaries", "All series"]);
+  await expect(menuItems(page)).toHaveText(["Items", "Setup", "Strathfieldsaye Estate Diaries", "All series"]);
   await page.keyboard.press("Escape");
   await expect(crumbs(page)).toHaveCount(0);
   await expect(page.locator("h1")).toHaveText("Wilfred Prest Survey");
-  await expect(tabs(page)).toHaveText(["Items"]);
+  await expect(tabs(page)).toHaveText(["Items", "Setup"]);
   await expect(tabs(page).first()).toHaveAttribute("aria-current", "page");
+  await expect(tabs(page).last()).toHaveAttribute("href", "/?series=1&view=setup");
   await expect(page.getByRole("heading", { name: "All items", level: 2 })).toBeVisible();
 });
 
-test("the series menu opens all of them, and its keys move without leaving", async ({ page }) => {
+test("the series menu opens another series on the same tab, or all of them, and its keys move without leaving", async ({ page }) => {
   await mockApi(page);
+  await page.goto("/?series=1&view=setup");
+  await switcher(page).click();
+  await page.getByRole("menuitem", { name: "Strathfieldsaye Estate Diaries" }).click();
+  await expect(page).toHaveURL("/?series=2&view=setup");
   await page.goto("/?series=1");
   await switcher(page).focus();
   await page.keyboard.press("Enter");
@@ -92,11 +97,12 @@ test("the series menu opens all of them, and its keys move without leaving", asy
   await expect(page).toHaveURL("/");
 });
 
-test("from an item, the series menu still leads to its Items", async ({ page }) => {
+test("from an item, the series menu still leads to its Items and Setup", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?series=1&item=216417");
   await switcher(page).click();
   await expect(page.getByRole("menuitem", { name: "Items" })).toHaveAttribute("href", "/?series=1");
+  await expect(page.getByRole("menuitem", { name: "Setup" })).toHaveAttribute("href", "/?series=1&view=setup");
 });
 
 test("an item's pages show Items > Item, and Items returns in-app with Back and Forward intact", async ({ page }) => {

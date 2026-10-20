@@ -55,6 +55,22 @@ def test_a_new_page_type_needs_a_template_before_pages_are_read_as_it(client, se
     assert change(client, "followup").status_code == 409  # already waiting
 
 
+def test_a_page_types_label_is_what_people_see_and_is_unique_in_its_collection(client, setup):
+    def create(name, label=None):
+        return client.post("/page-types", json={"name": name, "label": label, "reviewerId": 1})
+
+    assert create("followup", "Follow-up visit").json()["label"] == "Follow-up visit"
+    assert create("letter").json()["label"] == "letter"  # the name if not given
+    assert create("visit", " ").status_code == 400
+    taken = create("visit", "Follow-up visit")
+    assert (taken.status_code, taken.json()["detail"]) == (409, "There is already a page type labelled Follow-up visit.")
+    assert create("visit", "Main page").status_code == 409  # a built-in type's label
+    assert {t["name"]: t["label"] for t in client.get("/page-types").json()} == {
+        "coded": "Coded page", "main": "Main page", "notes": "Notes page", "other": "Unknown",
+        "followup": "Follow-up visit", "letter": "letter"}
+    assert client.get("/survey/s").json()["pages"][0]["typeLabel"] == "Main page"
+
+
 def test_reading_a_page_again_without_a_choice_uses_the_saved_one_or_is_refused(client, setup):
     client.post("/page-types", json={"name": "followup", "reviewerId": 1})
     client.post("/instructions/followup", json={"body": FOLLOWUP, "basedOn": None, "reviewerId": 1})
@@ -84,6 +100,19 @@ def test_a_page_made_other_is_emptied_at_once(client, setup):
     assert (page.category, page.revision_no, page.model, fields(setup)) == ("other", 1, None, {"text": None})
 
 
+def test_the_unknown_setting_decides_not_the_name_other(client, setup):
+    """Made the collection's Unknown type, any page type is emptied at once, can't have a template and is flagged for a
+    check; other, no longer Unknown, is read like any type."""
+    setup.get(models.PageType, "other").unknown = False
+    setup.add(models.PageType(collection_id=1, name="unsorted", label="Unsorted", unknown=True))
+    setup.commit()
+    assert client.post("/instructions/unsorted", json={"body": FOLLOWUP, "basedOn": None, "reviewerId": 1}).status_code == 404
+    assert change(client, "other").json()["detail"] == "Give other a template first."
+    assert change(client, "unsorted").json() == {"pageType": "unsorted", "job": None}
+    page = client.get("/survey/s").json()["pages"][0]
+    assert (page["type"], page["typeLabel"], [f["fieldId"] for f in page["flags"]]) == ("unsorted", "Unsorted", ["text"])
+
+
 def test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown(client, setup):
     assert change(client, "notes", page="nope").status_code == 404
     assert change(client, "letters").status_code == 400
@@ -96,7 +125,7 @@ def test_a_page_keeps_its_type_once_reviewed_or_when_the_change_is_unknown(clien
 def queued(setup, tmp_path, monkeypatch):
     """The followup type with a template, a job to read the page as it, and a scan of the page."""
     followup = models.InstructionVersion(kind="followup", body=FOLLOWUP, sha256="f")
-    for row in (models.PageType(name="followup", reviewer_id=1), followup, models.Job(kind="page", page_id=PAGE, page_type="followup", transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")):
+    for row in (models.PageType(collection_id=1, name="followup", reviewer_id=1), followup, models.Job(kind="page", page_id=PAGE, page_type="followup", transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")):
         setup.add(row)
         setup.flush()
     setup.commit()

@@ -5,6 +5,7 @@ import ImportScreen from "./import/ImportScreen";
 import ReviewScreen from "./review-screen/ReviewScreen";
 import { useReviewSession } from "./review-screen/useReviewSession";
 import ProgressDashboard from "./progress/ProgressDashboard";
+import PageTypesScreen from "./settings/PageTypesScreen";
 import SettingsScreen from "./settings/SettingsScreen";
 import { keepPerson, storedPerson } from "./person";
 import { getReviewers } from "./review-screen/api";
@@ -32,6 +33,8 @@ export default function App() {
   const view = params.get("view");
   if (view === "import") return <ImportScreen/>;
   if (view === "settings") return <SettingsScreen/>;
+  if ((view === "setup" || view === "page-types") && !seriesParam(params)) return <CollectionsScreen/>; // which series's? home asks
+  if (view === "setup" || view === "page-types") return <PageTypesScreen/>; // page-types: the old name of a series' Setup
   if (params.has("survey")) return <SurveyReview/>;
   return seriesParam(params) || itemParam(params) ? <ProgressDashboard/> : <CollectionsScreen/>; // an item alone: series 1
 }

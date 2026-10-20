@@ -15,7 +15,7 @@ import Welcome from "./Welcome";
 
 type Collection = {
   id: number; name: string; bundles: number; running: number; failed: number; pages: number; reviewable: number; reviewed: number;
-  flagged: number;
+  unknownPages: number; flagged: number;
 };
 
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -112,12 +112,13 @@ function Items({ collection: c }: { collection: Collection }) {
   );
 }
 
-// What waits for a person: flags not yet checked.
+// What waits for a person: pages sorting couldn't place, and flags not yet checked.
 function Attention({ collection: c }: { collection: Collection }) {
   const n = (count: number) => count.toLocaleString();
-  if (!c.flagged) return <span className="text-muted-foreground">Nothing</span>;
+  if (!c.unknownPages && !c.flagged) return <span className="text-muted-foreground">Nothing</span>;
   return (
     <div className="flex flex-col">
+      {c.unknownPages > 0 && <span>{n(c.unknownPages)} {c.unknownPages === 1 ? "page needs" : "pages need"} a type</span>}
       {c.flagged > 0 && <span>{n(c.flagged)} {c.flagged === 1 ? "flag" : "flags"} to check</span>}
     </div>
   );

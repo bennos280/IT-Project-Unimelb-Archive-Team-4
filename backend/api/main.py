@@ -62,9 +62,11 @@ def printed_labels(category):
     fields = pages.get({"main": "1", "coded": "3"}.get(category), {}).get("fields", {})
     return {title: field["label_text"] for title, field in fields.items() if "label_text" in field}
 
-#shown on a page of unknown type (stored as other)
-OTHER_PAGE = ("The computer couldn't tell what this page is, so it wasn't read. It is in this survey because it comes "
-              "after the survey's main form in the scan: check it belongs here, and type anything worth keeping.")
+#shown on a page of unknown type; one grouped with other pages is in their record because it follows its first page
+OTHER_PAGE = "The computer couldn't tell what this page is, so it wasn't read. "
+OTHER_PAGE_GROUPED = ("It is in this {0} because it comes after the {0}'s first page in the scan: check it belongs here, and "
+                      "type anything worth keeping.")
+OTHER_PAGE_ALONE = "Check what it is, and type anything worth keeping."
 
 #what the record a page is in is called on screen (its level's name)
 def page_record_name(db, p):
@@ -77,7 +79,8 @@ def page_fields(db, p):
         #nested fields go under their parent, others by sections.py
         parent, _, leaf = f.field_title.rpartition(".")
         group = (parent.replace('_', ' ').capitalize() if parent
-                 else (groupings_coded if p.category == "coded" else groupings_main).get(leaf, "Miscellaneous"))
+                 else (groupings_coded if p.category == "coded" else groupings_main).get(leaf)
+                 or (f"{page_record_name(db, p)} details".capitalize() if leaf == "text" else "Miscellaneous"))
         fields_list.append({"id": f.field_title, "label": leaf.replace('_', ' ').capitalize(),
                             "labelText": printed_labels(p.category).get(f.field_title), "group": group, "value": f.text_raw,
                             "decoded": f.decoded_value})
@@ -104,15 +107,17 @@ def page_fields(db, p):
                             **({"areaLabel": areas.label(p.category, a.area), "sourceRegion": box} if box else {})})
     return fields_list
 
-#what to check on a page: stored flags, unreadable ([?]) text, and an other page
+#what to check on a page: stored flags, unreadable ([?]) text, and a page of its collection's Unknown type
 def page_flags(db, p, fields_list):
     flags = [{"id": f"flag-{fl.flag_id}", "fieldId": fl.field_title, "kind": fl.kind, "reason": fl.reason}
              for fl in db.query(models.Flag).filter(models.Flag.page_id == p.page_id).order_by(models.Flag.flag_id)]
     flags += [{"id": f"unreadable-{f['id']}", "fieldId": f["id"], "kind": "uncertain",
                "reason": "The model couldn't read part of this ([?]): compare it with the scan."}
               for f in fields_list if "[?]" in (f["value"] or "")]
-    if p.category == loader.OTHER_CAT and any(f["id"] == "text" for f in fields_list):
-        flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain", "reason": OTHER_PAGE})
+    if db.get(models.PageType, p.category).unknown and any(f["id"] == "text" for f in fields_list):
+        grouped = grouping.grouped(db, db.get(models.Bundle, p.bundle_id).collection_id) and p.survey_id and db.query(models.Page).filter_by(survey_id=p.survey_id).count() > 1
+        flags.append({"id": "other-page", "fieldId": "text", "kind": "uncertain",
+                      "reason": OTHER_PAGE + (OTHER_PAGE_GROUPED.format(page_record_name(db, p)) if grouped else OTHER_PAGE_ALONE)})
     return flags
 
 #a survey's pages in scan order, with fields, flags and scan URL, and whether it is its whole item (all the item's pages)
@@ -124,10 +129,11 @@ def get_survey(survey_id: str, request: Request, db: Session = Depends(get_db)):
 
     pages_list = []
     for p in db.query(models.Page).filter(models.Page.survey_id == survey_id).order_by(models.Page.page_id):
-        fields_list = page_fields(db, p)
+        fields_list, page_type = page_fields(db, p), db.get(models.PageType, p.category)
         pages_list.append({
             "id": p.page_id,
             "type": p.category,
+            "typeLabel": page_type.label,
             "needsTranscription": p.needs_transcription,
             "imageUrl": str(request.url_for("page_image", page_id=p.page_id)),
             "fields": fields_list,
@@ -311,12 +317,13 @@ def get_instruction_versions(kind: str, db: Session = Depends(get_db)):
     names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
     return [version_json(v, names) for v in versions]
 
-#saves a new version of the prompt or of a page type's template (other has none), used from the next job on; checked first
+#saves a new version of the prompt or of a page type's template (an Unknown type has none), used from the next job on; checked first
 @app.post("/instructions/{kind}", status_code=201)
 def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depends(get_db)):
     write_lock(db)
     current = instructions.newest(db)
-    if kind != instructions.PROMPT and (kind == loader.OTHER_CAT or not db.get(models.PageType, kind)):
+    page_type = db.get(models.PageType, kind)
+    if kind != instructions.PROMPT and (not page_type or page_type.unknown):
         raise HTTPException(status_code=404, detail=f"No prompt or page type called {kind}.")
     reviewer = db.get(models.Reviewer, payload.reviewerId)
     if reviewer is None:
@@ -336,8 +343,13 @@ def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depen
 
 #--PAGE TYPES--# (the four built in, and any added here; a page type's pages are read with its template)
 class PageTypeRequest(BaseModel):
-    name: str
     reviewerId: int
+    collectionId: int = 1
+    label: str | None = None #what people see; the name if not given
+    name: str | None = None #its id; made from the label if not given
+
+class PageTypeSettings(BaseModel):
+    label: str | None = None
 
 class CollectionSettings(BaseModel):
     name: str | None = None
@@ -354,27 +366,68 @@ class PageTypeChange(BaseModel):
 
 RESERVED = {instructions.PROMPT, "blank", "review"} #the prompt's kind, and what page sorting answers for no page type
 
+def page_type_json(t, templates):
+    return {"name": t.name, "label": t.label, "builtIn": t.built_in, "unknown": t.unknown,
+            "templateVersion": templates[t.name].version_id if t.name in templates else None}
+
 #the page types, each with its newest template's version (None: it has none, so its pages aren't read)
 @app.get("/page-types")
-def get_page_types(db: Session = Depends(get_db)):
+def get_page_types(collection: int | None = None, db: Session = Depends(get_db)):
     templates = instructions.newest(db)
-    return [{"name": t.name, "builtIn": t.built_in, "templateVersion": templates[t.name].version_id if t.name in templates else None}
-            for t in db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)]
+    types = db.query(models.PageType).order_by(models.PageType.built_in.desc(), models.PageType.name)
+    return [page_type_json(t, templates) for t in (types if collection is None else types.filter_by(collection_id=collection))]
+
+#a free id for a page type, from its label: "Follow-up visit" -> follow_up_visit, then follow_up_visit_2, ...
+def new_name(db, label):
+    base = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+    base = base if instructions.KEY.fullmatch(base) else f"type_{base}".rstrip("_")
+    name, n = base, 1
+    while name in RESERVED or db.get(models.PageType, name):
+        n += 1
+        name = f"{base}_{n}"
+    return name
 
 #adds a page type; POST /instructions/{name} gives it a template, and only then can pages be read as it
 @app.post("/page-types", status_code=201)
 def create_page_type(payload: PageTypeRequest, db: Session = Depends(get_db)):
-    name = payload.name.strip()
+    label = (payload.label or payload.name or "").strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="A page type's label can't be empty.")
     write_lock(db)
+    name = payload.name.strip() if payload.name else new_name(db, label)
     if not instructions.KEY.fullmatch(name) or name in RESERVED:
         raise HTTPException(status_code=400, detail="A page type's name is lower-case letters, digits and _, starting with a letter.")
     if db.get(models.PageType, name):
         raise HTTPException(status_code=409, detail=f"There is already a page type called {name}.")
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
-    db.add(models.PageType(name=name, reviewer_id=payload.reviewerId))
-    db.commit()
-    return {"name": name, "builtIn": False, "templateVersion": None}
+    if not db.get(models.Collection, payload.collectionId):
+        raise HTTPException(status_code=400, detail="No such series.")
+    try:
+        db.add(models.PageType(name=name, label=label, reviewer_id=payload.reviewerId, collection_id=payload.collectionId))
+        db.commit()
+    except IntegrityError: #the label is taken in the collection
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
+    return page_type_json(db.get(models.PageType, name), {})
+
+#changes a page type's label
+@app.patch("/page-types/{name}")
+def update_page_type(name: str, payload: PageTypeSettings, db: Session = Depends(get_db)):
+    write_lock(db)
+    t = db.get(models.PageType, name)
+    if not t:
+        raise HTTPException(status_code=404, detail=f"No page type called {name}.")
+    label = t.label if payload.label is None else payload.label.strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="A page type's label can't be empty.")
+    t.label = label
+    try:
+        db.commit()
+    except IntegrityError: #the label is taken in the collection
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"There is already a page type labelled {label}.")
+    return page_type_json(t, instructions.newest(db))
 
 #a collection's bundle jobs: those waiting or running, and the PDFs whose latest job failed and that aren't loaded
 def bundle_jobs(db, collection_id):
@@ -386,16 +439,19 @@ def bundle_jobs(db, collection_id):
             "failed": sum(job.status == "failed" and PurePosixPath(job.pdf.replace("\\", "/")).stem not in loaded for job in latest.values())}
 
 #a collection, and with db how far along it is: bundles loaded (processed), being processed or failed; pages, those in a survey
-#(reviewable) and reviewed; what needs a person (open flags); and whether its pages group into records (a type starts one of
+#(reviewable) and reviewed; what needs a person (pages of its Unknown type, open flags); and whether its pages group into records (a type starts one of
 #its top level); and what one record is called
 def collection_json(c, db=None):
     found = {}
     if db is not None:
         pages = [p for b in cached_progress(db) if b["collectionId"] == c.collection_id for p in b["pages"]]
         reviewable = [p for p in pages if p["surveyId"] is not None]
+        types = db.query(models.PageType).filter_by(collection_id=c.collection_id).all()
+        unknown = {t.name for t in types if t.unknown}
         jobs = bundle_jobs(db, c.collection_id)
         found = {"bundles": db.query(models.Bundle).filter_by(collection_id=c.collection_id).count(), **jobs, "pages": len(pages),
                  "reviewable": len(reviewable), "reviewed": sum(p["status"] == "Reviewed" for p in reviewable),
+                 "unknownPages": db.query(models.Page).filter(models.Page.category.in_(unknown)).count(),
                  "flagged": sum(p["flagCount"] for p in pages),
                  "grouped": grouping.grouped(db, c.collection_id)}
     levels = grouping.levels(object_session(c), c.collection_id)
@@ -409,7 +465,7 @@ def get_collections(brief: bool = False, db: Session = Depends(get_db)):
     found = db.query(models.Collection).order_by(models.Collection.collection_id)
     return [{"id": c.collection_id, "name": c.name} for c in found] if brief else [collection_json(c, db) for c in found]
 
-#a new collection
+#a new collection, starts with its Unknown page type
 @app.post("/collections", status_code=201)
 def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
     name = payload.name.strip()
@@ -423,6 +479,7 @@ def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail=f"There is already a series called {name}.")
+    db.add(models.PageType(name=new_name(db, "Unknown"), label="Unknown", unknown=True, built_in=True, collection_id=collection.collection_id))
     db.commit()
     return collection_json(collection, db)
 
@@ -461,8 +518,9 @@ def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depend
     page = db.get(models.Page, page_id)
     if page is None:
         raise HTTPException(status_code=404, detail="Page not found.")
-    if not db.get(models.PageType, payload.pageType):
-        raise HTTPException(status_code=400, detail=f"No page type called {payload.pageType}.")
+    new_type = db.get(models.PageType, payload.pageType)
+    if not new_type or new_type.collection_id != db.get(models.Bundle, page.bundle_id).collection_id:
+        raise HTTPException(status_code=400, detail=f"No page type called {payload.pageType} in this page's series.")
     if not db.get(models.Reviewer, payload.reviewerId):
         raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
     if payload.pageType == page.category:
@@ -471,10 +529,10 @@ def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depend
         raise HTTPException(status_code=409, detail="This page has saved reviews, which reading it again would lose.")
     if db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.status.in_(("waiting", "running"))).first():
         raise HTTPException(status_code=409, detail="This page is already waiting to be read again.")
-    if payload.pageType == loader.OTHER_CAT:
+    if new_type.unknown:
         loader.clear_content(page_id, db.connection())
-        loader.insert_content(page_id, None, loader.OTHER_CAT, db.connection())
-        page.category, page.revision_no = loader.OTHER_CAT, (page.revision_no or 0) + 1
+        loader.insert_content(page_id, None, new_type.name, db.connection())
+        page.category, page.revision_no = new_type.name, (page.revision_no or 0) + 1
         page.provider = page.model = page.effort = page.runtime = page.prompt_version_id = page.template_version_id = None
         db.commit()
         return {"pageType": page.category, "job": None}
@@ -797,13 +855,14 @@ def partial_pages(db, job):
     identified = {Path(page["file"]).stem: page for page in manifest.get("pages", []) if page.get("file")}
     # Published page images are available before identification completes.
     extracted = {path.stem for path in (folder / "pages").glob("*.png")}
+    unknown = {name for (name,) in db.query(models.PageType.name).filter(models.PageType.unknown)}
     result = []
     for page_id in sorted(extracted | identified.keys() | completed.keys()):
         page = completed.get(page_id)
         category = identified.get(page_id, {}).get("label") or (page or {}).get("category") or "unidentified"
         status = ("Transcribed — not grouped" if page else
                   "Not required" if category == "blank" else
-                  "Needs identification" if category in ("unidentified", "review", "other") else
+                  "Needs identification" if category in {"unidentified", "review", *unknown} else
                   "Awaiting transcription")
         result.append({"id": page_id, "category": category, "status": status,
                        "data": page["data"] if page else None})
@@ -894,7 +953,9 @@ def page_action_context(page_id: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "Page not found.")
     surveys = db.query(models.Survey).filter(models.Survey.bundle_id == page.bundle_id).order_by(models.Survey.survey_id).all()
     job = db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.kind == "page").order_by(models.Job.job_id.desc()).first()
+    types = db.query(models.PageType).filter_by(collection_id=db.get(models.Bundle, page.bundle_id).collection_id)         .order_by(models.PageType.built_in.desc(), models.PageType.name)
     return {"bundleId": page.bundle_id, "surveyId": page.survey_id, "category": page.category,
+            "pageTypes": [{"name": t.name, "label": t.label} for t in types], #what it can be changed to: its collection's types
             "needsTranscription": page.needs_transcription, "revision": page.revision_no or 0, "hasReviews": bool(db.query(models.Edit).filter_by(page_id=page_id).first()),
             "job": job_json(job) if job else None,
             "surveys": [{"id": s.survey_id, "pages": [{"id": p.page_id, "type": p.category} for p in
@@ -912,7 +973,7 @@ def move_page(page_id: str, payload: MovePageRequest, db: Session = Depends(get_
     if target.bundle_id != page.bundle_id:
         raise HTTPException(400, "Pages can only move within the same item.")
     if target.survey_id == page.survey_id:
-        raise HTTPException(400, "Choose a different survey.")
+        raise HTTPException(400, f"Choose a different {page_record_name(db, page)}.")
     if page.survey_id != payload.sourceSurveyId or (page.revision_no or 0) != payload.revision:
         raise HTTPException(409, "This page changed. Refresh before moving it.")
     if db.query(models.Job).filter(models.Job.page_id == page_id, models.Job.status.in_(("waiting", "running"))).first():
@@ -955,15 +1016,16 @@ def actionable_page(db, page_id, reviewer_id, revision):
 @app.put("/page-classification/{page_id:path}")
 def classify_page(page_id: str, payload: PageClassificationRequest, db: Session = Depends(get_db)):
     page = actionable_page(db, page_id, payload.reviewerId, payload.revision)
-    if payload.pageType not in ("main", "notes", "coded", "other"):
-        raise HTTPException(400, "Choose a supported page type.")
+    new_type = db.get(models.PageType, payload.pageType)
+    if not new_type or new_type.collection_id != db.get(models.Bundle, page.bundle_id).collection_id:
+        raise HTTPException(400, f"No page type called {payload.pageType} in this page's series.")
     if payload.pageType == page.category:
         raise HTTPException(400, "The page is already that type.")
     from backend.db.page_history import snapshot
     snapshot(db, page_id, payload.reviewerId, "change_type")
     page.category = payload.pageType
-    # Other pages have no transcription template.
-    page.needs_transcription = payload.pageType != loader.OTHER_CAT
+    # An Unknown type's pages wait, unread, for a reviewer to pick their type.
+    page.needs_transcription = not new_type.unknown
     page.revision_no = (page.revision_no or 0) + 1
     page.checked_revision = None
     db.commit()
@@ -1008,7 +1070,7 @@ def get_page_history(page_id: str, db: Session = Depends(get_db)):
               "Page type changed" if version.action == "change_type" else "Page retranscribed",
               f"Previous page type: {previous.get('category', 'Unknown')}. Previous revision: {previous.get('revision_no', 'Unknown')}.", content)
     for move in db.query(models.PageMove).filter_by(page_id=page_id):
-        event("move", move.move_id, move.time, move.reviewer_id, "Moved to another survey",
+        event("move", move.move_id, move.time, move.reviewer_id, f"Moved to another {page_record_name(db, page)}",
               f"{move.from_survey or 'Unassigned'} → {move.to_survey}" + (f". Reason: {move.reason}" if move.reason else ""))
     previous_values = {}
     for edit in db.query(models.Edit).filter_by(page_id=page_id).order_by(models.Edit.edit_id):

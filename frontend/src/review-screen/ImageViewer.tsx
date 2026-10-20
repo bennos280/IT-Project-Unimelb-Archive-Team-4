@@ -34,8 +34,9 @@ export default function ImageViewer({
   // A field with no mapped region shows the whole card and says why nothing is highlighted;
   // an annotation shows where the transcription saw it even when its area is highlighted.
   const isAnnotation = !!selectedField?.id.startsWith("annotations.");
+  const textPage = isTextPage(page);
   const note =
-    selection && selectedField && loaded && !error && !isTextPage(page.type) && selection.token !== dismissed
+    selection && selectedField && loaded && !error && !textPage && selection.token !== dismissed
       ? isAnnotation
         ? selectedField.location
           ? `Annotation: ${selectedField.location}`
@@ -49,7 +50,7 @@ export default function ImageViewer({
   const fitWholeCard = useEffectEvent(() => fitToPage());
   // Zoom first, then centre the selected region after the resized image has rendered.
   useEffect(() => {
-    if (!selection || !selectedField || !loaded || isTextPage(page.type)) return;
+    if (!selection || !selectedField || !loaded || textPage) return;
     // Zooming by hand keeps the reviewer's zoom.
     if (selection.token === dismissed) return;
     if (!region) {
@@ -78,7 +79,7 @@ export default function ImageViewer({
       cancelAnimationFrame(first);
       cancelAnimationFrame(second);
     };
-  }, [selection, selectedField, region, loaded, page.type, dismissed]);
+  }, [selection, selectedField, region, loaded, textPage, dismissed]);
   const viewport = useRef<HTMLDivElement>(null);
   const drag = useRef<{
     x: number;
@@ -182,7 +183,7 @@ export default function ImageViewer({
                 ref={image}
                 className="block h-auto w-full max-w-none select-none"
                 src={page.imageUrl}
-                alt={`Original ${getPageName(page.type)} for survey ${page.id}`}
+                alt={`Original scan of ${getPageName(page)} ${page.id}`}
                 draggable={false}
                 onLoad={() => setLoaded(true)}
                 onError={() => setError(true)}

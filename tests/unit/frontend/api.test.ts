@@ -14,6 +14,8 @@ import type { Survey } from "../../../frontend/src/review-screen/model";
 const sampleSurvey = (): Survey => ({
   id: "test-survey",
   title: "Test survey",
+  recordName: "survey",
+  grouped: true,
   pages: [
     {
       id: "test-bundle/p0",

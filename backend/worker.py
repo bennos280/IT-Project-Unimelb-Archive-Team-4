@@ -129,7 +129,8 @@ def train_sorting(db, job, progress):
     # Each move records one event and increments the revision once.
     move_counts = dict(db.query(models.PageMove.page_id, func.count(models.PageMove.move_id))
                        .group_by(models.PageMove.page_id))
-    for page in db.query(models.Page).filter(models.Page.revision_no > 0, models.Page.category != loader.OTHER_CAT):
+    unknown = db.query(models.PageType.name).filter(models.PageType.unknown)
+    for page in db.query(models.Page).filter(models.Page.revision_no > 0, models.Page.category.not_in(unknown)):
         if page.revision_no <= move_counts.get(page.page_id, 0):
             continue
         scan = scans.page_scan(page.import_path, db.get(models.Bundle, page.bundle_id).source_pdf, page.page_id)

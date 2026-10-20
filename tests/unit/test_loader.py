@@ -3,6 +3,7 @@ import json
 import sqlite3
 
 import pytest
+import sqlalchemy.exc
 
 from backend.db import database, loader
 
@@ -43,7 +44,7 @@ def start_db(tmp_path, monkeypatch):
     with database.make_engine(url).begin() as con:
         con.exec_driver_sql("INSERT INTO collections (collection_id, name) VALUES (1, 'Wilfred Prest Survey')")
         for name in ("main", "notes", "coded", "other"):
-            con.exec_driver_sql("INSERT INTO page_types (name) VALUES (?)", (name,))
+            con.exec_driver_sql("INSERT INTO page_types (name, label, collection_id, unknown) VALUES (?, ?, 1, ?)", (name, name, name == "other"))
         con.exec_driver_sql("INSERT INTO archive_items (node, collection_id, identifier, title, pdf) VALUES"
                             " (216412, 1, 'UMA-ITE-216412', 'Item 216412', '216412/216412.pdf')")
     monkeypatch.setattr(database, "engine", database.make_engine(url))
@@ -128,6 +129,27 @@ def test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other(tmp_path, monk
     loader.dump_into_db(out / "manifest.json")
     db = sqlite3.connect(tmp_path / "test.db")
     assert db.execute("SELECT category FROM pages WHERE page_id = '216412_00003'").fetchone() == ("other",)
+
+
+def test_a_page_sorting_was_unsure_about_is_stored_as_the_collections_unknown_type(tmp_path, monkeypatch):
+    url = start_db(tmp_path, monkeypatch)
+    with database.make_engine(url).begin() as con:
+        con.exec_driver_sql("UPDATE page_types SET unknown = 0")
+        con.exec_driver_sql("INSERT INTO page_types(name, label, collection_id, unknown) VALUES('unsorted', 'Unsorted', 1, 1)")
+    loader.dump_into_db(run_folder(tmp_path) / "manifest.json")
+    db = sqlite3.connect(tmp_path / "test.db")
+    assert db.execute("SELECT category FROM pages WHERE page_id = '216412_00005'").fetchone() == ("unsorted",)  # sorting said review
+
+
+def test_a_collection_has_at_most_one_unknown_type_and_without_one_the_bundle_is_refused_by_name(tmp_path, monkeypatch):
+    url = start_db(tmp_path, monkeypatch)
+    with pytest.raises(sqlalchemy.exc.IntegrityError, match="UNIQUE"), database.make_engine(url).begin() as con:
+        con.exec_driver_sql("INSERT INTO page_types(name, label, collection_id, unknown) VALUES('unsorted', 'Unsorted', 1, 1)")
+    with database.make_engine(url).begin() as con:
+        con.exec_driver_sql("UPDATE page_types SET unknown = 0")
+    with pytest.raises(ValueError, match="216412's collection has no Unknown page type to store 216412_00005.png as"):
+        loader.dump_into_db(run_folder(tmp_path) / "manifest.json")
+    assert sqlite3.connect(tmp_path / "test.db").execute("SELECT COUNT(*) FROM bundles").fetchone() == (0,)  # all or nothing
 
 
 def test_an_annotation_is_stored_with_its_area_when_the_page_type_has_it(tmp_path, monkeypatch):
