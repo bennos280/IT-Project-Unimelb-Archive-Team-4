@@ -49,14 +49,14 @@ export function ModelTable({data}:{data:ModelData}) { return <div className="spa
         ? <p><strong>Current default:</strong> {data.configured.model} · {data.configured.provider} · {data.configured.effort} effort</p>
         : <p><strong>Current default:</strong> No transcription model is set. <a className="underline" href="/?view=settings">Choose one on the Settings page</a>.</p>}
       <p className="text-muted-foreground">Recorded transcription configurations for pages currently in the database. Historical model names do not guarantee current availability.</p>
-      <div className="rounded-md border"><Table className="min-w-[800px] table-auto">
+      <Table className="min-w-[800px] table-auto">
         <TableHeader><TableRow>{["Model", "Provider", "Effort", "Prompt version", "Template version", "Pages processed", "Average processing time / page"].map((label) => <TableHead key={label} className="whitespace-normal">{label}</TableHead>)}</TableRow></TableHeader>
         <TableBody>{data.models.map((model, index) => <TableRow key={index} className="align-top">
           <TableCell className="min-w-44 whitespace-normal [overflow-wrap:anywhere]">{model.model}</TableCell><TableCell>{model.provider ?? "Not recorded"}</TableCell><TableCell>{model.effort ?? "Not recorded"}</TableCell>
           <TableCell>{model.promptVersion ?? "Not recorded"}</TableCell><TableCell>{model.templateVersion ?? "Not recorded"}</TableCell>
           <TableCell>{model.pages}</TableCell><TableCell>{model.averageSeconds === null ? "Not recorded" : `${model.averageSeconds.toFixed(1)} s`}</TableCell>
         </TableRow>)}</TableBody>
-      </Table></div>
+      </Table>
       {!data.models.length && <p className="text-muted-foreground">No model history recorded yet.</p>}
       <p className="text-muted-foreground">Cost and accuracy are not recorded in this data. Names joined by “+” indicate multiple models reported for a transcription, rather than one selectable model.</p>
 </div>; }

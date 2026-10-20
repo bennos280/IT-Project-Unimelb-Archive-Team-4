@@ -304,10 +304,6 @@ export default function ProgressDashboard() {
   const cell = "whitespace-normal px-1.5 sm:px-2 [overflow-wrap:anywhere]";
   const head = "whitespace-normal px-1.5 text-xs [overflow-wrap:anywhere] sm:px-2 sm:text-sm";
   const num = "text-right tabular-nums";
-  // Stretched link: its overlay makes the whole row clickable; controls inside a row sit above it.
-  const rowLink =
-    "rounded-sm font-medium outline-none after:absolute after:inset-0 hover:underline focus-visible:underline focus-visible:ring-3 focus-visible:ring-ring/50";
-  const above = "relative z-10";
   const rowAction = "h-auto min-h-7 w-full flex-wrap px-1 py-1 text-xs sm:px-2.5 sm:text-[0.8rem]";
   // The table's columns: heading, width and, for a number, its alignment (sr-only: a heading only screen readers read).
   const columns: (readonly [string, string, string?])[] = item
@@ -516,7 +512,6 @@ export default function ProgressDashboard() {
               )}
             </div>
             {/* The same table shows bundle summaries or individual page details. */}
-            <div className="rounded-md border">
               <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
@@ -532,17 +527,16 @@ export default function ProgressDashboard() {
                     ? matchingPages.slice(start, start + pageSize).map((p) => (
                         <TableRow
                           key={p.id}
-                          className={openable(p) ? "relative cursor-pointer hover:bg-muted focus-within:bg-muted" : undefined}
+                          clickable={openable(p)}
                         >
                           <TableCell className={cell}>
                             {openable(p) ? (
-                              <a
+                              <TableRowLink
                                 href={reviewLink(p)}
                                 aria-label={`${p.status === "Awaiting transcription" ? "Transcribe" : p.status === "Reviewed" ? "View" : "Review"} ${p.label}`}
-                                className={rowLink}
                               >
                                 {p.label}
-                              </a>
+                              </TableRowLink>
                             ) : (
                               p.label
                             )}
@@ -670,7 +664,7 @@ export default function ProgressDashboard() {
                                         <Button
                                           variant="outline"
                                           size="sm"
-                                          className={`${rowAction} ${above}`}
+                                          className={rowAction}
                                           disabled={starting !== null}
                                           onClick={() => {
                                             setJobError("");
@@ -694,7 +688,7 @@ export default function ProgressDashboard() {
                                             <Button
                                               variant="link"
                                               size="sm"
-                                              className={`h-auto p-0 text-xs text-destructive underline ${above}`}
+                                              className="h-auto p-0 text-xs text-destructive underline"
                                               onClick={() =>
                                                 setErrorDetails({
                                                   item: itemTitle(b.name, b.archive),
@@ -754,7 +748,6 @@ export default function ProgressDashboard() {
                   )}
                 </TableBody>
               </Table>
-            </div>
             {/* Show the visible row range and disable navigation at either end. */}
             <footer className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <span>
