@@ -134,16 +134,22 @@ test("an item's pages show Items > Item, and Items returns in-app with Back and 
   await expect(page.getByRole("heading", { name: "All items" })).toBeVisible();
 });
 
-test("a Ctrl or middle click on Items opens the series' items in a new tab and leaves this one on the item", async ({ page, context }) => {
+test("a Ctrl or middle click on Items is left to the browser to open the series' items in a new tab, and this one stays on the item", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?series=1&item=216417");
-  for (const click of [{ modifiers: ["Control" as const] }, { button: "middle" as const }]) {
-    const [tab] = await Promise.all([context.waitForEvent("page"), itemsCrumb(page).click(click)]);
-    await expect(tab).toHaveURL(/\/\?series=1$/);
-    await expect(page).toHaveURL("/?series=1&item=216417");
-    await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
-    await tab.close();
-  }
+  await expect(itemsCrumb(page)).toHaveAttribute("href", "/?series=1");
+  await expect(itemsCrumb(page)).not.toHaveAttribute("target", /./);
+  // Each click records whether the app cancelled it, then is cancelled here so no tab opens.
+  await page.evaluate(() => {
+    const clicks: [string, boolean][] = ((window as unknown as { clicks: [string, boolean][] }).clicks = []);
+    for (const type of ["click", "auxclick"])
+      window.addEventListener(type, (e) => { clicks.push([e.type, e.defaultPrevented]); e.preventDefault(); });
+  });
+  await itemsCrumb(page).click({ modifiers: ["Control"] });
+  await itemsCrumb(page).click({ button: "middle" });
+  expect(await page.evaluate(() => (window as unknown as { clicks: [string, boolean][] }).clicks)).toEqual([["click", false], ["auxclick", false]]);
+  await expect(page).toHaveURL("/?series=1&item=216417");
+  await expect(page.getByRole("heading", { name: "Item 216417" })).toBeVisible();
 });
 
 test("the review screen shows the series, then Items > Item > Survey, and the item crumb opens that item's pages", async ({ page }) => {
