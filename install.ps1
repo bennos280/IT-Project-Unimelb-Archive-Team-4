@@ -36,6 +36,7 @@ try {
 
 Write-Host "Installing its libraries (the first time downloads a few hundred MB)..."
 $sync = "sync", "--directory", $Folder
+if (Test-Path (Join-Path $Folder ".venv\Lib\site-packages\torch")) { $sync += "--extra", "local-sorting" }  # an update keeps page sorting on this computer
 & $uv @sync
 if ($LASTEXITCODE) { throw "uv sync failed" }
 

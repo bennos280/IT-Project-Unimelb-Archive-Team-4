@@ -10,11 +10,14 @@ RELEASE="https://github.com/bennos280/IT-Project-Unimelb-Archive-Team-4/releases
 if [ "$(uname -s)" = Darwin ]; then DEFAULT="$HOME/Library/Application Support/PrestCribe"; else DEFAULT="$HOME/.local/share/PrestCribe"; fi
 FOLDER="${PRESTCRIBE_HOME:-$DEFAULT}"
 
-# its libraries are built for macOS 14 or later
+# its libraries are built for macOS 14 or later; an Intel Mac has no PyTorch, so it sorts pages with the reading model
 if [ "$(uname -s)" = Darwin ]; then
     if [ "$(sw_vers -productVersion | cut -d. -f1)" -lt 14 ]; then
         echo "PrestCribe needs macOS 14 Sonoma or later." >&2
         exit 1
+    fi
+    if [ "$(uname -m)" != arm64 ]; then
+        echo "This Mac has an Intel processor: PrestCribe will sort pages with your reading model (see its Settings page)."
     fi
 fi
 
@@ -39,7 +42,9 @@ unzip -q "$ZIP" -d "$WORK/app"  # no database in it: the one here is kept, or ma
 cp -R "$WORK/app/." "$FOLDER/"
 
 echo "Installing its libraries (the first time downloads a few hundred MB)..."
-"$UV" sync --directory "$FOLDER"
+EXTRA=""
+if ls -d "$FOLDER"/.venv/lib/python*/site-packages/torch >/dev/null 2>&1; then EXTRA="--extra local-sorting"; fi  # an update keeps page sorting on this computer
+"$UV" sync --directory "$FOLDER" $EXTRA
 
 # what starts it: PrestCribe.command in its folder, which runs it in a Terminal window (close the window to stop it); on a Mac,
 # PrestCribe.app in ~/Applications opens that, with PrestCribe's icon, in Launchpad, Spotlight and the Dock, and a link to it on
@@ -80,7 +85,7 @@ PLIST
 fi
 
 if ! command -v claude >/dev/null 2>&1 && ! command -v codex >/dev/null 2>&1; then
-    echo "Note: reading pages needs Claude Code or the Codex CLI signed in. PrestCribe's Settings page shows how."
+    echo "Note: reading pages needs Claude Code or the Codex CLI signed in, or an API key. PrestCribe's Settings page shows how."
 fi
 echo "PrestCribe is installed in $FOLDER."
 if [ -z "${PRESTCRIBE_NO_START:-}" ]; then

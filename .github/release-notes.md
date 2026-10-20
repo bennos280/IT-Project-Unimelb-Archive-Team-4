@@ -23,6 +23,6 @@ On PrestCribe's home page, choose **Open a PrestCribe file** and pick one of the
 - `wilfred-prest-survey.prestcribe`: the survey set up, ready to read
 - `wilfred-prest-survey-with-transcriptions.prestcribe`: 26 items already read (80 MB), ready to review
 
-To read pages, sign in to Claude Code or Codex in **Settings**.
+To read pages, sign in to Claude Code or Codex, or add an API key, in **Settings**.
 
 Built by COMP30022 Team 4 for the University of Melbourne Archives.

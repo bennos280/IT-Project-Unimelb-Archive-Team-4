@@ -10,19 +10,23 @@ from functools import cache
 import json
 import os
 import re
+import socket
 from pathlib import Path, PurePosixPath
 import sqlite3
+import sys
 import threading
 from backend.db import app_settings, checks, database, grouping, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
 from datetime import datetime, timezone
+from urllib.error import URLError
 from backend.common import ROOT, find_images, settings
-from backend.pipeline.transcribe import areas
+from backend.pipeline.transcribe import areas, providers
+from backend.pipeline.transcribe.transcribe import ALL_PROVIDERS
 
 from backend.api.uploads import archive_sources, upload_bundle
-from backend.api import connections, transcription_options
+from backend.api import connections, local_sorting, transcription_options
 
 app = FastAPI()
 
@@ -30,6 +34,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.include_router(connections.router)
 app.include_router(transcription_options.router)
+app.include_router(local_sorting.router)
 
 #takes the db's write lock now, so another save can't land between a check and the write it guards (freed at commit)
 def write_lock(db):
@@ -864,7 +869,7 @@ def change_page_type(page_id: str, payload: PageTypeChange, db: Session = Depend
     model, provider, effort = chosen["model"], chosen["provider"], chosen["effort"]
     if not model or len(model) > 200 or any(c.isspace() for c in model) or model.startswith("-") or "+" in model:
         raise HTTPException(400, "Select a valid model.")
-    if provider not in ("claude", "codex") or not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
+    if provider not in ALL_PROVIDERS or not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
         raise HTTPException(400, "Select a valid provider and effort.")
     job = models.Job(kind="page", page_id=page_id, page_type=payload.pageType, reviewer_id=payload.reviewerId,
                      **{f"transcription_{field}": value for field, value in chosen.items()})
@@ -940,8 +945,8 @@ def chosen_transcription(db, provider, model, effort):
 def check_transcription(provider, model, effort):
     if not model or len(model) > 200 or any(c.isspace() for c in model) or model.startswith("-") or "+" in model:
         raise HTTPException(status_code=400, detail="Enter a valid model name.")
-    if provider not in ("claude", "codex"):
-        raise HTTPException(status_code=400, detail="Choose Claude or Codex.")
+    if provider not in ALL_PROVIDERS:
+        raise HTTPException(status_code=400, detail="Choose a provider.")
     if not effort or len(effort) > 40 or any(c.isspace() for c in effort) or effort.startswith("-"):
         raise HTTPException(status_code=400, detail="Enter a valid effort level.")
 
@@ -1524,7 +1529,7 @@ def transcribe_page(page_id: str, payload: PageTranscriptionRequest, db: Session
         raise HTTPException(400, f"No transcription template is configured for {page.category}. Choose a page type with a template first.")
     if not payload.model.strip() or len(payload.model) > 200 or any(c.isspace() for c in payload.model) or payload.model.startswith("-") or "+" in payload.model:
         raise HTTPException(400, "Enter a valid model name.")
-    if payload.provider not in ("claude", "codex") or not payload.effort or len(payload.effort) > 40 or any(c.isspace() for c in payload.effort) or payload.effort.startswith("-"):
+    if payload.provider not in ALL_PROVIDERS or not payload.effort or len(payload.effort) > 40 or any(c.isspace() for c in payload.effort) or payload.effort.startswith("-"):
         raise HTTPException(400, "Enter a valid provider and effort.")
     job = models.Job(kind="page", page_id=page_id, page_type=page.category, reviewer_id=payload.reviewerId,
                      base_revision=page.revision_no or 0, transcription_model=payload.model,
@@ -1621,3 +1626,100 @@ async def open_state(request: Request, db: Session = Depends(get_db)):
         found.close()
     database.migrate(f"sqlite:///{db.get_bind().url.database}")
     return {"opened": True}
+
+
+#--PAGE SORTING--# how pages are sorted into page types: on this computer (PyTorch, where installed) or by the reading model
+class Sorter(BaseModel):
+    provider: str
+    model: str
+    effort: str
+
+#each field left out stays as it is; sorter null: the transcription choice sorts again
+class PageSortingRequest(BaseModel):
+    method: Literal["local", "model"] | None = None
+    unsure: Literal["review", "model"] | None = None
+    sorter: Sorter | None = None
+    sameAsTranscription: bool = False
+
+_checked, _checking = {}, threading.Lock()  #a passed check of page sorting on this computer, kept while the API runs; one at a time
+
+#how pages are sorted: the method, what a page the model here isn't sure of does, the reading model that sorts (null: the
+#transcription choice), whether PyTorch is here, and a passed check of it, if one has run
+@app.get("/page-sorting")
+def get_page_sorting(db: Session = Depends(get_db)):
+    return {**app_settings.sorting_settings(db), "localAvailable": app_settings.local_sorting_available(), "checked": _checked or None}
+
+@app.put("/page-sorting")
+def put_page_sorting(payload: PageSortingRequest, db: Session = Depends(get_db)):
+    if payload.method == "local" and not app_settings.local_sorting_available():
+        raise HTTPException(status_code=400, detail="PyTorch isn't installed on this computer, so pages can't be sorted here.")
+    if payload.sorter:
+        check_transcription(payload.sorter.provider, payload.sorter.model, payload.sorter.effort)
+    write_lock(db)
+    if payload.method:
+        app_settings.save_page_sorting(db, payload.method)
+    app_settings.save_sorting_settings(db, unsure=payload.unsure,
+                                       sorter=None if payload.sameAsTranscription else payload.sorter.model_dump() if payload.sorter else False)
+    return get_page_sorting(db)
+
+
+#--API KEYS--# for transcribing through an AI company's API (backend/pipeline/transcribe/providers.py): kept on this computer,
+#never in the database, and never sent back; each provider says whether it has one, and where to get one
+class ApiKey(BaseModel):
+    key: str = ""  #"": forget the saved one
+
+@app.get("/api-keys")
+def get_api_keys():
+    saved = providers.saved_keys()
+    return [{"provider": name, "label": p["label"], "keysUrl": p["keys"], "needsKey": p["env"] is not None,
+             "saved": name in saved, "fromEnvironment": name not in saved and bool(p["env"] and os.environ.get(p["env"]))}
+            for name, p in providers.PROVIDERS.items()]
+
+@app.put("/api-keys/{provider}")
+def put_api_key(provider: str, payload: ApiKey):
+    if provider not in providers.PROVIDERS or providers.PROVIDERS[provider]["env"] is None:
+        raise HTTPException(status_code=404, detail="No provider with a key called that.")
+    value = payload.key.strip()
+    if value and (len(value) > 500 or any(c.isspace() for c in value)):
+        raise HTTPException(status_code=400, detail="That doesn't look like a key.")
+    providers.save_key(provider, value)
+    return get_api_keys()
+
+
+#whether a failure, or what caused it, is a connection or download failing (requests and huggingface_hub errors are matched by name)
+def no_internet(error):
+    seen = set()
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        names = {c.__name__ for c in type(error).__mro__}
+        if isinstance(error, (URLError, ConnectionError, socket.gaierror, socket.timeout)) or names & {"ConnectionError", "Timeout", "LocalEntryNotFoundError", "OfflineModeIsEnabled"}:
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+#checks page sorting on this computer works, by sorting a blank test page with it (loading PyTorch and the sorting model, which
+#is downloaded the first time); what went wrong in words if it doesn't
+@app.post("/page-sorting/check")
+def check_page_sorting():
+    import platform, tempfile, time
+    if not app_settings.local_sorting_available():
+        intel_mac = sys.platform == "darwin" and platform.machine() != "arm64"
+        return {"ok": False, "detail": "PyTorch isn't available for Intel Macs: sort pages by the reading model." if intel_mac
+                else "PyTorch isn't installed on this computer: install it from Settings, then Page sorting."}
+    from PIL import Image
+    from backend.pipeline.identify.identify import identify_pages
+    with _checking:  #a check asked for while one runs waits for it, and gets its pass
+        if _checked:
+            return dict(_checked)
+        started = time.monotonic()
+        try:
+            with tempfile.TemporaryDirectory() as folder:
+                page = Path(folder) / "check.png"
+                Image.new("RGB", (850, 1100), "white").save(page)
+                identify_pages([page])
+        except Exception as error:
+            if no_internet(error):  #the sorting model's first download
+                return {"ok": False, "detail": f"The page sorting model couldn't be loaded; it's downloaded the first time, so check the internet ({error})"[:400]}
+            return {"ok": False, "detail": f"Page sorting on this computer failed: {type(error).__name__}: {error}"[:400]}
+        _checked.update(ok=True, seconds=round(time.monotonic() - started, 1))
+        return dict(_checked)
