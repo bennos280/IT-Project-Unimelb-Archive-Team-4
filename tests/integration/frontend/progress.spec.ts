@@ -892,6 +892,9 @@ test("with a transcription model saved, the dialog prefills it and shows no noti
   await expect(dialog.getByLabel("Provider", { exact: true })).toHaveValue("codex");
   await expect(dialog.getByLabel("Effort", { exact: true })).toHaveValue("high");
   await expect(dialog.getByText("No transcription model is set.")).toHaveCount(0);
+  const performance = dialog.getByRole("link", { name: "See how models have performed" });
+  await expect(performance).toHaveAttribute("href", "/?view=settings&tab=performance");
+  await expect(performance).toHaveAttribute("target", "_blank");
 });
 
 test.describe("The server pages, searches and filters the overview", () => {

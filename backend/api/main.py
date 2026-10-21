@@ -339,7 +339,7 @@ def get_instructions(db: Session = Depends(get_db)):
     names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
     return {kind: version_json(v, names) for kind, v in instructions.newest(db).items()}
 
-#every version of the prompt or of one template, newest first
+#every version of the prompt or of one template, newest first; number counts the kind's versions from 1, oldest first
 @app.get("/instructions/{kind}")
 def get_instruction_versions(kind: str, db: Session = Depends(get_db)):
     versions = (db.query(models.InstructionVersion).filter(models.InstructionVersion.kind == kind)
@@ -347,7 +347,20 @@ def get_instruction_versions(kind: str, db: Session = Depends(get_db)):
     if not versions:
         raise HTTPException(status_code=404, detail=f"No prompt or template called {kind}.")
     names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
-    return [version_json(v, names) for v in versions]
+    return [{**version_json(v, names), "number": len(versions) - i} for i, v in enumerate(versions)]
+
+#every version of the prompt and the templates, oldest first, with its number in its kind, the kind's label and whether it is the kind's newest
+@app.get("/instruction-versions")
+def get_all_instruction_versions(db: Session = Depends(get_db)):
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    labels = dict(db.query(models.PageType.name, models.PageType.label))
+    current, counts, rows = instructions.newest(db), {}, []
+    for v in db.query(models.InstructionVersion).order_by(models.InstructionVersion.version_id):
+        counts[v.kind] = counts.get(v.kind, 0) + 1
+        rows.append({**version_json(v, names), "number": counts[v.kind],
+                     "label": "Prompt" if v.kind == instructions.PROMPT else labels.get(v.kind, v.kind),
+                     "current": current[v.kind].version_id == v.version_id})
+    return rows
 
 #saves a new version of the prompt or of a page type's template (an Unknown type has none), used from the next job on; checked first
 @app.post("/instructions/{kind}", status_code=201)

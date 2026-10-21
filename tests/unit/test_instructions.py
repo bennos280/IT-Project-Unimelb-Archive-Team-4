@@ -72,6 +72,18 @@ def test_a_saved_template_becomes_the_newest_version_and_the_old_one_is_kept(cli
     assert instructions.texts(seeded)["main"] == body  # what the next job reads with
 
 
+def test_versions_are_numbered_within_their_kind_and_only_the_newest_is_current(client, seeded):
+    main_id = client.get("/instructions").json()["main"]["id"]
+    assert client.post("/instructions/main", json={"body": main_with(tenure_notes=None), "basedOn": main_id, "reviewerId": 1}).status_code == 201
+    versions = client.get("/instruction-versions").json()
+    assert [(v["kind"], v["number"], v["label"], v["current"]) for v in versions] == [
+        ("prompt", 1, "Prompt", True), ("coded", 1, "Coded page", True), ("main", 1, "Main page", False), ("notes", 1, "Notes page", True),
+        ("main", 2, "Main page", True)]  # oldest first
+    assert [v["id"] for v in versions] == sorted(v["id"] for v in versions) and versions[0]["body"] == TEXTS["prompt"]
+    assert [v["number"] for v in client.get("/instructions/main").json()] == [2, 1]  # newest first
+    assert [v["number"] for v in client.get("/instructions/prompt").json()] == [1]
+
+
 def test_a_save_is_refused_when_unknown_unchanged_invalid_or_based_on_an_old_version(client, seeded):
     main_id = client.get("/instructions").json()["main"]["id"]
 

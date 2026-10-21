@@ -289,13 +289,11 @@ for (const changeType of [true, false]) {
         .getByTestId("page-toolbar")
         .getByRole("button", { name: "Transcribe", exact: true })
         .click();
-    // Reviewers can inspect model information and return to the transcription form.
-    await page.getByRole("button", { name: "View model table" }).click();
-    await expect(
-      page.getByRole("heading", { name: "Transcription models", exact: true }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Back to transcription" }).click();
     const dialog = page.getByRole("dialog", { name: "Transcribe page" });
+    // How models have performed opens in Settings, in a new tab, leaving the form as it is.
+    await expect(
+      dialog.getByRole("link", { name: "See how models have performed" }),
+    ).toHaveAttribute("href", "/?view=settings&tab=performance");
     // A model is required, and reviewers can enter a custom model name.
     await page.getByLabel("Model", { exact: true }).fill("");
     await expect(
