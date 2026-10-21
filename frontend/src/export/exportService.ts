@@ -19,13 +19,24 @@ export function loadBundleExport(bundleId: string): Promise<SurveyExport> {
   return request(`/export?bundle_id=${encodeURIComponent(id)}`);
 }
 
-// The series' zip, under the file name the server gives it.
-export async function loadSeriesExport(collectionId: number): Promise<{ blob: Blob; filename: string }> {
-  const response = await fetch(`/api/collections/${collectionId}/export`);
+// Starts the server preparing a series' zip; pollSeriesExport asks how far it has got.
+export function startSeriesExport(collectionId: number): Promise<{ id: string; total: number }> {
+  return request(`/collections/${collectionId}/export`, { method: "POST" });
+}
+
+// How many items of the series are done, or once the zip is ready the zip itself, under the file name the server gives it.
+export async function pollSeriesExport(
+  collectionId: number,
+  id: string,
+): Promise<{ done: number; total: number } | { blob: Blob; filename: string }> {
+  const response = await fetch(`/api/collections/${collectionId}/export/${encodeURIComponent(id)}`);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(typeof body.detail === "string" ? body.detail : `Request failed (${response.status}).`);
   }
-  const filename = response.headers.get("Content-Disposition")?.match(/filename="?([^";]+)"?/)?.[1] ?? "series-export.zip";
-  return { blob: await response.blob(), filename };
+  if (response.headers.get("Content-Type")?.startsWith("application/zip")) {
+    const filename = response.headers.get("Content-Disposition")?.match(/filename="?([^";]+)"?/)?.[1] ?? "series-export.zip";
+    return { blob: await response.blob(), filename };
+  }
+  return response.json();
 }

@@ -1,7 +1,7 @@
 // Displays the export dialog for downloading saved survey data as JSON,
 // with validation and success or error messages.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { CheckCircle2, Download, X, AlertTriangle } from "lucide-react";
 
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { recordWords } from "../progress/backend";
 
@@ -34,7 +35,8 @@ import {
   loadSurveyExport,
   loadBundleExport,
   loadExportBundles,
-  loadSeriesExport,
+  startSeriesExport,
+  pollSeriesExport,
 } from "./exportService";
 
 // Defines the available export scope options shown in the dialog.
@@ -111,6 +113,15 @@ export default function ExportDialog({
     [],
   );
   const [busy, setBusy] = useState(false);
+  // How many of a series' items are done while its zip is prepared.
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const [open, setOpen] = useState(false);
   const [reviewCheck, setReviewCheck] = useState<{
@@ -211,10 +222,20 @@ export default function ExportDialog({
 
     try {
       if (seriesId !== undefined) {
-        const file = await loadSeriesExport(seriesId);
-        save(file.blob, file.filename);
-        setResult({ filename: file.filename });
-        return;
+        const { id, total } = await startSeriesExport(seriesId);
+        setProgress({ done: 0, total });
+        for (;;) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          if (!mounted.current) return;
+          const reply = await pollSeriesExport(seriesId, id);
+          if (!mounted.current) return;
+          if ("blob" in reply) {
+            save(reply.blob, reply.filename);
+            setResult({ filename: reply.filename });
+            return;
+          }
+          setProgress(reply);
+        }
       }
       const id = scope === "survey" ? requestedId.trim() : bundleId;
       // Always read saved values from US8; never export the session's drafts.
@@ -252,6 +273,7 @@ export default function ExportDialog({
       );
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -325,8 +347,7 @@ export default function ExportDialog({
                   <ScopeOption value="series" title="Whole series">
                     A zip with one JSON file per transcribed item, laid out as
                     on the archive: series, item, then page number. Each page
-                    says whether it was reviewed. A large series takes a minute
-                    or two to prepare.
+                    says whether it was reviewed.
                   </ScopeOption>
                 )}
 
@@ -393,6 +414,22 @@ export default function ExportDialog({
                 )}
               </RadioGroup>
             </FieldSet>
+
+            {/* How far the series' zip has got. */}
+            {progress && (
+              <div className="flex flex-col gap-1.5">
+                <span role="status" className="text-sm">
+                  Prepared {progress.done.toLocaleString()} of {progress.total.toLocaleString()} items
+                </span>
+                <Progress
+                  className="h-2"
+                  aria-label="Export progress"
+                  value={(progress.done / progress.total) * 100}
+                  max={progress.total}
+                  aria-valuenow={progress.done}
+                />
+              </div>
+            )}
 
             {/* Only warn when the selected saved data contains unreviewed records. */}
             {reviewCheck?.key === selectionKey && reviewCheck.pending && (

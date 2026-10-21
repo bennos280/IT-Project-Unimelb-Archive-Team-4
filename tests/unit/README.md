@@ -547,7 +547,7 @@ Each test uses fresh sample data; no running backend or database is needed.
 | `it("does not submit an unknown reviewer", async () => ...)`                                                                                   | An unregistered reviewer is rejected before posting a save.                                                |
 | `it("uses the backend-assigned reviewer ID and sends only the name", async () => ...)`                                                         | Creating a reviewer sends only the trimmed name and uses the ID returned by the backend.                   |
 
-## `test_export_api.py` — 14 test cases
+## `test_export_api.py` — 18 test cases
 
 checks the export endpoints using the test client and database fixtures.
 
@@ -563,6 +563,10 @@ checks the export endpoints using the test client and database fixtures.
 | `test_series_export_reviewed_values_and_decoded`        | Reviewed values replace the model's; reviewed is true only when every field is; decoded appears only for meanings.        |
 | `test_series_export_folder_without_identifier`          | A series with no archive identifier is named from its name, with every other character turned into an underscore.         |
 | `test_series_export_refuses_unknown_or_untranscribed`   | An unknown series, or one with nothing transcribed (even if another series has items), returns 404 with the reason.       |
+| `test_series_export_build_reports_progress_then_the_zip` | POST answers 202 with the build's id and item count; polling counts the items done, never down, up to the total, then gives a zip with the same files as the synchronous export. |
+| `test_series_export_build_is_forgotten_once_collected`  | An unknown build, one asked about under another series, and one already collected all return 404 "No such export."; a collected build is forgotten. |
+| `test_series_export_build_that_fails`                   | A build that raises answers 500 "The export failed: <reason>" and is forgotten.                                           |
+| `test_series_export_build_refuses_unknown_or_untranscribed` | Starting a build for an unknown or untranscribed series returns the same 404 reasons as the synchronous export.       |
 
 ## `export.test.ts` — 7 test cases
 

@@ -345,9 +345,11 @@ for (const selectedBundle of [false, true]) {
   });
 }
 
-// The series dashboard's endpoints; `replies` answers the series zip and an item's export.
+// The series dashboard's endpoints; `replies` answers starting the series zip, then each poll of it in turn (the last one again and
+// again), and an item's export.
 type Reply = Parameters<Route["fulfill"]>[0];
-async function seriesPage(page: Page, replies: { series?: Reply; item?: Reply } = {}) {
+async function seriesPage(page: Page, replies: { start?: Reply; polls?: Reply[]; item?: Reply } = {}) {
+  const polls = [...(replies.polls ?? [])];
   const requests: string[] = [];
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
@@ -358,7 +360,11 @@ async function seriesPage(page: Page, replies: { series?: Reply; item?: Reply } 
     const served = serveItems([{ bundle: "db-bundle-abc", name: "123" }], route.request());
     if (served) return route.fulfill(served);
     if (url.pathname === "/api/collections/1/export")
-      return route.fulfill(replies.series ?? { status: 404, json: { detail: "Nothing in this series is transcribed yet." } });
+      return route.fulfill(route.request().method() === "POST"
+        ? (replies.start ?? { status: 404, json: { detail: "Nothing in this series is transcribed yet." } })
+        : { status: 405, json: { detail: "Unexpected request" } });
+    if (url.pathname === "/api/collections/1/export/build-7")
+      return route.fulfill((polls.length > 1 ? polls.shift() : polls[0]) ?? { status: 404, json: { detail: "No such export." } });
     if (url.pathname === "/api/export/bundles")
       return route.fulfill({ json: [{ id: "db-bundle-abc", name: "123" }] });
     if (url.pathname === "/api/export")
@@ -385,27 +391,41 @@ test("the series page's dialog opens on Whole series and requests nothing until 
   expect(requests.slice(before).filter((path) => path.includes("/export"))).toEqual([]);
 });
 
-// Export zip asks the server for the series and saves what comes back under the name the server gives it.
-test("Export zip downloads the series under the server's file name", async ({ page }) => {
+// Export zip starts the series' build, shows how many items are done as the server counts them, and saves the zip it ends with under
+// the name the server gives it.
+test("Export zip shows the build's progress, then downloads the series under the server's file name", async ({ page }) => {
   const zip = Buffer.from("PK-series-zip");
   const requests = await seriesPage(page, {
-    series: {
-      body: zip,
-      headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="UMA-SR-000000842.zip"' },
-    },
+    start: { status: 202, json: { id: "build-7", total: 3 } },
+    polls: [
+      { json: { done: 1, total: 3 } },
+      { json: { done: 2, total: 3 } },
+      { body: zip, headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="UMA-SR-000000842.zip"' } },
+    ],
   });
   await page.goto("/?series=1");
   await page.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByRole("progressbar")).toHaveCount(0);
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export zip", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const bar = dialog.getByRole("progressbar", { name: "Export progress" });
+  await expect(dialog.getByRole("button", { name: "Preparing…" })).toBeDisabled();
+  await expect(dialog.getByText("Prepared 0 of 3 items")).toBeVisible();
+  await expect(dialog.getByText("Prepared 1 of 3 items")).toBeVisible();
+  await expect(bar).toHaveAttribute("aria-valuenow", "1");
+  await expect(bar).toHaveAttribute("aria-valuemax", "3");
+  await expect(dialog.getByText("Prepared 2 of 3 items")).toBeVisible();
+  await expect(bar).toHaveAttribute("aria-valuenow", "2");
   const file = await download;
   expect(file.suggestedFilename()).toBe("UMA-SR-000000842.zip");
   expect(readFileSync((await file.path())!)).toEqual(zip);
   expect(requests.filter((path) => path === "/api/collections/1/export")).toHaveLength(1);
-  const dialog = page.getByRole("dialog");
+  expect(requests.filter((path) => path === "/api/collections/1/export/build-7")).toHaveLength(3);
   await expect(dialog.getByText("Export file prepared")).toBeVisible();
   await expect(dialog.getByText("UMA-SR-000000842.zip", { exact: true })).toBeVisible();
   await expect(dialog.getByText(/pages awaiting review/)).toHaveCount(0);
+  await expect(bar).toHaveCount(0);
 });
 
 // A refusal from the server is shown as it is, under a title about the series.
@@ -417,6 +437,25 @@ test("a refused series export shows the server's reason under the series title",
   const alert = page.getByRole("dialog").getByRole("alert");
   await expect(alert).toContainText("The series could not be exported.");
   await expect(alert).toContainText("Nothing in this series is transcribed yet.");
+  await expect(page.getByText("Export file prepared")).toHaveCount(0);
+});
+
+// A build that fails while it is polled shows the server's reason the same way, and the bar goes.
+test("a series export that fails while preparing shows the server's reason under the series title", async ({ page }) => {
+  await seriesPage(page, {
+    start: { status: 202, json: { id: "build-7", total: 3 } },
+    polls: [{ json: { done: 1, total: 3 } }, { status: 500, json: { detail: "The export failed: disk full" } }],
+  });
+  await page.goto("/?series=1");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("button", { name: "Export zip", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Prepared 1 of 3 items")).toBeVisible();
+  const alert = dialog.getByRole("alert");
+  await expect(alert).toContainText("The series could not be exported.");
+  await expect(alert).toContainText("The export failed: disk full");
+  await expect(dialog.getByRole("progressbar")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Export zip", exact: true })).toBeEnabled();
   await expect(page.getByText("Export file prepared")).toHaveCount(0);
 });
 

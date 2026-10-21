@@ -1,8 +1,11 @@
 import io
 import json
+import threading
+import time
 import zipfile
 
 import pytest
+from backend.api import main
 from backend.db import models
 
 # Create one bundle, survey, page, reviewer, and two fields for the export tests.
@@ -183,4 +186,68 @@ def test_series_export_refuses_unknown_or_untranscribed(client, db):
              models.Collection(collection_id=2, name="Other series"),
              models.Bundle(bundle_id="a", source_pdf="data/a/a.pdf", collection_id=2))
     response = client.get("/collections/1/export")
+    assert (response.status_code, response.json()) == (404, {"detail": "Nothing in this series is transcribed yet."})
+
+# Polls a series export build until `until` accepts the reply (and returns it), giving up after 10 s.
+def poll(client, collection, build, until=lambda reply: reply.headers["content-type"] == "application/zip"):
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        reply = client.get(f"/collections/{collection}/export/{build}")
+        if until(reply):
+            return reply
+        time.sleep(0.01)
+    raise AssertionError("the export did not get there in time")
+
+# Check POST starts a build answering 202 with the id and the number of items, whose progress counts the items done (never down, the last
+# of them the total) until the zip itself arrives, holding the same files as the synchronous export.
+def test_series_export_build_reports_progress_then_the_zip(client, db, monkeypatch):
+    setup_series(client, db)
+    gate = threading.Semaphore(0)
+    real = main.series_zip
+    def held(collection, bundles, request, db, step):  # holds the build after each item until the test lets it go on
+        return real(collection, bundles, request, db, lambda: (step(), gate.acquire(timeout=10)))
+    monkeypatch.setattr(main, "series_zip", held)
+    started = client.post("/collections/1/export")
+    assert started.status_code == 202
+    build, total = started.json()["id"], started.json()["total"]
+    assert total == 4 and isinstance(build, str)
+    seen = []
+    for done in range(1, total + 1):
+        seen.append(poll(client, 1, build, lambda reply: reply.json()["done"] >= done).json())
+        gate.release()
+    assert [(reply["done"], reply["total"]) for reply in seen] == [(done, total) for done in range(1, total + 1)]
+    zipped = poll(client, 1, build)
+    monkeypatch.undo()
+    assert zipped.headers["content-disposition"] == f'attachment; filename="{FOLDER}.zip"'
+    assert files_of(zipped) == files_of(client.get("/collections/1/export"))
+
+# Check an unknown build, one asked about under another series, and one already collected all get 404 "No such export.", and a build is
+# forgotten once its zip has been handed over.
+def test_series_export_build_is_forgotten_once_collected(client, db):
+    setup_series(client, db)
+    unknown = client.get("/collections/1/export/nope")
+    assert (unknown.status_code, unknown.json()) == (404, {"detail": "No such export."})
+    build = client.post("/collections/1/export").json()["id"]
+    assert client.get(f"/collections/2/export/{build}").status_code == 404  # not that series' export
+    assert poll(client, 1, build).status_code == 200
+    again = client.get(f"/collections/1/export/{build}")
+    assert (again.status_code, again.json()) == (404, {"detail": "No such export."})
+
+# Check a build that fails answers 500 with the reason and is forgotten.
+def test_series_export_build_that_fails(client, db, monkeypatch):
+    setup_series(client, db)
+    def broken(*args):
+        raise RuntimeError("no room")
+    monkeypatch.setattr(main, "archive_item", broken)
+    build = client.post("/collections/1/export").json()["id"]
+    failed = poll(client, 1, build, lambda reply: reply.status_code != 200)
+    assert (failed.status_code, failed.json()) == (500, {"detail": "The export failed: no room"})
+    assert client.get(f"/collections/1/export/{build}").status_code == 404
+
+# Check starting a build refuses like the synchronous export does, with the same reasons, before anything is started.
+def test_series_export_build_refuses_unknown_or_untranscribed(client, db):
+    response = client.post("/collections/99/export")
+    assert (response.status_code, response.json()) == (404, {"detail": "No such series."})
+    add_rows(db, models.Collection(collection_id=2, name="Other series"), models.Bundle(bundle_id="a", source_pdf="data/a/a.pdf", collection_id=2))
+    response = client.post("/collections/1/export")
     assert (response.status_code, response.json()) == (404, {"detail": "Nothing in this series is transcribed yet."})
