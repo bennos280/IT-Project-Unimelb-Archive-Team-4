@@ -1640,11 +1640,13 @@ def save_state(content: Literal["everything", "setup"] = "everything", db: Sessi
     return FileResponse(copy, filename=name, media_type="application/octet-stream",
                         background=BackgroundTask(shutil.rmtree, folder, ignore_errors=True))
 
-#opens a PrestCribe file (GET /state) in place of everything here, once nothing is being read; what was here is kept first as
-#backend/db/prestcribe-backup-<when>.db, and an older file is brought up to date
+#opens a PrestCribe file (GET /state) in place of everything here, once nothing is being read; an older file is brought up to
+#date and one from a newer PrestCribe refused before anything here changes, and what was here is kept as
+#backend/db/prestcribe-backup-<when>.db
 @app.post("/state")
 async def open_state(request: Request, db: Session = Depends(get_db)):
     import tempfile
+    from alembic.script import ScriptDirectory
     if db.query(models.Job).filter(models.Job.status.in_(("waiting", "running"))).first():
         raise HTTPException(status_code=409, detail="Wait for the tasks waiting or running to finish (Tasks, top right), then open it.")
     with tempfile.TemporaryDirectory() as folder:
@@ -1658,16 +1660,22 @@ async def open_state(request: Request, db: Session = Depends(get_db)):
         if not {"alembic_version", "collections", "page_types", "pages"} <= tables:
             found.close()
             raise HTTPException(status_code=400, detail="That isn't a PrestCribe file.")
+        version = found.execute("SELECT version_num FROM alembic_version").fetchone()
+        if version and version[0] not in {s.revision for s in ScriptDirectory.from_config(database.alembic_config()).walk_revisions()}:
+            found.close()
+            raise HTTPException(status_code=409, detail="That file was saved by a newer PrestCribe. Update this one first (Settings, then About), then open it.")
         live = db.connection().connection.driver_connection
-        with sqlite3.connect(ROOT / "backend" / "db" / f"prestcribe-backup-{datetime.now():%Y%m%d-%H%M%S}.db") as kept:
-            live.backup(kept)
-        kept.close()
         if "app_settings" in tables and not found.execute("SELECT 1 FROM app_settings LIMIT 1").fetchone():  #a setup-only file: this computer's own choices stay
             found.executemany("INSERT INTO app_settings (key, value) VALUES (?, ?)", live.execute("SELECT key, value FROM app_settings").fetchall())
             found.commit()
+        found.close()
+        database.migrate(f"sqlite:///{path.as_posix()}")
+        with sqlite3.connect(ROOT / "backend" / "db" / f"prestcribe-backup-{datetime.now():%Y%m%d-%H%M%S}.db") as kept:
+            live.backup(kept)
+        kept.close()
+        found = sqlite3.connect(path)
         found.backup(live)
         found.close()
-    database.migrate(f"sqlite:///{db.get_bind().url.database}")
     return {"opened": True}
 
 

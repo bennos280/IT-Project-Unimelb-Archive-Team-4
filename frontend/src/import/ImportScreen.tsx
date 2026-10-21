@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { backendRequest } from "../progress/backend";
 
+// Where PrestCribe is updated: a link wherever the server's reason names it.
+const ABOUT = "Settings, then About";
+
 // Opens a PrestCribe file in place of everything here: a series' setup (like the Prest survey's, from the release page) or
 // work saved from Export on another computer. What was here is kept as a backup (POST /state).
 export default function ImportScreen() {
@@ -27,6 +30,7 @@ export default function ImportScreen() {
     }
   }
 
+  const [before, after] = error.split(ABOUT);
   return (
     <div className="min-h-screen bg-background text-foreground">
       <AppHeader crumbs={[{ label: "Open a PrestCribe file" }]} />
@@ -40,7 +44,9 @@ export default function ImportScreen() {
           <Input type="file" aria-label="PrestCribe file" className="max-w-sm" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
           <Button disabled={busy || !file} onClick={open}>{busy ? "Opening…" : "Open"}</Button>
         </div>
-        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+        {error && <Alert variant="destructive"><AlertDescription>
+          {after === undefined ? error : <>{before}<a className="underline" href="/?view=settings&tab=about">{ABOUT}</a>{after}</>}
+        </AlertDescription></Alert>}
       </main>
     </div>
   );

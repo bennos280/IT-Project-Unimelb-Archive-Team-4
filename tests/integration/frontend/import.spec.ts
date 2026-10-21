@@ -43,3 +43,14 @@ test("a file that isn't a PrestCribe file is refused with the server's reason", 
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page.getByRole("alert")).toHaveText("That isn't a PrestCribe file.");
 });
+
+test("a file from a newer PrestCribe says to update first, with a link to About", async ({ page }) => {
+  const detail = "That file was saved by a newer PrestCribe. Update this one first (Settings, then About), then open it.";
+  await mockState(page, { status: 409, detail });
+  await page.goto("/?view=import");
+  await page.getByLabel("PrestCribe file").setInputFiles(file("newer.prestcribe"));
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText(detail);
+  await expect(page.getByRole("alert").getByRole("link", { name: "Settings, then About" })).toHaveAttribute("href", "/?view=settings&tab=about");
+});
