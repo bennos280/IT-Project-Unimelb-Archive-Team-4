@@ -984,10 +984,10 @@ class StartJobRequest(BaseModel):
     effort: str | None = None
     pdf: str #as listed by GET /bundles
 
-#every runnable PDF, in order, as (its stored path, bundle id, bundle number, the folder that numbers it): each survey PDF
-#under DATA (the data folder), each DATA/<bundle number>/ folder of page images, and each of the archive's bundles whose PDF
-#isn't there (the Prest survey's and those added to a series), as DATA/<bundle number>/<its PDF> (running it downloads the
-#PDF). The archive's, which can be tens of thousands, are made from their names, without a path object each.
+#every runnable PDF, in order and one per bundle id, as (its stored path, bundle id, bundle number, the folder that numbers it):
+#each survey PDF under DATA (the data folder), each DATA/<bundle number>/ folder of page images, and each of the archive's
+#bundles whose PDF isn't there (the Prest survey's and those added to a series), as DATA/<bundle number>/<its PDF> (running it
+#downloads the PDF). The archive's, which can be tens of thousands, are made from their names, without a path object each.
 def runnables(db):
     data = ROOT / settings()["DATA"]
     here = list(data.rglob("*.pdf")) + [p for p in (data.iterdir() if data.is_dir() else ())
@@ -1001,7 +1001,10 @@ def runnables(db):
         number, _, file = pdf.rpartition("/")
         if file not in names:
             found.append((under(pdf), file.rsplit(".", 1)[0], number, number))
-    return sorted(found)
+    once = {}
+    for entry in sorted(found):
+        once.setdefault(entry[1], entry)  #a PDF found twice: its first copy
+    return list(once.values())
 
 def job_json(job):
     return {"id": job.job_id, "kind": job.kind, "pdf": job.pdf, "pageId": job.page_id, "pageType": job.page_type,
@@ -1142,8 +1145,9 @@ def item_matches(row, pages, search, status):
     return any(p["status"] == status for p in pages)
 
 #a page of a series' items for its dashboard: those its search and status match, in order of their numbers (216412 before
-#2164120), each with its pages' counts and its record if it is one; with how many match, how many it has, the counts of all
-#its pages, and the most pages and records any of its items has, so the dashboard leaves out a level none has more than one of
+#2164120), each with its pages' counts and its record if it is one; with how many match, how many it has, how many of all its
+#items are transcribed (loaded), the counts of all its pages, and the most pages and records any of its items has, so the dashboard
+#leaves out a level none has more than one of
 @app.get("/collections/{collection_id}/items")
 def list_items(collection_id: int, page: int = 0, size: int = 9, search: str = "", status: str = "All", db: Session = Depends(get_db)):
     if not db.get(models.Collection, collection_id):
@@ -1157,7 +1161,7 @@ def list_items(collection_id: int, page: int = 0, size: int = 9, search: str = "
     page = min(max(page, 0), max(len(matching) - 1, 0) // size)
     return {"items": [{**row, "counts": page_counts(pages[row["bundle"]]), "record": whole_record(pages[row["bundle"]]) if row["loaded"] else None}
                       for row in matching[page * size:(page + 1) * size]],
-            "page": page, "total": len(matching), "all": len(rows),
+            "page": page, "total": len(matching), "all": len(rows), "transcribed": sum(row["loaded"] for row in rows),
             "totals": page_counts([p for row in rows for p in pages[row["bundle"]]]),
             "most": {"pages": max((len(p) for p in pages.values()), default=0),
                      "records": max((page_counts(p)["records"] for p in pages.values()), default=0)}}

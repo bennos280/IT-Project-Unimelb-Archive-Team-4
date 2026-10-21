@@ -75,7 +75,8 @@ export function serveItems(items: MockItem[] | (() => MockItem[]), request: Requ
   return {
     json: {
       items: matching.slice(page * size, (page + 1) * size).map((item) => ({ ...row(item), counts: tally(item.pages ?? []), record: wholeRecord(item) })),
-      page, total: matching.length, all: all.length, totals: tally(all.flatMap((item) => item.pages ?? [])),
+      page, total: matching.length, all: all.length, transcribed: all.filter((item) => item.loaded ?? true).length,
+      totals: tally(all.flatMap((item) => item.pages ?? [])),
       most: { pages: Math.max(0, ...all.map((item) => (item.pages ?? []).length)),
         records: Math.max(0, ...all.map((item) => tally(item.pages ?? []).records)) },
     },
