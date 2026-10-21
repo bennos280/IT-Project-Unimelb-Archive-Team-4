@@ -18,3 +18,14 @@ export function loadBundleExport(bundleId: string): Promise<SurveyExport> {
   if (!id) throw new Error("Choose an item.");
   return request(`/export?bundle_id=${encodeURIComponent(id)}`);
 }
+
+// The series' zip, under the file name the server gives it.
+export async function loadSeriesExport(collectionId: number): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`/api/collections/${collectionId}/export`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(typeof body.detail === "string" ? body.detail : `Request failed (${response.status}).`);
+  }
+  const filename = response.headers.get("Content-Disposition")?.match(/filename="?([^";]+)"?/)?.[1] ?? "series-export.zip";
+  return { blob: await response.blob(), filename };
+}

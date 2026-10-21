@@ -34,10 +34,23 @@ import {
   loadSurveyExport,
   loadBundleExport,
   loadExportBundles,
+  loadSeriesExport,
 } from "./exportService";
 
 // Defines the available export scope options shown in the dialog.
-type Scope = "bundle" | "survey" | "current";
+type Scope = "series" | "bundle" | "survey" | "current";
+
+// Saves a blob under a file name through a temporary download link.
+function save(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+
+  // Release the temporary object URL once the download has started.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 // One selectable export scope: a radio whose label holds its title and help text.
 function ScopeOption({
@@ -65,7 +78,7 @@ function ScopeOption({
 /**
  * Displays the export button and modal dialog.
  *
- * Downloads a survey or loaded bundle from persisted backend data.
+ * Downloads a survey, a loaded bundle or a whole series from persisted backend data.
  */
 
 export default function ExportDialog({
@@ -104,8 +117,11 @@ export default function ExportDialog({
     key: string;
     pending: boolean;
   } | null>(null);
-  const selectedId = (scope === "survey" ? requestedId : bundleId).trim();
+  // A series has no selection, so nothing to check or pick.
+  const seriesId = scope === "series" ? collectionId : undefined;
+  const selectedId = scope === "series" ? "" : (scope === "survey" ? requestedId : bundleId).trim();
   const selectionKey = `${scope}:${selectedId}`;
+  const ready = scope === "series" ? seriesId !== undefined : selectedId !== "";
 
   // Check persisted data for this selection; ignore responses from older selections.
   useEffect(() => {
@@ -149,10 +165,15 @@ export default function ExportDialog({
   // Stores information about a successfully generated export.
   const [result, setResult] = useState<{
     filename: string;
-    surveys: number;
-    pages: number;
-    pending: number;
+    counts?: { surveys: number; pages: number; pending: number };
   } | null>(null);
+
+  const failureTitle =
+    scope === "series"
+      ? "The series could not be exported."
+      : scope === "survey"
+        ? `${words.One} ${requestedId || "(no ID)"} could not be exported.`
+        : `Item ${bundleId || "(no ID)"} could not be exported.`;
 
   // Closes the dialog unless an export is currently being generated.
   function close() {
@@ -161,7 +182,9 @@ export default function ExportDialog({
 
   // Switches scope and clears any previous result or error.
   function chooseScope(next: string) {
-    if (next === "current") {
+    if (next === "series") {
+      setScope("series");
+    } else if (next === "current") {
       setScope("current");
       setBundleId(initialBundleId);
     } else if (next === "bundle") {
@@ -181,12 +204,18 @@ export default function ExportDialog({
    * and downloads the result as a JSON file.
    */
   async function exportFile() {
-    if (busy || !(scope === "survey" ? requestedId.trim() : bundleId)) return;
+    if (busy || !ready) return;
     setBusy(true);
     setFailure("");
     setResult(null);
 
     try {
+      if (seriesId !== undefined) {
+        const file = await loadSeriesExport(seriesId);
+        save(file.blob, file.filename);
+        setResult({ filename: file.filename });
+        return;
+      }
       const id = scope === "survey" ? requestedId.trim() : bundleId;
       // Always read saved values from US8; never export the session's drafts.
       const payload = await (scope === "survey"
@@ -196,29 +225,23 @@ export default function ExportDialog({
       const unassigned = payload.unassignedPages ?? [];
 
       const filename = `${scope === "survey" ? words.one.replace(/\W+/g, "-") : "bundle"}-${id.replace(/[^a-zA-Z0-9_-]/g, "_")}-export.json`;
-      const url = URL.createObjectURL(
+      save(
         new Blob([JSON.stringify(payload, null, 2)], {
           type: "application/json",
         }),
+        filename,
       );
-
-      // Create and trigger a temporary download link.
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = filename;
-      anchor.click();
-
-      // Release the temporary object URL once the download has started.
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
 
       // Store export details so the success message can be displayed.
       setResult({
-        surveys: payload.surveys.length,
         filename,
-        pages: pages.length + unassigned.length,
-        pending:
-          pages.filter((p) => p.status === "ToBeReviewed").length +
-          unassigned.length,
+        counts: {
+          surveys: payload.surveys.length,
+          pages: pages.length + unassigned.length,
+          pending:
+            pages.filter((p) => p.status === "ToBeReviewed").length +
+            unassigned.length,
+        },
       });
     } catch (error) {
       // Display a useful error message if loading or exporting fails.
@@ -248,9 +271,11 @@ export default function ExportDialog({
               setRequestedId(surveyId);
               setScope(defaultScope);
               setBundleId(initialBundleId);
-              void loadExportBundles(collectionId)
-                .then(setBundles)
-                .catch((error) => setFailure(error.message));
+              // The item list is only fetched where it is shown; choosing items fetches it.
+              if (defaultScope !== "series")
+                void loadExportBundles(collectionId)
+                  .then(setBundles)
+                  .catch((error) => setFailure(error.message));
             }}
           >
             <Download /> Export
@@ -296,6 +321,15 @@ export default function ExportDialog({
                 onValueChange={chooseScope}
                 disabled={busy}
               >
+                {collectionId !== undefined && (
+                  <ScopeOption value="series" title="Whole series">
+                    A zip with one JSON file per transcribed item, laid out as
+                    on the archive: series, item, then page number. Each page
+                    says whether it was reviewed. A large series takes a minute
+                    or two to prepare.
+                  </ScopeOption>
+                )}
+
                 {initialBundleId && (
                   <ScopeOption value="current" title="Current item">
                     Export all {words.many} and unassigned pages in item{" "}
@@ -382,9 +416,7 @@ export default function ExportDialog({
             {/* Display an export failure to the user. */}
             {failure && (
               <Alert variant="destructive" className="wrap-anywhere">
-                <AlertTitle>
-                  {words.One} {requestedId || "(no ID)"} could not be exported.
-                </AlertTitle>
+                <AlertTitle>{failureTitle}</AlertTitle>
                 <AlertDescription>
                   <p>{failure}</p>
                   <p>No export file was created.</p>
@@ -399,10 +431,12 @@ export default function ExportDialog({
                 <AlertTitle>Export file prepared</AlertTitle>
                 <AlertDescription>
                   <p>{result.filename}</p>
-                  <p>
-                    {result.surveys} {result.surveys === 1 ? words.one : words.many} · {result.pages} pages ·{" "}
-                    {result.pending} pages awaiting review included.
-                  </p>
+                  {result.counts && (
+                    <p>
+                      {result.counts.surveys} {result.counts.surveys === 1 ? words.one : words.many} · {result.counts.pages} pages ·{" "}
+                      {result.counts.pending} pages awaiting review included.
+                    </p>
+                  )}
                 </AlertDescription>
               </Alert>
             )}
@@ -424,13 +458,8 @@ export default function ExportDialog({
                 {result ? "Close" : "Cancel"}
               </Button>
 
-              <Button
-                type="submit"
-                disabled={
-                  busy || !(scope === "survey" ? requestedId.trim() : bundleId)
-                }
-              >
-                {busy ? "Preparing…" : "Export JSON"}
+              <Button type="submit" disabled={busy || !ready}>
+                {busy ? "Preparing…" : scope === "series" ? "Export zip" : "Export JSON"}
               </Button>
             </DialogFooter>
           </form>

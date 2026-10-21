@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel, Field
 from typing import Literal
 from functools import cache
+import io
 import json
 import os
 import re
@@ -16,6 +17,7 @@ from pathlib import Path, PurePosixPath
 import sqlite3
 import sys
 import threading
+import zipfile
 from backend.db import app_settings, checks, database, grouping, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
@@ -1462,6 +1464,56 @@ def download_export(request: Request, survey_id: str | None = None, bundle_id: s
                            "fields": [{**f, "status": "ToBeReviewed"} for f in fields],
                            "flags": page_flags(db, page, fields)})
     return {"bundleId": bundle_id, "surveys": surveys, "unassignedPages": unassigned}
+
+#an item's export in the archive's shape (series > item > page): the series' archive item its number names (None fields if it
+#names none), and its pages in the item's own order, each with the number of the record it sits in (in order of first page)
+#ponytail: a nested record gets its own number and no link to its parent; add the parent's number if the import needs the tree
+def archive_item(collection, bundle, request, db):
+    number = PurePosixPath(bundle.source_pdf.replace("\\", "/")).parent.name or bundle.bundle_id
+    item = (db.query(models.ArchiveItem).filter_by(node=int(number), collection_id=collection.collection_id).first()
+            if number.isascii() and number.isdigit() and len(number) < 19 else None)
+    export = download_export(request, bundle_id=bundle.bundle_id, db=db)
+    def page_number(page):
+        return int(page["pageId"].rsplit("_", 1)[1])  #the number scans.page_scan fetches it by
+    first = {s["surveyId"]: min(map(page_number, s["pages"])) for s in export["surveys"] if s["pages"]}
+    records = {survey: n for n, survey in enumerate(sorted(first, key=first.get), 1)}
+    pages = []
+    for survey, page in ([(s["surveyId"], p) for s in export["surveys"] for p in s["pages"]]
+                         + [(None, p) for p in export["unassignedPages"]]):
+        decoded = {f["id"]: f["decoded"] for f in page["fields"] if f.get("decoded") is not None}
+        pages.append({"page": page_number(page), "pageType": page["label"], "record": records.get(survey),
+                      "reviewed": page["status"] == "Reviewed", "fields": {f["id"]: f["value"] for f in page["fields"]},
+                      **({"decoded": decoded} if decoded else {})})
+    return {"series": {"name": collection.name, "identifier": collection.archive_identifier, "node": collection.archive_series,
+                       "title": collection.archive_title},
+            "item": {"number": number, "identifier": item and item.identifier, "node": item and item.node,
+                     "title": item and item.title},
+            "pages": sorted(pages, key=lambda page: page["page"])}
+
+#a transcribed series as a zip of <series identifier>/<item identifier>.json, one file per item, items in number order
+@app.get("/collections/{collection_id}/export")
+def export_series(collection_id: int, request: Request, db: Session = Depends(get_db)):
+    collection = db.get(models.Collection, collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail="No such series.")
+    bundles = db.query(models.Bundle).filter_by(collection_id=collection_id).order_by(models.Bundle.bundle_id).all()
+    if not bundles:
+        raise HTTPException(status_code=404, detail="Nothing in this series is transcribed yet.")
+    items = [archive_item(collection, bundle, request, db) for bundle in bundles]
+    def by_number(item):  #numbers numerically, then names that aren't numbers
+        number = item["item"]["number"]
+        return (0, int(number), "") if number.isascii() and number.isdigit() else (1, 0, number)
+    items.sort(key=by_number)
+    folder = collection.archive_identifier or re.sub(r"[^A-Za-z0-9_-]", "_", collection.name)
+    #ponytail: built in memory; two bundles in one item folder share a file name, and the later replaces the earlier
+    files = {f"{folder}/{i['item']['identifier'] or i['item']['number']}.json": json.dumps(i, indent=2, ensure_ascii=False)
+             for i in items}
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, text in files.items():
+            archive.writestr(name, text)
+    return Response(buffer.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{folder}.zip"'})
 
 
 class MovePageRequest(BaseModel):

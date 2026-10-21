@@ -1,5 +1,5 @@
 // Tests the export dialog and downloaded JSON with an isolated API.
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page, type Route } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { serveItems } from "./items-mock";
 const demo = {
@@ -327,6 +327,7 @@ for (const selectedBundle of [false, true]) {
     );
     if (!selectedBundle) {
       await expect(warning).toBeHidden();
+      await page.getByRole("radio", { name: /Export item JSON/ }).check();
       await page.getByLabel("Item number").selectOption("pending");
     }
     await expect(warning).toBeVisible();
@@ -343,3 +344,104 @@ for (const selectedBundle of [false, true]) {
     await expect(warning).toBeHidden();
   });
 }
+
+// The series dashboard's endpoints; `replies` answers the series zip and an item's export.
+type Reply = Parameters<Route["fulfill"]>[0];
+async function seriesPage(page: Page, replies: { series?: Reply; item?: Reply } = {}) {
+  const requests: string[] = [];
+  await page.route("**/api/**", (route) => {
+    const url = new URL(route.request().url());
+    requests.push(url.pathname);
+    if (url.pathname.startsWith("/api/page-actions/")) return route.fulfill({ json: pageActions });
+    if (url.pathname === "/api/collections/1")
+      return route.fulfill({ json: { id: 1, name: "Wilfred Prest Survey", recordName: "survey", grouped: true } });
+    const served = serveItems([{ bundle: "db-bundle-abc", name: "123" }], route.request());
+    if (served) return route.fulfill(served);
+    if (url.pathname === "/api/collections/1/export")
+      return route.fulfill(replies.series ?? { status: 404, json: { detail: "Nothing in this series is transcribed yet." } });
+    if (url.pathname === "/api/export/bundles")
+      return route.fulfill({ json: [{ id: "db-bundle-abc", name: "123" }] });
+    if (url.pathname === "/api/export")
+      return route.fulfill(replies.item ?? { json: { bundleId: "db-bundle-abc", ...exported, unassignedPages: [] } });
+    return route.fulfill({ status: 404, json: { detail: "Unexpected request" } });
+  });
+  return requests;
+}
+
+// The series page offers the whole series first and makes no export request until the zip is asked for.
+test("the series page's dialog opens on Whole series and requests nothing until Export zip", async ({ page }) => {
+  const requests = await seriesPage(page);
+  await page.goto("/?series=1");
+  await expect(page.getByRole("link", { name: "123", exact: true })).toBeVisible();
+  const before = requests.length;
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByRole("radio", { name: /Whole series/ })).toBeChecked();
+  await expect(page.getByRole("radio").first()).toHaveId("export-scope-series");
+  await expect(page.getByLabel("Item number")).toHaveCount(0);
+  await expect(page.getByLabel("Survey ID *", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Export zip", exact: true })).toBeEnabled();
+  // Longer than the pending-review check's delay.
+  await page.waitForTimeout(500);
+  expect(requests.slice(before).filter((path) => path.includes("/export"))).toEqual([]);
+});
+
+// Export zip asks the server for the series and saves what comes back under the name the server gives it.
+test("Export zip downloads the series under the server's file name", async ({ page }) => {
+  const zip = Buffer.from("PK-series-zip");
+  const requests = await seriesPage(page, {
+    series: {
+      body: zip,
+      headers: { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="UMA-SR-000000842.zip"' },
+    },
+  });
+  await page.goto("/?series=1");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export zip", exact: true }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe("UMA-SR-000000842.zip");
+  expect(readFileSync((await file.path())!)).toEqual(zip);
+  expect(requests.filter((path) => path === "/api/collections/1/export")).toHaveLength(1);
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Export file prepared")).toBeVisible();
+  await expect(dialog.getByText("UMA-SR-000000842.zip", { exact: true })).toBeVisible();
+  await expect(dialog.getByText(/pages awaiting review/)).toHaveCount(0);
+});
+
+// A refusal from the server is shown as it is, under a title about the series.
+test("a refused series export shows the server's reason under the series title", async ({ page }) => {
+  await seriesPage(page);
+  await page.goto("/?series=1");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("button", { name: "Export zip", exact: true }).click();
+  const alert = page.getByRole("dialog").getByRole("alert");
+  await expect(alert).toContainText("The series could not be exported.");
+  await expect(alert).toContainText("Nothing in this series is transcribed yet.");
+  await expect(page.getByText("Export file prepared")).toHaveCount(0);
+});
+
+// The failure title names the item picked, not the survey ID box that item exports never use.
+test("an item export failure names the item rather than (no ID)", async ({ page }) => {
+  await seriesPage(page, { item: { status: 500, json: { detail: "Export unavailable" } } });
+  await page.goto("/?series=1");
+  await page.getByRole("link", { name: "123", exact: true }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByRole("button", { name: "Export JSON", exact: true }).click();
+  const alert = page.getByRole("dialog").getByRole("alert");
+  await expect(alert).toContainText("Item db-bundle-abc could not be exported.");
+  await expect(alert).toContainText("Export unavailable");
+  await expect(alert).not.toContainText("(no ID)");
+});
+
+// On an item's page the dialog still opens on that item, with the whole series a choice away.
+test("an item page's dialog still defaults to its current item", async ({ page }) => {
+  const requests = await seriesPage(page);
+  await page.goto("/?series=1");
+  await page.getByRole("link", { name: "123", exact: true }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByRole("radio", { name: /Export item JSON/ })).toBeChecked();
+  await expect(page.getByLabel("Item number")).toHaveValue("db-bundle-abc");
+  await expect(page.getByRole("radio", { name: /Whole series/ })).not.toBeChecked();
+  await expect(page.getByRole("button", { name: "Export JSON", exact: true })).toBeEnabled();
+  expect(requests).not.toContain("/api/collections/1/export");
+});
