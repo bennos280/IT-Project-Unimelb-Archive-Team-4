@@ -449,6 +449,8 @@ A series' dashboard asks for a page of its items at a time, searched, filtered a
 |`test_a_record_names_its_item_as_the_dashboard_does`|A record's response names its item and its archive title, for the review screen's crumb.|
 |`test_an_item_gives_its_records_and_a_record_the_ones_it_sits_inside_top_first`|An item comes with its records, each with the one it sits in, and a record with the records it sits inside, top first, each named by its level (not one holding just it and no pages, which the item's page opens past), itself named by its own.|
 |`test_an_item_that_is_one_record_gives_it_so_the_dashboard_opens_it_straight_away`|An item's row gives its record only once all its pages are in it (a page in none, or another item: none), and the record then says it is its whole item.|
+|`test_an_item_found_in_two_places_under_the_data_folder_is_listed_once_and_its_pages_counted_once`|An item whose PDF is found twice under the data folder (the same file name in two folders) is listed once, from the first copy in order, in the items and in the series' bundles; the series counts it once and its pages once.|
+|`test_the_items_transcribed_are_all_the_loaded_ones_whatever_page_search_or_status_is_asked_for`|The count of a series' items transcribed (loaded) is of all its items, whichever page, search or status is asked for, as the count of all its items is.|
 
 ## `test_record_levels.py`
 

@@ -199,7 +199,7 @@ These tests use mocked API responses. The integration runner separately
 checks the real frontend adapter, backend and database.
 The highlight test checks visibility and zoom, not coordinate accuracy.
 
-## `progress.spec.ts` — 43 tests (US9: track progress)
+## `progress.spec.ts` — 44 tests (US9: track progress)
 
 Located in `tests/integration/frontend/progress.spec.ts`. Run only these tests from the project folder:
 
@@ -227,6 +227,7 @@ npm --prefix tests run test:e2e -- progress.spec.ts
 | `paging, searching and filtering each ask the server, which answers one page at a time` | Next, a search, a status and Clear filters each ask the server again, which answers nine items at a time. |
 | `an item's page asks only for that item, and for its partial results when it has a job and isn't loaded` | An item's page asks for that item only, and for its partial results when it has a job but isn't loaded. |
 | `an item that isn't there says so` | An unknown item shows the server's "No such item." in an alert and no rows. |
+| `the series page leads with how many items are transcribed, which an item's page doesn't show, without scrolling a phone sideways` | The series page shows four cards in order, Transcribed ("12 of 40", with a progress bar of the same count), Total pages, Reviewed and Ready to review; an item's page shows only the last three; at 375px the series page has no horizontal scroll. |
 | `a series whose pages don't group offers no grouping status` | For a series whose pages don't group into records, the Status filter has no "Not in a ..." option. |
 | `Pg 1/2/3 opens its matching US7 page` — 3 tests                         | Each page's Review link opens the matching page in the review screen.                                                                                                             |
 | `page table keeps actions visible at 936/640/375px` — 3 tests            | Flags and review actions remain visible without horizontal table overflow at desktop, tablet and phone widths.                                                                    |

@@ -41,9 +41,9 @@ import AddItemsDialog from "./AddItemsDialog";
 import SetupChecklist from "./SetupChecklist";
 // One row of the overview: an item, its processing job, its page counts and, when it is one record, that record.
 type Row = AvailableBundle & { counts: Counts; record?: string | null };
-// A page of the series' items, as the server filters and pages them; totals cover every page of the series, and most is the
-// most pages and records any of its items has.
-type Overview = { items: Row[]; page: number; total: number; all: number; totals: Counts; most?: { pages: number; records: number } };
+// A page of the series' items, as the server filters and pages them; totals cover every page of the series, transcribed is how
+// many of its items are, and most is the most pages and records any of its items has.
+type Overview = { items: Row[]; page: number; total: number; all: number; transcribed: number; totals: Counts; most?: { pages: number; records: number } };
 // One item with its pages and its records (each with the one it sits in).
 type Item = AvailableBundle & { pages: ProgressPage[]; records?: { id: string; parent: string | null }[] };
 const pageSize = 9;
@@ -260,6 +260,15 @@ export default function ProgressDashboard() {
   const childWords = here ? levelWords(here.depth + 1) : words;
   // Summary cards cover the record or item shown, or every page of the series, regardless of filters.
   const totals = here ? counts(here.all) : item ? counts(item.pages) : (overview?.totals ?? counts([]));
+  // The series' page leads with how many of its items are transcribed.
+  const transcribed = overview?.transcribed ?? 0;
+  const itemCount = overview?.all ?? 0;
+  const cards: [string, number | string][] = [
+    ...(item ? [] : [["Transcribed", `${transcribed.toLocaleString()} of ${itemCount.toLocaleString()}`] as [string, string]]),
+    ["Total pages", totals.total],
+    ["Reviewed", totals.reviewed],
+    ["Ready to review", totals.ready],
+  ];
   // The records in the one shown, each named, with where opening it leads; they're listed when there are several or one holds
   // more, unless its pages are asked for, by the switch or by a status only pages have (as an older link may).
   const recordRows = (here?.children ?? []).map((n) => ({ ...n, label: recordLabel(n), target: descend(n) }));
@@ -483,12 +492,8 @@ export default function ProgressDashboard() {
         {loaded && (
           <>
             {/* Saved page statuses determine the totals and review progress. */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-4">
-              {[
-                ["Total pages", totals.total],
-                ["Reviewed", totals.reviewed],
-                ["Ready to review", totals.ready],
-              ].map(([label, value]) => (
+            <div className={`grid gap-2 sm:gap-4 ${item ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-4"}`}>
+              {cards.map(([label, value]) => (
                 <Card key={label}>
                   <CardHeader>
                     <CardDescription>{label}</CardDescription>
@@ -498,6 +503,15 @@ export default function ProgressDashboard() {
                     >
                       {value.toLocaleString()}
                     </CardTitle>
+                    {label === "Transcribed" && (
+                      <Progress
+                        className="h-2"
+                        aria-label="Items transcribed"
+                        value={itemCount ? (transcribed / itemCount) * 100 : 0}
+                        max={itemCount || 1}
+                        aria-valuenow={transcribed}
+                      />
+                    )}
                   </CardHeader>
                 </Card>
               ))}

@@ -99,3 +99,26 @@ def test_an_item_gives_its_records_and_a_record_the_ones_it_sits_inside_top_firs
     db.commit()
     assert client.get("/survey/9_00001").json()["ancestors"] == [{"id": "9", "name": "volume", "parent": None}]
     assert client.get("/survey/9_00001").json()["recordName"] == "month"
+
+
+def test_an_item_found_in_two_places_under_the_data_folder_is_listed_once_and_its_pages_counted_once(client, diaries, tmp_path):
+    for folder in (tmp_path / "9", tmp_path / "raw" / "Surveys" / "9"):
+        folder.mkdir(parents=True)
+        (folder / "9.pdf").write_bytes(b"")
+    reply = client.get("/collections/2/items").json()
+    assert (names(reply), reply["all"], reply["totals"]["total"]) == (["2", "9", "10", "100"], 4, 4)
+    assert reply["items"][1]["pdf"] == stored_path(tmp_path / "9" / "9.pdf")  # the first of its copies in order
+    assert sorted(row["bundle"] for row in client.get("/bundles", params={"collection": 2}).json()) == ["10", "100", "2", "9"]
+
+
+def test_the_items_transcribed_are_all_the_loaded_ones_whatever_page_search_or_status_is_asked_for(client, db, diaries):
+    db.add(models.Bundle(bundle_id="2", source_pdf="2/2.pdf", collection_id=2))
+    db.commit()
+
+    def asked(**params):
+        reply = client.get("/collections/2/items", params=params).json()
+        return names(reply), reply["transcribed"], reply["all"]
+    assert asked() == (["2", "9", "10", "100"], 2, 4)
+    assert asked(size=1, page=2) == (["10"], 2, 4)  # the page shown holds neither loaded item
+    assert asked(search="hundred") == (["100"], 2, 4)
+    assert asked(status="Awaiting transcription") == (["10", "100"], 2, 4)

@@ -161,7 +161,7 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
     }
     if (path === "/api/api-keys") return route.fulfill({ json: apiKeys });
     if (path === "/api/collections/1/items")
-      return route.fulfill({ json: { items: [], page: 0, total: 0, all: 0, totals: { total: 0, reviewable: 0, unassigned: 0, reviewed: 0, ready: 0 } } });
+      return route.fulfill({ json: { items: [], page: 0, total: 0, all: 0, transcribed: 0, totals: { total: 0, reviewable: 0, unassigned: 0, reviewed: 0, ready: 0 } } });
     if (path === "/api/collections")
       return route.fulfill({ json: [{ id: 1, name: "Wilfred Prest Survey", archiveSeries: 499420, bundles: 0, pages: 0 }] });
     return route.fulfill({ status: 404, json: { detail: `Unexpected test request: ${path}` } });

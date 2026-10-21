@@ -58,7 +58,7 @@ async function mockApi(page: Page, configured: typeof MODEL | null = MODEL) {
     }
     if (url.pathname === "/api/collections/1/items" && method === "GET") {
       api.itemsRequests.push(url.search);
-      return route.fulfill({ json: { items: api.items, page: 0, total: api.items.length, all: api.items.length } });
+      return route.fulfill({ json: { items: api.items, page: 0, total: api.items.length, all: api.items.length, transcribed: api.items.length } });
     }
     if (url.pathname === "/api/transcription-models") return route.fulfill({ json: { configured, models: [] } });
     if (url.pathname === "/api/collections/1/page-types/suggest" && method === "POST") {
