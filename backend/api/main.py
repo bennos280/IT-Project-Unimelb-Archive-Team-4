@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel, Field
 from typing import Literal
 from functools import cache
+import io
 import json
 import os
 import re
@@ -16,6 +17,8 @@ from pathlib import Path, PurePosixPath
 import sqlite3
 import sys
 import threading
+import uuid
+import zipfile
 from backend.db import app_settings, checks, database, grouping, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
@@ -1479,6 +1482,108 @@ def download_export(request: Request, survey_id: str | None = None, bundle_id: s
                            "fields": [{**f, "status": "ToBeReviewed"} for f in fields],
                            "flags": page_flags(db, page, fields)})
     return {"bundleId": bundle_id, "surveys": surveys, "unassignedPages": unassigned}
+
+#an item's export in the archive's shape (series > item > page): the series' archive item its number names (None fields if it
+#names none), and its pages in the item's own order, each with the number of the record it sits in (in order of first page)
+#ponytail: a nested record gets its own number and no link to its parent; add the parent's number if the import needs the tree
+def archive_item(collection, bundle, request, db):
+    number = PurePosixPath(bundle.source_pdf.replace("\\", "/")).parent.name or bundle.bundle_id
+    item = (db.query(models.ArchiveItem).filter_by(node=int(number), collection_id=collection.collection_id).first()
+            if number.isascii() and number.isdigit() and len(number) < 19 else None)
+    export = download_export(request, bundle_id=bundle.bundle_id, db=db)
+    def page_number(page):
+        return int(page["pageId"].rsplit("_", 1)[1])  #the number scans.page_scan fetches it by
+    first = {s["surveyId"]: min(map(page_number, s["pages"])) for s in export["surveys"] if s["pages"]}
+    records = {survey: n for n, survey in enumerate(sorted(first, key=first.get), 1)}
+    pages = []
+    for survey, page in ([(s["surveyId"], p) for s in export["surveys"] for p in s["pages"]]
+                         + [(None, p) for p in export["unassignedPages"]]):
+        decoded = {f["id"]: f["decoded"] for f in page["fields"] if f.get("decoded") is not None}
+        pages.append({"page": page_number(page), "pageType": page["label"], "record": records.get(survey),
+                      "reviewed": page["status"] == "Reviewed", "fields": {f["id"]: f["value"] for f in page["fields"]},
+                      **({"decoded": decoded} if decoded else {})})
+    return {"series": {"name": collection.name, "identifier": collection.archive_identifier, "node": collection.archive_series,
+                       "title": collection.archive_title},
+            "item": {"number": number, "identifier": item and item.identifier, "node": item and item.node,
+                     "title": item and item.title},
+            "pages": sorted(pages, key=lambda page: page["page"])}
+
+#the series and the bundles loaded into it, or the 404 that says why there is nothing to export
+def series_bundles(collection_id, db):
+    collection = db.get(models.Collection, collection_id)
+    if collection is None:
+        raise HTTPException(status_code=404, detail="No such series.")
+    bundles = db.query(models.Bundle).filter_by(collection_id=collection_id).order_by(models.Bundle.bundle_id).all()
+    if not bundles:
+        raise HTTPException(status_code=404, detail="Nothing in this series is transcribed yet.")
+    return collection, bundles
+
+#a transcribed series as a zip of <series identifier>/<item identifier>.json, one file per item, items in number order, and the zip's
+#file name; step() is called after each item is done
+def series_zip(collection, bundles, request, db, step=lambda: None):
+    items = []
+    for bundle in bundles:
+        items.append(archive_item(collection, bundle, request, db))
+        step()
+    def by_number(item):  #numbers numerically, then names that aren't numbers
+        number = item["item"]["number"]
+        return (0, int(number), "") if number.isascii() and number.isdigit() else (1, 0, number)
+    items.sort(key=by_number)
+    folder = collection.archive_identifier or re.sub(r"[^A-Za-z0-9_-]", "_", collection.name)
+    #ponytail: built in memory; two bundles in one item folder share a file name, and the later replaces the earlier
+    files = {f"{folder}/{i['item']['identifier'] or i['item']['number']}.json": json.dumps(i, indent=2, ensure_ascii=False)
+             for i in items}
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, text in files.items():
+            archive.writestr(name, text)
+    return buffer.getvalue(), f"{folder}.zip"
+
+def zip_response(data, filename):
+    return Response(data, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+@app.get("/collections/{collection_id}/export")
+def export_series(collection_id: int, request: Request, db: Session = Depends(get_db)):
+    collection, bundles = series_bundles(collection_id, db)
+    return zip_response(*series_zip(collection, bundles, request, db))
+
+#a series' zips being prepared, by id: {"collection", "done", "total"}, then "zip" (the bytes and file name) or "error" once finished
+#ponytail: kept in this process's memory, so lost on restart and never expired if never collected; move it to the jobs table
+#if exports need to outlive the API or the dialog
+series_exports = {}
+
+def build_series_export(build, collection_id, request, bind):
+    with Session(bind=bind) as db:  #its own session: the request's closes with the request, and one session is for one thread
+        try:
+            collection, bundles = series_bundles(collection_id, db)
+            def step():
+                build["done"] += 1
+            build["zip"] = series_zip(collection, bundles, request, db, step)
+        except Exception as error:
+            build["error"] = str(error)
+
+#starts preparing a series' zip, which GET .../export/<id> reports on and then hands over
+@app.post("/collections/{collection_id}/export", status_code=202)
+def start_series_export(collection_id: int, request: Request, db: Session = Depends(get_db)):
+    total = len(series_bundles(collection_id, db)[1])
+    build_id = uuid.uuid4().hex
+    build = series_exports[build_id] = {"collection": collection_id, "done": 0, "total": total}
+    threading.Thread(target=build_series_export, args=(build, collection_id, request, db.get_bind()), daemon=True).start()
+    return {"id": build_id, "total": total}
+
+#how far a zip has got, or the zip (or why it failed) once it is done, after which it is forgotten
+@app.get("/collections/{collection_id}/export/{build_id}")
+def series_export_progress(collection_id: int, build_id: str):
+    build = series_exports.get(build_id)
+    if build is None or build["collection"] != collection_id:
+        raise HTTPException(status_code=404, detail="No such export.")
+    if "error" in build:
+        series_exports.pop(build_id, None)
+        raise HTTPException(status_code=500, detail=f"The export failed: {build['error']}")
+    if "zip" in build:
+        series_exports.pop(build_id, None)
+        return zip_response(*build["zip"])
+    return {"done": build["done"], "total": build["total"]}
 
 
 class MovePageRequest(BaseModel):

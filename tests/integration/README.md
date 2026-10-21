@@ -175,7 +175,7 @@ No running backend or database is needed.
 | `test("Failed save keeps the current page and unsaved review", async ({ page, api }) => ...)`        | A failed save keeps the warning open, displays the error and preserves the draft.               |
 | `test("Leaving the website warns about unsaved reviews", async ({ page }) => ...)`                   | Leaving with unsaved changes triggers the browser warning.                                      |
 
-## `export.spec.ts` — 8 tests
+## `export.spec.ts` — 14 tests
 
 It tests the export interface in a real browser using Playwright.
 API responses are mocked, so no running backend or database is needed.
@@ -191,6 +191,12 @@ Run from the project folder:
 | Review screen exports its current item using the backend item ID          | The Current item option uses the item ID supplied by the survey response.             |
 | Warns for unreviewed data and clears the warning for a reviewed selection | The export warning reflects whether the selected data has been reviewed.              |
 | Conditional export warning on dashboard — 2 cases                         | Checks the warning on both the all-items and selected-item dashboard views.           |
+| The series page's dialog opens on Whole series and requests nothing until Export zip | The series page's dialog lists Whole series first and selected, with no picker, and makes no export request until Export zip is pressed. |
+| Export zip shows the build's progress, then downloads the series under the server's file name | Export zip starts the series' build and polls it; the dialog shows "Prepared n of N items" and the Export progress bar as the count rises, then saves the zip under the server's filename, shown in the success alert. |
+| A refused series export shows the server's reason under the series title  | A refusal from the server shows its detail under "The series could not be exported." and no file is reported. |
+| A series export that fails while preparing shows the server's reason under the series title | A 500 while polling shows its detail under "The series could not be exported.", the bar goes and Export zip is usable again. |
+| An item export failure names the item rather than (no ID)                 | A failed item export is titled with the item, not the survey ID box's "(no ID)".      |
+| An item page's dialog still defaults to its current item                  | An item's dialog opens on Export item JSON with that item chosen, and asks for no series zip. |
 
 These tests cover browser interactions with mocked API responses.
 The backend export tests separately check database selection and saved values.
