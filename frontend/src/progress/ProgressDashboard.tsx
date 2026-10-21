@@ -386,7 +386,7 @@ export default function ProgressDashboard() {
       <ExportDialog
         surveyId={item?.pages.find((page) => page.surveyId)?.surveyId ?? ""}
         initialBundleId={item?.loaded ? item.bundle : undefined}
-        defaultScope="bundle"
+        defaultScope={bundleName ? "bundle" : "series"}
         collectionId={collectionId}
         recordName={series.recordName}
         hasDrafts={false}
