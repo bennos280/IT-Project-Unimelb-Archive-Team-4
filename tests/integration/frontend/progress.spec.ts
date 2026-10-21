@@ -916,7 +916,7 @@ test.describe("The server pages, searches and filters the overview", () => {
               { bundle: "b2", name: "216413", pdf: "b2.pdf", loaded: true, job: null, archive: null,
                 counts: { total: 4, reviewable: 4, unassigned: 0, reviewed: 0, ready: 4 } },
             ],
-            page: 2, total: 20, all: 40,
+            page: 2, total: 20, all: 40, transcribed: 12,
             totals: { total: 9000, reviewable: 8700, unassigned: 300, reviewed: 1744, ready: 6956 },
           },
         });
@@ -1010,6 +1010,40 @@ test.describe("The server pages, searches and filters the overview", () => {
     await page.goto("/?series=1&item=nobody");
     await expect(page.getByRole("alert")).toContainText("No such item.");
     await expect(bundleRows(page)).toHaveCount(0);
+  });
+
+  test("the series page leads with how many items are transcribed, which an item's page doesn't show, without scrolling a phone sideways", async ({ page }) => {
+    const items: MockItem[] = Array.from({ length: 40 }, (_, i) => ({
+      bundle: `b${i}`, name: String(216410 + i), loaded: i < 12, pages: i < 12 ? [onePage] : [],
+    }));
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === "/api/collections/1") return route.fulfill({ json: SERIES });
+      const served = serveItems(items, route.request());
+      return served ? route.fulfill(served) : route.fulfill({ status: 404, json: { detail: `Unexpected request: ${url.pathname}` } });
+    });
+    const stats = page.locator('[data-testid^="stat-"]');
+    const cards = page.locator('[data-slot="card"]').filter({ has: stats });
+    await page.goto("/?series=1");
+    await expect(stats).toHaveText(["12 of 40", "12", "0", "12"]);
+    await expect(cards).toContainText(["Transcribed", "Total pages", "Reviewed", "Ready to review"]);
+    expect(await stats.evaluateAll((els) => els.map((el) => el.getAttribute("data-testid")))).toEqual([
+      "stat-transcribed", "stat-total-pages", "stat-reviewed", "stat-ready-to-review"]);
+    const bar = page.getByRole("progressbar", { name: "Items transcribed" });
+    await expect(bar).toHaveAttribute("aria-valuenow", "12");
+    await expect(bar).toHaveAttribute("aria-valuemax", "40");
+    await expect(bar.locator('[data-slot="progress-indicator"]')).toHaveAttribute("style", /translateX\(-70%\)/);
+
+    await page.goto("/?series=1&item=216410");
+    await expect(page.getByRole("heading", { name: "Item 216410" })).toBeVisible();
+    await expect(stats).toHaveText(["1", "0", "1"]);
+    await expect(page.getByTestId("stat-transcribed")).toHaveCount(0);
+    await expect(bar).toHaveCount(0);
+
+    await page.setViewportSize({ width: 375, height: 900 });
+    await page.goto("/?series=1");
+    await expect(page.getByTestId("stat-transcribed")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   });
 });
 
