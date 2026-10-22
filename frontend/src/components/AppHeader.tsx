@@ -85,7 +85,7 @@ function CopyLink() {
       <Button variant="ghost" size="icon-sm" aria-label="Copy link" title={said || "Copy link to this page"} onClick={copy}>
         {said === "Link copied" ? <Check aria-hidden="true" /> : <Link2 aria-hidden="true" />}
       </Button>
-      <span role="status" className="sr-only">{said}</span>
+      {said && <span role="status" className="sr-only">{said}</span>}
     </>
   );
 }
