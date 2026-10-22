@@ -201,8 +201,14 @@ def series_rules(inputs) -> dict:
 def step_transcribe(run: Run) -> None:
     """Each labelled page -> out/transcribe/<file>.json, READERS at a time, each saved as soon as it is read (paid: only
     with --transcribe). A failed page stops the step once the reads under way are saved."""
-    from backend.pipeline.transcribe.transcribe import read_texts, transcribe
+    from backend.pipeline.transcribe.transcribe import model_of, read_texts, transcribe
     config = transcription_config(run.transcription_config)
+    #a saved reading is reused only for the model that made it, not for an alias since mapped to another; not guessed, as a
+    #guess unlike the saved one would pay to read every saved page again
+    try:
+        model = model_of(config["MODEL"]) if config["PROVIDER"] == "claude" else config["MODEL"]
+    except LookupError as error:
+        raise SystemExit(f"{error}: try again") from error
     texts = run.texts or read_texts()
     folder = run.out / "transcribe"
     folder.mkdir(parents=True, exist_ok=True)
@@ -212,7 +218,7 @@ def step_transcribe(run: Run) -> None:
         image, kind = Path(page["path"]), page["label"]
         dest = folder / f"{Path(page['file']).stem}.json"
         request = {"image": digest(image), "label": kind,
-                   "model": config["MODEL"], "effort": config["EFFORT"],
+                   "model": model, "effort": config["EFFORT"],
                    "prompt": text_digest(texts["prompt"]),
                    "template": text_digest(texts[kind])}
         saved = run.transcripts.get(page["file"])

@@ -76,7 +76,7 @@ def suggest(pdf, pages, choice, known=(), hint=""):
     with tempfile.TemporaryDirectory() as folder:
         sheet = Path(folder) / "pages.jpg"
         contact_sheet(pdf, pages, sheet)
-        answer = ask(sheet, prompt_for(len(pages), list(known), hint.strip()), TEMPLATE, **choice)
+        answer = ask(sheet, prompt_for(len(pages), list(known), hint.strip()), TEMPLATE, fresh=True, **choice)  #asked again, not a saved answer
     found = []
     for kind in answer.get("page_types") or []:
         label = " ".join(str(kind.get("name") or "").split())[:60]

@@ -197,7 +197,8 @@ def read_page_again(db, job, progress):
     if scan is None:
         raise SystemExit("there is no scan of this page on this computer or on the archive")
     progress("transcribe", 0, 1)
-    answer = transcribe(scan, job.page_type, texts={kind: v.body for kind, v in newest.items()}, **transcription_choice(db, job))
+    answer = transcribe(scan, job.page_type, texts={kind: v.body for kind, v in newest.items()}, fresh=True,  #not a saved answer
+                        **transcription_choice(db, job))
     con = db.connection()
     con.exec_driver_sql("UPDATE pages SET page_id = page_id WHERE 0") #the write lock first: no review lands between check and swap
     if job.base_revision is not None:

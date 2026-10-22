@@ -1,6 +1,6 @@
 """The migrations build exactly the tables in backend/db/models.py, so the real db and the tests' db are the same; a later
 migration keeps the reviewers' edits, the db is backed up before it runs, and one that breaks a link is undone; 002 gives each
-series its own prompt."""
+series its own prompt, and 003 a table of the models' saved answers."""
 import json
 import os
 import sqlite3
@@ -75,11 +75,11 @@ def test_a_migration_that_breaks_a_link_is_undone(url, tmp_path, monkeypatch):
     assert rows(tmp_path / "test.db", "SELECT version_num FROM alembic_version") != [("later",)]
 
 
-def test_a_fresh_db_is_at_revision_002_with_every_table_of_the_models_and_no_rows(tmp_path):
+def test_a_fresh_db_is_at_revision_003_with_every_table_of_the_models_and_no_rows(tmp_path):
     url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
     database.migrate(url)
     db = tmp_path / "test.db"
-    assert rows(db, "SELECT version_num FROM alembic_version") == [("002",)]
+    assert rows(db, "SELECT version_num FROM alembic_version") == [("003",)]
     tables = {name for (name,) in rows(db, "SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert set(models.Base.metadata.tables) <= tables
     assert all(rows(db, f"SELECT count(*) FROM {table}") == [(0,)] for table in models.Base.metadata.tables)
@@ -118,7 +118,7 @@ def db_at_001(tmp_path):
 def test_each_series_gets_the_prompts_a_db_had_series_1_keeping_its_ids_and_pages(tmp_path):
     path = db_at_001(tmp_path)
     database.migrate(f"sqlite:///{path.as_posix()}")
-    assert rows(path, "SELECT version_num FROM alembic_version") == [("002",)]
+    assert rows(path, "SELECT version_num FROM alembic_version") == [("003",)]
     assert rows(path, "SELECT version_id, collection_id, body, sha256, reviewer_id, note, created_at FROM instruction_versions"
                       " WHERE kind = 'prompt' ORDER BY version_id") == [
         (1, 1, "first", "a", None, None, "2026-01-01 00:00:00"), (3, 1, "second", "b", 1, "longer", "2026-02-02 00:00:00"),
@@ -135,3 +135,12 @@ def test_a_db_with_no_prompt_gets_none_from_the_migration(tmp_path):
                                         " DELETE FROM instruction_versions WHERE kind = 'prompt'")
     database.migrate(f"sqlite:///{path.as_posix()}")
     assert rows(path, "SELECT kind, collection_id FROM instruction_versions") == [("main", None)]
+
+
+def test_003_gives_a_db_without_saved_answers_the_table_and_keeps_its_rows(url, tmp_path):
+    db = tmp_path / "test.db"
+    sqlite3.connect(db).executescript("DROP TABLE saved_answers; UPDATE alembic_version SET version_num = '002';")
+    database.migrate(url)
+    assert rows(db, "SELECT version_num FROM alembic_version") == [("003",)]
+    assert rows(db, "SELECT edit_text FROM edits") == [("6 Peel St.",)] and rows(db, "SELECT count(*) FROM saved_answers") == [(0,)]
+    command.check(database.alembic_config(url))  # and it is the model's table

@@ -275,3 +275,11 @@ class AppSetting(Base):
     key = Column(String, primary_key=True)
     value = Column(String, nullable=False)
     updated_at = Column(DateTime, nullable=True, server_default=func.now(), onupdate=func.now())
+
+#a model's answer to one question, given again instead of asking (pipeline/transcribe/transcribe.ask): key, the sha256 of the
+#page image, prompt, template, provider, model and effort; answer, its JSON with the seconds it took
+class SavedAnswer(Base):
+    __tablename__ = "saved_answers"
+    key = Column(String, primary_key=True)
+    answer = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())

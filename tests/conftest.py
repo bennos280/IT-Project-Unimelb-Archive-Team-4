@@ -13,6 +13,24 @@ import pytest
 
 from backend import scans
 from backend.db import database
+from backend.pipeline.transcribe import transcribe
+
+
+@pytest.fixture(autouse=True)
+def no_real_claude(monkeypatch):
+    """The claude program isn't asked which model a name runs: every name runs itself, installed or not."""
+    monkeypatch.setattr(transcribe, "model_of", lambda name: name)
+
+
+@pytest.fixture(autouse=True)
+def saved_answers(monkeypatch):
+    """Each test's saved model answers, by key: its own, not the real db's."""
+    answers = {}
+    monkeypatch.setattr(transcribe, "saved_answer", answers.get)
+    monkeypatch.setattr(transcribe, "save_answer", answers.__setitem__)
+    return answers
+
+
 @pytest.fixture(autouse=True)
 def offline(monkeypatch):
     def unreachable(*args, **kwargs):

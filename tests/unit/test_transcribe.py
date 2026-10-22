@@ -1,15 +1,24 @@
 """Unit tests for backend/pipeline/transcribe/transcribe.py schema building and provider handling"""
 
+import functools
 import json
 import subprocess
+import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
 
-from backend.db import app_settings
+from sqlalchemy.orm import sessionmaker
+
+from backend.db import app_settings, database, models
+from backend.db.database import make_engine
 from backend.pipeline.transcribe import transcribe as transcription
 from backend.pipeline.transcribe.transcribe import full_prompt, run_claude, run_cli, run_codex, schema_for, transcribe
+
+MODEL_OF = transcription.model_of  # before tests/conftest.py's no_real_claude and saved_answers replace them
+SAVED_ANSWER, SAVE_ANSWER = transcription.saved_answer, transcription.save_answer
 
 
 @pytest.fixture
@@ -129,6 +138,48 @@ def test_run_cli_passes_capture_and_timeout_settings_through(monkeypatch):
     assert seen["errors"] == "replace"
     assert seen["cwd"] == "/tmp"        # extra kwargs are forwarded
     assert seen["command"] == ["claude", "-p"]
+
+
+# ---------------------------------------------------------------- claude_model()
+@pytest.fixture
+def claude(monkeypatch, tmp_path):
+    """A claude program whose sessions start with the event in replies[0]; each run's command is in runs."""
+    exe = tmp_path / "claude.exe"
+    exe.write_text("")
+    replies, runs = [json.dumps({"type": "system", "subtype": "init", "model": "claude-haiku-4-5-20251001"})], []
+
+    def run(command, **kwargs):
+        runs.append(command)
+        time.sleep(0.2)  # long enough for reads at once to overlap
+        if replies[0] is None:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        return SimpleNamespace(stdout=f"{replies[0]}\n{{\"type\": \"result\"}}\n", stderr="", returncode=0)
+    monkeypatch.setattr(transcription.shutil, "which", lambda name: str(exe))
+    monkeypatch.setattr(transcription.subprocess, "run", run)
+    monkeypatch.setattr(transcription, "model_of", MODEL_OF)
+    monkeypatch.setattr(transcription, "_claude_model", functools.cache(transcription._claude_model.__wrapped__))
+    return SimpleNamespace(replies=replies, runs=runs)
+
+
+def test_a_full_model_name_runs_itself_without_asking_claude(claude):
+    assert transcription.model_of("claude-haiku-5-5") == "claude-haiku-5-5" and claude.runs == []
+
+
+def test_claude_model_is_the_one_claudes_session_starts_with_asked_once_per_name(claude):
+    assert transcription.claude_model("haiku") == "claude-haiku-4-5-20251001"
+    assert transcription.claude_model("haiku") == "claude-haiku-4-5-20251001"
+    assert len(claude.runs) == 1 and claude.runs[0][claude.runs[0].index("--model") + 1] == "haiku"
+
+
+@pytest.mark.parametrize("reply", [None, "not json", "[]", json.dumps({"type": "result", "model": "x"}), json.dumps({"type": "system"})])
+def test_when_claude_cant_say_model_of_raises_claude_model_is_the_name_and_it_is_asked_again(claude, reply):
+    good = claude.replies[0]
+    claude.replies[0] = reply
+    with pytest.raises(LookupError, match="which model haiku runs"):
+        transcription.model_of("haiku")
+    assert transcription.claude_model("haiku") == "haiku"
+    claude.replies[0] = good
+    assert transcription.claude_model("haiku") == "claude-haiku-4-5-20251001"
 
 
 # ---------------------------------------------------------------- run_claude()
@@ -271,6 +322,79 @@ def test_run_codex_exits_when_the_answer_file_holds_no_json(monkeypatch):
 
     with pytest.raises(SystemExit, match="gave no JSON back"):
         run_codex("page.jpg", "prompt", {"text": None}, "gpt-5", "high")
+
+
+# ---------------------------------------------------------------- saved answers (ask)
+@pytest.fixture
+def page(prompt_files, monkeypatch, tmp_path):
+    """A page image, and claude answering each read with the next number: reads[0] counts them."""
+    image = tmp_path / "page.png"
+    image.write_bytes(b"one")
+    reads = [0]
+
+    def read(*args, **kwargs):
+        reads[0] += 1
+        return {"text": f"reading {reads[0]}"}
+    monkeypatch.setattr(transcription, "run_claude", read)
+    return SimpleNamespace(image=image, reads=reads)
+
+
+def test_the_same_page_and_question_is_answered_from_the_saved_answer_with_its_seconds(page, monkeypatch):
+    clock = iter([10.0, 10.0, 34.0, 34.0, 100.0])  # transcribe's start, ask's start and end, transcribe's end; the saved one's start
+    monkeypatch.setattr(transcription.time, "perf_counter", lambda: next(clock))
+    first = transcribe(page.image, "main", provider="claude", model="haiku", effort="low")
+    again = transcribe(page.image, "main", provider="claude", model="haiku", effort="low")
+    assert page.reads[0] == 1 and again == first == {"text": "reading 1", "provider": "claude", "model": "haiku",
+                                                       "effort": "low", "seconds": 24.0}
+
+
+@pytest.mark.parametrize("change", ["image", "prompt", "template", "effort", "model behind the alias"])
+def test_a_change_to_what_is_asked_asks_the_model_again(page, prompt_files, monkeypatch, change):
+    transcribe(page.image, "main", provider="claude", model="haiku", effort="low")
+    if change == "image":
+        page.image.write_bytes(b"two")
+    elif change == "prompt":
+        (prompt_files / "prompt.txt").write_text("Read the whole card.", encoding="utf-8")
+    elif change == "template":
+        (prompt_files / "templates" / "main.json").write_text('{"name": null}', encoding="utf-8")
+    elif change == "model behind the alias":
+        monkeypatch.setattr(transcription, "model_of", lambda name: "claude-haiku-9-9")
+    answer = transcribe(page.image, "main", provider="claude", model="haiku", effort="high" if change == "effort" else "low")
+    assert page.reads[0] == 2 and answer["text"] == "reading 2"
+
+
+def test_a_fresh_read_asks_the_model_and_replaces_the_saved_answer(page):
+    transcribe(page.image, "main", provider="claude", model="haiku", effort="low")
+    assert transcribe(page.image, "main", provider="claude", model="haiku", effort="low", fresh=True)["text"] == "reading 2"
+    assert transcribe(page.image, "main", provider="claude", model="haiku", effort="low")["text"] == "reading 2"
+    assert page.reads[0] == 2
+
+
+def test_answers_are_saved_in_the_db_and_one_it_cant_take_is_neither_kept_nor_an_error(cli_db, monkeypatch, tmp_path):
+    SAVE_ANSWER("k", {"text": "Smith", "seconds": 3.0})
+    SAVE_ANSWER("k", {"text": "Smyth", "seconds": 4.0})  # the same question again: the newer answer
+    assert SAVED_ANSWER("k") == {"text": "Smyth", "seconds": 4.0} and SAVED_ANSWER("other") is None
+    with cli_db() as db:
+        assert db.query(models.SavedAnswer).count() == 1
+    no_table = make_engine(f"sqlite:///{(tmp_path / 'old.db').as_posix()}")  # a db without the table, as an old file
+    monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=no_table))
+    SAVE_ANSWER("k", {"text": "Smith"})
+    assert SAVED_ANSWER("k") is None
+
+
+def test_reads_at_once_ask_claude_once_which_model_a_name_runs(claude):
+    with ThreadPoolExecutor(8) as pool:
+        assert set(pool.map(transcription.model_of, ["haiku"] * 8)) == {"claude-haiku-4-5-20251001"}
+    assert len(claude.runs) == 1
+
+
+def test_nothing_is_saved_or_given_while_the_model_an_alias_runs_is_unknown(page, monkeypatch, saved_answers):
+    def unknown(name):
+        raise LookupError("couldn't ask")
+    monkeypatch.setattr(transcription, "model_of", unknown)
+    transcribe(page.image, "main", provider="claude", model="haiku", effort="low")
+    transcribe(page.image, "main", provider="claude", model="haiku", effort="low")
+    assert page.reads[0] == 2 and saved_answers == {}
 
 
 # ---------------------------------------------------------------- transcribe()

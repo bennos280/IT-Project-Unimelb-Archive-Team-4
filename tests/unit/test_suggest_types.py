@@ -167,7 +167,7 @@ def test_the_model_is_asked_once_about_a_sheet_of_the_pages_and_its_tiles_are_ta
                      {"label": "Blank back", "description": "Nothing on it", "pages": [9]}]
     assert len(asked) == 1
     only = asked[0]
-    assert (only["format"], only["choice"], only["template"]) == ("JPEG", APP, suggest.TEMPLATE)
+    assert (only["format"], only["choice"], only["template"]) == ("JPEG", {**APP, "fresh": True}, suggest.TEMPLATE)  # asked again, never a saved answer
     assert only["size"][0] == 3 * (suggest.TILE + GAP) + GAP  # five tiles, three across
     assert not only["image"].exists()  # the sheet isn't kept
 
@@ -254,7 +254,7 @@ def test_suggesting_asks_the_chosen_model_once_about_the_picked_pages_and_adds_n
         {"label": "Letter", "description": "Typed letter", "pages": [5, 7]}]}
     assert len(asked) == 1
     prompt = asked[0]["prompt"]
-    assert (asked[0]["choice"], asked[0]["format"], asked[0]["template"]) == (APP, "JPEG", suggest.TEMPLATE)
+    assert (asked[0]["choice"], asked[0]["format"], asked[0]["template"]) == ({**APP, "fresh": True}, "JPEG", suggest.TEMPLATE)
     assert asked[0]["size"][0] == 2 * (suggest.TILE + GAP) + GAP  # four tiles, two across
     assert prompt.startswith("These are 4 pages") and prompt.endswith("From the person asking: The backs are blank.")
     assert all(label in prompt for label in ("Main page", "Notes page", "Coded page"))  # the series' own

@@ -11,7 +11,7 @@ import type { ModelChoice, ModelData } from "../progress/ModelControls";
 
 type ModelOption = { value: string; label: string; group: "used" | "latest" | "listed"; efforts: string[] | null; defaultEffort: string | null };
 type ProviderOptions = { available: boolean; models: ModelOption[]; efforts: string[]; error: string | null };
-const groupLabels = { used: "Used in this project", latest: "Latest", listed: "From Codex" } as const;
+const groupLabels = { used: "Used in this project", latest: "Claude Code's names", listed: "From Codex" } as const;
 const EMPTY: ModelChoice = { provider: "", model: "", effort: "" };
 const OTHER = "\u0000other"; // not a possible model name
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

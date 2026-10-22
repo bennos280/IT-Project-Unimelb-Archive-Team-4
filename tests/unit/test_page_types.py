@@ -138,6 +138,7 @@ def queued(setup, tmp_path, monkeypatch):
 def test_the_worker_reads_the_page_again_and_swaps_what_was_read(setup, queued, monkeypatch):
     def transcribe(image, kind, texts, **choice):
         assert (image.name, kind, texts["followup"], texts["prompt"]) == ("page.png", "followup", FOLLOWUP, "Read it.")
+        assert choice["fresh"]  # asked of the model, not a saved answer
         return {"date_of_follow_up": "3/43", "text": "moved to Kew", "provider": "claude", "model": "sonnet", "effort": "low", "seconds": 2.0}
 
     monkeypatch.setattr(transcription, "transcribe", transcribe)

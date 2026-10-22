@@ -1798,7 +1798,7 @@ def get_page_history(page_id: str, db: Session = Depends(get_db)):
 #what a setup-only PrestCribe file leaves out: every page and what was read off it, the records and items read, tasks, and this
 #computer's own choices (its transcription model, page sorting and sorting models)
 NOT_SETUP = ("edits", "flags", "annotations", "resident_fields", "residents", "other_children", "fields", "page_moves",
-             "page_versions", "pages", "surveys", "bundles", "jobs", "sorting_models", "app_settings")
+             "page_versions", "pages", "surveys", "bundles", "jobs", "sorting_models", "app_settings", "saved_answers")
 
 @app.get("/state")
 def save_state(content: Literal["everything", "setup"] = "everything", db: Session = Depends(get_db)):
@@ -1853,6 +1853,10 @@ async def open_state(request: Request, db: Session = Depends(get_db)):
             live.backup(kept)
         kept.close()
         found = sqlite3.connect(path)
+        #the models' answers saved here stay, with the file's
+        found.executemany("INSERT OR IGNORE INTO saved_answers (key, answer, created_at) VALUES (?, ?, ?)",
+                          live.execute("SELECT key, answer, created_at FROM saved_answers").fetchall())
+        found.commit()
         found.backup(live)
         found.close()
     return {"opened": True}

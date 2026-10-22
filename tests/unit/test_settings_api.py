@@ -232,6 +232,7 @@ def work(db):
     db.flush()
     db.add(models.Field(page_id="b/p1", field_title="address", text_raw="1 High St"))
     db.add(models.AppSetting(key="page_sorting", value="model"))
+    db.add(models.SavedAnswer(key="here", answer='{"text": "1 High St"}'))
     db.commit()
 
 
@@ -242,7 +243,7 @@ def saved(client, tmp_path, **params):
     file = tmp_path / "saved.db"
     file.write_bytes(reply.content)
     with sqlite3.connect(file) as saved_db:
-        tables = ("collections", "page_types", "record_levels", "reviewers", "bundles", "pages", "fields", "app_settings")
+        tables = ("collections", "page_types", "record_levels", "reviewers", "bundles", "pages", "fields", "app_settings", "saved_answers")
         counts = {table: saved_db.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0] for table in tables}
     saved_db.close()
     return unquote(reply.headers["content-disposition"]), counts
@@ -250,14 +251,14 @@ def saved(client, tmp_path, **params):
 
 def test_a_saved_file_holds_everything_unless_only_the_setup_is_asked_for(client, db, work, tmp_path):
     name, counts = saved(client, tmp_path)
-    assert counts == {"collections": 1, "page_types": 4, "record_levels": 1, "reviewers": 1, "bundles": 1, "pages": 1, "fields": 1, "app_settings": 1}
+    assert counts == {"collections": 1, "page_types": 4, "record_levels": 1, "reviewers": 1, "bundles": 1, "pages": 1, "fields": 1, "app_settings": 1, "saved_answers": 1}
     assert ".prestcribe" in name and "setup" not in name
     assert saved(client, tmp_path, content="everything")[1] == counts
 
 
 def test_a_setup_only_file_keeps_the_series_and_how_theyre_read_but_no_pages_or_this_computers_choices(client, db, work, tmp_path):
     name, counts = saved(client, tmp_path, content="setup")
-    assert counts == {"collections": 1, "page_types": 4, "record_levels": 1, "reviewers": 1, "bundles": 0, "pages": 0, "fields": 0, "app_settings": 0}
+    assert counts == {"collections": 1, "page_types": 4, "record_levels": 1, "reviewers": 1, "bundles": 0, "pages": 0, "fields": 0, "app_settings": 0, "saved_answers": 0}
     assert "PrestCribe setup " in name and ".prestcribe" in name
     assert db.query(models.Page).count() == 1 and db.query(models.AppSetting).count() == 1  # what's here is as it was
 
@@ -340,6 +341,7 @@ def setup_file(client, tmp_path, version=None):
     file.write_bytes(client.get("/state", params={"content": "setup"}).content)
     with sqlite3.connect(file) as setup:
         assert setup.execute("SELECT COUNT(*) FROM app_settings").fetchone()[0] == 0
+        setup.execute("INSERT INTO saved_answers (key, answer) VALUES ('there', '{}')")  # an answer saved where the file was
         setup.execute("CREATE TABLE alembic_version (version_num TEXT)")  # which the test database, built from the models, hasn't
         if version:
             setup.execute("INSERT INTO alembic_version VALUES (?)", (version,))
@@ -351,12 +353,13 @@ def backups(root):
     return sorted(path.name for path in (root / "backend" / "db").glob("prestcribe-backup-*.db"))
 
 
-def test_a_setup_only_file_opened_here_keeps_this_computers_own_choices_and_what_was_here_is_backed_up(client, db, work, root, tmp_path):
+def test_a_setup_only_file_opened_here_keeps_this_computers_own_choices_and_saved_answers_and_what_was_here_is_backed_up(client, db, work, root, tmp_path):
     (root / "backend" / "db").mkdir(parents=True)
     assert client.post("/state", content=setup_file(client, tmp_path)).json() == {"opened": True}
     db.expire_all()
     assert [(row.key, row.value) for row in db.query(models.AppSetting)] == [("page_sorting", "model")]
     assert db.query(models.Page).count() == 0  # the rest is the file's
+    assert sorted(key for (key,) in db.query(models.SavedAnswer.key)) == ["here", "there"]  # answers saved here stay, with its
     [backup] = backups(root)
     with sqlite3.connect(root / "backend" / "db" / backup) as kept:
         assert kept.execute("SELECT page_id FROM pages").fetchall() == [("b/p1",)]
