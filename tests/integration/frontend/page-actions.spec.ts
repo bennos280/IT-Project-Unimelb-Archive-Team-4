@@ -174,6 +174,7 @@ for (const changeType of [true, false]) {
         return json({
           id: "s1",
           title: "Survey",
+          collectionId: 2,
           recordName: "survey", grouped: true,
           pages: [
             {
@@ -289,13 +290,11 @@ for (const changeType of [true, false]) {
         .getByTestId("page-toolbar")
         .getByRole("button", { name: "Transcribe", exact: true })
         .click();
-    // Reviewers can inspect model information and return to the transcription form.
-    await page.getByRole("button", { name: "View model table" }).click();
-    await expect(
-      page.getByRole("heading", { name: "Transcription models", exact: true }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Back to transcription" }).click();
     const dialog = page.getByRole("dialog", { name: "Transcribe page" });
+    // How accurate it has been opens the page's series' Accuracy tab, in a new tab, leaving the form as it is.
+    const accuracy = dialog.getByRole("link", { name: "See how accurate it has been" });
+    await expect(accuracy).toHaveAttribute("href", "/?series=2&view=accuracy");
+    await expect(accuracy).toHaveAttribute("target", "_blank");
     // A model is required, and reviewers can enter a custom model name.
     await page.getByLabel("Model", { exact: true }).fill("");
     await expect(
@@ -346,6 +345,7 @@ test("the page's Transcribe dialog prefills nothing and links to Settings when n
   await expect(dialog.getByLabel("Model", { exact: true })).toHaveValue("");
   await expect(dialog.getByLabel("Effort", { exact: true })).toHaveValue("");
   await expect(dialog.getByLabel("Provider", { exact: true })).toHaveValue("");
+  await expect(dialog.getByRole("link", { name: "See how accurate it has been" })).toHaveCount(0); // this survey names no series
   const transcribe = dialog.getByRole("button", { name: "Transcribe", exact: true });
   await expect(transcribe).toBeDisabled();
   await dialog.getByLabel("Model", { exact: true }).fill("sonnet");

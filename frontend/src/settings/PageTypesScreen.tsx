@@ -32,7 +32,7 @@ export type Collection = {
   id: number; name: string; levels: Level[]; recordName: string; grouped: boolean; archiveIdentifier?: string | null;
   archiveSeries?: number | null;
 };
-type Version = { id: number; body: string; rules: Rules; reviewer: string | null; note: string | null; createdAt: string };
+type Version = { id: number; number: number; body: string; rules: Rules; reviewer: string | null; note: string | null; createdAt: string };
 
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
@@ -341,13 +341,13 @@ function EditDialog({ type, onClose, onSaved }: {
                     <TableBody>
                       {versions.map((v, n) => (
                         <TableRow key={v.id}>
-                          <TableCell className="font-medium">{v.id}</TableCell>
+                          <TableCell className="font-medium">{v.number}</TableCell>
                           <TableCell className="text-muted-foreground">{v.createdAt ? new Date(v.createdAt).toLocaleString() : ""}</TableCell>
                           <TableCell>{v.reviewer ?? "From the files"}</TableCell>
                           <TableCell className="whitespace-normal">{v.note}</TableCell>
                           <TableCell>
                             {n === 0 ? <span className="text-muted-foreground">Current</span> : (
-                              <Button variant="outline" size="sm" aria-label={`Use version ${v.id}`}
+                              <Button variant="outline" size="sm" aria-label={`Use version ${v.number}`}
                                 onClick={() => { setTemplate(v.body); setRules(v.rules); }}>Use this version</Button>
                             )}
                           </TableCell>

@@ -1,4 +1,4 @@
-"""The transcription prompt and each page type's template, saved as versions in the db (jobs use the newest), and the
+"""Each series' transcription prompt and each page type's template, saved as versions in the db (jobs use the newest), and the
 checks a new version must pass so it can't break loading, grouping or the review screen."""
 import hashlib
 import json
@@ -19,14 +19,32 @@ def sha256(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-#kind -> its newest version
-def newest(db):
-    return {v.kind: v for v in db.query(models.InstructionVersion).order_by(models.InstructionVersion.version_id)}
+#kind -> its newest version: each page type's template, and with a series, its prompt as "prompt" (another series' prompts are left out)
+def newest(db, collection_id=None):
+    versions = db.query(models.InstructionVersion).order_by(models.InstructionVersion.version_id)
+    return {v.kind: v for v in versions if v.kind != PROMPT or (collection_id is not None and v.collection_id == collection_id)}
 
 
-#kind -> the text a job uses; None without versions (the pipeline then reads the files)
-def texts(db):
-    return {kind: v.body for kind, v in newest(db).items()} or None
+#kind -> the text a job of this series uses: its prompt (none if it has none) and its page types' templates; None without any
+#versions in the db (the pipeline then reads the files)
+def texts(db, collection_id):
+    if not db.query(models.InstructionVersion).first():
+        return None
+    types = {name for (name,) in db.query(models.PageType.name).filter_by(collection_id=collection_id)}
+    return {kind: v.body for kind, v in newest(db, collection_id).items() if kind == PROMPT or kind in types}
+
+
+#a series' prompt versions, newest first
+def prompt_versions(db, collection_id):
+    return (db.query(models.InstructionVersion).filter_by(kind=PROMPT, collection_id=collection_id)
+            .order_by(models.InstructionVersion.version_id.desc()).all())
+
+
+#a new series' first prompt: the general one, which asks nothing of any particular page type
+def add_starter_prompt(db, collection_id):
+    from backend.pipeline.transcribe.transcribe import read_starter_prompt
+    body = read_starter_prompt()
+    db.add(models.InstructionVersion(kind=PROMPT, collection_id=collection_id, body=body, sha256=sha256(body), note="Starting prompt"))
 
 
 #why body can't be saved as kind's newest version; [] if it can. required: page type -> the fields grouping reads (grouping.required_fields)

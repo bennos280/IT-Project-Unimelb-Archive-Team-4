@@ -302,11 +302,15 @@ def save_reviews(survey_id: str, payload: SaveReviewsRequest, db: Session = Depe
     return {"revision": revision, "savedAt": timestamp.isoformat()}
 
 #each model's accuracy on the pages reviewers have saved since they were last read, per page type, prompt and template version: a field
-#whose final edit differs from what the model read counts as wrong, every other field on those pages as right
+#whose final edit differs from what the model read counts as wrong, every other field on those pages as right; with collection, only
+#the pages of that series' items
 @app.get("/accuracy")
-def get_accuracy(db: Session = Depends(get_db)):
+def get_accuracy(collection: int | None = None, db: Session = Depends(get_db)):
     scores = {}
-    for p in db.query(models.Page).filter(models.Page.checked_revision == models.Page.revision_no, models.Page.model.is_not(None)):
+    pages = db.query(models.Page).filter(models.Page.checked_revision == models.Page.revision_no, models.Page.model.is_not(None))
+    if collection is not None:
+        pages = pages.join(models.Bundle, models.Bundle.bundle_id == models.Page.bundle_id).filter(models.Bundle.collection_id == collection)
+    for p in pages:
         final = {}
         for e in db.query(models.Edit).filter(models.Edit.page_id == p.page_id).order_by(models.Edit.edit_id):
             field_id, original = edited_field(db, e)
@@ -323,61 +327,123 @@ def get_accuracy(db: Session = Depends(get_db)):
     return sorted(scores.values(), key=lambda score: -(score["accuracy"] or 0))
 
 
-#--TRANSCRIPTION PROMPT AND TEMPLATES--# (backend/db/instructions.py: saved as versions; jobs use the newest of each)
+#--TRANSCRIPTION PROMPTS AND TEMPLATES--# (backend/db/instructions.py: saved as versions; jobs use the newest of each)
 class InstructionRequest(BaseModel):
     body: str
     basedOn: int | None #the version the edit started from (None: a page type's first template); refused if a newer one was saved since
     reviewerId: int
     note: str | None = None
-    rules: dict = {} #a template's fields' rules (backend/db/checks.py); the prompt has none
+    rules: dict = {} #a template's fields' rules (backend/db/checks.py)
 
 def version_json(v, names):
     return {"id": v.version_id, "kind": v.kind, "body": v.body, "rules": json.loads(v.rules) if v.rules else {},
             "reviewerId": v.reviewer_id, "reviewer": names.get(v.reviewer_id), "note": v.note,
             "createdAt": v.created_at.replace(tzinfo=timezone.utc).isoformat() if v.created_at else ""}
 
-#the newest prompt, and the newest template of each page type
+#the newest template of each page type
 @app.get("/instructions")
 def get_instructions(db: Session = Depends(get_db)):
     names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
     return {kind: version_json(v, names) for kind, v in instructions.newest(db).items()}
 
-#every version of the prompt or of one template, newest first
+#every version of one template, newest first; number counts its versions from 1, oldest first
 @app.get("/instructions/{kind}")
 def get_instruction_versions(kind: str, db: Session = Depends(get_db)):
     versions = (db.query(models.InstructionVersion).filter(models.InstructionVersion.kind == kind)
                 .order_by(models.InstructionVersion.version_id.desc()).all())
-    if not versions:
-        raise HTTPException(status_code=404, detail=f"No prompt or template called {kind}.")
+    if not versions or kind == instructions.PROMPT:
+        raise HTTPException(status_code=404, detail=f"No template called {kind}.")
     names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
-    return [version_json(v, names) for v in versions]
+    return [{**version_json(v, names), "number": len(versions) - i} for i, v in enumerate(versions)]
 
-#saves a new version of the prompt or of a page type's template (an Unknown type has none), used from the next job on; checked first
+#every version of the prompts and the templates, oldest first, with its number in its kind (a prompt's in its series), the kind's
+#label and whether it is the newest of its kind (of its series, for a prompt); collection: one series' prompt and all the templates
+@app.get("/instruction-versions")
+def get_all_instruction_versions(collection: int | None = None, db: Session = Depends(get_db)):
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    labels = dict(db.query(models.PageType.name, models.PageType.label))
+    found = db.query(models.InstructionVersion).order_by(models.InstructionVersion.version_id).all()
+    newest = {(v.kind, v.collection_id): v.version_id for v in found}
+    counts, rows = {}, []
+    for v in found:
+        if collection is not None and v.kind == instructions.PROMPT and v.collection_id != collection:
+            continue
+        key = (v.kind, v.collection_id)
+        counts[key] = counts.get(key, 0) + 1
+        rows.append({**version_json(v, names), "number": counts[key], "collectionId": v.collection_id,
+                     "label": "Prompt" if v.kind == instructions.PROMPT else labels.get(v.kind, v.kind),
+                     "current": newest[key] == v.version_id})
+    return rows
+
+#saves a new version of a page type's template (an Unknown type has none), used from the next job on; checked first, with the
+#prompt of the page type's series
 @app.post("/instructions/{kind}", status_code=201)
 def save_instruction(kind: str, payload: InstructionRequest, db: Session = Depends(get_db)):
     write_lock(db)
     current = instructions.newest(db)
     page_type = db.get(models.PageType, kind)
-    if kind != instructions.PROMPT and (not page_type or page_type.unknown):
-        raise HTTPException(status_code=404, detail=f"No prompt or page type called {kind}.")
+    if not page_type or page_type.unknown:
+        raise HTTPException(status_code=404, detail=f"No page type called {kind}.")
     reviewer = db.get(models.Reviewer, payload.reviewerId)
     if reviewer is None:
         raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
     if payload.basedOn != (current[kind].version_id if kind in current else None):
         raise HTTPException(status_code=409, detail="Someone saved a newer version: reload it and make your change again.")
-    if kind == instructions.PROMPT and payload.rules:
-        raise HTTPException(status_code=400, detail="The prompt has no fields to set rules on.")
     if (kind in current and payload.body.replace("\r\n", "\n") == current[kind].body.replace("\r\n", "\n")
             and payload.rules == (json.loads(current[kind].rules) if current[kind].rules else {})):
         raise HTTPException(status_code=400, detail="Nothing changed.")
-    found = instructions.problems(kind, payload.body, {k: v.body for k, v in current.items()}, grouping.required_fields(db))
-    if found := found or (checks.rule_problems(payload.rules, json.loads(payload.body)) if kind != instructions.PROMPT else []):
+    found = instructions.problems(kind, payload.body, instructions.texts(db, page_type.collection_id) or {}, grouping.required_fields(db))
+    if found := found or checks.rule_problems(payload.rules, json.loads(payload.body)):
         raise HTTPException(status_code=400, detail=found)
     version = models.InstructionVersion(kind=kind, body=payload.body, rules=json.dumps(payload.rules) if payload.rules else None,
                                         sha256=instructions.sha256(payload.body), reviewer_id=reviewer.reviewer_id, note=payload.note)
     db.add(version)
     db.commit()
     return version_json(version, {reviewer.reviewer_id: reviewer.name})
+
+
+#--A SERIES' PROMPT--# (backend/db/instructions.py: how every page of the series is read, before its page type's template)
+class PromptRequest(BaseModel):
+    body: str
+    basedOn: int | None #the version the edit started from; refused if a newer one was saved since
+    reviewerId: int
+    note: str | None = None
+
+def prompt_version_json(v, number, names):
+    return {**version_json(v, names), "number": number, "collectionId": v.collection_id}
+
+def series_prompt_versions(db, collection_id):
+    if not db.get(models.Collection, collection_id):
+        raise HTTPException(status_code=404, detail=f"There's no series {collection_id}.")
+    return instructions.prompt_versions(db, collection_id)
+
+#every version of a series' prompt, newest first, numbered from 1
+@app.get("/collections/{collection_id}/prompt")
+def get_series_prompt(collection_id: int, db: Session = Depends(get_db)):
+    versions = series_prompt_versions(db, collection_id)
+    names = dict(db.query(models.Reviewer.reviewer_id, models.Reviewer.name))
+    return [prompt_version_json(v, len(versions) - n, names) for n, v in enumerate(versions)]
+
+#saves a new version of a series' prompt, used from the next job on (an older one brought back is saved as the newest); checked
+#against the series' templates first
+@app.post("/collections/{collection_id}/prompt", status_code=201)
+def save_series_prompt(collection_id: int, payload: PromptRequest, db: Session = Depends(get_db)):
+    write_lock(db)
+    versions = series_prompt_versions(db, collection_id)
+    reviewer = db.get(models.Reviewer, payload.reviewerId)
+    if reviewer is None:
+        raise HTTPException(status_code=400, detail=f"Unknown reviewer {payload.reviewerId}.")
+    if payload.basedOn != (versions[0].version_id if versions else None):
+        raise HTTPException(status_code=409, detail="Someone saved a newer prompt: reload it and make your change again.")
+    if versions and payload.body.replace("\r\n", "\n") == versions[0].body.replace("\r\n", "\n"):
+        raise HTTPException(status_code=400, detail="Nothing changed.")
+    if found := instructions.problems(instructions.PROMPT, payload.body, instructions.texts(db, collection_id) or {}, grouping.required_fields(db)):
+        raise HTTPException(status_code=400, detail=found)
+    version = models.InstructionVersion(kind=instructions.PROMPT, collection_id=collection_id, body=payload.body,
+                                        sha256=instructions.sha256(payload.body), reviewer_id=reviewer.reviewer_id, note=payload.note)
+    db.add(version)
+    db.commit()
+    return prompt_version_json(version, len(versions) + 1, {reviewer.reviewer_id: reviewer.name})
 
 
 #--A SERIES' CHECKS--# (backend/db/checks.py: rules across its fields, saved as versions; the newest is used)
@@ -495,7 +561,7 @@ class PageTypeChange(BaseModel):
     provider: str | None = None
     effort: str | None = None
 
-RESERVED = {instructions.PROMPT, "blank", "review"} #the prompt's kind, and what page sorting answers for no page type
+RESERVED = {instructions.PROMPT, "blank", "review"} #the prompts' kind, and what page sorting answers for no page type
 
 def page_type_json(t, templates):
     return {"name": t.name, "label": t.label, "builtIn": t.built_in, "unknown": t.unknown,
@@ -610,7 +676,7 @@ def get_collections(brief: bool = False, db: Session = Depends(get_db)):
     found = db.query(models.Collection).order_by(models.Collection.collection_id)
     return [{"id": c.collection_id, "name": c.name} for c in found] if brief else [collection_json(c, db) for c in found]
 
-#a new collection, linked to its series on the archive, starts with its Unknown page type
+#a new collection, linked to its series on the archive, starts with its Unknown page type and the starting prompt
 @app.post("/collections", status_code=201)
 def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
     name, node = payload.name.strip(), series_node(payload.archiveSeries)
@@ -628,6 +694,7 @@ def create_collection(payload: NewCollection, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=409, detail=f"There is already a series called {name}.")
     db.add(models.PageType(name=new_name(db, "Unknown"), label="Unknown", unknown=True, built_in=True, collection_id=collection.collection_id))
+    instructions.add_starter_prompt(db, collection.collection_id)
     db.commit()
     return collection_json(collection, db)
 
@@ -1322,13 +1389,16 @@ def cached_progress(db):
         return _progress[path][1]
 
 
+#the models that have read pages, with the saved choice; with collection, only the pages of that series' items
 @app.get("/transcription-models")
-def get_transcription_models(db: Session = Depends(get_db)):
+def get_transcription_models(collection: int | None = None, db: Session = Depends(get_db)):
     columns = (models.Page.provider, models.Page.model, models.Page.effort,
                models.Page.prompt_version_id, models.Page.template_version_id)
     rows = (db.query(*columns, func.count(models.Page.page_id), func.avg(models.Page.runtime))
-            .filter(models.Page.model.is_not(None)).group_by(*columns)
-            .order_by(models.Page.provider, models.Page.model, models.Page.effort))
+            .filter(models.Page.model.is_not(None)))
+    if collection is not None:
+        rows = rows.join(models.Bundle, models.Bundle.bundle_id == models.Page.bundle_id).filter(models.Bundle.collection_id == collection)
+    rows = rows.group_by(*columns).order_by(models.Page.provider, models.Page.model, models.Page.effort)
     return {"configured": app_settings.transcription_defaults(db),
             "models": [{"provider": provider, "model": model, "effort": effort,
                         "promptVersion": prompt, "templateVersion": template,

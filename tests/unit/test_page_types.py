@@ -16,7 +16,7 @@ PAGE = "6789_00002"
 def setup(db):
     """A reviewer, the prompt and the main template, and a survey's main page read as main."""
     add_in_order(db, models.Reviewer(reviewer_id=1, name="Ben"),
-                 models.InstructionVersion(kind="prompt", body="Read it.", sha256="p"),
+                 models.InstructionVersion(kind="prompt", collection_id=1, body="Read it.", sha256="p"),
                  models.InstructionVersion(kind="main", body='{"number_of_dwelling": null}', sha256="m"),
                  models.Survey(survey_id="s", bundle_id="6789"),
                  models.Page(page_id=PAGE, survey_id="s", category="main", import_path="x.png", bundle_id="6789", model="opus"),
@@ -144,8 +144,53 @@ def test_the_worker_reads_the_page_again_and_swaps_what_was_read(setup, queued, 
     assert worker.work_once(setup)
     page = setup.get(models.Page, PAGE)
     assert (page.category, page.revision_no, page.model, page.template_version_id) == ("followup", 1, "sonnet", queued.version_id)
+    assert page.prompt_version_id == setup.query(models.InstructionVersion).filter_by(kind="prompt").one().version_id
     assert fields(setup) == {"date_of_follow_up": "3/43", "text": "moved to Kew"}  # the main form's field is gone
     assert setup.query(models.Job).one().status == "done"
+
+
+@pytest.fixture
+def ship_page(setup, tmp_path, monkeypatch):
+    """A page of series 2 (ships) with a job to read it again as ship; series 2 has no prompt yet."""
+    scan = tmp_path / "page.png"
+    Image.new("RGB", (8, 8), "white").save(scan)
+    monkeypatch.setattr(worker.scans, "page_scan", lambda import_path, source_pdf, page_id: scan)
+    for row in (models.Collection(collection_id=2, name="Ships"), models.PageType(collection_id=2, name="ship", reviewer_id=1),
+                models.InstructionVersion(kind="ship", body='{"vessel": null}', sha256="t"),
+                models.Bundle(bundle_id="ships", source_pdf="ships.pdf", collection_id=2),
+                models.Page(page_id="ships_1", category="ship", import_path="x.png", bundle_id="ships"),
+                models.Field(page_id="ships_1", field_title="vessel", text_raw="Ann"),
+                models.Job(kind="page", page_id="ships_1", page_type="ship", transcription_provider="claude", transcription_model="sonnet", transcription_effort="low")):
+        setup.add(row)
+        setup.flush()
+    setup.commit()
+    return setup
+
+
+def test_a_page_is_read_again_with_its_own_series_prompt_and_records_that_version(ship_page, monkeypatch):
+    prompt = models.InstructionVersion(kind="prompt", collection_id=2, body="Read the ship.", sha256="s")
+    ship_page.add(prompt)
+    ship_page.commit()
+    prompts = []
+
+    def transcribe(image, kind, texts, **choice):
+        prompts.append(texts["prompt"])
+        return {"vessel": "Ann", "provider": "claude", "model": "sonnet", "effort": "low", "seconds": 1.0}
+
+    monkeypatch.setattr(transcription, "transcribe", transcribe)
+    worker.work_once(ship_page)
+    assert (prompts, ship_page.query(models.Job).one().status) == (["Read the ship."], "done")
+    ship = ship_page.query(models.InstructionVersion).filter_by(kind="ship").one()
+    assert (ship_page.get(models.Page, "ships_1").prompt_version_id, ship_page.get(models.Page, "ships_1").template_version_id) == (
+        prompt.version_id, ship.version_id)
+
+
+def test_a_page_of_a_series_with_no_prompt_is_not_read_again(ship_page, monkeypatch):
+    monkeypatch.setattr(transcription, "transcribe", lambda *args, **kwargs: pytest.fail("a model was asked"))
+    worker.work_once(ship_page)
+    job = ship_page.query(models.Job).one()
+    assert (job.status, job.error) == ("failed", "this series has no prompt: add one in its Setup first")
+    assert fields(ship_page, "ships_1") == {"vessel": "Ann"}
 
 
 def test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was(setup, queued, monkeypatch):

@@ -1,6 +1,6 @@
 import PageHistory from "./PageHistory";
 import { createPortal } from "react-dom";
-import { ModelFields, ModelTable, type ModelChoice, type ModelData } from "../progress/ModelControls";
+import { ModelFields, type ModelChoice, type ModelData } from "../progress/ModelControls";
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { useReviewSession } from './useReviewSession';
@@ -40,7 +40,6 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
   const [mode, setMode] = useState<'move' | 'type' | 'transcribe'>('move');
   const [modelData, setModelData] = useState<ModelData | null>(null);
   const [choice, setChoice] = useState<ModelChoice>(NO_CHOICE);
-  const [showModels, setShowModels] = useState(false);
   const [target, setTarget] = useState('');
   const [type, setType] = useState('');
   const [reason, setReason] = useState('');
@@ -96,7 +95,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
 
   const open = useCallback(async (action: 'move' | 'type' | 'transcribe') => {
     setMenuOpen(false);
-    setMode(action); setShowModels(false); setModelData(null); setChoice({model:'',provider:'claude',effort:''}); setTarget(''); setReason(''); setError(''); setLoading(true); setContext(null);
+    setMode(action); setModelData(null); setChoice({model:'',provider:'claude',effort:''}); setTarget(''); setReason(''); setError(''); setLoading(true); setContext(null);
     setDialogOpen(true);
     try { const next = await request<Context>(`/page-actions/${encodeURIComponent(pageId!)}`); setContext(next); setJob(next.job); setType(next.category);
       if (action === 'transcribe') {
@@ -139,7 +138,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
   }
   if (!page) return null;
   const destination = context?.surveys.find(s=>s.id===target);
-  const title = showModels ? 'Transcription models' : mode==='move'?`Move to another ${words.one}`:mode==='type'?'Change page type':'Transcribe page';
+  const title = mode==='move'?`Move to another ${words.one}`:mode==='type'?'Change page type':'Transcribe page';
   return <div className="space-y-3 text-sm">
     {toolbar && createPortal(<div data-testid="page-toolbar" className="flex flex-wrap items-center gap-2">
       <Button type="button" variant="outline" size="sm" disabled={busy||saving||running} onClick={()=>void open('transcribe')}>Transcribe</Button>
@@ -167,7 +166,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
     {notice && !running && <Alert role="status"><AlertDescription>{notice}</AlertDescription></Alert>}
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <Dialog open={dialogOpen} onOpenChange={next => { if (!next && busy) return; setDialogOpen(next); }}>
-      <DialogContent showCloseButton={false} onInteractOutside={e=>e.preventDefault()} className={`max-h-[90vh] overflow-y-auto ${showModels ? 'sm:max-w-[1000px]' : 'sm:max-w-[540px]'}`}>
+      <DialogContent showCloseButton={false} onInteractOutside={e=>e.preventDefault()} className="max-h-[90vh] overflow-y-auto sm:max-w-[540px]">
         <DialogHeader>
           <DialogTitle className="text-lg">{title}</DialogTitle>
           <DialogDescription>Page {page.id}{context && ` · Item ${context.bundleId} · ${words.One} ${context.surveyId}`}</DialogDescription>
@@ -175,7 +174,6 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
         {loading && <p role="status" className="flex items-center gap-2 text-muted-foreground"><Spinner role={undefined} aria-hidden="true" />Loading…</p>}
         {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
         {dirty&&<Alert role={undefined}><AlertDescription>Save or discard your pending reviews before changing this page.</AlertDescription></Alert>}
-        {showModels && modelData ? <ModelTable data={modelData} /> : <>
         {context && (mode==='move'?<FieldGroup className="gap-4">
           <Field>
             <FieldLabel htmlFor={`${uid}-target`}>Destination {words.one}</FieldLabel>
@@ -197,15 +195,13 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
             <NativeSelect id={`${uid}-type`} className="w-full" value={type} onChange={e=>setType(e.target.value)}>{(context.pageTypes ?? []).map(t=><option key={t.name} value={t.name}>{t.label}</option>)}</NativeSelect>
           </Field>
         </FieldGroup>:<FieldGroup className="gap-4">
-          {modelData && <ModelFields data={modelData} choice={choice} setChoice={setChoice} busy={busy} onViewTable={()=>setShowModels(true)} />}
+          {modelData && <ModelFields data={modelData} choice={choice} setChoice={setChoice} busy={busy} seriesId={session.survey?.collectionId} />}
           {context.hasReviews && <Alert role={undefined}><AlertDescription>Successful transcription replaces the current fields and resets their review status. Your previous data and saved reviews will be retained in history.</AlertDescription></Alert>}
         </FieldGroup>)}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={()=>setDialogOpen(false)}>Cancel</Button>
           <Button disabled={loading||!context||busy||saving||dirty||running||(mode==='move'?!target:mode==='type'?type===context.category:!modelData||!choice.provider||!choice.model.trim()||!choice.effort.trim())} onClick={()=>void submit()}>{busy?'Saving…':mode==='move'?'Move page':mode==='type'?'Change page type':'Transcribe'}</Button>
         </DialogFooter>
-        </>}
-        {showModels && <Button variant="outline" className="justify-self-start" onClick={()=>setShowModels(false)}>Back to transcription</Button>}
       </DialogContent>
     </Dialog>
   </div>;

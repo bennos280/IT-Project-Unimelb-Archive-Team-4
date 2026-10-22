@@ -102,15 +102,15 @@ def test_a_templates_rules_are_saved_with_it_changed_alone_and_refused_when_they
     assert (saved.status_code, saved.json()["rules"]) == (201, rules)
     assert [v["rules"] for v in client.get("/instructions/main").json()] == [rules, {}]  # newest first; version 1 had none
     assert client.get("/instructions").json()["main"]["rules"] == rules
-    prompt_id = client.get("/instructions").json()["prompt"]["id"]
-    prompt = client.post("/instructions/prompt", json={"body": TEXTS["prompt"] + " ", "basedOn": prompt_id, "reviewerId": 1,
-                                                        "rules": rules})
-    assert (prompt.status_code, prompt.json()["detail"]) == (400, "The prompt has no fields to set rules on.")
+    prompt = client.get("/collections/1/prompt").json()[0]
+    saved = client.post("/collections/1/prompt", json={"body": TEXTS["prompt"] + " ", "basedOn": prompt["id"], "reviewerId": 1, "rules": rules})
+    assert (saved.status_code, saved.json()["rules"]) == (201, {})  # the prompt has no fields to set rules on: they are left out
 
 
 def test_a_loaded_items_values_that_break_their_rules_are_flagged_and_a_new_check_replaces_the_last(tmp_path, monkeypatch):
     url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
     shutil.copy(Path(__file__).parents[2] / "setups" / "wilfred-prest-survey.prestcribe", tmp_path / "test.db")  # Prest's setup
+    database.migrate(url)  # the file is as its revision made it
     engine = database.make_engine(url)
     monkeypatch.setattr(database, "engine", engine)
     rules = {"type_of_family": {"type": "one_of", "values": ["1 = Complete simple family", "2", "3"]},

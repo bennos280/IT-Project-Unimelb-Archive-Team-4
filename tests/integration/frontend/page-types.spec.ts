@@ -93,7 +93,7 @@ async function mockApi(page: Page, recordKey: string | null = "number_of_dwellin
       return route.fulfill({ status: 202, json: { id: 55, kind: "check" } });
     }
     if (named?.[1] === "instructions" && method === "GET")
-      return versions[named[2]] ? route.fulfill({ json: versions[named[2]] }) : route.fulfill({ status: 404, json: { detail: "None." } });
+      return versions[named[2]] ? route.fulfill({ json: versions[named[2]].map((v, i, all) => ({ ...v, number: all.length - i })) }) : route.fulfill({ status: 404, json: { detail: "None." } });
     if (named?.[1] === "instructions" && method === "POST") {
       const body = request.postDataJSON();
       calls.saveTemplate.push({ kind: named[2], ...body });
@@ -164,7 +164,9 @@ test("a template's history lists each version, and an older one can be brought b
   await expect(history.first()).toContainText("address added");
   await expect(history.first()).toContainText("Current");
   await expect(history.last()).toContainText("From the files");
-  await dialog.getByRole("button", { name: "Use version 3" }).click();  // its own number, as elsewhere in the app
+  await expect(history.first().getByRole("cell").first()).toHaveText("2");  // the number among this page type's versions, not the id
+  await expect(history.last().getByRole("cell").first()).toHaveText("1");
+  await dialog.getByRole("button", { name: "Use version 1" }).click();
   await expect(dialog.getByLabel("Template")).toHaveValue('{"number_of_dwelling": null}');
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(dialog).toHaveCount(0);

@@ -9,7 +9,7 @@ from tests.unit.test_page_moves import seed
 
 def setup_page(db, monkeypatch):
     seed(db)
-    db.add(models.InstructionVersion(kind='prompt',body='Read',sha256='p'))
+    db.add(models.InstructionVersion(kind='prompt',collection_id=1,body='Read',sha256='p'))
     db.add(models.InstructionVersion(kind='main',body='{"address":null}',sha256='m'))
     db.add(models.InstructionVersion(kind='coded',body='{"address":null}',sha256='c'))
     db.commit()
