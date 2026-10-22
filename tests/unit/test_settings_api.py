@@ -155,7 +155,7 @@ def test_updating_starts_the_installer_in_its_own_process_for_this_folder_then_s
     [(args, kwargs)] = stops["processes"]
     installer = "install.ps1" if sys.platform == "win32" else "install.sh"
     assert f"{main.RELEASES}/latest/download/{installer}" in args[-1] and str(root) in args[-1]
-    assert (kwargs["creationflags"] == subprocess.CREATE_NEW_CONSOLE) if sys.platform == "win32" else kwargs["start_new_session"] is True
+    assert (kwargs["creationflags"] == subprocess.CREATE_NEW_CONSOLE | subprocess.CREATE_BREAKAWAY_FROM_JOB) if sys.platform == "win32" else kwargs["start_new_session"] is True
     assert stops["timers"] == [(1, stops["exit"], [0])] and stops["started"] == 1  # stops itself a second later, so its files can be replaced
     assert github == [(f"{main.RELEASES}/latest/download/{installer}", 10)]  # the installer was fetched once before anything started
 
@@ -181,10 +181,25 @@ def test_an_installer_that_cant_be_downloaded_is_a_502_and_nothing_is_started(cl
     assert stops["processes"] == [] and stops["timers"] == []
 
 
+def test_an_installer_that_cant_leave_the_apps_job_is_started_in_it(client, root, stops, github, monkeypatch):
+    monkeypatch.setattr(main.sys, "platform", "win32")
+    monkeypatch.setattr(subprocess, "CREATE_NEW_CONSOLE", 16, raising=False)  # only on Windows
+    monkeypatch.setattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000, raising=False)
+    (root / "VERSION").write_text("v0.1.0\n", encoding="utf-8")
+
+    def popen(args, **kwargs):
+        if kwargs["creationflags"] & 0x01000000:
+            raise OSError("Access is denied")  # a job that doesn't allow breaking away
+        stops["processes"].append((args, kwargs))
+    monkeypatch.setattr(subprocess, "Popen", popen)
+    assert client.post("/update").status_code == 202
+    assert [kwargs["creationflags"] for _, kwargs in stops["processes"]] == [16]
+
 @pytest.mark.parametrize("quote", ["'", "‘", "’", "‚", "‛"])  # PowerShell ends a single-quoted string at each
 def test_a_folder_with_an_apostrophe_is_escaped_in_the_windows_installer_command_which_waits_for_enter_if_it_fails(client, root, stops, github, monkeypatch, quote):
     monkeypatch.setattr(main.sys, "platform", "win32")
     monkeypatch.setattr(subprocess, "CREATE_NEW_CONSOLE", 16, raising=False)  # only on Windows
+    monkeypatch.setattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0x01000000, raising=False)
     folder = root / f"Ben{quote}s copy"
     monkeypatch.setattr(main, "ROOT", folder)
     folder.mkdir()
