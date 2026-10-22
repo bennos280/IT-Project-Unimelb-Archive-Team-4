@@ -244,12 +244,21 @@ for (const [url, crumb, h1] of [["/?view=import", "Open a PrestCribe file", "Ope
   });
 }
 
+test("Copy link puts this page's address on the clipboard and says so", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await mockApi(page);
+  await page.goto("/?series=1&item=216417");
+  await page.getByRole("banner").getByRole("button", { name: "Copy link" }).click();
+  await expect(page.getByRole("banner").getByRole("status")).toHaveText("Link copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(page.url());
+});
+
 test("a series' actions sit by its title, Add items first; Settings and Tasks are in the top bar", async ({ page }) => {
   await mockApi(page);
   await page.goto("/?series=1");
   const main = page.getByRole("main");
   await expect(main.getByRole("button", { name: /^(Add items|Export|Import)$/ })).toHaveText(["Add items", "Export"]);
-  await expect(page.getByRole("banner").getByRole("button")).toHaveCount(2); // the series menu and who is working; the rest are links
+  await expect(page.getByRole("banner").getByRole("button")).toHaveCount(3); // the series menu, Copy link and who is working; the rest are links
   await main.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByRole("dialog").getByRole("heading", { name: "Export" })).toBeVisible();
   await page.keyboard.press("Escape");
