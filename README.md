@@ -12,7 +12,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://github.com/bennos280/IT-Proje
 ```
 
 It installs everything PrestCribe needs (the first time downloads a few hundred MB), adds **PrestCribe** to your desktop and
-Start menu, and opens the app in your browser. Next time, open PrestCribe from either; close its window to stop it. Run the same
+Start menu, and opens the app in its own window. Next time, open PrestCribe from either; closing its window quits it. Run the same
 line again to update, or use **Settings, then About**: your database, scans and results are kept (in `%LOCALAPPDATA%\PrestCribe`).
 
 ## Install (Mac)

@@ -1935,8 +1935,11 @@ def update(db: Session = Depends(get_db)):
         folder = re.sub("['‘’‚‛]", lambda quote: quote[0] * 2, str(ROOT))  #PowerShell's single quotes, curly ones too
         script = (f"try {{ Start-Sleep 5; & ([scriptblock]::Create((irm '{installer}'))) -Folder '{folder}' }} "
                   f"catch {{ Write-Host ('The update failed: ' + $_); Read-Host 'Press Enter to close this window' }}")
-        subprocess.Popen(["powershell", "-ExecutionPolicy", "ByPass", "-NoProfile", "-Command", script],
-                         creationflags=subprocess.CREATE_NEW_CONSOLE)
+        command = ["powershell", "-ExecutionPolicy", "ByPass", "-NoProfile", "-Command", script]
+        try:  #out of the app window's job, which ends everything in it when the app stops
+            subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_CONSOLE | subprocess.CREATE_BREAKAWAY_FROM_JOB)
+        except OSError:  #in a job that can't be left: not started by the app window, so nothing ends it early
+            subprocess.Popen(command, creationflags=subprocess.CREATE_NEW_CONSOLE)
     else:
         script = f'sleep 5; f=$(mktemp) && curl -LsSf "{installer}" -o "$f" && PRESTCRIBE_HOME={shlex.quote(str(ROOT))} sh "$f"; rm -f "$f"'
         subprocess.Popen(["sh", "-c", script], start_new_session=True)
