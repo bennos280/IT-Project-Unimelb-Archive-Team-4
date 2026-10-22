@@ -167,6 +167,15 @@ def test_failed_transcription_stops_without_reading_the_queued_pages(survey, mon
     assert "page3.png" not in calls
 
 
+def test_transcription_stops_without_reading_when_claude_cant_say_which_model_it_runs(survey, monkeypatch):
+    def cant_say(name):
+        raise LookupError(f"couldn't ask Claude Code which model {name} runs")
+
+    monkeypatch.setattr(transcription, "model_of", cant_say)
+    with pytest.raises(SystemExit, match="which model sonnet runs.*try again"):
+        run.main(["--transcribe"])  # the unexpected_call transcribe of the survey fixture isn't reached
+
+
 def test_run_reports_each_step_and_transcription_progress(survey, monkeypatch):
     source, output, _ = survey
     monkeypatch.setattr(transcription, "transcribe", lambda image, kind, **options: {"text": image.name})
@@ -177,7 +186,7 @@ def test_run_reports_each_step_and_transcription_progress(survey, monkeypatch):
                     ("transcribe", 1, 2), ("transcribe", 2, 2), ("group", 0, 0)]
 
 
-@pytest.mark.parametrize("changed", ["image", "label", "model", "effort", "prompt", "template",
+@pytest.mark.parametrize("changed", ["image", "label", "model", "model_behind_alias", "effort", "prompt", "template",
                                     "missing_result", "changed_result"])
 def test_transcription_reuse_requires_matching_inputs_and_result(survey, monkeypatch, tmp_path, changed):
     source, output, _ = survey
@@ -205,6 +214,8 @@ def test_transcription_reuse_requires_matching_inputs_and_result(survey, monkeyp
             for p in images])
     elif changed in ("model", "effort"):
         save_choice(**{changed: "haiku" if changed == "model" else "low"})
+    elif changed == "model_behind_alias":  # the same "sonnet", which claude now maps to another model
+        monkeypatch.setattr(transcription, "model_of", lambda name: "claude-sonnet-9-9")
     elif changed == "prompt":
         (prompts / "prompt.txt").write_text("Read all fields.", encoding="utf-8")
     elif changed == "template":
@@ -217,7 +228,7 @@ def test_transcription_reuse_requires_matching_inputs_and_result(survey, monkeyp
             result.write_text('{"text": "changed"}', encoding="utf-8")
     # Explicit inputs request a rerun even when all previous stages completed.
     run.main([str(source), "--transcribe"])
-    assert len(calls) == (4 if changed in ("model", "effort", "prompt", "template") else 3)
+    assert len(calls) == (4 if changed in ("model", "model_behind_alias", "effort", "prompt", "template") else 3)
 
 
 def test_the_command_line_transcribes_with_the_saved_choice_and_exits_without_one(survey, monkeypatch):

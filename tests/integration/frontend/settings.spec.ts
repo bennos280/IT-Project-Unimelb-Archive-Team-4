@@ -498,7 +498,7 @@ test("the model dropdown groups used, latest and Other, and the effort dropdown 
   await mockApi(page, { claude: ready(), codex: ready({ method: "chatgpt" }) }, { defaults: { ...SAVED, model: "opus" }, transcriptionOptions: OPTIONS });
   await page.goto("/?view=settings");
   await expect(field(page, "Model")).toHaveValue("opus");
-  expect(await groupLabels(page, "Model")).toEqual(["Used in this project", "Latest"]);
+  expect(await groupLabels(page, "Model")).toEqual(["Used in this project", "Claude Code's names"]);
   expect(await optionTexts(page, "Model")).toEqual(["claude-used-1", "opus (latest)", "sonnet (latest)", "Other…"]);
   expect(await optionTexts(page, "Effort")).toEqual(EFFORTS);
   await expect(field(page, "Effort")).toHaveValue("high");

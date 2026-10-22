@@ -23,6 +23,8 @@ Options:
   -n, --name <name>                     Set a display name
 """
 
+RUNS = {"opus": "claude-opus-5-5", "haiku": "claude-haiku-4-5-20251001"}  # the model claude says an alias runs; others: it can't say
+
 # a codex app-server stand-in; argv[1] is the mode: ok (two pages, a notification before each reply), flood (ok, after 2 MB of output nobody asked for), noise (ok, plus replies and requests that aren't the answer, and
 # each answer split over two writes), silent, garbage or refuse
 FAKE = textwrap.dedent('''
@@ -87,6 +89,7 @@ def fakes(monkeypatch, tmp_path):
         return proc
     monkeypatch.setattr(options.subprocess, "Popen", popen)
     monkeypatch.setattr(options, "run_cli", lambda exe, *a, **k: SimpleNamespace(stdout=HELP))
+    monkeypatch.setattr(options.transcribe, "claude_model", lambda name: RUNS.get(name, name))
     yield SimpleNamespace(mode=mode, procs=procs)
     for proc in procs:
         assert proc.poll() is not None  #always ended
@@ -124,9 +127,15 @@ def test_claude_options(client, db):
     efforts = ["low", "medium", "high", "xhigh", "max"]
     assert body["available"] is True and body["error"] is None and body["efforts"] == efforts
     assert [(m["value"], m["label"], m["group"]) for m in body["models"]] == [
-        ("claude-x", "claude-x", "used"), ("opus", "opus", "used"),
-        ("fable", "fable (latest)", "latest"), ("sonnet", "sonnet (latest)", "latest"), ("haiku", "haiku (latest)", "latest")]
+        ("claude-x", "claude-x", "used"), ("opus", "opus (Opus 5.5)", "used"),
+        ("fable", "fable", "latest"), ("sonnet", "sonnet", "latest"), ("haiku", "haiku (Haiku 4.5)", "latest")]
     assert all(m["efforts"] == efforts and m["defaultEffort"] is None for m in body["models"])
+
+
+@pytest.mark.parametrize("model, title", [("claude-haiku-4-5-20251001", "Haiku 4.5"), ("claude-opus-5-5", "Opus 5.5"),
+                                          ("claude-fable-5", "Fable 5"), ("gpt-5", "gpt-5"), ("claude-x", "claude-x")])
+def test_model_title(model, title):
+    assert options.model_title(model) == title
 
 
 def test_claude_help_that_cannot_run_still_gives_defaults(client, monkeypatch):

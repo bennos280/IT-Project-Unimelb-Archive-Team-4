@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 from backend.api.connections import NO_WINDOW, run_cli, stop
 from backend.db import models
 from backend.db.database import get_db
-from backend.pipeline.transcribe import providers
+from backend.pipeline.transcribe import providers, transcribe
 
 router = APIRouter()
 
@@ -75,9 +76,16 @@ def cached(provider, exe, read):
 def read_claude(exe):
     try:
         efforts, aliases = parse_claude_help(run_cli(exe, "--help", timeout=HELP_SECONDS).stdout)
-        return {"efforts": efforts, "aliases": aliases, "error": None}
     except (subprocess.SubprocessError, OSError):
-        return {"efforts": CLAUDE_EFFORTS, "aliases": CLAUDE_ALIASES, "error": CLAUDE_ERROR}
+        return {"efforts": CLAUDE_EFFORTS, "aliases": CLAUDE_ALIASES, "runs": {}, "error": CLAUDE_ERROR}
+    with ThreadPoolExecutor(len(aliases)) as pool:  #the model each alias runs (transcribe.claude_model), all asked at once
+        runs = dict(zip(aliases, pool.map(transcribe.claude_model, aliases)))
+    return {"efforts": efforts, "aliases": aliases, "runs": runs, "error": None}
+
+#"claude-haiku-4-5-20251001" -> "Haiku 4.5"; another name as it is
+def model_title(model):
+    match = re.fullmatch(r"claude-([a-z]+)-(\d+)(?:-(\d))?(?:-\d{8})?", model)
+    return f"{match[1].title()} {match[2]}{'.' + match[3] if match[3] else ''}" if match else model
 
 #model names already recorded on pages, most used first; "+" names are combined runs, which a default can't be
 def used_claude_models(db):
@@ -91,8 +99,10 @@ def claude_options(db):
         return {"available": False, "models": [], "efforts": [], "error": None}
     info = cached("claude", exe, read_claude)
     efforts = info["efforts"]
-    used = used_claude_models(db)
-    choices = [(name, name, "used") for name in used] + [(a, f"{a} (latest)", "latest") for a in info["aliases"] if a not in used]
+    used, runs = used_claude_models(db), info["runs"]
+    #an alias with the model it runs now
+    label = lambda name: f"{name} ({model_title(runs[name])})" if runs.get(name, name) != name else name
+    choices = [(name, label(name), "used") for name in used] + [(a, label(a), "latest") for a in info["aliases"] if a not in used]
     return {"available": True, "error": info["error"], "efforts": efforts,
             "models": [{"value": value, "label": label, "group": group, "efforts": efforts, "defaultEffort": None}
                        for value, label, group in choices]}

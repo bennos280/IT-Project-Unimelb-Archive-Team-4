@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, type MouseEvent } from "react";
-import { ChevronsUpDown, Settings, UserRound } from "lucide-react";
+import { Check, ChevronsUpDown, Link2, Settings, UserRound } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
 
 import TasksButton from "@/components/TasksButton";
@@ -19,8 +19,8 @@ type Crumb = { label: string; href?: string; onClick?: (event: MouseEvent<HTMLAn
 type Series = { id: number; name: string };
 
 // The one top bar: the app's name (home); where you are, as the series (a menu of its Items, Accuracy and Setup, the other series, and all
-// of them) and the levels below it, of which a phone shows the last two; and what's for the whole app, who is working, Settings and
-// Tasks. A screen's own title and actions sit below it.
+// of them) and the levels below it, of which a phone shows the last two, then a copy of this page's link; and what's for the whole
+// app, who is working, Settings and Tasks. A screen's own title and actions sit below it.
 export default function AppHeader({ series, crumbs = [] }: { series?: Series; crumbs?: Crumb[] }) {
   return (
     <header className="flex min-h-14 flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-2 sm:px-6">
@@ -52,6 +52,7 @@ export default function AppHeader({ series, crumbs = [] }: { series?: Series; cr
           </BreadcrumbList>
         </Breadcrumb>
       )}
+      <CopyLink />
       <div className="ml-auto flex items-center gap-2">
         <PersonMenu />
         <Button asChild variant="outline" size="icon" title="Settings">
@@ -60,6 +61,32 @@ export default function AppHeader({ series, crumbs = [] }: { series?: Series; cr
         <TasksButton />
       </div>
     </header>
+  );
+}
+
+// The app's own window has no address bar: this puts the page's address on the clipboard, and says so for two seconds.
+function CopyLink() {
+  const [said, setSaid] = useState("");
+  useEffect(() => {
+    if (!said) return;
+    const timer = setTimeout(() => setSaid(""), 2000);
+    return () => clearTimeout(timer);
+  }, [said]);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(location.href);
+      setSaid("Link copied");
+    } catch {
+      setSaid("Couldn't copy the link");
+    }
+  }
+  return (
+    <>
+      <Button variant="ghost" size="icon-sm" aria-label="Copy link" title={said || "Copy link to this page"} onClick={copy}>
+        {said === "Link copied" ? <Check aria-hidden="true" /> : <Link2 aria-hidden="true" />}
+      </Button>
+      {said && <span role="status" className="sr-only">{said}</span>}
+    </>
   );
 }
 
