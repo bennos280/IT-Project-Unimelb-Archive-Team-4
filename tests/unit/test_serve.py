@@ -413,7 +413,7 @@ def test_this_process_goes_in_a_job_that_kills_its_members_when_it_ends(monkeypa
 @pytest.mark.parametrize("results", [(0, 1, 1), (1, 0, 1), (1, 1, 0)])
 def test_a_job_that_cannot_be_made_or_joined_is_logged_and_the_app_carries_on(monkeypatch, tmp_path, results):
     kernel32(monkeypatch, results)
-    monkeypatch.setattr(serve.ctypes, "get_last_error", lambda: 5)
+    monkeypatch.setattr(serve.ctypes, "get_last_error", lambda: 5, raising=False)  # only on Windows
     with open(tmp_path / "log.txt", "w", encoding="utf-8") as log:
         serve.die_with_us(log)
     assert "Couldn't tie" in (tmp_path / "log.txt").read_text(encoding="utf-8") and serve._job is None
