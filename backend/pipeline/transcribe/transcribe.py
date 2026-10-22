@@ -102,6 +102,11 @@ def read_texts():
             **{path.stem: path.read_bytes().decode("utf-8") for path in sorted((HERE / "templates").glob("*.json"))}}
 
 
+#the prompt a new series starts with, as in the file
+def read_starter_prompt():
+    return (HERE / "starter_prompt.txt").read_bytes().decode("utf-8")
+
+
 #what the model is told: the prompt, then the page type's blank template (and what a field given as text means)
 def full_prompt(prompt, template):
     note = ("\n\nWhere a field above is text instead of null, the text describes the field: answer with what the page shows,"

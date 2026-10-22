@@ -6,7 +6,7 @@ from tests.unit.test_backend_api import add_in_order
 
 def setup(db):
     add_in_order(db, models.Reviewer(reviewer_id=1, name="Ben"),
-                 models.InstructionVersion(kind="prompt", body="Read it.", sha256="p"),
+                 models.InstructionVersion(kind="prompt", collection_id=1, body="Read it.", sha256="p"),
                  models.InstructionVersion(kind="main", body='{"number_of_dwelling": null, "address": null}', sha256="m"),
                  models.InstructionVersion(kind="coded", body='{"number_of_dwelling": null}', sha256="c"),
                  models.InstructionVersion(kind="notes", body='{"text": null}', sha256="n"))

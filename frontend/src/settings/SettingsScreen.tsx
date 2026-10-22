@@ -13,7 +13,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { backendRequest, providerNames } from "../progress/backend";
 import type { ModelChoice } from "../progress/ModelControls";
 import ApiKeys, { type ApiKey } from "./ApiKeys";
-import Performance from "./Performance";
 import PageSorting from "./PageSorting";
 import About from "./About";
 
@@ -110,11 +109,10 @@ function Checklist({ saved, signedIn, show }: { saved: ModelChoice | null | unde
   );
 }
 
-const TABS = ["transcription", "performance", "accounts", "about"];
+const TABS = ["transcription", "accounts", "about"];
 
-// Settings in tabs, the one shown kept in the URL (?tab=): Transcription (the model, and page sorting), Performance (the models
-// used, and their accuracy), Accounts and API keys, and About (the version and updates, where this copy keeps its files, help);
-// they stay loaded, as the checklist above counts them.
+// Settings in tabs, the one shown kept in the URL (?tab=): Transcription (the model, and page sorting), Accounts and API keys, and
+// About (the version and updates, where this copy keeps its files, help); they stay loaded, as the checklist above counts them.
 export default function SettingsScreen() {
   const [tab, setTab] = useState(() => TABS.find((t) => t === new URLSearchParams(location.search).get("tab")) ?? "transcription");
   function show(next: string) {
@@ -218,18 +216,14 @@ export default function SettingsScreen() {
               ...Object.fromEntries(apiKeys.map((k) => [k.provider, hasKey(k)])) }} />
           </div>
           <Tabs value={tab} onValueChange={show} className="gap-6">
-            <TabsList aria-label="Settings" className="max-w-full justify-start overflow-x-auto">
+            <TabsList aria-label="Settings">
               <TabsTrigger value="transcription">Transcription</TabsTrigger>
-              <TabsTrigger value="performance">Performance</TabsTrigger>
               <TabsTrigger value="accounts">Accounts and API keys</TabsTrigger>
               <TabsTrigger value="about">About</TabsTrigger>
             </TabsList>
             <TabsContent value="transcription" forceMount className="space-y-8 data-[state=inactive]:hidden">
           <TranscriptionDefaults notReady={notReady} onSaved={setSaved} version={keysVersion} />
           <PageSorting />
-            </TabsContent>
-            <TabsContent value="performance" forceMount className="space-y-8 data-[state=inactive]:hidden">
-          <Performance />
             </TabsContent>
             <TabsContent value="accounts" forceMount className="space-y-8 data-[state=inactive]:hidden">
           <section id="connections" className="space-y-3">

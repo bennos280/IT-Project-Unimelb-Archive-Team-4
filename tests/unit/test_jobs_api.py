@@ -175,7 +175,7 @@ def test_model_history_groups_versions_and_averages_available_runtimes(client, d
     without a recorded model are excluded from the model history.
     """
     db.add(models.Bundle(bundle_id="bundle", source_pdf="bundle.pdf", collection_id=1))
-    versions = [models.InstructionVersion(kind=kind, body="test", sha256="test")
+    versions = [models.InstructionVersion(kind=kind, collection_id=1 if kind == "prompt" else None, body="test", sha256="test")
                 for kind in ("prompt", "main", "main")]
     db.add_all(versions)
     db.flush()
@@ -195,6 +195,28 @@ def test_model_history_groups_versions_and_averages_available_runtimes(client, d
         {"provider": "claude", "model": "sonnet", "effort": "high", "promptVersion": prompt,
          "templateVersion": newer, "pages": 1, "averageSeconds": None},
     ]
+
+
+def test_model_history_can_be_limited_to_one_series(client, db, config):
+    """Each series lists only the models that read its own items' pages."""
+    db.add(models.Collection(collection_id=2, name="Ships"))
+    db.flush()
+    db.add_all([models.Bundle(bundle_id="one", source_pdf="one.pdf", collection_id=1),
+                models.Bundle(bundle_id="two", source_pdf="two.pdf", collection_id=2)])
+    db.flush()
+    db.add_all([models.Page(page_id=bundle, bundle_id=bundle, category="main", import_path="test.png",
+                            provider="claude", model=model, effort="high")
+                for bundle, model in (("one", "sonnet"), ("two", "opus"))])
+    db.commit()
+
+    def models_in(query=""):
+        return [row["model"] for row in client.get(f"/transcription-models{query}").json()["models"]]
+
+    assert models_in("?collection=1") == ["sonnet"]
+    assert models_in("?collection=2") == ["opus"]
+    assert models_in() == ["opus", "sonnet"]
+    assert models_in("?collection=9") == []  # no such series: nothing, not an error
+    assert client.get("/transcription-models?collection=9").json()["configured"] == {"model": "sonnet", "provider": "claude", "effort": "high"}
 
 
 # GET /jobs/{id}/transcripts

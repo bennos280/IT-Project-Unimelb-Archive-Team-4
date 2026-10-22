@@ -6,10 +6,11 @@ import { ARCHIVE } from "../progress/backend";
 
 export type SeriesSummary = { id: number; name: string; archiveIdentifier?: string | null; archiveSeries?: number | null };
 
-// A series' own heading on its screens: its name, where it is on the archive, its actions, and its tabs: Items (its dashboard) and
-// Setup (how its pages are read and checked).
-export default function SeriesHeader({ series, tab, actions }: { series: SeriesSummary; tab: "items" | "setup"; actions?: ReactNode }) {
-  const tabs = [["items", "Items", `/?series=${series.id}`], ["setup", "Setup", `/?series=${series.id}&view=setup`]] as const;
+// A series' own heading on its screens: its name, where it is on the archive, its actions, and its tabs: Items (its dashboard),
+// Accuracy (how often reviewers changed what the models read) and Setup (how its pages are read and checked).
+export default function SeriesHeader({ series, tab, actions }: { series: SeriesSummary; tab: "items" | "accuracy" | "setup"; actions?: ReactNode }) {
+  const tabs = [["items", "Items", `/?series=${series.id}`], ["accuracy", "Accuracy", `/?series=${series.id}&view=accuracy`],
+    ["setup", "Setup", `/?series=${series.id}&view=setup`]] as const;
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-3">

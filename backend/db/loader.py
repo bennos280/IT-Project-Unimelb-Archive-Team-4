@@ -58,7 +58,8 @@ def insert_page(page_id, page_p, src_img_p:str, category:str, survey_id:str | No
     if data and "+" in (data.get("model") or ""): #older runs list every model Claude Code used: keep the one the run asked for
         asked = (request or {}).get("model")
         data["model"] = next((m for m in data["model"].split("+") if asked and asked in m), data["model"])
-    versions = [version_id(con, kind, (request or {}).get(key)) for kind, key in (("prompt", "prompt"), (category, "template"))]
+    collection = con.exec_driver_sql("SELECT collection_id FROM bundles WHERE bundle_id = ?", (bundle_id,)).scalar()
+    versions = [version_id(con, kind, (request or {}).get(key), collection) for kind, key in (("prompt", "prompt"), (category, "template"))]
     con.exec_driver_sql("INSERT INTO pages(page_id, import_path, survey_id, bundle_id, category, provider, model, effort, runtime,"
                         " prompt_version_id, template_version_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (page_id, src_img_p, survey_id, bundle_id, category, *((data or {}).get(key) for key in META), *versions))
@@ -131,10 +132,10 @@ def insert_flags(review_p, con, keys):
                 VALUES(?, ?, 'inconsistency', ?)""", (page_id, field[0], "Grouping: " + entry["reason"].split(": ", 1)[-1]))
 
 
-#the first version of kind with this text's hash; None if no version has it
-def version_id(con, kind, sha):
-    return sha and con.exec_driver_sql("SELECT MIN(version_id) FROM instruction_versions WHERE kind = ? AND sha256 = ?",
-                                       (kind, sha)).scalar()
+#the first version of kind with this text's hash (a prompt: of this series); None if no version has it
+def version_id(con, kind, sha, collection_id=None):
+    return sha and con.exec_driver_sql("SELECT MIN(version_id) FROM instruction_versions WHERE kind = ? AND sha256 = ?"
+                                       " AND collection_id IS ?", (kind, sha, collection_id if kind == "prompt" else None)).scalar()
 
 #the series an item belongs to, by its number (its PDF's folder, or its folder of page images) in {item number: series};
 #None: no series lists it

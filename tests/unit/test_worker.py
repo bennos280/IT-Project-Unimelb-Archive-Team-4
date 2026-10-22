@@ -214,9 +214,9 @@ def test_an_item_no_series_lists_fails_without_running(db, committed, tmp_path, 
 
 
 def test_a_job_reads_with_the_newest_prompt_and_templates(db, tmp_path, monkeypatch):
-    db.add_all([models.InstructionVersion(kind="prompt", body="old", sha256="a"),
+    db.add_all([models.InstructionVersion(kind="prompt", collection_id=1, body="old", sha256="a"),
                 models.InstructionVersion(kind="main", body="{}", sha256="b"),
-                models.InstructionVersion(kind="prompt", body="new", sha256="c")])
+                models.InstructionVersion(kind="prompt", collection_id=1, body="new", sha256="c")])
     queue(db, tmp_path)
     used = []
     monkeypatch.setattr(worker.pipeline, "run_steps",
@@ -224,3 +224,36 @@ def test_a_job_reads_with_the_newest_prompt_and_templates(db, tmp_path, monkeypa
     monkeypatch.setattr(worker.loader, "dump_into_db", lambda manifest: None)
     worker.work_once(db)
     assert used == [{"prompt": "new", "main": "{}"}]
+
+
+
+def series_2_item(db):
+    """Series 2 with a docket type, a prompt and a template of its own, listing item 216441 (and series 1 a prompt and a main template)."""
+    db.add(models.Collection(collection_id=2, name="Letters"))
+    db.flush()
+    db.add_all([models.PageType(name="docket", label="Docket", collection_id=2),
+                models.ArchiveItem(node=216441, collection_id=2, identifier="UMA-IT-1", title="A file"),
+                models.InstructionVersion(kind="prompt", collection_id=1, body="prest", sha256="a"),
+                models.InstructionVersion(kind="main", body="{}", sha256="b"),
+                models.InstructionVersion(kind="docket", body='{"text": null}', sha256="d")])
+
+
+def test_a_job_reads_with_its_own_series_prompt_and_templates(db, tmp_path, monkeypatch):
+    series_2_item(db)
+    db.add(models.InstructionVersion(kind="prompt", collection_id=2, body="letters", sha256="c"))
+    queue(db, tmp_path, series=None)  # the item series 2 lists
+    used = []
+    monkeypatch.setattr(worker.pipeline, "run_steps",
+                        lambda run, names: used.append(run.texts) or run.pages.append({"file": "a_00001.png"}))
+    monkeypatch.setattr(worker.loader, "dump_into_db", lambda manifest: None)
+    worker.work_once(db)
+    assert used == [{"prompt": "letters", "docket": '{"text": null}'}]
+
+
+def test_a_job_of_a_series_with_no_prompt_stops_before_reading_anything(db, committed, tmp_path, monkeypatch):
+    series_2_item(db)
+    job = queue(db, tmp_path, series=None)
+    runs = []
+    fake_pipeline(monkeypatch, lambda run: runs.append(run))
+    assert worker.work_once(db)
+    assert (committed(job).status, committed(job).error, runs) == ("failed", "this series has no prompt: add one in its Setup first", [])

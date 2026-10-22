@@ -195,7 +195,7 @@ export default function PageActions({ session, toolbar }: { session: ReturnType<
             <NativeSelect id={`${uid}-type`} className="w-full" value={type} onChange={e=>setType(e.target.value)}>{(context.pageTypes ?? []).map(t=><option key={t.name} value={t.name}>{t.label}</option>)}</NativeSelect>
           </Field>
         </FieldGroup>:<FieldGroup className="gap-4">
-          {modelData && <ModelFields data={modelData} choice={choice} setChoice={setChoice} busy={busy} />}
+          {modelData && <ModelFields data={modelData} choice={choice} setChoice={setChoice} busy={busy} seriesId={session.survey?.collectionId} />}
           {context.hasReviews && <Alert role={undefined}><AlertDescription>Successful transcription replaces the current fields and resets their review status. Your previous data and saved reviews will be retained in history.</AlertDescription></Alert>}
         </FieldGroup>)}
         <DialogFooter>

@@ -17,8 +17,8 @@ export type { ModelChoice } from "./ModelControls";
 
 const NO_CHOICE: ModelChoice = { model: "", provider: "", effort: "" }; // nothing prefilled
 
-export default function TranscriptionDialog({ source, busy, error, onClose, onStart }: {
-  source: AvailableBundle; busy: boolean; error: string;
+export default function TranscriptionDialog({ source, seriesId, busy, error, onClose, onStart }: {
+  source: AvailableBundle; seriesId?: number; busy: boolean; error: string;
   onClose: () => void; onStart: (choice: ModelChoice) => void;
 }) {
   const [choice, setChoice] = useState<ModelChoice>(NO_CHOICE);
@@ -42,7 +42,7 @@ export default function TranscriptionDialog({ source, busy, error, onClose, onSt
       {failure && <Alert variant="destructive"><AlertDescription className="flex flex-wrap items-center gap-2">{failure} <Button variant="outline" size="sm" onClick={() => setAttempt((n) => n + 1)}>Try again</Button></AlertDescription></Alert>}
       {!data && !failure && <p role="status" className="flex items-center gap-2 text-muted-foreground"><Spinner role="presentation" aria-hidden="true" />Loading model information…</p>}
       {data && <>
-        <ModelFields data={data} choice={choice} setChoice={setChoice} busy={busy} />
+        <ModelFields data={data} choice={choice} setChoice={setChoice} busy={busy} seriesId={seriesId} />
         <p className="text-muted-foreground">Your selected model and effort are saved with this job. Use a model supported by the selected provider. Transcription may incur model charges.</p>
       </>}
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}

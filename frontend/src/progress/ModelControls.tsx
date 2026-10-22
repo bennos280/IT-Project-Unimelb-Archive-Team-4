@@ -13,7 +13,7 @@ export type ModelData = {
     pages: number; averageSeconds: number | null }[];
 };
 
-export function ModelFields({data,choice,setChoice,busy}:{data:ModelData;choice:ModelChoice;setChoice:(choice:ModelChoice)=>void;busy:boolean}) {
+export function ModelFields({data,choice,setChoice,busy,seriesId}:{data:ModelData;choice:ModelChoice;setChoice:(choice:ModelChoice)=>void;busy:boolean;seriesId?:number}) {
   const id = useId();
   const listId = `${id}-models`;
   return <FieldGroup className="gap-4">
@@ -33,6 +33,6 @@ export function ModelFields({data,choice,setChoice,busy}:{data:ModelData;choice:
         <FieldLabel htmlFor={`${id}-effort`}>Effort</FieldLabel>
         <Input id={`${id}-effort`} value={choice.effort} disabled={busy} onChange={(e) => setChoice({ ...choice, effort: e.target.value })} />
       </Field>
-      <a className="self-start text-sm underline underline-offset-4" href="/?view=settings&tab=performance" target="_blank" rel="noreferrer">See how models have performed</a>
+      {seriesId !== undefined && <a className="self-start text-sm underline underline-offset-4" href={`/?series=${seriesId}&view=accuracy`} target="_blank" rel="noreferrer">See how accurate it has been</a>}
   </FieldGroup>;
 }

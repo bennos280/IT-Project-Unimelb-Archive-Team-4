@@ -138,11 +138,12 @@ class Reviewer(Base):
     reviewer_id = Column(Integer, primary_key=True)
     name = Column(String)
 
-#every saved version of the transcription prompt (kind "prompt") and of each page type's template; the newest is used
+#every saved version of a series' transcription prompt (kind "prompt") and of each page type's template; the newest is used
 class InstructionVersion(Base):
     __tablename__ = "instruction_versions"
     version_id = Column(Integer, primary_key=True, autoincrement=True)
     kind = Column(String, nullable=False)
+    collection_id = Column(Integer, ForeignKey("collections.collection_id"), nullable=True) #the series a prompt belongs to; None: a template
     body = Column(Text, nullable=False)
     rules = Column(Text, nullable=True) #a template's fields' rules as JSON (backend/db/checks.py); None: none
     sha256 = Column(String, nullable=False) #of the body as UTF-8, as the pipeline's reuse check hashes it

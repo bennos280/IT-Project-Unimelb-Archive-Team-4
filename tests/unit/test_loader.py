@@ -120,7 +120,8 @@ def test_each_page_records_the_prompt_and_template_versions_that_read_it(tmp_pat
     texts = read_texts()
     with database.engine.begin() as con:  # version 1 of the prompt and each template
         for kind in ("prompt", "main", "coded"):
-            con.exec_driver_sql("INSERT INTO instruction_versions(kind, body, sha256) VALUES(?, ?, ?)", (kind, texts[kind], sha256(texts[kind])))
+            con.exec_driver_sql("INSERT INTO instruction_versions(kind, collection_id, body, sha256) VALUES(?, ?, ?, ?)",
+                                (kind, 1 if kind == "prompt" else None, texts[kind], sha256(texts[kind])))
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     manifest["transcripts"] = {  # what each page was read with, as the pipeline records it
         "216412_00001.png": {"request": {"prompt": sha256(texts["prompt"]), "template": sha256(texts["main"])}},
@@ -133,6 +134,31 @@ def test_each_page_records_the_prompt_and_template_versions_that_read_it(tmp_pat
     assert db.execute("SELECT page_id, prompt_version_id, template_version_id FROM pages ORDER BY page_id").fetchall() == [
         ("216412_00001", version["prompt"], version["main"]), ("216412_00002", None, version["coded"]),
         ("216412_00003", None, None), ("216412_00005", None, None)]  # no record, or not read
+
+
+def test_a_page_records_its_own_series_prompt_version_when_two_series_have_the_same_prompt(tmp_path, monkeypatch):
+    from backend.db.instructions import sha256
+    start_db(tmp_path, monkeypatch)
+    prompt, template = "Read it.", '{"text": null}'
+    with database.engine.begin() as con:
+        con.exec_driver_sql("INSERT INTO collections (collection_id, name) VALUES (2, 'Letters')")
+        con.exec_driver_sql("INSERT INTO page_types (name, label, collection_id, unknown) VALUES ('letter', 'Letter', 2, 0), ('unknown_2', 'Unknown', 2, 1)")
+        for collection in (1, 2):  # series 2 starts as a copy of series 1's prompt
+            con.exec_driver_sql("INSERT INTO instruction_versions(kind, collection_id, body, sha256) VALUES('prompt', ?, ?, ?)",
+                                (collection, prompt, sha256(prompt)))
+        con.exec_driver_sql("INSERT INTO instruction_versions(kind, body, sha256) VALUES('letter', ?, ?)", (template, sha256(template)))
+    manifest_p = run_folder(tmp_path) / "manifest.json"
+    manifest = json.loads(manifest_p.read_text(encoding="utf-8"))
+    notes = next(page for page in manifest["pages"] if page["file"] == "216412_00003.png")
+    manifest.update(collection=2, pages=[{**notes, "label": "letter"}],
+                    transcripts={"216412_00003.png": {"request": {"prompt": sha256(prompt), "template": sha256(template)}}})
+    manifest_p.write_text(json.dumps(manifest), encoding="utf-8")
+    loader.dump_into_db(manifest_p)
+
+    db = sqlite3.connect(tmp_path / "test.db")
+    series_2 = db.execute("SELECT version_id FROM instruction_versions WHERE kind = 'prompt' AND collection_id = 2").fetchone()[0]
+    assert db.execute("SELECT min(version_id) FROM instruction_versions WHERE kind = 'prompt'").fetchone()[0] != series_2  # not series 1's
+    assert db.execute("SELECT prompt_version_id FROM pages").fetchall() == [(series_2,)]
 
 
 def test_a_page_of_a_type_the_db_does_not_have_is_stored_as_other(tmp_path, monkeypatch):

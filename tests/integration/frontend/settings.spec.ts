@@ -36,9 +36,6 @@ type Options = {
   openError?: string; // POST /api/folders/<which>/open answers 500 with this detail (calls.openError changes it later)
   updateStatus?: number; // the status of POST /api/update; left out: 202
   apiKeys?: object[]; // the body of GET /api/api-keys
-  models?: object[]; // the models in GET /api/transcription-models
-  accuracy?: object[] | null; // the body of GET /api/accuracy; null: it answers 500
-  versions?: object[] | null; // the body of GET /api/instruction-versions; null: it answers 500
 };
 
 async function mockApi(page: Page, state: State, options: Options = {}) {
@@ -114,11 +111,7 @@ async function mockApi(page: Page, state: State, options: Options = {}) {
     if (path === "/api/transcription-options" && options.transcriptionOptions)
       return route.fulfill({ json: options.transcriptionOptions });
     if (path === "/api/transcription-models")
-      return route.fulfill({ json: { configured: defaults, models: options.models ?? [] } });
-    if (path === "/api/accuracy")
-      return options.accuracy === null ? route.fulfill({ status: 500, json: { detail: "No accuracy." } }) : route.fulfill({ json: options.accuracy ?? [] });
-    if (path === "/api/instruction-versions")
-      return options.versions === null ? route.fulfill({ status: 500, json: { detail: "No versions." } }) : route.fulfill({ json: options.versions ?? [] });
+      return route.fulfill({ json: { configured: defaults, models: [] } });
     if (path === "/api/page-sorting/install" && request.method() === "POST") {
       if (request.headers()["content-type"] !== "application/json" || request.postData() !== "{}") // the API requires a JSON body
         return route.fulfill({ status: 422, json: { detail: "Field required" } });
@@ -193,7 +186,7 @@ const OPTIONS = {
 
 const claude = (page: Page) => page.getByRole("group", { name: "Claude Code" });
 const codex = (page: Page) => page.getByRole("group", { name: "Codex CLI" });
-const TABS = ["Transcription", "Performance", "Accounts and API keys", "About"];
+const TABS = ["Transcription", "Accounts and API keys", "About"];
 const tab = (page: Page, name: string) => page.getByRole("tab", { name, exact: true });
 const panel = (page: Page, name: string) => page.getByRole("tabpanel", { name, exact: true });
 
@@ -627,7 +620,7 @@ test("the page has a Settings heading and subtitle above the tabs, and each tab 
   }
 });
 
-test("Settings has four tabs, Transcription first, and the other tabs' sections stay on the page, hidden", async ({ page }) => {
+test("Settings has three tabs, Transcription first, and the other tabs' sections stay on the page, hidden", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });
   await page.goto("/?view=settings");
   await expect(page.getByRole("tablist", { name: "Settings" }).getByRole("tab")).toHaveText(TABS);
@@ -638,112 +631,6 @@ test("Settings has four tabs, Transcription first, and the other tabs' sections 
     await expect(page.locator(`section#${id}`)).toBeHidden();
   }
 });
-
-// Ids are shared by the prompt and every page type's template, so they differ from the numbers shown.
-const version = (id: number, kind: string, label: string, number: number, over: object = {}) =>
-  ({ id, kind, label, number, current: true, body: `${kind} text ${number}`, reviewer: null, note: null, createdAt: "", ...over });
-const VERSIONS = [
-  version(2, "prompt", "Prompt", 1, { body: "Read the page as JSON." }),
-  version(3, "main", "Main page", 1, { current: false, body: '{"address": null}' }),
-  version(4, "coded", "Coded page", 1),
-  version(5, "main", "Main page", 2, { body: '{"address": null, "number_of_dwelling": null}', reviewer: "Ben", note: "dwelling added", createdAt: "2026-10-01T02:00:00+00:00" }),
-];
-const MODEL = { provider: "claude", model: "sonnet", effort: "low", promptVersion: 2, templateVersion: 3, pages: 120, averageSeconds: 21.5 };
-
-test("the Performance tab lists the models used, then accuracy by model, most accurate first, and by page type and version", async ({ page }) => {
-  await mockApi(page, { claude: ready(), codex: conn() }, {
-    versions: VERSIONS,
-    models: [MODEL, { provider: "codex", model: "gpt-x", effort: null, promptVersion: null, templateVersion: 5, pages: 4, averageSeconds: null }],
-    accuracy: [
-      { model: "sonnet", effort: "low", pageType: "main", promptVersion: 2, templateVersion: 3, pages: 3, fields: 60, changed: 3 },
-      { model: "sonnet", effort: "low", pageType: "coded", promptVersion: 2, templateVersion: 4, pages: 2, fields: 20, changed: 5 },
-      { model: "gpt-x", effort: null, pageType: "notes", promptVersion: null, templateVersion: null, pages: 1, fields: 10, changed: 0 },
-    ],
-  });
-  await page.goto("/?view=settings&tab=performance");
-  await expect(tab(page, "Performance")).toHaveAttribute("aria-selected", "true");
-  const performance = panel(page, "Performance");
-  const used = performance.locator("section#models tbody tr");
-  await expect(used.nth(0).getByRole("cell")).toHaveText(["sonnet", "claude", "low", "Main page", "v1", "v1", "120", "21.5 s"]);
-  await expect(used.nth(1).getByRole("cell")).toHaveText(["gpt-x", "codex", "Not recorded", "Main page", "Not recorded", "v2", "4", "Not recorded"]);
-  const byModel = performance.getByRole("table", { name: "Accuracy by model" }).getByRole("row");
-  await expect(byModel).toHaveCount(3);
-  await expect(byModel.nth(1).getByRole("cell")).toHaveText(["gpt-x", "Not recorded", "1", "0 of 10", "100.0%"]);
-  await expect(byModel.nth(2).getByRole("cell")).toHaveText(["sonnet", "low", "5", "8 of 80", "90.0%"]);
-  const detail = performance.getByRole("table", { name: "Accuracy by page type and version" }).getByRole("row");
-  await expect(detail).toHaveCount(4);
-  await expect(detail.nth(1).getByRole("cell")).toHaveText(["sonnet", "low", "Main page", "v1", "v1", "3", "3 of 60", "95.0%"]);
-  await expect(detail.nth(2).getByRole("cell")).toHaveText(["sonnet", "low", "Coded page", "v1", "v1", "2", "5 of 20", "75.0%"]);
-  await expect(detail.nth(3).getByRole("cell")).toHaveText(["gpt-x", "Not recorded", "notes", "Not recorded", "Not recorded", "1", "0 of 10", "100.0%"]);
-});
-
-test("a version's number opens its text, and says which version pages are read with from now on", async ({ page }) => {
-  await mockApi(page, { claude: ready(), codex: conn() }, {
-    versions: VERSIONS,
-    models: [MODEL, { ...MODEL, model: "gpt-x", templateVersion: 5 }],
-  });
-  await page.goto("/?view=settings&tab=performance");
-  const used = panel(page, "Performance").locator("section#models");
-  await expect(used).toContainText("Select a version to read it.");
-
-  await used.getByRole("button", { name: "Main page template v1", exact: true }).click();
-  const older = page.getByRole("dialog", { name: "Main page template v1" });
-  await expect(older).toContainText('{"address": null}');
-  await expect(older).toContainText("From the files. Pages read from now on use v2.");
-  await expect(older.getByText(/^Note:/)).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await expect(older).toHaveCount(0);
-
-  await used.getByRole("button", { name: "Main page template v2", exact: true }).click();
-  const newest = page.getByRole("dialog", { name: "Main page template v2" });
-  await expect(newest).toContainText('{"address": null, "number_of_dwelling": null}');
-  await expect(newest).toContainText(/Saved .+ by Ben\. Pages read from now on use this version\./);
-  await expect(newest).toContainText("Note: dwelling added");
-  await page.keyboard.press("Escape");
-  await expect(newest).toHaveCount(0);
-
-  await used.getByRole("button", { name: "Prompt v1", exact: true }).first().click();
-  await expect(page.getByRole("dialog", { name: "Prompt v1" })).toContainText("Read the page as JSON.");
-});
-
-test("a version's text fits a phone's width", async ({ page }) => {
-  await page.setViewportSize({ width: 375, height: 812 });
-  await mockApi(page, { claude: ready(), codex: conn() }, { versions: [version(2, "prompt", "Prompt", 1, { body: "word ".repeat(400) })], models: [MODEL] });
-  await page.goto("/?view=settings&tab=performance");
-  await panel(page, "Performance").getByRole("button", { name: "Prompt v1", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "Prompt v1" });
-  await expect(dialog).toBeVisible();
-  const box = (await dialog.boundingBox())!;
-  expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(375);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-});
-
-test("on the Performance tab, versions that can't be loaded say so and the tables show the ids", async ({ page }) => {
-  await mockApi(page, { claude: ready(), codex: conn() }, {
-    versions: null, models: [MODEL],
-    accuracy: [{ model: "sonnet", effort: "low", pageType: "main", promptVersion: 2, templateVersion: 3, pages: 3, fields: 60, changed: 3 }],
-  });
-  await page.goto("/?view=settings&tab=performance");
-  const performance = panel(page, "Performance");
-  await expect(performance.getByRole("alert")).toHaveText("The prompt and template versions could not be loaded.");
-  await expect(performance.locator("section#models tbody tr").getByRole("cell")).toHaveText(["sonnet", "claude", "low", "Not recorded", "2", "3", "120", "21.5 s"]);
-  await expect(performance.getByRole("table", { name: "Accuracy by page type and version" }).locator("tbody tr").getByRole("cell"))
-    .toHaveText(["sonnet", "low", "main", "2", "3", "3", "3 of 60", "95.0%"]);
-  await expect(performance.getByRole("button")).toHaveCount(0);
-});
-
-for (const [name, accuracy, shown] of [
-  ["no reviewed pages say so", [], "No reviewed pages yet"],
-  ["accuracy that can't be loaded says so", null, "Accuracy could not be loaded."],
-] as const) {
-  test(`on the Performance tab, ${name}`, async ({ page }) => {
-    await mockApi(page, { claude: ready(), codex: conn() }, { accuracy: accuracy === null ? null : [...accuracy] });
-    await page.goto("/?view=settings&tab=performance");
-    await expect(panel(page, "Performance").locator("section#accuracy")).toContainText(shown);
-    await expect(panel(page, "Performance").getByRole("table", { name: /^Accuracy by/ })).toHaveCount(0);
-  });
-}
 
 test("a tab opens from ?tab=, clicking one shows it and puts it in the URL, and an unknown tab is Transcription", async ({ page }) => {
   await mockApi(page, { claude: ready(), codex: conn() });

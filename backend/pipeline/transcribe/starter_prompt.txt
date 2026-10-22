@@ -1,0 +1,7 @@
+Transcribe this page exactly as written. Don't fix spelling, don't convert money or dates, keep abbreviations as they are.
+
+Empty box = null. Can't read it = [?], keeping whatever you can read (35 Br[?]ghton Road). A deliberate strike mark = "/". If one printed option is crossed out, write the one that's left. If the writing was corrected, use the final version.
+
+Loose pencil or pen marks that aren't in a printed box go in annotations as {raw, location, area}: area is the name of the part of the page the mark is in (null if none fits). Don't guess what they mean.
+
+Fill in this structure, same keys, every value a string or null:

@@ -923,6 +923,7 @@ export default function ProgressDashboard() {
       {transcribing && (
         <TranscriptionDialog
           source={transcribing}
+          seriesId={collectionId}
           busy={starting !== null}
           error={jobError}
           onClose={() => {
