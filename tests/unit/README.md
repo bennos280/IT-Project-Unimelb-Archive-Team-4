@@ -642,3 +642,11 @@ These frontend tests run separately from `uv run pytest tests/unit`.
 They check request construction and response handling; the integration runner
 checks the adapter against the real backend and database.
 
+
+## `test_openapi_spec.py`
+
+`docs/openapi.json`, the API spec the Swagger viewer loads from GitHub.
+
+| Test                                              | What it checks                                                                                             |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `test_docs_openapi_json_is_the_apis_current_spec` | The committed spec matches `app.openapi()`; if not, it re-exports the file and fails so it gets committed. |
