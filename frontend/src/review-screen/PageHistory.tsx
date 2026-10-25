@@ -12,11 +12,13 @@ type History = { revision: number; events: { id: string; time: string | null; re
 const text = (value: unknown) => value === null || value === undefined || value === '' ? '—' : String(value);
 const label = (value: string) => value.replaceAll('_', ' ');
 const wrap = 'whitespace-pre-wrap align-top [overflow-wrap:anywhere]';
-// Composite identifiers keep residents, children and annotations separate.
+// A value's key names its list and item too, so values in lists and annotations stay apart. Snapshots taken before lists
+// moved into fields have residents and children in tables of their own (resident_no, child_no).
 function fieldKey(row: Row): string {
   if (row.resident_no != null) return `Resident ${Number(row.resident_no) + 1} · ${row.resident_field_title}`;
   if (row.child_no != null) return `Child ${Number(row.child_no) + 1} · ${row.child_residence ?? row.residence}`;
   if (row.annotation_no != null) return `Annotation ${Number(row.annotation_no) + 1}`;
+  if (row.list_name) return [`${String(row.list_name).replaceAll('.', ' · ')} ${Number(row.item_no) + 1}`, row.field_title].filter(Boolean).join(' · ');
   return String(row.field_title ?? 'Field');
 }
 function snapshotChanges(snapshot: Snapshot): Change[] {

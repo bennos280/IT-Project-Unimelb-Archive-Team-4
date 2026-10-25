@@ -74,12 +74,13 @@ with tempfile.TemporaryDirectory(prefix='review-integration-') as temporary:
         rows = cursor.execute('SELECT page_id,category,import_path FROM pages WHERE survey_id=? ORDER BY page_id', (args.survey,)).fetchall()
         for page_id, category, image_url in rows:
             fields = []
-            for title, value in cursor.execute('SELECT field_title,text_raw FROM fields WHERE page_id=? ORDER BY field_title', (page_id,)).fetchall():
-                fields.append({'id': title, 'value': value})
-            for number, title, value in cursor.execute('SELECT resident_no,resident_field_title,text_raw FROM resident_fields WHERE page_id=? ORDER BY resident_no,resident_field_title', (page_id,)).fetchall():
-                fields.append({'id': f'residents.{number}.{title}', 'value': value})
-            for number, residence, value in cursor.execute('SELECT child_no,residence,text_raw FROM other_children WHERE page_id=? ORDER BY child_no', (page_id,)).fetchall():
-                fields.append({'id': f'other_children.{residence}.{number}', 'value': value})
+            values = cursor.execute('SELECT list_name,item_no,field_title,text_raw FROM fields WHERE page_id=? ORDER BY rowid', (page_id,)).fetchall()
+            first = {}
+            for position, (list_name, *_) in enumerate(values):
+                first.setdefault(list_name, position)
+            # fields outside lists by title, then each list as read; a value in a list is <list>.<item>.<title>, no title in a list of text
+            for list_name, number, title, value in sorted(values, key=lambda row: (row[0] != '', first[row[0]], row[1], row[2])):
+                fields.append({'id': '.'.join([list_name, str(number)] + ([title] if title else [])) if list_name else title, 'value': value})
             for number, value in cursor.execute('SELECT annotation_no,text_raw FROM annotations WHERE page_id=? ORDER BY annotation_no', (page_id,)).fetchall():
                 fields.append({'id': f'annotations.{number}', 'value': value})
             fixture['pages'].append({'id': page_id, 'type': 'notes' if category == 'other' else category, 'imageUrl': f'http://testserver/pages/{page_id}/image', 'fields': fields})
