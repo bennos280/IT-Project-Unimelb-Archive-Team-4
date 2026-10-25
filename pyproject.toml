@@ -45,6 +45,17 @@ include = ["backend*"]
 testpaths = ["tests"]
 pythonpath = ["."]
 
+# PEP8 (the code guideline), checked in CI: uvx ruff@0.6.9 check backend tests
+[tool.ruff.lint]
+select = ["E", "W", "N"]
+ignore = [
+    "E501",  # long lines are allowed
+    "N815",  # API request fields are camelCase, like the frontend's JSON
+]
+
+[tool.ruff.lint.pep8-naming]
+ignore-names = ["X", "C", "do_GET"]  # a feature matrix, OpenCV's threshold constant, http.server's handler name
+
 # torch: CUDA on Windows, CPU on Linux
 [tool.uv.sources]
 torch = [

@@ -264,7 +264,8 @@ def test_suggesting_asks_the_chosen_model_once_about_the_picked_pages_and_adds_n
 
 def test_the_pages_can_be_picked_at_random_or_from_a_range_and_are_16_unless_asked_otherwise(client, item, chosen, monkeypatch):
     answering(monkeypatch, {"page_types": []})
-    suggest_pages = lambda **body: client.post("/collections/1/page-types/suggest", json={"item": "5", **body}).json()["pages"]
+    def suggest_pages(**body):
+        return client.post("/collections/1/page-types/suggest", json={"item": "5", **body}).json()["pages"]
     assert suggest_pages() == list(range(1, 9))  # 16 asked for, 8 there
     assert suggest_pages(count=3, pick="range", first=3, last=8) == [3, 5, 7]
     assert suggest_pages(count=3, pick="range", first=6, last=99) == [6, 7, 8]

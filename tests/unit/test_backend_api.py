@@ -30,7 +30,7 @@ def test_get_survey_success(client, db):
     response = client.get("/survey/12345")
     assert response.status_code == 200
     data = response.json()
-    
+
     assert data["id"] == "12345"
     assert data["title"] == "Wilfred Prest Survey"
     assert len(data["pages"]) == 1
@@ -58,7 +58,7 @@ def test_get_reviewers_empty(client):
 def test_create_reviewer_success(client):
     payload = {"id": 101, "name": "Alice"}
     response = client.post("/reviewers", json=payload)
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == 101
@@ -67,7 +67,7 @@ def test_create_reviewer_success(client):
 def test_create_reviewer_empty_name(client):
     payload = {"id": 102, "name": "   "}
     response = client.post("/reviewers", json=payload)
-    
+
     assert response.status_code == 400
     assert response.json() == {"detail": "Enter a reviewer name."}
 

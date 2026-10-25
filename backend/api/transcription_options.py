@@ -101,7 +101,8 @@ def claude_options(db):
     efforts = info["efforts"]
     used, runs = used_claude_models(db), info["runs"]
     #an alias with the model it runs now
-    label = lambda name: f"{name} ({model_title(runs[name])})" if runs.get(name, name) != name else name
+    def label(name):
+        return f"{name} ({model_title(runs[name])})" if runs.get(name, name) != name else name
     choices = [(name, label(name), "used") for name in used] + [(a, label(a), "latest") for a in info["aliases"] if a not in used]
     return {"available": True, "error": info["error"], "efforts": efforts,
             "models": [{"value": value, "label": label, "group": group, "efforts": efforts, "defaultEffort": None}

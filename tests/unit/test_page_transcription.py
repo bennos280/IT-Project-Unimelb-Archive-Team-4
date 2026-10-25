@@ -58,7 +58,8 @@ def test_failed_transcription_keeps_old_content(client,db,monkeypatch):
     def fail(*args,**kwargs):raise RuntimeError('model unavailable')
     monkeypatch.setattr(transcription,'transcribe',fail)
     job=queue(client).json()['job']
-    worker.work_once(db);db.expire_all()
+    worker.work_once(db)
+    db.expire_all()
     assert db.get(models.Job,job['id']).status=='failed'
     assert db.query(models.Field).one().text_raw=='Original'
     assert db.query(models.Edit).one().edit_text=='Correction'
@@ -67,8 +68,10 @@ def test_failed_transcription_keeps_old_content(client,db,monkeypatch):
 def test_concurrent_review_prevents_replacement(client,db,monkeypatch):
     setup_page(db,monkeypatch)
     job=queue(client).json()['job']
-    db.get(models.Page,'b/p4').revision_no=1;db.commit()
-    worker.work_once(db);db.expire_all()
+    db.get(models.Page,'b/p4').revision_no=1
+    db.commit()
+    worker.work_once(db)
+    db.expire_all()
     assert db.get(models.Job,job['id']).status=='failed'
     assert db.query(models.Field).one().text_raw=='Original'
     assert db.query(models.Edit).one().edit_text=='Correction'
@@ -90,7 +93,8 @@ def test_transcription_requires_template_and_valid_model_details(client,db,monke
     payload={'revision':0,'reviewerId':1,'model':'chosen-model','provider':'claude','effort':'low'}
     for update in ({'model':''},{'provider':'invalid'},{'effort':''}):
         assert client.post('/page-transcription/b/p4',json={**payload,**update}).status_code==400
-    db.get(models.Page,'b/p4').category='other';db.commit()
+    db.get(models.Page,'b/p4').category='other'
+    db.commit()
     response=client.post('/page-transcription/b/p4',json=payload)
     assert response.status_code==400
     assert 'template' in response.json()['detail']

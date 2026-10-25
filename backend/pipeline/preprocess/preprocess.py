@@ -1,18 +1,18 @@
 """Straighten, crop and turn a survey card black and white, for the review screen's cleaned-up view of a page
 (GET /pages/{id}/image?preprocessed=true). The scan itself is never changed."""
- 
+
 import math
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
- 
+
 import cv2
 import numpy as np
 
 from backend.common import ROOT, settings
- 
- 
- 
+
+
+
 def rectify_page(img):
     """Conservatively detect a paper quadrilateral against a light or dark background.
 
@@ -213,13 +213,13 @@ def estimate_skew_angle(grey):
 def estimate_bg_color(img, strip=15):
     """Estimate the page's background color by sampling a thin strip
     of pixels along all four edges and taking the median.
- 
+
     Used to fill the corners left blank when the image is rotated for
     deskewing, so the fill blends in instead of showing as black/white.
     """
     strip = max(1, min(strip, img.shape[0] // 2, img.shape[1] // 2))
         # Gather pixels from the top, bottom, left, and right edge strips.
- 
+
     edge_px = np.concatenate([
         img[:strip].reshape(-1, 3),
         img[-strip:].reshape(-1, 3),
@@ -227,13 +227,13 @@ def estimate_bg_color(img, strip=15):
         img[:, -strip:].reshape(-1, 3),
     ])
     return tuple(float(x) for x in np.median(edge_px, axis=0))
- 
- 
+
+
 def deskew(img, angle):
     """Rotate on an expanded canvas without cropping away survey content."""
     if abs(angle) < 0.05:
         return img
- 
+
     h, w = img.shape[:2]
     center = (w / 2, h / 2)
     matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
@@ -246,12 +246,12 @@ def deskew(img, angle):
         img, matrix, (new_w, new_h), flags=cv2.INTER_CUBIC,
         borderMode=cv2.BORDER_CONSTANT, borderValue=estimate_bg_color(img),
     )
- 
+
     return rotated
 
 
 def binarize(grey, block_frac=0.045, C=20):
-    """Apply adaptive thresholding to a greyscale image. 
+    """Apply adaptive thresholding to a greyscale image.
     block_frac: Size of the nearby area used to judge each pixel.
     C: Higher values remove more noise but may erase faint writing.
     """
@@ -261,8 +261,8 @@ def binarize(grey, block_frac=0.045, C=20):
     return cv2.adaptiveThreshold(
         grey, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, block, C,
     )
- 
- 
+
+
 def transform_array(img, do_deskew=True, keep_color=True, do_binarize=True, source_label="", adaptive_c=20, crop_page=True):
     """Crop and straighten, then optionally convert to greyscale or binary."""
 
@@ -276,7 +276,7 @@ def transform_array(img, do_deskew=True, keep_color=True, do_binarize=True, sour
          # Detect and correct rotation before any further processing.
         angle, skew_report = estimate_skew_details(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
         img = deskew(img, angle)
- 
+
     binarized = bool(do_binarize)
     if do_binarize:
         result = binarize(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), C=adaptive_c)
@@ -293,8 +293,8 @@ def transform_array(img, do_deskew=True, keep_color=True, do_binarize=True, sour
         "binarized": binarized,
     }
     return result, report
- 
- 
+
+
 def process_image(source, destination, args):
     # Decode from bytes so paths containing non-ASCII characters work too.
     image = cv2.imdecode(np.frombuffer(source.read_bytes(), dtype=np.uint8), cv2.IMREAD_COLOR)

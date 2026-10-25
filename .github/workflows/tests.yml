@@ -18,6 +18,9 @@ jobs:
         id: dependencies
         run: uv sync --locked --extra local-sorting
       # Run every group even if another group fails, provided setup succeeded.
+      - name: Python lint
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: uvx ruff@0.6.9 check backend tests
       - name: Unit tests
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: uv run pytest -q -s tests/unit
