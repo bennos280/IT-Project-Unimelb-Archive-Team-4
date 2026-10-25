@@ -32,12 +32,15 @@ BROKEN = [
     ("main", main_with(annotations=[{"raw": None}]), "main: 'annotations' must be"),
     ("main", main_with(annotations=[{"raw": None, "location": None}]), "main: 'annotations' must be"),  # no area
     ("coded", json.dumps({**json.loads(TEXTS["coded"]), "annotations": [{"raw": None, "location": None}]}), "coded: 'annotations' must be"),
-    ("main", main_with(residents={"age": None}), "main: 'residents' must be a list holding one object of null fields"),
-    ("main", main_with(other_children={"died": []}), "main: 'other_children' must be"),
+    ("main", main_with(residents=[{"age": None}, {"age": None}]), "main: 'residents' must be [] for a list of text, or [{...}]"),
+    ("main", main_with(residents=[{}]), "main: 'residents' must be [] for a list of text, or [{...}]"),
+    ("main", main_with(residents=[{"children": []}]), "main: 'residents.children': a list can't be inside an item of a list"),
+    ("main", main_with(other_children={"died": [[]]}), "main: 'other_children.died' must be [] for a list of text"),
     ("main", main_with(**{"kitchen.shared": None}), "main: 'kitchen.shared': names are lower-case"),
     ("main", main_with(bath={"Location": None}), "main: 'bath.Location': names are lower-case"),
-    ("main", main_with(address=5), "main: 'address' must be null, its description, or an object of fields"),
-    ("main", main_with(rooms=[None]), "main: 'rooms' must be null"),
+    ("main", main_with(residents=[{"Age": None}]), "main: 'residents.Age': names are lower-case"),
+    ("main", main_with(address=5), "main: 'address' must be null, its description, an object of fields, or a list"),
+    ("main", main_with(rooms=[None]), "main: 'rooms' must be [] for a list of text"),
     ("main", main_with(extra={f"field_{n}": None for n in range(3000)}), "main: the prompt and template come to"),
 ]
 
@@ -45,6 +48,12 @@ BROKEN = [
 @pytest.mark.parametrize("kind, body, problem", BROKEN, ids=[problem for _, _, problem in BROKEN])
 def test_a_template_that_would_break_the_pipeline_or_the_review_screen_is_refused(kind, body, problem):
     assert any(found.startswith(problem) for found in instructions.problems(kind, body, TEXTS, PREST))
+
+
+def test_any_series_template_can_have_lists_of_any_name():
+    template = {"ship": None, "passengers": [{"name": None, "age": "their age in years"}], "notes": [],
+                "crew": {"officers": ["each officer's name and rank"]}}
+    assert instructions.problems("manifest", json.dumps(template), {"prompt": TEXTS["prompt"]}) == []
 
 
 def test_an_empty_prompt_is_refused():

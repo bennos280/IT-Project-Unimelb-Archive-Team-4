@@ -97,7 +97,7 @@ def _range(low, high):
 
 
 def fields(template, parent=None):
-    """A template's fields that rules can be set on: its leaves, by dotted path (not the residents list or annotations)."""
+    """A template's fields that rules can be set on: its leaves, by dotted path (not lists or annotations)."""
     for key, value in template.items():
         path = f"{parent}.{key}" if parent else key
         if isinstance(value, dict):

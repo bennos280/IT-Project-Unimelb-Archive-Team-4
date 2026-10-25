@@ -111,15 +111,16 @@ them is checked against the archive's own markup, not only the tests' stand-in.
 
 ## `test_migrations.py`
 
-The database is `backend/db/prestcribe.db`, made by the migrations in `backend/db/migrations/versions/`: `001_prestcribe.py`, the tables in `backend/db/models.py` and nothing in them, `002_prompt_per_series.py`, which gives each series its own transcription prompt, and `003_saved_answers.py`, which keeps the models' answers in the db. A series is added in the app or opened from a PrestCribe file.
+The database is `backend/db/prestcribe.db`, made by the migrations in `backend/db/migrations/versions/`: `001_prestcribe.py`, the tables in `backend/db/models.py` and nothing in them, `002_prompt_per_series.py`, which gives each series its own transcription prompt, `003_saved_answers.py`, which keeps the models' answers in the db, and `004_lists_in_fields.py`, which stores the values in lists on a page (a Prest card's residents and other children) as rows of `fields`. A series is added in the app or opened from a PrestCribe file.
 
 | Test | What it checks |
 | ---- | -------------- |
 | `test_migrations_match_the_models` | The migration in `backend/db/migrations/` builds the same tables and columns as `backend/db/models.py` (Alembic's check). Fails if `models.py` changes a table or column without a migration. It does not compare CHECK constraints or server defaults, and the unit tests build their db from `models.py`, not from the migrations. |
-| `test_a_fresh_db_is_at_revision_003_with_every_table_of_the_models_and_no_rows` | A db made by the migrations is at revision `003`, has every table of the models and no rows in any of them. |
+| `test_a_fresh_db_is_at_revision_004_with_every_table_of_the_models_and_no_rows` | A db made by the migrations is at revision `004`, has every table of the models and no rows in any of them. |
 | `test_each_series_gets_the_prompts_a_db_had_series_1_keeping_its_ids_and_pages` | `002` on a db with two series whose pages were read with its prompt versions: the first series keeps those versions with their ids, so its pages still point at them; the other series gets a copy of each (body, author, note and date kept) and its pages point at the copies; templates stay a page type's; the db is backed up first. |
 | `test_a_db_with_no_prompt_gets_none_from_the_migration` | `002` on a db with series but no prompt makes no prompt versions: a new series is given its starting prompt when it is made. |
 | `test_003_gives_a_db_without_saved_answers_the_table_and_keeps_its_rows` | `003` on a db without `saved_answers` makes the table, as the models have it, and keeps the reviewers' edits. |
+| `test_004_moves_residents_and_children_into_fields_keeping_every_edit_and_flag` | `004` on a db with `residents`, `resident_fields` and `other_children` moves their values into `fields` (list `residents`, lists `other_children.died` and `other_children.living_elsewhere`), keeps every edit and flag with its id pointing at the same value, drops the three tables, backs the db up first and leaves the models' tables; with foreign keys on, an edit needs its value and clearing a page's values drops their edits and flags. |
 | `test_a_table_change_keeps_the_edits_on_it_and_backs_the_db_up_first` | A later migration that rebuilds `fields` (how SQLite changes a column) keeps the reviewers' edits on it, and the db is copied to `<name>-backup-<revision>.db` before it runs. |
 | `test_a_migration_that_breaks_a_link_is_undone` | A later migration that leaves rows pointing at nothing (deletes a bundle its pages belong to) stops with an error, and the db is left as it was before it. |
 
