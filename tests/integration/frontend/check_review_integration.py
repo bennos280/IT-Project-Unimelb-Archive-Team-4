@@ -124,7 +124,8 @@ with tempfile.TemporaryDirectory(prefix='review-integration-') as temporary:
 # Prints each adapter/backend check result.
 for result in results:
     print(f'{result["status"]}: {result["name"]}')
-    if result.get('reason'): print('  '+result['reason'])
+    if result.get('reason'):
+        print('  '+result['reason'])
 # Returns a nonzero exit code if any check failed,
 # allowing npm test:all to detect the integration failure.
 passed = sum(r['status']=='PASS' for r in results)

@@ -252,7 +252,8 @@ PREST_CHECKS, PREST_RULES = _prest()
 def test_the_prest_surveys_checks_flag_what_its_validation_did(check, left, right, reason):
     found = PREST_CHECKS[check]
     values = {found["left"][0]: left, found["right"][0]: right}
-    lists = lambda ref: PREST_RULES.get(ref.partition(".")[2], {}).get("values")
+    def lists(ref):
+        return PREST_RULES.get(ref.partition(".")[2], {}).get("values")
     assert checks.check_failure(found, values.get, lists) == reason
 
 

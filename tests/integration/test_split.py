@@ -180,14 +180,14 @@ def test_a_page_that_fails_to_draw_is_named_in_an_error_a_worker_process_can_sen
     source = tmp_path / "survey.pdf"
     make_pdf(source, 3)
 
-    class Unsendable(Exception):  # like PyMuPDF's own errors, which hold a C object
+    class UnsendableError(Exception):  # like PyMuPDF's own errors, which hold a C object
         def __init__(self):
             super().__init__(threading.Lock())
 
     def get_pixmap(page, *args, **kwargs):
-        raise Unsendable
+        raise UnsendableError
 
     monkeypatch.setattr(pymupdf.Page, "get_pixmap", get_pixmap)
-    with pytest.raises(RuntimeError, match=r"^survey\.pdf, page 1: Unsendable") as error:
+    with pytest.raises(RuntimeError, match=r"^survey\.pdf, page 1: UnsendableError") as error:
         render(source, range(3), tmp_path)
     pickle.loads(pickle.dumps(error.value))  # how a worker process sends its error back

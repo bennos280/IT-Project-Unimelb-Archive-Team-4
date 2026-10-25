@@ -10,7 +10,8 @@ def seed(db):
                 models.Page(page_id='b/p5',bundle_id='b',survey_id='s2',category='main',import_path='second.png'),
                 models.Field(page_id='b/p4',field_title='address',text_raw='Original'),
                 models.Edit(page_id='b/p4',field_title='address',edit_text='Correction')]:
-        db.add(row); db.flush()
+        db.add(row)
+        db.flush()
     db.commit()
 
 
@@ -45,5 +46,6 @@ def test_move_rejects_cross_bundle_unknown_reviewer_and_same_survey(client,db):
 def test_move_rejects_changed_page_and_active_transcription(client,db):
     seed(db)
     assert client.put('/page-moves/b/p4',json={**body(),'revision':5}).status_code==409
-    db.add(models.Job(kind='page',page_id='b/p4',page_type='notes',reviewer_id=1));db.commit()
+    db.add(models.Job(kind='page',page_id='b/p4',page_type='notes',reviewer_id=1))
+    db.commit()
     assert client.put('/page-moves/b/p4',json=body()).status_code==409

@@ -278,7 +278,8 @@ def check_failure(check, read, values_of=lambda ref: None):
         return None
     if {"=": a == b, "!=": a != b, "<": a < b, "<=": a <= b, ">": a > b, ">=": a >= b}[op]:
         return None
-    show = lambda fields, values: f"{' + '.join(map(_label, fields))} ({' + '.join(values)})"
+    def show(fields, values):
+        return f"{' + '.join(map(_label, fields))} ({' + '.join(values)})"
     other = show(check["right"], right) if check.get("right") else right[0]
     return check.get("message") or f"{show(check['left'], left)} should {OPS[op]} {other}"
 
@@ -344,7 +345,8 @@ def check_pages(con, page_ids):
                 else:
                     groups = [{t: by_type[t][0] for t in types}] if all(len(by_type.get(t, [])) == 1 for t in types) else []
                 for group in groups:
-                    page_of = lambda ref: group[ref.partition(".")[0]]
+                    def page_of(ref):
+                        return group[ref.partition(".")[0]]
                     if reason := check_failure(check, lambda ref: values[page_of(ref)].get(ref.partition(".")[2]),
                                                lambda ref: (rules.get(ref.partition(".")[0]) or {}).get(ref.partition(".")[2], {}).get("values")):
                         flags |= {(page_of(ref), ref.partition(".")[2], "check", reason) for ref in named

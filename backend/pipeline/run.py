@@ -286,7 +286,8 @@ def group_level(run: Run, pages: list[dict], level: dict, labels: dict, parent: 
     page."""
     starts, by_key, key = set(level.get("starts", ())), set(level.get("matched", ())), level.get("key")
     record = level.get("name", "record")
-    unnumbered = lambda first, place: Path(first["file"]).stem if parent is None else f"{parent}-n{place}"
+    def unnumbered(first, place):
+        return Path(first["file"]).stem if parent is None else f"{parent}-n{place}"
     if not starts:
         return [(unnumbered(page, n), [page]) for n, page in enumerate((p for p in pages if p["label"] != "blank"), start=1)]
     surveys, cards, last = [], [], None

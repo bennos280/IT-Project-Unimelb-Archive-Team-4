@@ -27,8 +27,8 @@ def identify_pages(paths, weights=None) -> list[dict]:
     retrained model's file; None: the shipped one."""
     paths = [Path(p) for p in paths]
     labels, conf, dist = model(weights).predict(fingerprint(paths)) if paths else ([], [], [])
-    return [{"path": p, "label": str(l), "confidence": float(c), "distance": float(d)}
-            for p, l, c, d in zip(paths, labels, conf, dist)]
+    return [{"path": p, "label": str(label), "confidence": float(c), "distance": float(d)}
+            for p, label, c, d in zip(paths, labels, conf, dist)]
 
 
 # ---------------------------------------------------------------- training and scoring

@@ -1211,8 +1211,9 @@ def list_items(collection_id: int, page: int = 0, size: int = 9, search: str = "
     rows = series_items(db, collection_id)
     pages = items_pages(db, collection_id, rows)
     search, size = search.strip().lower(), min(max(size, 1), 100)
-    natural = lambda row: ((0, int(row["name"]), []) if row["name"].isdigit() else
-                           (1, 0, [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", row["name"])]))
+    def natural(row):
+        return ((0, int(row["name"]), []) if row["name"].isdigit() else
+                (1, 0, [int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", row["name"])]))
     matching = sorted((row for row in rows if item_matches(row, pages[row["bundle"]], search, status)), key=natural)
     page = min(max(page, 0), max(len(matching) - 1, 0) // size)
     return {"items": [{**row, "counts": page_counts(pages[row["bundle"]]), "record": whole_record(pages[row["bundle"]]) if row["loaded"] else None}
@@ -1801,7 +1802,8 @@ NOT_SETUP = ("edits", "flags", "annotations", "fields", "page_moves",
 
 @app.get("/state")
 def save_state(content: Literal["everything", "setup"] = "everything", db: Session = Depends(get_db)):
-    import shutil, tempfile
+    import shutil
+    import tempfile
     from starlette.background import BackgroundTask
     folder = tempfile.mkdtemp()
     copy = Path(folder) / "state.db"
@@ -1934,7 +1936,9 @@ def no_internet(error):
 #is downloaded the first time); what went wrong in words if it doesn't
 @app.post("/page-sorting/check")
 def check_page_sorting():
-    import platform, tempfile, time
+    import platform
+    import tempfile
+    import time
     if not app_settings.local_sorting_available():
         intel_mac = sys.platform == "darwin" and platform.machine() != "arm64"
         return {"ok": False, "detail": "PyTorch isn't available for Intel Macs: sort pages by the reading model." if intel_mac
@@ -1993,7 +1997,8 @@ def get_version():
 #starts PrestCribe again when it's done); the database, scans and results are kept
 @app.post("/update", status_code=202)
 def update(db: Session = Depends(get_db)):
-    import subprocess, urllib.request
+    import subprocess
+    import urllib.request
     if not installed_version():
         raise HTTPException(status_code=400, detail="This copy wasn't installed from a release: update it with git pull.")
     if db.query(models.Job).filter(models.Job.status.in_(("waiting", "running"))).first():
