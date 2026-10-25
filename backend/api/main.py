@@ -19,7 +19,7 @@ import sys
 import threading
 import uuid
 import zipfile
-from backend.db import app_settings, checks, database, grouping, instructions, loader, models
+from backend.db import app_settings, checks, database, field_ids, grouping, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
@@ -97,14 +97,14 @@ def page_fields(db, p):
 
     residents = db.query(models.ResidentField).filter(models.ResidentField.page_id == p.page_id)
     for rf in residents.order_by(models.ResidentField.resident_no):
-        fields_list.append({"id": f"residents.{rf.resident_no}.{rf.resident_field_title}",
+        fields_list.append({"id": field_ids.field_id("residents", rf.resident_no, rf.resident_field_title),
                             "label": rf.resident_field_title.replace('_', ' ').capitalize(),
                             "labelText": printed_labels("main").get("residents." + rf.resident_field_title),
                             "group": f"Residents {rf.resident_no + 1}", "value": rf.text_raw})
 
     children = db.query(models.OtherChild).filter(models.OtherChild.page_id == p.page_id)
     for c in children.order_by(models.OtherChild.residence, models.OtherChild.child_no):
-        fields_list.append({"id": f"other_children.{c.residence}.{c.child_no}",
+        fields_list.append({"id": field_ids.field_id(f"other_children.{c.residence}", c.child_no, ""),
                             "label": "Other children: " + c.residence.replace('_', ' '),
                             "labelText": printed_labels("main").get("other_children." + c.residence),
                             "group": "Other children", "value": c.text_raw})
@@ -112,7 +112,7 @@ def page_fields(db, p):
     annotations = db.query(models.Annotation).filter(models.Annotation.page_id == p.page_id)
     for a in annotations.order_by(models.Annotation.annotation_no):
         box = areas.shown(p.category, a.area, a.region)
-        fields_list.append({"id": f"annotations.{a.annotation_no}", "label": "Annotation", "labelText": None,
+        fields_list.append({"id": field_ids.annotation_id(a.annotation_no), "label": "Annotation", "labelText": None,
                             "group": "Annotations", "value": a.text_raw, "location": a.location, "area": a.area,
                             **({"areaLabel": areas.label(p.category, a.area), "sourceRegion": box} if box else {})})
     return fields_list
@@ -227,23 +227,23 @@ def edited_field(db, e):
         return e.field_title, db.query(models.Field.text_raw).filter_by(
             page_id=e.page_id, field_title=e.field_title).scalar()
     if e.resident_no is not None:
-        return f"residents.{e.resident_no}.{e.resident_field_title}", db.query(models.ResidentField.text_raw).filter_by(
+        return field_ids.field_id("residents", e.resident_no, e.resident_field_title), db.query(models.ResidentField.text_raw).filter_by(
             page_id=e.page_id, resident_no=e.resident_no, resident_field_title=e.resident_field_title).scalar()
     if e.child_no is not None:
-        return f"other_children.{e.child_residence}.{e.child_no}", db.query(models.OtherChild.text_raw).filter_by(
+        return field_ids.field_id(f"other_children.{e.child_residence}", e.child_no, ""), db.query(models.OtherChild.text_raw).filter_by(
             page_id=e.page_id, residence=e.child_residence, child_no=e.child_no).scalar()
-    return f"annotations.{e.annotation_no}", db.query(models.Annotation.text_raw).filter_by(
+    return field_ids.annotation_id(e.annotation_no), db.query(models.Annotation.text_raw).filter_by(
         page_id=e.page_id, annotation_no=e.annotation_no).scalar()
 
 #the edit columns for a review screen id
 def edit_target(field_id):
-    match field_id.split("."):
-        case ["residents", no, title] if no.isascii() and no.isdigit():
-            return {"resident_no": int(no), "resident_field_title": title}
-        case ["other_children", residence, no] if no.isascii() and no.isdigit():
-            return {"child_residence": residence, "child_no": int(no)}
-        case ["annotations", no] if no.isascii() and no.isdigit():
-            return {"annotation_no": int(no)}
+    if (annotation_no := field_ids.annotation_no(field_id)) is not None:
+        return {"annotation_no": annotation_no}
+    list_name, item_no, field_title = field_ids.parse(field_id)
+    if list_name == "residents" and field_title:
+        return {"resident_no": item_no, "resident_field_title": field_title}
+    if list_name.startswith("other_children.") and not field_title:
+        return {"child_residence": list_name.removeprefix("other_children."), "child_no": item_no}
     return {"field_title": field_id}
 
 #each page's revision number and the latest edit of each field (a coded field's with its meaning)
