@@ -229,7 +229,7 @@ def check_series(db, job, progress):
     for start in range(0, len(pages), 400):
         checks.check_pages(db.connection(), pages[start:start + 400])
         progress("check", min(start + 400, len(pages)), len(pages))
-    flagged = (db.query(models.Flag.page_id, models.Flag.field_title).distinct().join(models.Page, models.Page.page_id == models.Flag.page_id)
+    flagged = (db.query(models.Flag.page_id, models.Flag.list_name, models.Flag.item_no, models.Flag.field_title).distinct().join(models.Page, models.Page.page_id == models.Flag.page_id)
                .join(models.Bundle).filter(models.Bundle.collection_id == job.collection_id, models.Flag.kind.in_(("invalid", "check")))
                .count())  #fields, each once however many checks it fails
     log.info("job %s: %s fields flagged", job.job_id, f"{flagged:,}")

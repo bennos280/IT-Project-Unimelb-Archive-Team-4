@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import func, or_
+from sqlalchemy import func, literal_column, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session
 from pydantic import BaseModel, Field
@@ -19,7 +19,7 @@ import sys
 import threading
 import uuid
 import zipfile
-from backend.db import app_settings, checks, database, grouping, instructions, loader, models
+from backend.db import app_settings, checks, database, field_ids, grouping, instructions, loader, models
 from backend.db.loader import CODED_DICT, stored_path
 from backend import scans
 from backend.api.sections import groupings_main, groupings_coded
@@ -82,10 +82,18 @@ OTHER_PAGE_ALONE = "Check what it is, and type anything worth keeping."
 def page_record_name(db, p):
     return grouping.record_name(db, db.get(models.Bundle, p.bundle_id).collection_id, p.survey_id)
 
-#a page's fields as the review screen shows them: id, label, group, value; free text is under "<record> details"
+#a page's fields as the review screen shows them: id, label, group, value; free text is under "<record> details"; fields
+#outside lists first, by title, then each list in the order it was read, item by item
 def page_fields(db, p):
     fields_list = []
-    for f in db.query(models.Field).filter(models.Field.page_id == p.page_id):
+    rows = db.query(models.Field).filter(models.Field.page_id == p.page_id).order_by(literal_column("rowid")).all()
+    first = {}
+    for position, f in enumerate(rows):
+        first.setdefault(f.list_name, position)
+    for f in sorted(rows, key=lambda f: (f.list_name != "", first[f.list_name], f.item_no, f.field_title)):
+        if f.list_name:
+            fields_list.append(list_value(p, f))
+            continue
         #nested fields go under their parent, others by sections.py
         parent, _, leaf = f.field_title.rpartition(".")
         group = (parent.replace('_', ' ').capitalize() if parent
@@ -95,31 +103,31 @@ def page_fields(db, p):
                             "labelText": printed_labels(p.category).get(f.field_title), "group": group, "value": f.text_raw,
                             "decoded": f.decoded_value})
 
-    residents = db.query(models.ResidentField).filter(models.ResidentField.page_id == p.page_id)
-    for rf in residents.order_by(models.ResidentField.resident_no):
-        fields_list.append({"id": f"residents.{rf.resident_no}.{rf.resident_field_title}",
-                            "label": rf.resident_field_title.replace('_', ' ').capitalize(),
-                            "labelText": printed_labels("main").get("residents." + rf.resident_field_title),
-                            "group": f"Residents {rf.resident_no + 1}", "value": rf.text_raw})
-
-    children = db.query(models.OtherChild).filter(models.OtherChild.page_id == p.page_id)
-    for c in children.order_by(models.OtherChild.residence, models.OtherChild.child_no):
-        fields_list.append({"id": f"other_children.{c.residence}.{c.child_no}",
-                            "label": "Other children: " + c.residence.replace('_', ' '),
-                            "labelText": printed_labels("main").get("other_children." + c.residence),
-                            "group": "Other children", "value": c.text_raw})
-
     annotations = db.query(models.Annotation).filter(models.Annotation.page_id == p.page_id)
     for a in annotations.order_by(models.Annotation.annotation_no):
         box = areas.shown(p.category, a.area, a.region)
-        fields_list.append({"id": f"annotations.{a.annotation_no}", "label": "Annotation", "labelText": None,
+        fields_list.append({"id": field_ids.annotation_id(a.annotation_no), "label": "Annotation", "labelText": None,
                             "group": "Annotations", "value": a.text_raw, "location": a.location, "area": a.area,
                             **({"areaLabel": areas.label(p.category, a.area), "sourceRegion": box} if box else {})})
     return fields_list
 
+#a value in a list as the review screen shows it: an item's values (a list of objects) together as "<List> <n>"; each value
+#of a list of text on its own, under the list's parent
+def list_value(p, f):
+    parent, _, leaf = f.list_name.rpartition(".")
+    if f.field_title:
+        label, group = f.field_title.replace('_', ' ').capitalize(), f"{f.list_name.replace('_', ' ').capitalize()} {f.item_no + 1}"
+    else:
+        label = f"{parent.replace('_', ' ').capitalize()}: {leaf.replace('_', ' ')}" if parent else leaf.replace('_', ' ').capitalize()
+        group = parent.replace('_', ' ').capitalize() if parent else label
+    return {"id": field_ids.field_id(f.list_name, f.item_no, f.field_title), "label": label,
+            "labelText": printed_labels(p.category).get(".".join(filter(None, (f.list_name, f.field_title)))),
+            "group": group, "value": f.text_raw}
+
 #what to check on a page: stored flags, unreadable ([?]) text, and a page of its collection's Unknown type
 def page_flags(db, p, fields_list):
-    flags = [{"id": f"flag-{fl.flag_id}", "fieldId": fl.field_title, "kind": fl.kind, "reason": fl.reason}
+    flags = [{"id": f"flag-{fl.flag_id}", "fieldId": field_ids.field_id(fl.list_name, fl.item_no, fl.field_title),
+              "kind": fl.kind, "reason": fl.reason}
              for fl in db.query(models.Flag).filter(models.Flag.page_id == p.page_id).order_by(models.Flag.flag_id)]
     flags += [{"id": f"unreadable-{f['id']}", "fieldId": f["id"], "kind": "uncertain",
                "reason": "The model couldn't read part of this ([?]): compare it with the scan."}
@@ -224,27 +232,17 @@ def create_reviewer(payload: CreateReviewerRequest, db: Session = Depends(get_db
 #the review screen's id for an edit, and the value the model read
 def edited_field(db, e):
     if e.field_title is not None:
-        return e.field_title, db.query(models.Field.text_raw).filter_by(
-            page_id=e.page_id, field_title=e.field_title).scalar()
-    if e.resident_no is not None:
-        return f"residents.{e.resident_no}.{e.resident_field_title}", db.query(models.ResidentField.text_raw).filter_by(
-            page_id=e.page_id, resident_no=e.resident_no, resident_field_title=e.resident_field_title).scalar()
-    if e.child_no is not None:
-        return f"other_children.{e.child_residence}.{e.child_no}", db.query(models.OtherChild.text_raw).filter_by(
-            page_id=e.page_id, residence=e.child_residence, child_no=e.child_no).scalar()
-    return f"annotations.{e.annotation_no}", db.query(models.Annotation.text_raw).filter_by(
+        return field_ids.field_id(e.list_name, e.item_no, e.field_title), db.query(models.Field.text_raw).filter_by(
+            page_id=e.page_id, list_name=e.list_name, item_no=e.item_no, field_title=e.field_title).scalar()
+    return field_ids.annotation_id(e.annotation_no), db.query(models.Annotation.text_raw).filter_by(
         page_id=e.page_id, annotation_no=e.annotation_no).scalar()
 
 #the edit columns for a review screen id
 def edit_target(field_id):
-    match field_id.split("."):
-        case ["residents", no, title] if no.isascii() and no.isdigit():
-            return {"resident_no": int(no), "resident_field_title": title}
-        case ["other_children", residence, no] if no.isascii() and no.isdigit():
-            return {"child_residence": residence, "child_no": int(no)}
-        case ["annotations", no] if no.isascii() and no.isdigit():
-            return {"annotation_no": int(no)}
-    return {"field_title": field_id}
+    if (annotation_no := field_ids.annotation_no(field_id)) is not None:
+        return {"annotation_no": annotation_no}
+    list_name, item_no, field_title = field_ids.parse(field_id)
+    return {"list_name": list_name, "item_no": item_no, "field_title": field_title}
 
 #each page's revision number and the latest edit of each field (a coded field's with its meaning)
 @app.get("/reviews/{survey_id}")
@@ -795,9 +793,10 @@ def preview_levels(collection_id: int, payload: LevelsPreview, db: Session = Dep
     unread = {page_id for (page_id,) in db.query(models.Page.page_id).filter_by(bundle_id=bundle.bundle_id, needs_transcription=True)}
     keys, values = {row.record_key for row in rows if row.record_key}, {}
     for page_id, key, text in db.query(models.Field.page_id, models.Field.field_title, models.Field.text_raw).filter(
-            models.Field.page_id.in_(ids), models.Field.field_title.in_(keys)):
+            models.Field.page_id.in_(ids), models.Field.list_name == "", models.Field.field_title.in_(keys)):
         values.setdefault(page_id, {})[key] = text
-    for edit in db.query(models.Edit).filter(models.Edit.page_id.in_(ids), models.Edit.field_title.in_(keys)).order_by(models.Edit.edit_id):
+    for edit in db.query(models.Edit).filter(models.Edit.page_id.in_(ids), models.Edit.list_name == "",
+                                             models.Edit.field_title.in_(keys)).order_by(models.Edit.edit_id):
         values.setdefault(edit.page_id, {})[edit.field_title] = edit.edit_text
     categories = dict(db.query(models.Page.page_id, models.Page.category).filter_by(bundle_id=bundle.bundle_id))
     types = db.query(models.PageType).filter_by(collection_id=collection_id).all()
@@ -1797,7 +1796,7 @@ def get_page_history(page_id: str, db: Session = Depends(get_db)):
 #another; the scans aren't in it: the other gets them from the archive as it needs them, or they're imported again
 #what a setup-only PrestCribe file leaves out: every page and what was read off it, the records and items read, tasks, and this
 #computer's own choices (its transcription model, page sorting and sorting models)
-NOT_SETUP = ("edits", "flags", "annotations", "resident_fields", "residents", "other_children", "fields", "page_moves",
+NOT_SETUP = ("edits", "flags", "annotations", "fields", "page_moves",
              "page_versions", "pages", "surveys", "bundles", "jobs", "sorting_models", "app_settings", "saved_answers")
 
 @app.get("/state")

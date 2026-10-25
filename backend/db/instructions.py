@@ -11,8 +11,7 @@ from backend.db.loader import META
 PROMPT = "prompt"
 KEY = re.compile(r"[a-z][a-z0-9_]*")  #field ids join keys with "." and labels split them at "_"
 MAX_CHARS = 32_000  #the prompt, template and schema go on one command line; Windows allows 32,767
-SHAPES = {"annotations": [{"raw": None, "location": None, "area": None}],  #the loader stores these as their own tables
-          "other_children": {"died": [], "living_elsewhere": []}}
+SHAPES = {"annotations": [{"raw": None, "location": None, "area": None}]}  #the loader stores these as a table of their own
 
 
 def sha256(text):
@@ -80,26 +79,29 @@ def template_problems(kind, template, required=None):
         if key in SHAPES:
             if value != SHAPES[key]:
                 found.append(f"'{key}' must be {json.dumps(SHAPES[key])}")
-        elif key == "residents":
-            if not (isinstance(value, list) and len(value) == 1 and isinstance(value[0], dict) and value[0]
-                    and all(v is None for v in value[0].values())):
-                found.append("'residents' must be a list holding one object of null fields")
-            else:
-                found += field_problems("residents", value[0])
         else:
             found += field_problems(None, {key: value})
     return found
 
 
-#a field is null, its description (text the model reads), or an object of fields; names are lower case
-def field_problems(parent, fields):
+#a field is null, its description (text the model reads), an object of fields, or a list on the page: [] (or [its
+#description]) of text, or [{fields}] of objects, the one object standing for every item; a list can't be in a list's item
+#(loader.insert_field); names are lower case
+def field_problems(parent, fields, in_list=False):
     found = []
     for key, value in fields.items():
         name = f"{parent}.{key}" if parent else key
         if not KEY.fullmatch(key):
             found.append(f"'{name}': names are lower-case letters, digits and _, starting with a letter")
         if isinstance(value, dict):
-            found += field_problems(name, value)
+            found += field_problems(name, value, in_list)
+        elif isinstance(value, list):
+            if in_list:
+                found.append(f"'{name}': a list can't be inside an item of a list")
+            elif len(value) > 1 or (value and not isinstance(value[0], str) and not (isinstance(value[0], dict) and value[0])):
+                found.append(f"'{name}' must be [] for a list of text, or [{{...}}] holding one object of each item's fields")
+            elif value and isinstance(value[0], dict):
+                found += field_problems(name, value[0], True)
         elif value is not None and not isinstance(value, str):
-            found.append(f"'{name}' must be null, its description, or an object of fields")
+            found.append(f"'{name}' must be null, its description, an object of fields, or a list")
     return found

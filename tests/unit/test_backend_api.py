@@ -1,4 +1,4 @@
-from backend.db import models
+from backend.db import loader, models
 
 
 def add_in_order(db, *rows):
@@ -22,10 +22,9 @@ def test_get_survey_success(client, db):
     survey = models.Survey(survey_id="12345", bundle_id="6789")
     page = models.Page(page_id="12345_00001", survey_id="12345", category="main", import_path="img.png", revision_no=0, bundle_id="6789")
     field = models.Field(field_title="field", page_id="12345_00001", text_raw="raw")
-    resident = models.Resident(page_id="12345_00001", resident_no=20)
-    resident_field = models.ResidentField(page_id="12345_00001", resident_no=20, resident_field_title="relationship", text_raw="Head")
-    
-    add_in_order(db, survey, page, field, resident, resident_field)
+    resident_field = models.Field(page_id="12345_00001", list_name="residents", item_no=20, field_title="relationship", text_raw="Head")
+
+    add_in_order(db, survey, page, field, resident_field)
     db.commit()
 
     response = client.get("/survey/12345")
@@ -160,9 +159,8 @@ def a_survey_with_one_of_each(db):
                  models.Page(page_id="p", survey_id="12345", category="main", import_path="p.png", bundle_id="6789"),
                  models.Field(page_id="p", field_title="address", text_raw="5 Peel St."),
                  models.Field(page_id="p", field_title="tenure", text_raw=None),
-                 models.Resident(page_id="p", resident_no=0),
-                 models.ResidentField(page_id="p", resident_no=0, resident_field_title="age", text_raw="43"),
-                 models.OtherChild(page_id="p", residence="living_elsewhere", child_no=0, text_raw="son 20"),
+                 models.Field(page_id="p", list_name="residents", item_no=0, field_title="age", text_raw="43"),
+                 models.Field(page_id="p", list_name="other_children.living_elsewhere", item_no=0, field_title="", text_raw="son 20"),
                  models.Annotation(page_id="p", annotation_no=0, text_raw="*"))
     db.commit()
 
@@ -201,6 +199,24 @@ def test_save_refuses_pages_and_fields_that_are_not_there(client, db):
                 {"residents.3.age": review("1"), "address": review("1", reviewer_id=2, reviewer="Bo")}):
         assert save({"p": bad}).json() == {"detail": "An edit is on a field that isn't on its page."}
     assert client.get("/reviews/12345").json() == {"reviews": {"p": {}}, "revisions": {"p": 0}}  # nothing was saved
+
+
+def test_a_list_of_any_name_on_a_page_shows_each_item_together_and_its_values_can_be_corrected(client, db):
+    add_in_order(db, models.Survey(survey_id="12345", bundle_id="6789"),
+                 models.Page(page_id="p", survey_id="12345", category="main", import_path="p.png", bundle_id="6789"))
+    loader.insert_content("p", {"ship": "Orsova", "passengers": [{"name": "Ann", "age": "30"}, {"name": "Bo", "age": None}],
+                                "crew": {"officers": ["Captain Hart"]}}, "main", db.connection())
+    db.commit()
+    fields = client.get("/survey/12345").json()["pages"][0]["fields"]
+    assert [(f["id"], f["group"], f["label"], f["value"]) for f in fields] == [
+        ("ship", "Miscellaneous", "Ship", "Orsova"),
+        ("passengers.0.age", "Passengers 1", "Age", "30"), ("passengers.0.name", "Passengers 1", "Name", "Ann"),
+        ("passengers.1.age", "Passengers 2", "Age", None), ("passengers.1.name", "Passengers 2", "Name", "Bo"),
+        ("crew.officers.0", "Crew", "Crew: officers", "Captain Hart")]
+    saved = {"passengers.1.age": review("41"), "crew.officers.0": review("Captain Hart RN")}
+    assert client.post("/reviews/12345", json={"reviews": {"p": saved}, "revisions": {"p": 1}}).status_code == 200
+    assert {field: r["value"] for field, r in client.get("/reviews/12345").json()["reviews"]["p"].items()} == {
+        "passengers.1.age": "41", "crew.officers.0": "Captain Hart RN"}
 
 
 def test_an_edited_code_comes_back_with_its_own_meaning(client, db):

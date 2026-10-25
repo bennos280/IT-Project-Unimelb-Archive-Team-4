@@ -97,7 +97,7 @@ def _range(low, high):
 
 
 def fields(template, parent=None):
-    """A template's fields that rules can be set on: its leaves, by dotted path (not the residents list or annotations)."""
+    """A template's fields that rules can be set on: its leaves, by dotted path (not lists or annotations)."""
     for key, value in template.items():
         path = f"{parent}.{key}" if parent else key
         if isinstance(value, dict):
@@ -318,13 +318,13 @@ def check_pages(con, page_ids):
         pages = {page: (category, survey or page, series) for page, category, survey, series, unread in found if not unread}
         marks = ", ".join("?" * len(pages))
         values = {page: {} for page in pages}
-        for page, field, raw in con.exec_driver_sql(f"SELECT page_id, field_title, text_raw FROM fields WHERE page_id IN ({marks})",
-                                                    tuple(pages)):
+        for page, field, raw in con.exec_driver_sql(  #rules are on fields outside lists
+                f"SELECT page_id, field_title, text_raw FROM fields WHERE list_name = '' AND page_id IN ({marks})", tuple(pages)):
             values[page][field] = raw
         for page, field, edit in con.exec_driver_sql(  #each field's newest saved edit (ix_edits_page_field)
                 "SELECT e.page_id, e.field_title, e.edit_text FROM edits e JOIN (SELECT MAX(edit_id) AS newest FROM edits"
-                f" WHERE field_title IS NOT NULL AND page_id IN ({marks}) GROUP BY page_id, field_title) n ON e.edit_id = n.newest",
-                tuple(pages)):
+                f" WHERE list_name = '' AND field_title IS NOT NULL AND page_id IN ({marks}) GROUP BY page_id, field_title) n"
+                " ON e.edit_id = n.newest", tuple(pages)):
             if field in values[page]:
                 values[page][field] = edit
         flags = set()

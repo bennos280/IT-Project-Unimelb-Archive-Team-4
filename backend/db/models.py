@@ -98,40 +98,32 @@ class Page(Base):
     prompt_version_id = Column(Integer, ForeignKey("instruction_versions.version_id"), nullable=True)
     template_version_id = Column(Integer, ForeignKey("instruction_versions.version_id"), nullable=True)
 
+#a value read off a page; in a list on the page (a template's [...]), with the list's name and the item's number from 0 in page
+#order, and field_title "" for a list of text; outside a list, list_name "" and item_no 0
 class Field(Base):
     __tablename__ = "fields"
     page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True)
+    list_name = Column(String, primary_key=True, default="", server_default="")
+    item_no = Column(Integer, primary_key=True, default=0, server_default="0")
     field_title = Column(String, primary_key=True)
     text_raw = Column(Text, nullable=True)
     decoded_value = Column(Text, nullable=True)
 
-#something for the reviewer to check on a field
+#something for the reviewer to check on a value
 class Flag(Base):
     __tablename__ = "flags"
     __table_args__ = (
-        ForeignKeyConstraint(["page_id", "field_title"], ["fields.page_id", "fields.field_title"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["page_id", "list_name", "item_no", "field_title"],
+                             ["fields.page_id", "fields.list_name", "fields.item_no", "fields.field_title"], ondelete="CASCADE"),
         CheckConstraint("kind IN ('inconsistency', 'gibberish', 'uncertain', 'invalid', 'check')", name="kind"),
     )
     flag_id = Column(Integer, primary_key=True, autoincrement=True)
     page_id = Column(String, nullable=False)
+    list_name = Column(String, nullable=False, default="", server_default="")
+    item_no = Column(Integer, nullable=False, default=0, server_default="0")
     field_title = Column(String, nullable=False)
     kind = Column(String, nullable=False)
     reason = Column(Text, nullable=False)
-
-#residents, children and annotations are numbered from 0 in page order
-class Resident(Base):
-    __tablename__ = "residents"
-    page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True)
-    resident_no = Column(Integer, primary_key=True)
-
-class ResidentField(Base):
-    __tablename__ = "resident_fields"
-    __table_args__ = (ForeignKeyConstraint(["page_id", "resident_no"], ["residents.page_id", "residents.resident_no"],
-                                           ondelete="CASCADE"),)
-    page_id = Column(String, primary_key=True)
-    resident_no = Column(Integer, primary_key=True)
-    resident_field_title = Column(String, primary_key=True)
-    text_raw = Column(String, nullable=True)
 
 class Reviewer(Base):
     __tablename__ = "reviewers"
@@ -204,41 +196,28 @@ class SortingModel(Base):
 class Edit(Base):
     __tablename__ = "edits"
     __table_args__ = (
-        ForeignKeyConstraint(["page_id", "field_title"], ["fields.page_id", "fields.field_title"], ondelete="CASCADE"),
-        ForeignKeyConstraint(["page_id", "resident_field_title", "resident_no"],
-                             ["resident_fields.page_id", "resident_fields.resident_field_title", "resident_fields.resident_no"],
-                             ondelete="CASCADE"),
-        ForeignKeyConstraint(["page_id", "child_residence", "child_no"],
-                             ["other_children.page_id", "other_children.residence", "other_children.child_no"],
-                             ondelete="CASCADE"),
+        ForeignKeyConstraint(["page_id", "list_name", "item_no", "field_title"],
+                             ["fields.page_id", "fields.list_name", "fields.item_no", "fields.field_title"], ondelete="CASCADE"),
         ForeignKeyConstraint(["page_id", "annotation_no"], ["annotations.page_id", "annotations.annotation_no"],
                              ondelete="CASCADE"),
-        #an edit targets exactly one of: field, resident field, child, annotation
-        CheckConstraint("(field_title IS NOT NULL) + (resident_field_title IS NOT NULL) + (child_no IS NOT NULL)"
-                        " + (annotation_no IS NOT NULL) = 1 AND (resident_field_title IS NULL) = (resident_no IS NULL)"
-                        " AND (child_residence IS NULL) = (child_no IS NULL)",
-                        name="exclusivity"),
-        Index("ix_edits_page_field", "page_id", "field_title"),  #a field's newest edit, for the checks (backend/db/checks.py)
+        #an edit targets exactly one of: a value (field_title), an annotation
+        CheckConstraint("(field_title IS NOT NULL) + (annotation_no IS NOT NULL) = 1"
+                        " AND (annotation_no IS NULL OR (list_name = '' AND item_no = 0))", name="exclusivity"),
+        #a value's newest edit, for the checks (backend/db/checks.py)
+        Index("ix_edits_page_field", "page_id", "list_name", "item_no", "field_title"),
     )
     edit_id = Column(Integer, primary_key=True, autoincrement=True)
     edit_text = Column(Text, nullable=True)
     reviewer_id = Column(Integer, ForeignKey("reviewers.reviewer_id"), nullable=True)
     time = Column(DateTime, nullable=True)
     page_id = Column(String, nullable=False)
+    #never NULL: SQLite doesn't check a foreign key with a NULL in it
+    list_name = Column(String, nullable=False, default="", server_default="")
+    item_no = Column(Integer, nullable=False, default=0, server_default="0")
     field_title = Column(String, nullable=True)
-    resident_field_title = Column(String, nullable=True)
-    resident_no = Column(Integer, nullable=True)
-    child_residence = Column(String, nullable=True)
-    child_no = Column(Integer, nullable=True)
     annotation_no = Column(Integer, nullable=True)
 
-class OtherChild(Base):
-    __tablename__ = "other_children"
-    page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True)
-    residence = Column(String, primary_key=True) #died or living_elsewhere
-    child_no = Column(Integer, primary_key=True)
-    text_raw = Column(String)
-
+#a page's annotations are numbered from 0 in page order
 class Annotation(Base):
     __tablename__ = "annotations"
     page_id = Column(String, ForeignKey("pages.page_id", ondelete="CASCADE"), primary_key=True)

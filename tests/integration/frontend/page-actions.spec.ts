@@ -44,7 +44,11 @@ test("move keeps page identity and opens its destination; same types are allowed
             details: "Previous page type: notes.",
             snapshot: {
               fields: [
-                { field_title: "address", text_raw: "Previous address" },
+                { list_name: "", item_no: 0, field_title: "address", text_raw: "Previous address" },
+                { list_name: "residents", item_no: 0, field_title: "age", text_raw: "43" },
+              ],
+              edits: [
+                { edit_id: 1, list_name: "residents", item_no: 0, field_title: "age", annotation_no: null, edit_text: "44" },
               ],
             },
           },
@@ -112,6 +116,10 @@ test("move keeps page identity and opens its destination; same types are allowed
     .click();
   await expect(
     history.getByText("Previous address", { exact: true }),
+  ).toBeVisible();
+  // A value in a list is named by its list and item, with its saved edit beside what was read.
+  await expect(
+    history.getByRole("row", { name: "residents 1 · age 43 44", exact: true }),
   ).toBeVisible();
   await history.getByRole("button", { name: "Close", exact: true }).click();
   await expect(history).not.toBeVisible();

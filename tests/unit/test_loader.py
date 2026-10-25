@@ -68,10 +68,12 @@ def test_run_loads_into_its_surveys(tmp_path, monkeypatch):
     assert db.execute("SELECT field_title, text_raw FROM fields WHERE page_id = '216412_00005'").fetchall() == [("text", None)]
     assert db.execute("SELECT DISTINCT provider, model FROM pages WHERE model IS NOT NULL").fetchall() == [("claude", "claude-opus-5-5")]
     assert db.execute("SELECT * FROM fields WHERE field_title = 'engine'").fetchall() == []  # not mistaken for a field
-    assert db.execute("SELECT resident_no, text_raw FROM resident_fields ORDER BY resident_no").fetchall() == [
-        (0, "Head"), (1, "Wife")]
-    assert db.execute("SELECT residence, child_no, text_raw FROM other_children ORDER BY residence, child_no").fetchall() == [
-        ("died", 0, "girl 2"), ("living_elsewhere", 0, "son 20"), ("living_elsewhere", 1, "son 18")]
+    # a list's items are numbered from 0: objects' values each under their title, text with no title
+    assert db.execute("SELECT list_name, item_no, field_title, text_raw FROM fields WHERE list_name != ''"
+                      " ORDER BY list_name, item_no").fetchall() == [
+        ("other_children.died", 0, "", "girl 2"), ("other_children.living_elsewhere", 0, "", "son 20"),
+        ("other_children.living_elsewhere", 1, "", "son 18"), ("residents", 0, "relationship", "Head"),
+        ("residents", 1, "relationship", "Wife")]
     assert db.execute("SELECT page_id, field_title, kind, reason FROM flags").fetchall() == [
         ("216412_00001", "number_of_dwelling", "inconsistency", "Grouping: 2 coded cards")]
     assert dict(db.execute("SELECT field_title, decoded_value FROM fields WHERE page_id = '216412_00002'").fetchall()) == {
