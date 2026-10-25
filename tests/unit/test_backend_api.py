@@ -22,10 +22,9 @@ def test_get_survey_success(client, db):
     survey = models.Survey(survey_id="12345", bundle_id="6789")
     page = models.Page(page_id="12345_00001", survey_id="12345", category="main", import_path="img.png", revision_no=0, bundle_id="6789")
     field = models.Field(field_title="field", page_id="12345_00001", text_raw="raw")
-    resident = models.Resident(page_id="12345_00001", resident_no=20)
-    resident_field = models.ResidentField(page_id="12345_00001", resident_no=20, resident_field_title="relationship", text_raw="Head")
-    
-    add_in_order(db, survey, page, field, resident, resident_field)
+    resident_field = models.Field(page_id="12345_00001", list_name="residents", item_no=20, field_title="relationship", text_raw="Head")
+
+    add_in_order(db, survey, page, field, resident_field)
     db.commit()
 
     response = client.get("/survey/12345")
@@ -160,9 +159,8 @@ def a_survey_with_one_of_each(db):
                  models.Page(page_id="p", survey_id="12345", category="main", import_path="p.png", bundle_id="6789"),
                  models.Field(page_id="p", field_title="address", text_raw="5 Peel St."),
                  models.Field(page_id="p", field_title="tenure", text_raw=None),
-                 models.Resident(page_id="p", resident_no=0),
-                 models.ResidentField(page_id="p", resident_no=0, resident_field_title="age", text_raw="43"),
-                 models.OtherChild(page_id="p", residence="living_elsewhere", child_no=0, text_raw="son 20"),
+                 models.Field(page_id="p", list_name="residents", item_no=0, field_title="age", text_raw="43"),
+                 models.Field(page_id="p", list_name="other_children.living_elsewhere", item_no=0, field_title="", text_raw="son 20"),
                  models.Annotation(page_id="p", annotation_no=0, text_raw="*"))
     db.commit()
 

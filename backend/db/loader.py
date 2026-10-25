@@ -71,38 +71,35 @@ def insert_content(page_id, data, category, con):
         insert_field(page_id, "text", None, con, False)
         return
     for key, value in data.items():
-        if key == "residents":
-            for resident_no, resident in enumerate(value):
-                con.exec_driver_sql("INSERT INTO residents(page_id, resident_no) VALUES(?, ?)", (page_id, resident_no))
-                for title, raw in resident.items():
-                    con.exec_driver_sql("INSERT INTO resident_fields(page_id, resident_no, resident_field_title, text_raw)"
-                                        " VALUES(?, ?, ?, ?)", (page_id, resident_no, title, raw))
-        elif key == "annotations":
+        if key == "annotations":
             for annotation_no, annotation in enumerate(value):
                 area = annotation.get("area")  #older transcripts have none
                 con.exec_driver_sql("INSERT INTO annotations(page_id, annotation_no, text_raw, location, area) VALUES(?, ?, ?, ?, ?)",
                                     (page_id, annotation_no, annotation["raw"], annotation["location"],
                                      area if area in areas.names(category) else None))
-        elif key == "other_children":
-            for residence in ("died", "living_elsewhere"):
-                for child_no, child in enumerate(value.get(residence) or []):
-                    con.exec_driver_sql("INSERT INTO other_children(page_id, residence, child_no, text_raw) VALUES(?, ?, ?, ?)",
-                                        (page_id, residence, child_no, child))
         elif key not in META:
             insert_field(page_id, key, value, con, category == "coded")
 
 #deletes what was read off a page, and with it its flags and edits, before it is read again
 def clear_content(page_id, con):
-    for table in ("fields", "residents", "other_children", "annotations"):
+    for table in ("fields", "annotations"):
         con.exec_driver_sql(f"DELETE FROM {table} WHERE page_id = ?", (page_id,))
 
-def insert_field(page_id, title:str, raw, con, coded:bool):
+#a value read off a page into fields, by its dotted path: an object's values each by theirs; a list's items numbered from 0 in
+#its list (of objects: each of their values; of text: one value with field_title ""); a list in a list's item is refused
+def insert_field(page_id, title:str, raw, con, coded:bool, list_name="", item_no=0):
     if isinstance(raw, dict):
         for subtitle, subraw in raw.items():
-            insert_field(page_id, f"{title}.{subtitle}", subraw, con, coded)
+            insert_field(page_id, f"{title}.{subtitle}" if title else subtitle, subraw, con, coded, list_name, item_no)
         return
-    con.exec_driver_sql("INSERT INTO fields(page_id, field_title, text_raw, decoded_value) VALUES(?, ?, ?, ?)",
-                        (page_id, title, raw, decode(title, raw) if coded else None))
+    if isinstance(raw, list):
+        if list_name:
+            raise ValueError(f"{page_id}: a list in an item of list {list_name}")
+        for item_no, item in enumerate(raw):
+            insert_field(page_id, "", item, con, False, title, item_no)
+        return
+    con.exec_driver_sql("INSERT INTO fields(page_id, list_name, item_no, field_title, text_raw, decoded_value) VALUES(?, ?, ?, ?, ?, ?)",
+                        (page_id, list_name, item_no, title, raw, decode(title, raw) if coded else None))
 
 #a coded field's value's meaning, from data_dict.json; None if it isn't one of the field's codes
 def decode(title, raw):
@@ -124,7 +121,7 @@ def insert_flags(review_p, con, keys):
         if entry.get("step") != "group":
             continue
         page_id = Path(entry["file"]).stem
-        field = con.exec_driver_sql(f"""SELECT field_title FROM fields WHERE page_id = ?
+        field = con.exec_driver_sql(f"""SELECT field_title FROM fields WHERE page_id = ? AND list_name = ''
             ORDER BY field_title IS NOT ?, field_title NOT IN ({', '.join('?' * len(keys))}), rowid LIMIT 1""",
                                     (page_id, entry.get("field"), *keys)).fetchone()
         if field is not None: #a blank page isn't in the db

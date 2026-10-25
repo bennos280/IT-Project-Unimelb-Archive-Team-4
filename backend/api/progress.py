@@ -10,28 +10,16 @@ def review_progress(db):
         fields[page].add(key)
         if "[?]" in (value or ""):
             flagged[page].add(key)
-    for p, key, value in db.query(models.Field.page_id, models.Field.field_title, models.Field.text_raw):
-        field(p, key, value)
-    for p, no, key, value in db.query(models.ResidentField.page_id, models.ResidentField.resident_no,
-                                     models.ResidentField.resident_field_title, models.ResidentField.text_raw):
-        field(p, field_ids.field_id("residents", no, key), value)
-    for p, residence, no, value in db.query(models.OtherChild.page_id, models.OtherChild.residence,
-                                           models.OtherChild.child_no, models.OtherChild.text_raw):
-        field(p, field_ids.field_id(f"other_children.{residence}", no, ""), value)
+    for p, list_name, no, key, value in db.query(models.Field.page_id, models.Field.list_name, models.Field.item_no,
+                                                 models.Field.field_title, models.Field.text_raw):
+        field(p, field_ids.field_id(list_name, no, key), value)
     for p, no, value in db.query(models.Annotation.page_id, models.Annotation.annotation_no, models.Annotation.text_raw):
         field(p, field_ids.annotation_id(no), value)
-    for p, key in db.query(models.Flag.page_id, models.Flag.field_title):
-        flagged[p].add(key)
+    for p, list_name, no, key in db.query(models.Flag.page_id, models.Flag.list_name, models.Flag.item_no, models.Flag.field_title):
+        flagged[p].add(field_ids.field_id(list_name, no, key))
     for e in db.query(models.Edit).filter(models.Edit.time.is_not(None)):
-        if e.field_title is not None:
-            key = e.field_title
-        elif e.resident_no is not None:
-            key = field_ids.field_id("residents", e.resident_no, e.resident_field_title)
-        elif e.child_no is not None:
-            key = field_ids.field_id(f"other_children.{e.child_residence}", e.child_no, "")
-        else:
-            key = field_ids.annotation_id(e.annotation_no)
-        reviewed[e.page_id].add(key)
+        reviewed[e.page_id].add(field_ids.field_id(e.list_name, e.item_no, e.field_title) if e.field_title is not None
+                                else field_ids.annotation_id(e.annotation_no))
     bundles = {}
     for b in db.query(models.Bundle).order_by(models.Bundle.bundle_id):
         parent = PurePosixPath(b.source_pdf.replace("\\", "/")).parent.name

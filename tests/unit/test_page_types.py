@@ -208,7 +208,7 @@ def test_a_page_reviewed_while_it_is_read_again_is_left_as_it_was(setup, queued,
 
 
 def test_a_read_that_fails_while_the_page_is_swapped_leaves_it_as_it_was(setup, queued, monkeypatch):
-    monkeypatch.setattr(transcription, "transcribe", lambda image, kind, texts, **choice: {"residents": "not a list of residents"})
+    monkeypatch.setattr(transcription, "transcribe", lambda image, kind, texts, **choice: {"residents": [["a list in a list"]]})
     worker.work_once(setup)
     assert setup.query(models.Job).one().status == "failed"
     page = setup.get(models.Page, PAGE)

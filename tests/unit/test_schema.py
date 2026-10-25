@@ -2,7 +2,7 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from backend.db import models
+from backend.db import loader, models
 from tests.unit.test_backend_api import add_in_order
 
 
@@ -15,7 +15,7 @@ def refused(db, row):
 
 def test_a_row_must_belong_to_something_that_exists(db):
     refused(db, models.Survey(survey_id="s", bundle_id="no such bundle"))
-    refused(db, models.ResidentField(page_id="p", resident_no=1, resident_field_title="age"))  # no such resident
+    refused(db, models.Field(page_id="p", list_name="residents", item_no=1, field_title="age"))  # no such page
     refused(db, models.Flag(page_id="p", field_title="address", kind="uncertain", reason="?"))  # no such field
 
 
@@ -38,7 +38,23 @@ def test_an_edit_fixes_exactly_one_thing(db):
     refused(db, models.Edit(page_id="p", edit_text="x"))  # nothing
     add_in_order(db, models.Page(page_id="p", import_path="p.png", bundle_id="6789", category="main"),
                  models.Field(page_id="p", field_title="address"),
-                 models.OtherChild(page_id="p", residence="died", child_no=0))
-    refused(db, models.Edit(page_id="p", edit_text="x", field_title="address", child_residence="died", child_no=0))  # two
-    refused(db, models.Edit(page_id="p", edit_text="x", resident_field_title="age"))  # a resident's field, but whose
-    refused(db, models.Edit(page_id="p", edit_text="x", child_no=0))  # a child, but on which list
+                 models.Field(page_id="p", list_name="other_children.died", item_no=0, field_title=""),
+                 models.Annotation(page_id="p", annotation_no=0))
+    refused(db, models.Edit(page_id="p", edit_text="x", field_title="address", annotation_no=0))  # two
+    refused(db, models.Edit(page_id="p", edit_text="x", list_name="other_children.died", annotation_no=0))  # an annotation in a list
+    refused(db, models.Edit(page_id="p", edit_text="x", list_name="residents", item_no=0, field_title="age"))  # no such value
+
+
+def test_reading_a_page_again_drops_the_edits_and_flags_on_its_values(db):
+    add_in_order(db, models.Page(page_id="p", import_path="p.png", bundle_id="6789", category="main"),
+                 models.Field(page_id="p", field_title="address"),
+                 models.Field(page_id="p", list_name="residents", item_no=0, field_title="age"),
+                 models.Field(page_id="p", list_name="other_children.died", item_no=0, field_title=""),
+                 models.Edit(page_id="p", edit_text="x", field_title="address"),
+                 models.Edit(page_id="p", edit_text="44", list_name="residents", item_no=0, field_title="age"),
+                 models.Edit(page_id="p", edit_text="girl 3", list_name="other_children.died", item_no=0, field_title=""),
+                 models.Flag(page_id="p", list_name="residents", item_no=0, field_title="age", kind="check", reason="?"))
+    db.commit()
+    loader.clear_content("p", db.connection())
+    db.commit()
+    assert (db.query(models.Field).count(), db.query(models.Edit).count(), db.query(models.Flag).count()) == (0, 0, 0)

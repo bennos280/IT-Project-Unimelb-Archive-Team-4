@@ -54,9 +54,8 @@ def test_nested_fields_require_reviews_too(client, db):
     db.get(models.Page, "p2").survey_id = "s"
     db.flush()
     for row in (
-        models.Resident(page_id="p2", resident_no=0),
-        models.ResidentField(page_id="p2", resident_no=0, resident_field_title="name", text_raw="[?]"),
-        models.OtherChild(page_id="p2", residence="died", child_no=0, text_raw="[?]"),
+        models.Field(page_id="p2", list_name="residents", item_no=0, field_title="name", text_raw="[?]"),
+        models.Field(page_id="p2", list_name="other_children.died", item_no=0, field_title="", text_raw="[?]"),
         models.Annotation(page_id="p2", annotation_no=0, text_raw="[?]"),
     ):
         db.add(row)
@@ -66,8 +65,8 @@ def test_nested_fields_require_reviews_too(client, db):
         return client.get("/progress").json()[0]["pages"][1]
     assert (page()["status"], page()["flagCount"]) == ("Ready to review", 3)
     for target in (
-        {"resident_no": 0, "resident_field_title": "name"},
-        {"child_residence": "died", "child_no": 0},
+        {"list_name": "residents", "item_no": 0, "field_title": "name"},
+        {"list_name": "other_children.died", "item_no": 0, "field_title": ""},
         {"annotation_no": 0},
     ):
         db.add(models.Edit(page_id="p2", edit_text="corrected", time=datetime.now(timezone.utc), **target))
